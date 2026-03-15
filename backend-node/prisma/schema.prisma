@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  name           String
+  passwordHash   String    @map("password_hash")
+  emailVerified  Boolean   @default(false) @map("email_verified")
+  avatar         String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // 关联
+  papers        Paper[]
+  queries       Query[]
+  knowledgeMaps KnowledgeMap[]
+  userRoles     UserRole[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+// 论文表
+model Paper {
+  id          String    @id @default(uuid())
+  title       String
+  authors     String[]
+  year        Int?
+  abstract    String?
+  doi         String?
+  arxivId     String?
+  pdfUrl      String?
+  pdfPath     String?   // 本地存储路径
+  content     String?   // 解析后的Markdown内容
+  imradJson   Json?     // IMRaD结构化数据
+  status      String    @default("pending") // pending, processing, completed, error
+  fileSize    Int?      // PDF文件大小
+  pageCount   Int?      // 页数
+
+  // 向量嵌入 (通过PGVector)
+  embedding   Unsupported("vector(1536)")?
+
+  // 元数据
+  keywords    String[]
+  venue       String?   // 发表会议/期刊
+  citations   Int?      // 被引次数
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 关联
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  queries     Query[]   @relation("QueryPapers")
+  chunks      PaperChunk[]
+
+  @@map("papers")
+}
+
+// 论文分块表 (用于RAG检索)
+model PaperChunk {
+  id          String    @id @default(uuid())
+  content     String    // 分块内容
+  section     String?   // 所属章节 (Introduction/Method/Results/Conclusion)
+  pageStart   Int?      // 起始页码
+  pageEnd     Int?      // 结束页码
+
+  // 向量嵌入
+  embedding   Unsupported("vector(1536)")
+
+  // 元数据
+  isTable     Boolean   @default(false)
+  isFigure    Boolean   @default(false)
+  isFormula   Boolean   @default(false)
+
+  createdAt   DateTime  @default(now())
+
+  // 关联
+  paperId     String
+  paper       Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  @@index([paperId])
+  @@map("paper_chunks")
+}
+
+// 查询记录表
+model Query {
+  id          String    @id @default(uuid())
+  question    String    // 用户问题
+  answer      String?   // AI回答
+  sources     Json?     // 引用来源 [{paperId, chunkId, score}]
+  queryType   String    @default("single") // single, cross_paper, evolution
+  status      String    @default("pending") // pending, processing, completed, error
+  durationMs  Int?      // 响应时间
+
+  createdAt   DateTime  @default(now())
+
+  // 关联
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paperIds    String[]  // 关联的论文ID列表
+  papers      Paper[]   @relation("QueryPapers")
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("queries")
+}
+
+// 知识图谱表
+model KnowledgeMap {
+  id          String    @id @default(uuid())
+  name        String    // 图谱名称
+  description String?   // 描述
+  domain      String?   // 研究领域
+
+  // 图谱数据存储在Neo4j，这里只存元数据
+  nodeCount   Int       @default(0)
+  edgeCount   Int       @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 关联
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("knowledge_maps")
+}
+
+// 系统配置表
+model Config {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  value       Json
+  description String?
+  updatedAt   DateTime  @updatedAt
+
+  @@map("configs")
+}
+
+// RBAC 角色表
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  description String?
+  permissions Permission[]
+  userRoles   UserRole[]
+
+  @@map("roles")
+}
+
+// RBAC 权限表
+model Permission {
+  id       String @id @default(uuid())
+  resource String // papers, queries, admin
+  action   String // create, read, update, delete
+  roles    Role[]
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+// 用户角色关联表
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// 刷新令牌表
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}

@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库 (带PGVector扩展)
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: scholarai-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scholarai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scholarai123}
+      POSTGRES_DB: ${POSTGRES_DB:-scholarai}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scholarai} -d ${POSTGRES_DB:-scholarai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: scholarai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  # Neo4j 图数据库
+  neo4j:
+    image: neo4j:5-community
+    container_name: scholarai-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/scholarai123}
+      NEO4J_PLUGINS: '["apoc", "gds"]'
+      NEO4J_dbms_memory_heap_max__size: 1G
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+
+  # Python AI 服务
+  ai-service:
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    container_name: scholarai-ai
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-scholarai}:${POSTGRES_PASSWORD:-scholarai123}@postgres:5432/${POSTGRES_DB:-scholarai}
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./papers:/app/papers:ro
+      - ai_models:/app/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  # Node.js API 服务
+  api:
+    build:
+      context: ./backend-node
+      dockerfile: Dockerfile
+    container_name: scholarai-api
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-scholarai}:${POSTGRES_PASSWORD:-scholarai123}@postgres:5432/${POSTGRES_DB:-scholarai}
+      - REDIS_URL=redis://redis:6379/0
+      - AI_SERVICE_URL=http://ai-service:8000
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - PORT=4000
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend-node/src:/app/src:ro
+      - ./papers:/app/papers
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ai-service:
+        condition: service_started
+
+  # 前端开发服务器
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: scholarai-frontend
+    environment:
+      - VITE_API_URL=http://localhost:4000
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  neo4j_data:
+  neo4j_logs:
+  ai_models:

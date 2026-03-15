@@ -1,0 +1,10 @@
+{
+  "id": "2025031401_add_auth_and_rbac_tables",
+  "checksum": "manual",
+  "finished_at": null,
+  "migration_name": "add_auth_and_rbac_tables",
+  "logs": null,
+  "rolled_back_at": null,
+  "started_at": null,
+  "applied_steps_count": 0
+}
