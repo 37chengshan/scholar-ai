@@ -274,3 +274,25 @@ async def close_databases():
     await redis_db.disconnect()
 
     logger.info("✅ 所有数据库连接已关闭")
+
+
+# =============================================================================
+# 原始连接上下文管理器 (用于需要原始 asyncpg.Connection 的场景)
+# =============================================================================
+
+@asynccontextmanager
+async def get_db_connection() -> AsyncGenerator[asyncpg.Connection, None]:
+    """获取原始 PostgreSQL 连接 (用于需要执行原始 SQL 的场景)
+
+    Yields:
+        asyncpg.Connection: 原始数据库连接
+
+    Example:
+        async with get_db_connection() as conn:
+            rows = await conn.fetch("SELECT * FROM papers")
+    """
+    if not postgres_db.pool:
+        raise RuntimeError("PostgreSQL 连接池未初始化")
+
+    async with postgres_db.pool.acquire() as conn:
+        yield conn

@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, parse, rag, entities, papers, internal
+from app.api import health, parse, rag, entities, papers, internal, search, notes, compare, graph
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
@@ -59,10 +59,14 @@ app.add_middleware(
 # 路由
 app.include_router(health.router, prefix="/health", tags=["Health"])
 app.include_router(papers.router, prefix="/papers", tags=["Papers"])
+app.include_router(notes.router, prefix="/notes", tags=["Notes"])
 app.include_router(parse.router, prefix="/parse", tags=["PDF Parsing"])
 app.include_router(rag.router, prefix="/rag", tags=["RAG Q&A"])
 app.include_router(entities.router, prefix="/entities", tags=["Entity Extraction"])
 app.include_router(internal.router, prefix="/internal", tags=["Internal API"])
+app.include_router(search.router, prefix="/search", tags=["External Search"])
+app.include_router(compare.router, prefix="/compare", tags=["Comparison"])
+app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
 
 
 @app.get("/")

@@ -1,11 +1,21 @@
-import { prisma } from '../../src/config/database';
 import { redisClient } from '../../src/config/redis';
+
+// 动态导入 prisma，确保环境变量先加载
+let prismaInstance: any;
+async function getPrisma() {
+  if (!prismaInstance) {
+    const { prisma } = await import('../../src/config/database');
+    prismaInstance = prisma;
+  }
+  return prismaInstance;
+}
 
 /**
  * Clean up test data from database
  */
 export async function cleanupTestData(): Promise<void> {
   try {
+    const prisma = await getPrisma();
     // Delete test users (with test- prefix or @example.com domain)
     await prisma.user.deleteMany({
       where: {
@@ -64,6 +74,7 @@ export function generateTestUserData() {
  * Close database connections
  */
 export async function closeDatabaseConnections(): Promise<void> {
+  const prisma = await getPrisma();
   await prisma.$disconnect();
   await redisClient.quit();
 }

@@ -15,6 +15,9 @@ import { usersRouter } from './routes/users';
 import { searchRouter } from './routes/search';
 import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
+import { compareRouter } from './routes/compare';
+import graphRouter from './routes/graph';
+import entitiesRouter from './routes/entities';
 
 dotenv.config();
 
@@ -39,6 +42,9 @@ app.use('/api/papers', papersRouter);
 app.use('/api/queries', queriesRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/compare', compareRouter);
+app.use('/api/graph', graphRouter);
+app.use('/api/entities', entitiesRouter);
 
 // 错误处理
 app.use(errorHandler);

@@ -62,6 +62,12 @@ model Paper {
   queries     Query[]   @relation("QueryPapers")
   chunks      PaperChunk[]
 
+  // 存储和笔记
+  storageKey      String?         @map("storage_key")
+  readingNotes    String?         @map("reading_notes") @db.Text
+  notesVersion    Int             @default(0) @map("notes_version")
+  processingTask  ProcessingTask?
+
   @@map("papers")
 }
 
@@ -178,6 +184,24 @@ model UserRole {
 
   @@unique([userId, roleId])
   @@map("user_roles")
+}
+
+// 论文处理任务表 (用于PDF处理和AI解析)
+model ProcessingTask {
+  id            String    @id @default(uuid())
+  paperId       String    @unique @map("paper_id")
+  paper         Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  status        String    @default("pending") // pending, processing_ocr, parsing, extracting_imrad, generating_notes, completed, failed
+  storageKey    String    @map("storage_key") // Object storage path: userId_originalName
+  errorMessage  String?   @map("error_message")
+  attempts      Int       @default(0) // Retry attempt counter
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  completedAt   DateTime? @map("completed_at")
+
+  @@index([status])
+  @@index([paperId])
+  @@map("processing_tasks")
 }
 
 // 刷新令牌表

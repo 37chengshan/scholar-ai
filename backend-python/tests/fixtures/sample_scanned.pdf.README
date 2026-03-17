@@ -1,0 +1,13 @@
+Scanned PDF Placeholder
+
+This represents a scanned document that would require OCR.
+In production testing, use an actual scanned PDF image file.
+
+Expected content:
+- Image-based PDF without text layer
+- Requires OCR to extract text
+- Typically 300 DPI or higher
+- Would contain:
+  * Title: Scanned Research Paper
+  * Author: Various authors
+  * Content: Academic text requiring OCR processing

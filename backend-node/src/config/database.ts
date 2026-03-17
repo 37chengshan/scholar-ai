@@ -9,33 +9,39 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
-const prismaOptions = {
-  log: process.env.NODE_ENV === 'development'
-    ? (['query', 'info', 'warn', 'error'] as const)
-    : (['error'] as const),
-};
+// 获取或创建 PrismaClient 的函数
+function getPrismaClient(): PrismaClient {
+  // 检查全局实例
+  if (global.prisma) {
+    return global.prisma;
+  }
 
-// Create singleton Prisma client
-const prisma = global.prisma || new PrismaClient({
-  log: process.env.NODE_ENV === 'development'
-    ? (['query', 'info', 'warn', 'error'] as const)
-    : (['error'] as const),
-});
+  // 创建新实例
+  const client = new PrismaClient({
+    log: process.env.NODE_ENV === 'development'
+      ? (['query', 'info', 'warn', 'error'] as const)
+      : (['error'] as const),
+  });
 
-// Store in global for hot-reloading in development
-if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma;
+  // Store in global for hot-reloading in development
+  if (process.env.NODE_ENV !== 'production') {
+    global.prisma = client;
+  }
+
+  // Connection error handling
+  client.$connect()
+    .then(() => {
+      console.log('[Database] Connected successfully');
+    })
+    .catch((error: Error) => {
+      console.error('[Database] Connection failed:', error);
+    });
+
+  return client;
 }
 
-// Connection error handling
-prisma.$connect()
-  .then(() => {
-    console.log('[Database] Connected successfully');
-  })
-  .catch((error: Error) => {
-    console.error('[Database] Connection failed:', error);
-    // Don't exit - let the application handle reconnection or failure
-  });
+// 导出 prisma 实例（延迟初始化）
+export const prisma = getPrismaClient();
 
 // Graceful shutdown handler
 const gracefulShutdown = async (signal: string): Promise<void> => {
@@ -49,5 +55,4 @@ const gracefulShutdown = async (signal: string): Promise<void> => {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-export { prisma };
 export default prisma;

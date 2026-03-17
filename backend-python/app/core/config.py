@@ -1,5 +1,6 @@
 """应用配置"""
 
+import os
 from typing import List
 from functools import lru_cache
 
@@ -50,10 +51,19 @@ class Settings(BaseSettings):
 
     # JWT内部服务通信 (RS256公钥用于验证Node.js Gateway发来的token)
     JWT_INTERNAL_PUBLIC_KEY: str = ""
+    JWT_INTERNAL_PUBLIC_KEY_FILE: str = ""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # 如果配置了公钥文件路径，从文件读取
+        if self.JWT_INTERNAL_PUBLIC_KEY_FILE and os.path.exists(self.JWT_INTERNAL_PUBLIC_KEY_FILE):
+            with open(self.JWT_INTERNAL_PUBLIC_KEY_FILE, 'r') as f:
+                self.JWT_INTERNAL_PUBLIC_KEY = f.read()
 
     class Config:
-        env_file = ".env.local"
+        env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # 忽略未定义的环境变量
 
 
 @lru_cache()

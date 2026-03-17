@@ -4,13 +4,36 @@
 所有端点需要JWT认证
 """
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import Optional
 
 from app.core.auth import verify_internal_token, get_current_service
+from app.core.notes_generator import NotesGenerator
+from app.core.database import postgres_db
 from app.utils.logger import logger
+from app.workers.pdf_download_worker import download_external_pdf
 
 router = APIRouter()
+
+# Notes generator instance
+notes_generator = NotesGenerator()
+
+
+class RegenerateNotesRequest(BaseModel):
+    """Request body for notes regeneration."""
+    paperId: str
+    modificationRequest: str = ""
+    storageKey: str
+
+
+class ProcessExternalRequest(BaseModel):
+    """Request body for processing external paper."""
+    paperId: str
+    pdfUrl: str
+    source: str  # 'arxiv' or 'semantic-scholar'
+    externalId: Optional[str] = None  # arXiv ID or S2 paper ID
 
 
 @router.get("/health")
@@ -158,3 +181,160 @@ async def internal_extract_entities(
         "message": "Entity extraction will be implemented in Phase 5",
         "request_id": request_id
     }
+
+
+@router.post("/regenerate-notes")
+async def internal_regenerate_notes(
+    request: RegenerateNotesRequest,
+    service: dict = Depends(get_current_service)
+):
+    """笔记重新生成端点
+
+    接收论文ID和修改要求，使用NotesGenerator重新生成笔记
+
+    Args:
+        request: RegenerateNotesRequest with paperId and modificationRequest
+        service: JWT payload from verify_internal_token
+
+    Returns:
+        Regenerated notes
+    """
+    import json
+
+    calling_service = service.get("sub", "unknown")
+    logger.info(
+        "Notes regeneration request received",
+        extra={
+            "calling_service": calling_service,
+            "paper_id": request.paperId,
+            "endpoint": "/internal/regenerate-notes"
+        }
+    )
+
+    try:
+        # Fetch paper data from PostgreSQL
+        row = await postgres_db.fetchrow(
+            """SELECT title, authors, year, venue, imrad_json, reading_notes
+               FROM papers WHERE id = $1""",
+            request.paperId
+        )
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Paper not found")
+
+        imrad_data = row["imrad_json"]
+        if not imrad_data:
+            raise HTTPException(status_code=400, detail="Paper not yet parsed")
+
+        # Parse imrad_json if it's a string
+        if isinstance(imrad_data, str):
+            imrad_data = json.loads(imrad_data)
+
+        # Prepare paper metadata
+        paper_metadata = {
+            "title": row["title"] or "Unknown",
+            "authors": row["authors"] if row["authors"] else [],
+            "year": row["year"] or "",
+            "venue": row["venue"] or ""
+        }
+
+        # Generate new notes with modification request
+        import asyncio
+        notes = await notes_generator.regenerate_notes(
+            paper_metadata=paper_metadata,
+            imrad_structure=imrad_data,
+            modification_request=request.modificationRequest
+        )
+
+        logger.info(
+            "Notes regenerated successfully",
+            paper_id=request.paperId,
+            calling_service=calling_service
+        )
+
+        return {
+            "status": "success",
+            "paperId": request.paperId,
+            "notes": notes,
+            "message": "Notes regenerated successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to regenerate notes: {e}",
+            extra={"paper_id": request.paperId}
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/process-external")
+async def internal_process_external(
+    request: ProcessExternalRequest,
+    service: dict = Depends(get_current_service)
+):
+    """处理外部论文PDF下载端点
+
+    接收外部论文信息，下载PDF并触发6-state处理流程
+
+    Args:
+        request: ProcessExternalRequest with paperId, pdfUrl, source, externalId
+        service: JWT payload from verify_internal_token
+
+    Returns:
+        Download result with paper_id, download_success, and status
+    """
+    calling_service = service.get("sub", "unknown")
+    logger.info(
+        "External paper processing request received",
+        extra={
+            "calling_service": calling_service,
+            "paper_id": request.paperId,
+            "source": request.source,
+            "external_id": request.externalId,
+            "endpoint": "/internal/process-external"
+        }
+    )
+
+    try:
+        # Download PDF asynchronously with fallback
+        arxiv_id = request.externalId if request.source == "arxiv" else None
+
+        success = await download_external_pdf(
+            paper_id=request.paperId,
+            primary_url=request.pdfUrl,
+            source=request.source,
+            arxiv_id=arxiv_id
+        )
+
+        if success:
+            logger.info(
+                "External paper PDF downloaded successfully",
+                paper_id=request.paperId,
+                source=request.source,
+                calling_service=calling_service
+            )
+        else:
+            logger.warning(
+                "External paper PDF download failed, marked as no_pdf",
+                paper_id=request.paperId,
+                source=request.source,
+                calling_service=calling_service
+            )
+
+        return {
+            "paper_id": request.paperId,
+            "download_success": success,
+            "status": "pending" if success else "no_pdf"
+        }
+
+    except Exception as e:
+        logger.error(
+            f"Failed to process external paper: {e}",
+            extra={
+                "paper_id": request.paperId,
+                "source": request.source
+            }
+        )
+        raise HTTPException(status_code=500, detail=str(e))
