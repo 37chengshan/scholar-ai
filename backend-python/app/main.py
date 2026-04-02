@@ -18,6 +18,7 @@ from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
 from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
+from app.core.reranker_service import get_reranker_service
 
 
 @asynccontextmanager
@@ -46,6 +47,18 @@ async def lifespan(app: FastAPI):
         logger.error("Failed to initialize Milvus", error=str(e))
         # Don't fail startup - Milvus is optional for basic functionality
         app.state.milvus_service = None
+
+    # Initialize ReRanker
+    try:
+        logger.info("Initializing ReRanker...")
+        reranker_service = get_reranker_service()
+        reranker_service.load_model()
+        app.state.reranker_service = reranker_service
+        logger.info("ReRanker model loaded", model=reranker_service.MODEL_NAME)
+    except Exception as e:
+        logger.error("Failed to initialize ReRanker", error=str(e))
+        # Don't fail startup - ReRanker is optional for basic functionality
+        app.state.reranker_service = None
 
     yield
 
