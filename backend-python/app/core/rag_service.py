@@ -4,6 +4,7 @@ Provides:
 - PGVectorStore: Custom vector store for PaperQA2 using existing PGVector infrastructure
 - RAGService: High-level RAG query service with citation tracking
 - Integration with existing embedding_service.py for 768-dim embeddings
+- Semantic caching for reduced LLM API calls
 """
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -159,6 +160,7 @@ class RAGService:
     Attributes:
         pg_store: PGVectorStore instance for similarity search
         embedding_service: EmbeddingService for query embedding
+        semantic_cache: SemanticCache for reducing redundant LLM calls
     """
 
     def __init__(
@@ -174,6 +176,9 @@ class RAGService:
         """
         self.pg_store = pg_store
         self._embedding_service = embedding_service
+        # Initialize semantic cache with user decision D-02 settings
+        from app.core.semantic_cache import SemanticCache
+        self.semantic_cache = SemanticCache(threshold=0.95, ttl=86400)
 
     @property
     def embedding_service(self) -> Any:
@@ -190,7 +195,7 @@ class RAGService:
         top_k: int = 5,
         connection: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """Execute RAG query with citations.
+        """Execute RAG query with citations and semantic caching.
 
         Retrieves relevant chunks and generates an answer with proper citations.
         This is a simplified implementation that returns retrieved contexts.
@@ -208,6 +213,16 @@ class RAGService:
         if self.pg_store is None and connection is None:
             raise ValueError("Either pg_store or connection must be provided")
 
+        # Check semantic cache first
+        cached = await self.semantic_cache.get(question, paper_ids)
+        if cached:
+            logger.info(
+                "Semantic cache hit - returning cached response",
+                question=question[:50],
+            )
+            cached["cached"] = True
+            return cached
+
         store = self.pg_store or PGVectorStore(connection)
 
         # Retrieve relevant chunks
@@ -222,6 +237,7 @@ class RAGService:
                 "answer": "No relevant information found in the specified papers.",
                 "citations": [],
                 "confidence": 0.0,
+                "cached": False,
             }
 
         # Build citations from retrieved chunks
@@ -253,6 +269,16 @@ class RAGService:
             f"(Full LLM integration pending)"
         )
 
+        result = {
+            "answer": answer,
+            "citations": citations,
+            "confidence": round(confidence, 2),
+            "cached": False,
+        }
+
+        # Cache the result
+        await self.semantic_cache.set(question, paper_ids, result)
+
         logger.info(
             "RAG query completed",
             question=question[:50],
@@ -260,11 +286,7 @@ class RAGService:
             confidence=confidence,
         )
 
-        return {
-            "answer": answer,
-            "citations": citations,
-            "confidence": round(confidence, 2),
-        }
+        return result
 
     async def stream_query(
         self,
