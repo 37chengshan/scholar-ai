@@ -46,7 +46,7 @@ model Paper {
   pageCount   Int?      // 页数
 
   // 向量嵌入 (通过PGVector)
-  embedding   Unsupported("vector(1536)")?
+  embedding   Unsupported("vector(768)")?
 
   // 元数据
   keywords    String[]
@@ -80,7 +80,7 @@ model PaperChunk {
   pageEnd     Int?      // 结束页码
 
   // 向量嵌入
-  embedding   Unsupported("vector(1536)")
+  embedding   Unsupported("vector(768)")
 
   // 元数据
   isTable     Boolean   @default(false)
