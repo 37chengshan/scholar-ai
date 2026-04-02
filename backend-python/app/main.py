@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
 from app.utils.logger import logger
+from app.core.milvus_service import get_milvus_service
 
 
 @asynccontextmanager
@@ -33,10 +34,32 @@ async def lifespan(app: FastAPI):
     # 初始化数据库连接
     await init_databases()
 
+    # Initialize Milvus
+    try:
+        logger.info("Initializing Milvus...")
+        milvus_service = get_milvus_service()
+        milvus_service.connect()
+        milvus_service.create_collections()
+        app.state.milvus_service = milvus_service
+        logger.info("Milvus initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize Milvus", error=str(e))
+        # Don't fail startup - Milvus is optional for basic functionality
+        app.state.milvus_service = None
+
     yield
 
     # 关闭
     logger.info("🛑 ScholarAI AI Service shutting down...")
+
+    # Disconnect Milvus
+    if hasattr(app.state, 'milvus_service') and app.state.milvus_service:
+        try:
+            app.state.milvus_service.disconnect()
+            logger.info("Milvus disconnected")
+        except Exception as e:
+            logger.warning("Error disconnecting Milvus", error=str(e))
+
     await close_databases()
 
 
