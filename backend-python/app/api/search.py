@@ -4,6 +4,7 @@ Provides:
 - External search: arXiv and Semantic Scholar
 - Library search: Hybrid search over user's uploaded papers using dense + sparse + RRF
 - Unified search: Merge and deduplicate results from multiple sources
+- Multimodal search: Search across text, image, and table modalities with clustering
 """
 
 import asyncio
@@ -19,6 +20,8 @@ from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
 from app.core.config import settings
+from app.core.multimodal_search_service import get_multimodal_search_service
+from app.core.page_clustering import cluster_pages
 from app.utils.logger import logger
 
 router = APIRouter()
@@ -664,3 +667,134 @@ async def search_unified(
     )
 
     return result_data
+
+
+# =============================================================================
+# Multimodal Search Models
+# =============================================================================
+
+
+class MultimodalSearchRequest(BaseModel):
+    """Multimodal search request model."""
+
+    query: str = Field(..., description="Search query string", min_length=1, max_length=500)
+    paper_ids: List[str] = Field(..., description="List of paper IDs to search within")
+    top_k: int = Field(default=10, description="Maximum results to return", ge=1, le=50)
+    use_reranker: bool = Field(default=True, description="Whether to apply reranking")
+    content_types: Optional[List[str]] = Field(
+        default=None,
+        description="Content types to search (text, image, table)",
+    )
+    enable_clustering: bool = Field(default=True, description="Whether to cluster results by page")
+
+
+class ClusterResult(BaseModel):
+    """Cluster result model."""
+
+    cluster_id: int = Field(..., description="Cluster identifier")
+    pages: List[int] = Field(..., description="Page numbers in this cluster")
+    results: List[Dict[str, Any]] = Field(..., description="Search results in this cluster")
+
+
+class MultimodalSearchResponse(BaseModel):
+    """Multimodal search response model."""
+
+    query: str = Field(..., description="Search query")
+    intent: str = Field(..., description="Detected query intent (default, image_weighted, table_weighted)")
+    weights: Dict[str, float] = Field(..., description="Modality weights applied")
+    clusters: Optional[List[ClusterResult]] = Field(None, description="Page clusters if enabled")
+    results: List[Dict[str, Any]] = Field(..., description="Search results")
+    total_count: int = Field(..., description="Total number of results")
+
+
+# =============================================================================
+# Multimodal Search Endpoint
+# =============================================================================
+
+
+@router.post("/multimodal", response_model=MultimodalSearchResponse)
+async def multimodal_search(
+    request: MultimodalSearchRequest,
+    # current_user: dict = Depends(get_current_user)  # Auth placeholder
+) -> Dict[str, Any]:
+    """Multimodal search across text, images, and tables.
+
+    Supports intent detection, weighted fusion, and optional reranking.
+    Results organized by page clusters when enable_clustering=True.
+
+    Args:
+        request: MultimodalSearchRequest with query, paper_ids, and options
+
+    Returns:
+        MultimodalSearchResponse with query, intent, clusters, and results
+
+    Example:
+        POST /api/search/multimodal
+        {
+            "query": "YOLO architecture diagram",
+            "paper_ids": ["paper-1", "paper-2"],
+            "top_k": 10,
+            "use_reranker": true,
+            "enable_clustering": true
+        }
+    """
+    logger.info(
+        "Multimodal search initiated",
+        query=request.query[:50],
+        paper_count=len(request.paper_ids),
+        top_k=request.top_k,
+        use_reranker=request.use_reranker,
+        enable_clustering=request.enable_clustering,
+    )
+
+    try:
+        # Get multimodal search service
+        service = get_multimodal_search_service()
+
+        # Execute search
+        result = await service.search(
+            query=request.query,
+            paper_ids=request.paper_ids,
+            user_id="placeholder-user-id",  # TODO: Get from auth
+            top_k=request.top_k,
+            use_reranker=request.use_reranker,
+            content_types=request.content_types
+        )
+
+        # Apply page clustering if enabled
+        if request.enable_clustering and result["results"]:
+            try:
+                clusters = cluster_pages(result["results"])
+
+                # Format clusters for response
+                cluster_list = [
+                    ClusterResult(
+                        cluster_id=cid,
+                        pages=list(set(r.get("page_num", 0) for r in results)),
+                        results=results
+                    )
+                    for cid, results in clusters.items()
+                ]
+
+                result["clusters"] = cluster_list
+
+                logger.info(
+                    "Page clustering applied",
+                    cluster_count=len(clusters),
+                    result_count=len(result["results"]),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Page clustering failed, returning unclustered results",
+                    error=str(e),
+                )
+                # Continue without clustering
+
+        return MultimodalSearchResponse(**result)
+
+    except Exception as e:
+        logger.error("Multimodal search failed", error=str(e), query=request.query[:50])
+        raise HTTPException(
+            status_code=500,
+            detail=f"Multimodal search failed: {str(e)}"
+        )
