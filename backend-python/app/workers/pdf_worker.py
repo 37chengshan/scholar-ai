@@ -18,7 +18,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import asyncpg
 
@@ -31,6 +31,7 @@ from app.core.notes_generator import NotesGenerator
 from app.core.milvus_service import get_milvus_service
 from app.core.image_extractor import ImageExtractor
 from app.core.table_extractor import TableExtractor
+from app.core.multimodal_indexer import MultimodalIndexer, get_multimodal_indexer
 from app.utils.logger import logger
 
 
@@ -48,6 +49,7 @@ class PDFProcessor:
         self.milvus_service = get_milvus_service()
         self.image_extractor = ImageExtractor()
         self.table_extractor = TableExtractor()
+        self.multimodal_indexer: Optional[MultimodalIndexer] = None
         self.db_pool: Optional[asyncpg.Pool] = None
 
     async def init_db(self):
@@ -286,44 +288,44 @@ class PDFProcessor:
             logger.info("Starting multimodal indexing", task_id=task_id)
 
             try:
-                # Extract and index images
-                image_results = await self.image_extractor.process_pdf_images(
-                    local_path,
-                    parsed["items"],
+                # Initialize multimodal indexer if needed
+                if not self.multimodal_indexer:
+                    self.multimodal_indexer = get_multimodal_indexer()
+
+                # Index all multimodal content
+                index_results = await self.multimodal_indexer.index_paper(
                     paper_id=paper_id,
-                    user_id=task["user_id"]
+                    user_id=task["user_id"],
+                    pdf_path=local_path,
+                    parsed_items=parsed["items"]
                 )
 
-                if image_results:
-                    self.milvus_service.insert_contents(image_results)
-                    logger.info(
-                        "Indexed images",
-                        task_id=task_id,
-                        image_count=len(image_results)
+                # Store partial failures if any
+                if index_results.get("partial_failures"):
+                    await self._store_partial_failures(
+                        task_id,
+                        index_results["partial_failures"]
                     )
 
-                # Extract and index tables
-                table_results = await self.table_extractor.process_pdf_tables(
-                    parsed["items"],
-                    paper_id=paper_id,
-                    user_id=task["user_id"]
+                logger.info(
+                    "Multimodal indexing complete",
+                    task_id=task_id,
+                    images_indexed=index_results["images_indexed"],
+                    tables_indexed=index_results["tables_indexed"],
+                    failures=len(index_results.get("partial_failures", []))
                 )
-
-                if table_results:
-                    self.milvus_service.insert_contents(table_results)
-                    logger.info(
-                        "Indexed tables",
-                        task_id=task_id,
-                        table_count=len(table_results)
-                    )
 
             except Exception as e:
-                # Log error but don't fail the PDF processing
+                # Log error but don't fail the PDF processing (tiered failure per D-29)
                 logger.error(
-                    "Multimodal indexing failed, continuing",
+                    "Multimodal indexing failed",
                     task_id=task_id,
                     error=str(e)
                 )
+                await self._store_partial_failures(task_id, [{
+                    "type": "indexing",
+                    "error": str(e)
+                }])
 
             # Mark complete
             await self._update_status(task_id, "completed")
@@ -389,6 +391,32 @@ class PDFProcessor:
             )
 
         logger.info("Task status updated", task_id=task_id, status=status)
+
+    async def _store_partial_failures(
+        self,
+        task_id: str,
+        failures: List[Dict[str, Any]]
+    ) -> None:
+        """Store partial failures in processing_tasks table.
+
+        Args:
+            task_id: Task UUID
+            failures: List of failure records
+        """
+        async with self.db_pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE processing_tasks
+                   SET partial_failures = $1::jsonb,
+                       updated_at = NOW()
+                   WHERE id = $2""",
+                json.dumps({"failures": failures}),
+                task_id
+            )
+        logger.info(
+            "Stored partial failures",
+            task_id=task_id,
+            failure_count=len(failures)
+        )
 
     async def retry_task(self, task_id: str) -> bool:
         """
