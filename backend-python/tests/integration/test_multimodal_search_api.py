@@ -1,6 +1,6 @@
 """Integration tests for multimodal search API endpoint.
 
-Tests for POST /api/search/multimodal endpoint.
+Tests for POST /search/multimodal endpoint.
 """
 
 import pytest
@@ -70,7 +70,7 @@ class TestMultimodalSearchAPI:
             transport=ASGITransport(app=app),
             base_url="http://test"
         ) as ac:
-            response = await ac.post("/api/search/multimodal", json=request_data)
+            response = await ac.post("/search/multimodal", json=request_data)
 
         assert response.status_code == 200
         data = response.json()
@@ -95,7 +95,7 @@ class TestMultimodalSearchAPI:
             transport=ASGITransport(app=app),
             base_url="http://test"
         ) as ac:
-            response = await ac.post("/api/search/multimodal", json=request_data)
+            response = await ac.post("/search/multimodal", json=request_data)
 
         assert response.status_code == 200
         data = response.json()
@@ -137,7 +137,7 @@ class TestMultimodalSearchAPI:
             transport=ASGITransport(app=app),
             base_url="http://test"
         ) as ac:
-            response = await ac.post("/api/search/multimodal", json=request_data)
+            response = await ac.post("/search/multimodal", json=request_data)
 
         assert response.status_code == 200
         data = response.json()
@@ -157,7 +157,7 @@ class TestMultimodalSearchAPI:
             transport=ASGITransport(app=app),
             base_url="http://test"
         ) as ac:
-            response = await ac.post("/api/search/multimodal", json=request_data)
+            response = await ac.post("/search/multimodal", json=request_data)
 
         assert response.status_code == 200
         data = response.json()
@@ -174,6 +174,6 @@ class TestMultimodalSearchAPI:
             transport=ASGITransport(app=app),
             base_url="http://test"
         ) as ac:
-            response = await ac.post("/api/search/multimodal", json=request_data)
+            response = await ac.post("/search/multimodal", json=request_data)
 
         assert response.status_code == 422  # Validation error
