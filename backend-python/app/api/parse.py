@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.docling_service import DoclingParser
 from app.core.imrad_extractor import extract_imrad_structure, extract_metadata
+from app.middleware.file_validation import validate_pdf_upload
 from app.utils.logger import logger
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -26,23 +28,20 @@ async def parse_pdf(file: UploadFile = File(...)):
     - 使用Docling解析PDF
     - 提取结构化内容（IMRaD格式）
     - 返回Markdown和结构化JSON
+
+    Security:
+    - Validates file extension
+    - Validates PDF magic bytes
+    - Enforces file size limit
     """
     temp_path = None
     try:
-        # 验证文件类型
-        if not file.filename.endswith('.pdf'):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="只接受PDF文件"
-            )
+        # Validate file (extension + magic bytes + size)
+        # Per D-05: Check magic bytes to prevent file masquerading
+        await validate_pdf_upload(file)
 
-        # 保存上传的文件
+        # Read content after validation
         content = await file.read()
-        if len(content) > settings.MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"文件大小超过限制 ({settings.MAX_FILE_SIZE / 1024 / 1024}MB)"
-            )
 
         logger.info(f"Parsing PDF: {file.filename}, size: {len(content)} bytes")
 
@@ -70,19 +69,23 @@ async def parse_pdf(file: UploadFile = File(...)):
         }
 
     except HTTPException:
+        # Re-raise HTTPExceptions (including validation errors)
         raise
+
     except FileNotFoundError as e:
         logger.error(f"PDF file not found: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="PDF文件不存在"
+            detail=Errors.not_found("PDF文件不存在")
         )
+
     except Exception as e:
         logger.error(f"PDF parsing error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"PDF解析失败: {str(e)}"
+            detail=Errors.internal(f"PDF解析失败: {str(e)}")
         )
+
     finally:
         # Cleanup temp file
         if temp_path:
