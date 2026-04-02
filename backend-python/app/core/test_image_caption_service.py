@@ -91,8 +91,17 @@ class TestImageCaptionService:
         """Test API call without API key."""
         service = ImageCaptionService(api_key="")
 
-        with pytest.raises(ValueError, match="ZHIPU_API_KEY not configured"):
+        # The retry decorator will wrap the ValueError in RetryError
+        from tenacity import RetryError
+        with pytest.raises(RetryError) as exc_info:
             await service._call_api("base64encodedimage")
+
+        # Check that the underlying error (from the last attempt) is about the API key
+        # The RetryError's last exception is stored in the future
+        retry_error = exc_info.value
+        # Get the underlying exception from the retry error
+        assert retry_error.last_attempt.exception() is not None
+        assert "ZHIPU_API_KEY" in str(retry_error.last_attempt.exception())
 
     @pytest.mark.asyncio
     async def test_call_api_invalid_response(self):
@@ -106,8 +115,15 @@ class TestImageCaptionService:
         service.client = Mock()
         service.client.post = AsyncMock(return_value=mock_response)
 
-        with pytest.raises(ValueError):
+        # The retry decorator will wrap the ValueError in RetryError
+        from tenacity import RetryError
+        with pytest.raises(RetryError) as exc_info:
             await service._call_api("base64encodedimage")
+
+        # Check that the underlying error is about the response
+        retry_error = exc_info.value
+        assert retry_error.last_attempt.exception() is not None
+        assert "Unexpected API response" in str(retry_error.last_attempt.exception())
 
     @pytest.mark.asyncio
     async def test_generate_caption_success(self):
