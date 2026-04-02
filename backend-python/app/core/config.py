@@ -40,7 +40,11 @@ class Settings(BaseSettings):
     # API密钥
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
-    ZHIPU_API_KEY: str = ""
+    ZHIPU_API_KEY: str = ""  # For glm-4v image caption and glm-4-flash table description
+    ZHIPU_MODEL_VISION: str = "glm-4v"  # For image caption generation
+    ZHIPU_MODEL_TEXT: str = "glm-4-flash"  # For table description generation
+    ZHIPU_MAX_TOKENS: int = 150
+    ZHIPU_TEMPERATURE: float = 0.3
 
     # CORS
     ALLOWED_HOSTS: List[str] = ["*"]
