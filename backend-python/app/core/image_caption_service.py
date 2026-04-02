@@ -1,76 +1,39 @@
-"""Image caption generation service using local Qwen2-VL-2B model.
+"""Image caption generation service using Zhipu AI API.
 
 Provides:
-- Local VLM for academic figure caption generation
-- Memory-efficient loading with FP16 precision
-- Lazy initialization with retry logic
-- Graceful fallback on model failures
+- Vision-language model for academic figure caption generation
+- Uses Zhipu AI API (glm-4v model) for image understanding
+- Retry logic with exponential backoff
+- Graceful fallback on API failures
 """
 
+import base64
+import io
 from typing import Optional
-import torch
+import httpx
 from PIL import Image
-from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
+from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.core.config import settings
 from app.utils.logger import logger
 
 
 class ImageCaptionService:
-    """Image caption service using local Qwen2-VL-2B-Instruct model."""
+    """Image caption service using Zhipu AI API (glm-4v vision model)."""
 
-    MODEL_NAME = "Qwen/Qwen2-VL-2B-Instruct"
-    DEFAULT_MAX_LENGTH = 100
+    API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    MODEL_NAME = "glm-4v"
+    DEFAULT_MAX_TOKENS = 150
+    DEFAULT_TEMPERATURE = 0.3
 
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None):
         """Initialize the caption service.
 
         Args:
-            model_name: Optional custom model name (defaults to Qwen2-VL-2B-Instruct)
+            api_key: Optional Zhipu API key (defaults to settings.ZHIPU_API_KEY)
         """
-        self.model_name = model_name or self.MODEL_NAME
-        self.model: Optional[Qwen2VLForConditionalGeneration] = None
-        self.processor: Optional[AutoProcessor] = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._initialized = False
-
-    def _load_model(self) -> bool:
-        """Lazy load the model and processor.
-
-        Returns:
-            True if loaded successfully, False otherwise
-        """
-        if self._initialized:
-            return True
-
-        try:
-            logger.info(
-                "Loading Qwen2-VL model",
-                model=self.model_name,
-                device=self.device
-            )
-
-            self.processor = AutoProcessor.from_pretrained(self.model_name)
-            self.model = Qwen2VLForConditionalGeneration.from_pretrained(
-                self.model_name,
-                torch_dtype=torch.float16,
-                device_map="auto"
-            )
-            self.model.eval()
-            self._initialized = True
-
-            logger.info(
-                "Qwen2-VL model loaded successfully",
-                model=self.model_name,
-                device=self.device
-            )
-            return True
-        except Exception as e:
-            logger.error(
-                "Failed to load Qwen2-VL model",
-                error=str(e),
-                model=self.model_name
-            )
-            return False
+        self.api_key = api_key or getattr(settings, 'ZHIPU_API_KEY', '')
+        self.client = httpx.AsyncClient(timeout=30.0)
 
     def _build_prompt(self) -> str:
         """Build the academic-focused caption prompt.
@@ -87,6 +50,86 @@ class ImageCaptionService:
 - 不超过80字
 """
 
+    def _encode_image(self, image: Image.Image) -> str:
+        """Encode PIL Image to base64 string.
+
+        Args:
+            image: PIL Image object
+
+        Returns:
+            Base64-encoded image string
+        """
+        # Convert to RGB if necessary (handle RGBA, etc.)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+
+        # Save to bytes buffer
+        buffer = io.BytesIO()
+        image.save(buffer, format='JPEG', quality=85)
+        image_bytes = buffer.getvalue()
+
+        # Encode to base64
+        return base64.b64encode(image_bytes).decode('utf-8')
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10)
+    )
+    async def _call_api(self, image_base64: str) -> str:
+        """Call Zhipu AI API with retry logic.
+
+        Args:
+            image_base64: Base64-encoded image
+
+        Returns:
+            Generated caption text
+
+        Raises:
+            Exception: If API call fails after retries
+        """
+        if not self.api_key:
+            raise ValueError("ZHIPU_API_KEY not configured")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        prompt = self._build_prompt()
+
+        payload = {
+            "model": self.MODEL_NAME,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": self.DEFAULT_MAX_TOKENS,
+            "temperature": self.DEFAULT_TEMPERATURE
+        }
+
+        response = await self.client.post(
+            self.API_URL,
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        if "choices" in data and len(data["choices"]) > 0:
+            return data["choices"][0]["message"]["content"].strip()
+        else:
+            raise ValueError(f"Unexpected API response: {data}")
+
     async def generate_caption(
         self,
         image: Image.Image,
@@ -101,65 +144,20 @@ class ImageCaptionService:
         Returns:
             Caption string, or fallback caption if generation fails
         """
-        # Lazy load model on first use
-        if not self._load_model():
-            logger.warning(
-                "Model not loaded, using fallback caption",
-                fallback="Academic figure from research paper"
-            )
-            return "Academic figure from research paper"
-
         try:
-            prompt = self._build_prompt()
+            # Encode image to base64
+            image_base64 = self._encode_image(image)
 
-            # Prepare conversation format for Qwen2-VL
-            conversation = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image"},
-                        {"type": "text", "text": prompt}
-                    ]
-                }
-            ]
-
-            # Apply chat template
-            text_prompt = self.processor.apply_chat_template(
-                conversation,
-                add_generation_prompt=True
+            logger.debug(
+                "Generating image caption via Zhipu AI",
+                image_size=image.size,
+                model=self.MODEL_NAME
             )
 
-            # Process inputs
-            inputs = self.processor(
-                text=[text_prompt],
-                images=[image],
-                return_tensors="pt"
-            )
-            inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
-
-            # Generate caption
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=128,
-                    temperature=0.3,
-                    do_sample=True,
-                    top_p=0.9
-                )
-
-            # Decode output
-            generated_ids = outputs[0][inputs['input_ids'].shape[1]:]
-            caption = self.processor.decode(generated_ids, skip_special_tokens=True)
-
-            # Clean up caption
-            caption = caption.strip()
-
-            # Clear CUDA cache if available
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            caption = await self._call_api(image_base64)
 
             # Validate caption length
-            if len(caption) < 10:
+            if not caption or len(caption) < 10:
                 logger.warning(
                     "Caption too short, using fallback",
                     caption=caption,
@@ -184,13 +182,9 @@ class ImageCaptionService:
             )
             return "Figure showing research data"
 
-    def is_loaded(self) -> bool:
-        """Check if model is loaded."""
-        return self._initialized
-
-    def get_device(self) -> str:
-        """Get the device being used (cuda/cpu)."""
-        return self.device
+    async def close(self):
+        """Close the HTTP client."""
+        await self.client.aclose()
 
 
 # Singleton instance
@@ -209,6 +203,6 @@ async def create_image_caption_service() -> ImageCaptionService:
     """Create and initialize ImageCaptionService.
 
     Returns:
-        ImageCaptionService instance (model not loaded until first use)
+        ImageCaptionService instance
     """
     return get_image_caption_service()
