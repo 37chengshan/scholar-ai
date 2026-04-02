@@ -17,6 +17,14 @@ sentence-transformers>=2.0.0,<3.0.0
 torch>=2.0.0
 numpy>=1.24.0
 
+# Milvus向量数据库
+pymilvus>=2.3.0
+
+# CLIP/SigLIP多模态嵌入
+transformers>=4.30.0
+torchvision>=0.15.0
+pillow>=10.0.0
+
 # 图数据库
 neo4j>=5.14.0
 
