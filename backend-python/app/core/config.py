@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # API密钥
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    ZHIPU_API_KEY: str = ""
 
     # CORS
     ALLOWED_HOSTS: List[str] = ["*"]
