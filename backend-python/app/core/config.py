@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     MILVUS_PORT: int = 19530
     MILVUS_COLLECTION_IMAGES: str = "paper_images"
     MILVUS_COLLECTION_TABLES: str = "paper_tables"
+    MILVUS_COLLECTION_CONTENTS: str = "paper_contents"  # Unified 1024-dim BGE-M3 collection
     MILVUS_POOL_SIZE: int = 10
     MILVUS_TIMEOUT: int = 10
 

@@ -48,6 +48,7 @@ class MilvusService:
     """Milvus connection wrapper with connection pooling."""
 
     EMBEDDING_DIM = 768
+    BGE_EMBEDDING_DIM = 1024  # For BGE-M3 unified embeddings
 
     def __init__(
         self,
@@ -268,6 +269,16 @@ class MilvusService:
         except MilvusException:
             collections["paper_tables"] = self.create_paper_tables_collection()
 
+        # Create paper_contents collection (unified 1024-dim) if not exists
+        try:
+            collections["paper_contents"] = Collection(
+                settings.MILVUS_COLLECTION_CONTENTS,
+                using=self._alias
+            )
+            logger.info("paper_contents collection already exists")
+        except MilvusException:
+            collections["paper_contents"] = self.create_paper_contents_collection()
+
         return collections
 
     def get_collection(self, name: str) -> Collection:
@@ -411,6 +422,180 @@ class MilvusService:
         tbl_collection.flush()
 
         logger.info(f"Deleted vectors for paper {paper_id}")
+
+    def create_paper_contents_collection(self) -> Collection:
+        """Create unified paper_contents collection with 1024-dim schema.
+
+        This collection stores all multimodal content (images, tables, text)
+        with BGE-M3 1024-dimensional embeddings for unified retrieval.
+        """
+        fields = [
+            FieldSchema(
+                name="id",
+                dtype=DataType.INT64,
+                is_primary=True,
+                auto_id=True,
+                description="Auto-increment ID"
+            ),
+            FieldSchema(
+                name="paper_id",
+                dtype=DataType.VARCHAR,
+                max_length=64,
+                description="Paper UUID"
+            ),
+            FieldSchema(
+                name="user_id",
+                dtype=DataType.VARCHAR,
+                max_length=64,
+                description="User ID for filtering"
+            ),
+            FieldSchema(
+                name="content_type",
+                dtype=DataType.VARCHAR,
+                max_length=32,
+                description="Content type: image/table/text"
+            ),
+            FieldSchema(
+                name="page_num",
+                dtype=DataType.INT32,
+                description="Page number"
+            ),
+            FieldSchema(
+                name="content_data",
+                dtype=DataType.VARCHAR,
+                max_length=2048,
+                description="Caption, description, or text snippet"
+            ),
+            FieldSchema(
+                name="raw_data",
+                dtype=DataType.JSON,
+                description="Raw data: bbox for images, headers/rows for tables"
+            ),
+            FieldSchema(
+                name="embedding",
+                dtype=DataType.FLOAT_VECTOR,
+                dim=self.BGE_EMBEDDING_DIM,
+                description="1024-dim BGE-M3 embedding"
+            ),
+        ]
+
+        collection = self._create_collection_schema("paper_contents", fields)
+        self._create_index(collection, "embedding")
+        collection.load()
+
+        logger.info(
+            "Created paper_contents collection",
+            embedding_dim=self.BGE_EMBEDDING_DIM
+        )
+        return collection
+
+    def insert_contents(self, data: List[Dict[str, Any]]) -> List[int]:
+        """Insert content embeddings into unified collection.
+
+        Args:
+            data: List of content items with:
+                - paper_id: Paper UUID
+                - user_id: User UUID
+                - content_type: 'image' | 'table' | 'text'
+                - page_num: Page number
+                - content_data: Caption/description/text
+                - raw_data: JSON with type-specific data
+                - embedding: 1024-dim vector
+
+        Returns:
+            List of inserted IDs
+        """
+        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS)
+
+        # Prepare data
+        entities = []
+        for item in data:
+            entities.append({
+                "paper_id": item["paper_id"],
+                "user_id": item["user_id"],
+                "content_type": item["content_type"],
+                "page_num": item["page_num"],
+                "content_data": item.get("content_data", ""),
+                "raw_data": item.get("raw_data", {}),
+                "embedding": item["embedding"],
+            })
+
+        ids = collection.insert(entities)
+        collection.flush()
+        logger.info(f"Inserted {len(entities)} content items")
+        return ids.primary_keys
+
+    def search_contents(
+        self,
+        embedding: List[float],
+        user_id: Optional[str] = None,
+        content_type: Optional[str] = None,
+        top_k: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Search unified paper_contents collection.
+
+        Args:
+            embedding: 1024-dim query embedding
+            user_id: Optional user filter
+            content_type: Optional content type filter ('image'/'table'/'text')
+            top_k: Number of results
+
+        Returns:
+            List of content items with distance scores
+        """
+        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS)
+
+        search_params = {
+            "metric_type": "COSINE",
+            "params": {"nprobe": 10}
+        }
+
+        # Build expression for filtering
+        conditions = []
+        if user_id:
+            conditions.append(f"user_id == '{user_id}'")
+        if content_type:
+            conditions.append(f"content_type == '{content_type}'")
+
+        expr = " and ".join(conditions) if conditions else None
+
+        results = collection.search(
+            data=[embedding],
+            anns_field="embedding",
+            param=search_params,
+            limit=top_k,
+            expr=expr,
+            output_fields=[
+                "paper_id", "page_num", "content_type",
+                "content_data", "raw_data"
+            ]
+        )
+
+        # Format results
+        formatted = []
+        for hits in results:
+            for hit in hits:
+                formatted.append({
+                    "id": hit.id,
+                    "distance": hit.distance,
+                    "paper_id": hit.entity.get("paper_id"),
+                    "page_num": hit.entity.get("page_num"),
+                    "content_type": hit.entity.get("content_type"),
+                    "content_data": hit.entity.get("content_data"),
+                    "raw_data": hit.entity.get("raw_data"),
+                })
+        return formatted
+
+    def delete_by_paper_contents(self, paper_id: str) -> None:
+        """Delete all content entries for a paper.
+
+        Args:
+            paper_id: Paper UUID
+        """
+        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS)
+        collection.delete(f'paper_id == "{paper_id}"')
+        collection.flush()
+        logger.info(f"Deleted content entries for paper {paper_id}")
 
 
 # Singleton instance
