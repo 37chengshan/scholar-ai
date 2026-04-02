@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "scholarai123"
 
+    # Milvus 向量数据库
+    MILVUS_HOST: str = "localhost"
+    MILVUS_PORT: int = 19530
+    MILVUS_COLLECTION_IMAGES: str = "paper_images"
+    MILVUS_COLLECTION_TABLES: str = "paper_tables"
+    MILVUS_POOL_SIZE: int = 10
+    MILVUS_TIMEOUT: int = 10
+
     # API密钥
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
