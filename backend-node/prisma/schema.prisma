@@ -191,9 +191,10 @@ model ProcessingTask {
   id            String    @id @default(uuid())
   paperId       String    @unique @map("paper_id")
   paper         Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  status        String    @default("pending") // pending, processing_ocr, parsing, extracting_imrad, generating_notes, completed, failed
+  status        String    @default("pending") // pending, processing_ocr, parsing, extracting_imrad, generating_notes, storing_vectors, indexing_multimodal, completed, failed
   storageKey    String    @map("storage_key") // Object storage path: userId_originalName
   errorMessage  String?   @map("error_message")
+  partialFailures Json?   @map("partial_failures") // JSON array of partial indexing failures
   attempts      Int       @default(0) // Retry attempt counter
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
