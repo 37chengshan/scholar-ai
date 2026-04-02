@@ -1,7 +1,7 @@
 """PDF processing worker
 
 Async worker for processing PDF tasks through the pipeline:
-pending → processing_ocr → parsing → extracting_imrad → generating_notes → completed
+pending → processing_ocr → parsing → extracting_imrad → generating_notes → storing_vectors → indexing_multimodal → completed
 
 Features:
 - Downloads PDF from object storage
@@ -10,6 +10,7 @@ Features:
 - Auto-retry on failure (3 attempts)
 - Cleans up temp files after processing
 - Stores chunks in PGVector and Neo4j
+- Indexes images and tables in Milvus (multimodal)
 """
 
 import asyncio
@@ -27,6 +28,9 @@ from app.core.embedding_service import EmbeddingService
 from app.core.imrad_extractor import extract_imrad_structure, extract_metadata
 from app.core.neo4j_service import Neo4jService
 from app.core.notes_generator import NotesGenerator
+from app.core.milvus_service import get_milvus_service
+from app.core.image_extractor import ImageExtractor
+from app.core.table_extractor import TableExtractor
 from app.utils.logger import logger
 
 
@@ -41,6 +45,9 @@ class PDFProcessor:
         self.embedding_service = EmbeddingService()
         self.neo4j_service = Neo4jService()
         self.notes_generator = NotesGenerator()
+        self.milvus_service = get_milvus_service()
+        self.image_extractor = ImageExtractor()
+        self.table_extractor = TableExtractor()
         self.db_pool: Optional[asyncpg.Pool] = None
 
     async def init_db(self):
@@ -273,6 +280,50 @@ class PDFProcessor:
                 task_id=task_id,
                 chunks_in_neo4j=len(chunks_with_ids)
             )
+
+            # Stage 7: Multimodal Indexing (Images and Tables)
+            await self._update_status(task_id, "indexing_multimodal")
+            logger.info("Starting multimodal indexing", task_id=task_id)
+
+            try:
+                # Extract and index images
+                image_results = await self.image_extractor.process_pdf_images(
+                    local_path,
+                    parsed["items"],
+                    paper_id=paper_id,
+                    user_id=task["user_id"]
+                )
+
+                if image_results:
+                    self.milvus_service.insert_contents(image_results)
+                    logger.info(
+                        "Indexed images",
+                        task_id=task_id,
+                        image_count=len(image_results)
+                    )
+
+                # Extract and index tables
+                table_results = await self.table_extractor.process_pdf_tables(
+                    parsed["items"],
+                    paper_id=paper_id,
+                    user_id=task["user_id"]
+                )
+
+                if table_results:
+                    self.milvus_service.insert_contents(table_results)
+                    logger.info(
+                        "Indexed tables",
+                        task_id=task_id,
+                        table_count=len(table_results)
+                    )
+
+            except Exception as e:
+                # Log error but don't fail the PDF processing
+                logger.error(
+                    "Multimodal indexing failed, continuing",
+                    task_id=task_id,
+                    error=str(e)
+                )
 
             # Mark complete
             await self._update_status(task_id, "completed")
