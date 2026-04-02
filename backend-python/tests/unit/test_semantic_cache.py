@@ -11,10 +11,32 @@ import numpy as np
 from app.core.semantic_cache import SemanticCache
 
 
+class AsyncIteratorMock:
+    """Helper class to mock async iterators."""
+    
+    def __init__(self, items):
+        self.items = items
+    
+    def __aiter__(self):
+        return self
+    
+    async def __anext__(self):
+        if not self.items:
+            raise StopAsyncIteration
+        return self.items.pop(0)
+
+
 @pytest.fixture
 def semantic_cache():
-    """Create SemanticCache instance with default settings."""
-    return SemanticCache(threshold=0.95, ttl=86400)
+    """Create SemanticCache instance with default settings and mocked embedding service."""
+    with patch('app.core.semantic_cache.EmbeddingService') as mock_embedding_class:
+        mock_instance = MagicMock()
+        mock_instance.generate_embedding = MagicMock(return_value=[0.1] * 768)
+        mock_embedding_class.return_value = mock_instance
+        cache = SemanticCache(threshold=0.95, ttl=86400)
+        # Store the mock for later use in tests
+        cache._mock_embedding = mock_instance
+        yield cache
 
 
 @pytest.fixture
@@ -22,6 +44,7 @@ def mock_redis():
     """Mock Redis database for testing."""
     with patch('app.core.semantic_cache.redis_db') as mock:
         mock.client = MagicMock()
+        # Use a callable that returns an async iterator
         mock.client.scan_iter = MagicMock()
         mock.get = AsyncMock()
         mock.set = AsyncMock()
@@ -43,7 +66,7 @@ def mock_embedding_service():
 async def test_cache_miss_no_keys(semantic_cache, mock_redis):
     """Test 1: get() returns None for cache miss (no similar queries cached)."""
     # No keys in Redis
-    mock_redis.client.scan_iter.return_value = iter([])
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock([])
 
     result = await semantic_cache.get("What is machine learning?", ["paper-1"])
 
@@ -57,7 +80,7 @@ async def test_cache_hit_exact_match(semantic_cache, mock_redis):
     cached_response = {"answer": "ML is...", "sources": []}
     cached_embedding = [0.5] * 768  # Same as query embedding
 
-    mock_redis.client.scan_iter.return_value = iter(["rag:semantic_cache:abc123:paper-1"])
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock(["rag:semantic_cache:abc123:paper-1"])
     mock_redis.get.return_value = json.dumps({
         "query": "What is machine learning?",
         "embedding": cached_embedding,
@@ -84,7 +107,7 @@ async def test_cache_hit_similar_query(semantic_cache, mock_redis):
         similar_embedding[i] += 0.01  # Small perturbation
 
     cached_response = {"answer": "Deep learning is...", "sources": []}
-    mock_redis.client.scan_iter.return_value = iter(["rag:semantic_cache:xyz:paper-1"])
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock(["rag:semantic_cache:xyz:paper-1"])
     mock_redis.get.return_value = json.dumps({
         "query": "What is deep learning?",
         "embedding": base_embedding,
@@ -108,7 +131,7 @@ async def test_cache_miss_dissimilar_query(semantic_cache, mock_redis):
     query_embedding = [-1.0] * 384 + [1.0] * 384  # Opposite signs
 
     cached_response = {"answer": "Answer", "sources": []}
-    mock_redis.client.scan_iter.return_value = iter(["rag:semantic_cache:abc:paper-1"])
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock(["rag:semantic_cache:abc:paper-1"])
     mock_redis.get.return_value = json.dumps({
         "query": "What is AI?",
         "embedding": cached_embedding,
@@ -138,9 +161,9 @@ async def test_set_stores_embedding(semantic_cache, mock_redis):
     assert result is True
     mock_redis.set.assert_called_once()
 
-    # Verify TTL is 86400 (24 hours)
+    # Verify TTL is 86400 (24 hours) - passed as keyword argument 'expire'
     call_args = mock_redis.set.call_args
-    assert call_args.args[2] == 86400 or call_args.kwargs.get('expire') == 86400
+    assert call_args.kwargs.get('expire') == 86400
 
     # Verify stored data contains embedding
     stored_data = json.loads(call_args.args[1])
@@ -160,13 +183,9 @@ async def test_cache_entry_expiry(semantic_cache, mock_redis):
     with patch.object(semantic_cache.embedding_service, 'generate_embedding', return_value=[0.1] * 768):
         await semantic_cache.set("Query", ["paper-1"], response)
 
-    # Verify TTL was set to 86400 seconds
+    # Verify TTL was set to 86400 seconds (passed as keyword argument)
     call_args = mock_redis.set.call_args
-    # Check both positional and keyword arguments
-    if len(call_args.args) >= 3:
-        ttl = call_args.args[2]
-    else:
-        ttl = call_args.kwargs.get('expire', 0)
+    ttl = call_args.kwargs.get('expire', 0)
 
     assert ttl == 86400, f"TTL should be 86400 (24 hours), got {ttl}"
 
@@ -175,7 +194,7 @@ async def test_cache_entry_expiry(semantic_cache, mock_redis):
 async def test_clear_removes_entries(semantic_cache, mock_redis):
     """Test 7: clear() removes all cache entries."""
     # Mock Redis returning keys to delete
-    mock_redis.client.scan_iter.return_value = iter([
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock([
         "rag:semantic_cache:key1:paper-1",
         "rag:semantic_cache:key2:paper-1"
     ])
@@ -190,7 +209,7 @@ async def test_clear_removes_entries(semantic_cache, mock_redis):
 @pytest.mark.asyncio
 async def test_clear_all_entries(semantic_cache, mock_redis):
     """Test clear() without paper_ids removes all semantic cache entries."""
-    mock_redis.client.scan_iter.return_value = iter([
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock([
         "rag:semantic_cache:key1:paper-1",
         "rag:semantic_cache:key2:paper-2"
     ])
@@ -204,7 +223,7 @@ async def test_clear_all_entries(semantic_cache, mock_redis):
 @pytest.mark.asyncio
 async def test_get_with_empty_paper_ids(semantic_cache, mock_redis):
     """Test get() handles empty paper_ids list."""
-    mock_redis.client.scan_iter.return_value = iter([])
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock([])
 
     result = await semantic_cache.get("Query", [])
 
@@ -249,7 +268,7 @@ def test_cosine_similarity_calculation(semantic_cache):
 @pytest.mark.asyncio
 async def test_get_handles_invalid_cached_data(semantic_cache, mock_redis):
     """Test get() handles invalid/malformed cached data gracefully."""
-    mock_redis.client.scan_iter.return_value = iter(["rag:semantic_cache:key:paper-1"])
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock(["rag:semantic_cache:key:paper-1"])
     # Return invalid JSON
     mock_redis.get.return_value = "invalid json data"
 
@@ -263,7 +282,7 @@ async def test_get_handles_invalid_cached_data(semantic_cache, mock_redis):
 @pytest.mark.asyncio
 async def test_get_handles_missing_embedding(semantic_cache, mock_redis):
     """Test get() handles cached data without embedding field."""
-    mock_redis.client.scan_iter.return_value = iter(["rag:semantic_cache:key:paper-1"])
+    mock_redis.client.scan_iter.return_value = AsyncIteratorMock(["rag:semantic_cache:key:paper-1"])
     # Return data without embedding
     mock_redis.get.return_value = json.dumps({
         "query": "Test",
