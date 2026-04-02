@@ -1,8 +1,9 @@
 """Tests for ImageCaptionService."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, AsyncMock
 from PIL import Image
+import httpx
 
 from app.core.image_caption_service import (
     ImageCaptionService,
@@ -15,87 +16,116 @@ from app.core.image_caption_service import (
 class TestImageCaptionService:
     """Test ImageCaptionService class."""
 
-    def test_init_default_model(self):
-        """Test initialization with default model name."""
-        service = ImageCaptionService()
-        assert service.model_name == "Qwen/Qwen2-VL-2B-Instruct"
-        assert service._initialized is False
-        assert service.device in ["cuda", "cpu"]
+    def test_init_default_api_key(self):
+        """Test initialization with default API key from settings."""
+        with patch('app.core.image_caption_service.settings') as mock_settings:
+            mock_settings.ZHIPU_API_KEY = "test-key"
+            service = ImageCaptionService()
+            assert service.api_key == "test-key"
+            assert service.MODEL_NAME == "glm-4v"
+            assert service.API_URL == "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
-    def test_init_custom_model(self):
-        """Test initialization with custom model name."""
-        service = ImageCaptionService(model_name="custom-model")
-        assert service.model_name == "custom-model"
+    def test_init_custom_api_key(self):
+        """Test initialization with custom API key."""
+        service = ImageCaptionService(api_key="custom-key")
+        assert service.api_key == "custom-key"
 
     def test_build_prompt(self):
         """Test prompt template construction."""
-        service = ImageCaptionService()
+        service = ImageCaptionService(api_key="test-key")
         prompt = service._build_prompt()
         assert "学术图片" in prompt
         assert "图表类型" in prompt
         assert "80字" in prompt
 
-    @patch('app.core.image_caption_service.AutoProcessor')
-    @patch('app.core.image_caption_service.Qwen2VLForConditionalGeneration')
-    @patch('app.core.image_caption_service.torch.cuda.is_available')
-    def test_load_model_success(self, mock_cuda, mock_model_class, mock_processor_class):
-        """Test successful model loading."""
-        mock_cuda.return_value = False
-        mock_processor = Mock()
-        mock_processor_class.from_pretrained.return_value = mock_processor
-        mock_model = Mock()
-        mock_model_class.from_pretrained.return_value = mock_model
-
-        service = ImageCaptionService()
-        result = service._load_model()
-
-        assert result is True
-        assert service._initialized is True
-        assert service.processor is not None
-        assert service.model is not None
-
-    @patch('app.core.image_caption_service.AutoProcessor')
-    @patch('app.core.image_caption_service.Qwen2VLForConditionalGeneration')
-    def test_load_model_failure(self, mock_model_class, mock_processor_class):
-        """Test model loading failure handling."""
-        mock_processor_class.from_pretrained.side_effect = Exception("Model not found")
-
-        service = ImageCaptionService()
-        result = service._load_model()
-
-        assert result is False
-        assert service._initialized is False
-
-    @patch('app.core.image_caption_service.AutoProcessor')
-    @patch('app.core.image_caption_service.Qwen2VLForConditionalGeneration')
-    @pytest.mark.asyncio
-    async def test_generate_caption_success(self, mock_model_class, mock_processor_class):
-        """Test successful caption generation."""
-        # Setup mocks
-        mock_processor = Mock()
-        mock_processor.apply_chat_template.return_value = "<|im_start|>user\n<image>\nPrompt<|im_end|>"
-        mock_processor.return_value = {
-            'input_ids': Mock(shape=(1, 10)),
-            'pixel_values': Mock()
-        }
-        mock_processor.decode.return_value = "This is a bar chart showing experimental results with increasing trend."
-        mock_processor_class.from_pretrained.return_value = mock_processor
-
-        mock_model = Mock()
-        mock_model.device = "cpu"
-        mock_model.generate.return_value = [list(range(20))]  # Mock token IDs
-        mock_model_class.from_pretrained.return_value = mock_model
-
-        # Create service and test
-        service = ImageCaptionService()
-        service._initialized = True
-        service.processor = mock_processor
-        service.model = mock_model
-        service.device = "cpu"
-
-        # Create a test image
+    def test_encode_image(self):
+        """Test image encoding to base64."""
+        service = ImageCaptionService(api_key="test-key")
         test_image = Image.new('RGB', (100, 100), color='red')
 
+        encoded = service._encode_image(test_image)
+
+        assert isinstance(encoded, str)
+        assert len(encoded) > 0
+
+    def test_encode_image_rgba(self):
+        """Test encoding RGBA image (converts to RGB)."""
+        service = ImageCaptionService(api_key="test-key")
+        test_image = Image.new('RGBA', (100, 100), color=(255, 0, 0, 128))
+
+        encoded = service._encode_image(test_image)
+
+        assert isinstance(encoded, str)
+        assert len(encoded) > 0
+
+    @pytest.mark.asyncio
+    async def test_call_api_success(self):
+        """Test successful API call."""
+        service = ImageCaptionService(api_key="test-key")
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "choices": [
+                {"message": {"content": "This is a bar chart showing experimental results."}}
+            ]
+        }
+        mock_response.raise_for_status = Mock()
+
+        service.client = Mock()
+        service.client.post = AsyncMock(return_value=mock_response)
+
+        result = await service._call_api("base64encodedimage")
+
+        assert result == "This is a bar chart showing experimental results."
+        service.client.post.assert_called_once()
+
+        # Verify payload structure
+        call_args = service.client.post.call_args
+        payload = call_args[1]['json']
+        assert payload['model'] == 'glm-4v'
+        assert len(payload['messages']) == 1
+        assert len(payload['messages'][0]['content']) == 2  # text + image
+
+    @pytest.mark.asyncio
+    async def test_call_api_no_api_key(self):
+        """Test API call without API key."""
+        service = ImageCaptionService(api_key="")
+
+        with pytest.raises(ValueError, match="ZHIPU_API_KEY not configured"):
+            await service._call_api("base64encodedimage")
+
+    @pytest.mark.asyncio
+    async def test_call_api_invalid_response(self):
+        """Test API call with invalid response."""
+        service = ImageCaptionService(api_key="test-key")
+
+        mock_response = Mock()
+        mock_response.json.return_value = {"error": "Invalid request"}
+        mock_response.raise_for_status = Mock()
+
+        service.client = Mock()
+        service.client.post = AsyncMock(return_value=mock_response)
+
+        with pytest.raises(ValueError):
+            await service._call_api("base64encodedimage")
+
+    @pytest.mark.asyncio
+    async def test_generate_caption_success(self):
+        """Test successful caption generation."""
+        service = ImageCaptionService(api_key="test-key")
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "choices": [
+                {"message": {"content": "This is a bar chart showing increasing accuracy trends."}}
+            ]
+        }
+        mock_response.raise_for_status = Mock()
+
+        service.client = Mock()
+        service.client.post = AsyncMock(return_value=mock_response)
+
+        test_image = Image.new('RGB', (100, 100), color='red')
         caption = await service.generate_caption(test_image)
 
         assert caption is not None
@@ -103,79 +133,92 @@ class TestImageCaptionService:
         assert "bar chart" in caption.lower() or "Figure" in caption
 
     @pytest.mark.asyncio
-    async def test_generate_caption_model_not_loaded(self):
-        """Test fallback when model fails to load."""
-        service = ImageCaptionService()
+    async def test_generate_caption_api_failure_fallback(self):
+        """Test fallback when API fails."""
+        service = ImageCaptionService(api_key="test-key")
 
-        # Mock _load_model to return False (simulating load failure)
-        service._load_model = Mock(return_value=False)
-
-        test_image = Image.new('RGB', (100, 100), color='red')
-        caption = await service.generate_caption(test_image)
-
-        assert caption == "Academic figure from research paper"
-
-    @patch('app.core.image_caption_service.AutoProcessor')
-    @patch('app.core.image_caption_service.Qwen2VLForConditionalGeneration')
-    @pytest.mark.asyncio
-    async def test_generate_caption_too_short(self, mock_model_class, mock_processor_class):
-        """Test fallback when generated caption is too short."""
-        # Setup mocks
-        mock_processor = Mock()
-        mock_processor.apply_chat_template.return_value = "prompt"
-        mock_processor.return_value = {'input_ids': Mock(shape=(1, 10))}
-        mock_processor.decode.return_value = "Hi"  # Too short caption
-        mock_processor_class.from_pretrained.return_value = mock_processor
-
-        mock_model = Mock()
-        mock_model.device = "cpu"
-        mock_model.generate.return_value = [list(range(20))]
-        mock_model_class.from_pretrained.return_value = mock_model
-
-        service = ImageCaptionService()
-        service._initialized = True
-        service.processor = mock_processor
-        service.model = mock_model
+        service.client = Mock()
+        service.client.post = AsyncMock(side_effect=httpx.HTTPError("Connection failed"))
 
         test_image = Image.new('RGB', (100, 100), color='red')
         caption = await service.generate_caption(test_image)
 
         assert caption == "Figure showing research data"
 
-    @patch('app.core.image_caption_service.AutoProcessor')
-    @patch('app.core.image_caption_service.Qwen2VLForConditionalGeneration')
     @pytest.mark.asyncio
-    async def test_generate_caption_exception(self, mock_model_class, mock_processor_class):
-        """Test fallback when generation raises exception."""
-        mock_processor = Mock()
-        mock_processor.apply_chat_template.side_effect = Exception("Processing error")
-        mock_processor_class.from_pretrained.return_value = mock_processor
+    async def test_generate_caption_empty_response_fallback(self):
+        """Test fallback when API returns empty response."""
+        service = ImageCaptionService(api_key="test-key")
 
-        mock_model = Mock()
-        mock_model_class.from_pretrained.return_value = mock_model
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "choices": [
+                {"message": {"content": ""}}
+            ]
+        }
+        mock_response.raise_for_status = Mock()
 
-        service = ImageCaptionService()
-        service._initialized = True
-        service.processor = mock_processor
-        service.model = mock_model
+        service.client = Mock()
+        service.client.post = AsyncMock(return_value=mock_response)
 
         test_image = Image.new('RGB', (100, 100), color='red')
         caption = await service.generate_caption(test_image)
 
         assert caption == "Figure showing research data"
 
-    def test_is_loaded(self):
-        """Test is_loaded method."""
-        service = ImageCaptionService()
-        assert service.is_loaded() is False
-        service._initialized = True
-        assert service.is_loaded() is True
+    @pytest.mark.asyncio
+    async def test_generate_caption_short_response_fallback(self):
+        """Test fallback when API returns too short response."""
+        service = ImageCaptionService(api_key="test-key")
 
-    def test_get_device(self):
-        """Test get_device method."""
-        service = ImageCaptionService()
-        device = service.get_device()
-        assert device in ["cuda", "cpu"]
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "choices": [
+                {"message": {"content": "Hi"}}
+            ]
+        }
+        mock_response.raise_for_status = Mock()
+
+        service.client = Mock()
+        service.client.post = AsyncMock(return_value=mock_response)
+
+        test_image = Image.new('RGB', (100, 100), color='red')
+        caption = await service.generate_caption(test_image)
+
+        assert caption == "Figure showing research data"
+
+    @pytest.mark.asyncio
+    async def test_generate_caption_truncated(self):
+        """Test caption truncation when too long."""
+        service = ImageCaptionService(api_key="test-key")
+
+        long_caption = "This is a very long caption " * 10
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "choices": [
+                {"message": {"content": long_caption}}
+            ]
+        }
+        mock_response.raise_for_status = Mock()
+
+        service.client = Mock()
+        service.client.post = AsyncMock(return_value=mock_response)
+
+        test_image = Image.new('RGB', (100, 100), color='red')
+        caption = await service.generate_caption(test_image, max_length=50)
+
+        assert len(caption) <= 53  # 50 + "..."
+        assert caption.endswith("...")
+
+    @pytest.mark.asyncio
+    async def test_close(self):
+        """Test client cleanup."""
+        service = ImageCaptionService(api_key="test-key")
+        service.client = Mock()
+        service.client.aclose = AsyncMock()
+
+        await service.close()
+        service.client.aclose.assert_called_once()
 
 
 class TestSingleton:
@@ -188,46 +231,48 @@ class TestSingleton:
 
     def test_get_image_caption_service_singleton(self):
         """Test that get_image_caption_service returns singleton."""
-        service1 = get_image_caption_service()
-        service2 = get_image_caption_service()
-        assert service1 is service2
+        with patch('app.core.image_caption_service.settings') as mock_settings:
+            mock_settings.ZHIPU_API_KEY = "test-key"
+            service1 = get_image_caption_service()
+            service2 = get_image_caption_service()
+            assert service1 is service2
 
     @pytest.mark.asyncio
     async def test_create_image_caption_service(self):
         """Test create_image_caption_service factory function."""
-        service = await create_image_caption_service()
-        assert isinstance(service, ImageCaptionService)
+        with patch('app.core.image_caption_service.settings') as mock_settings:
+            mock_settings.ZHIPU_API_KEY = "test-key"
+            service = await create_image_caption_service()
+            assert isinstance(service, ImageCaptionService)
 
 
-class TestCaptionLength:
-    """Test caption length constraints."""
+class TestRetryLogic:
+    """Test retry behavior."""
 
-    @patch('app.core.image_caption_service.AutoProcessor')
-    @patch('app.core.image_caption_service.Qwen2VLForConditionalGeneration')
     @pytest.mark.asyncio
-    async def test_caption_truncated_if_too_long(self, mock_model_class, mock_processor_class):
-        """Test that long captions are truncated."""
-        # Setup mocks
-        mock_processor = Mock()
-        mock_processor.apply_chat_template.return_value = "prompt"
-        mock_processor.return_value = {'input_ids': Mock(shape=(1, 10))}
-        # Generate a caption longer than max_length
-        long_caption = "This is a very long caption " * 10
-        mock_processor.decode.return_value = long_caption
-        mock_processor_class.from_pretrained.return_value = mock_processor
+    async def test_retry_on_failure(self):
+        """Test that API calls are retried on failure."""
+        service = ImageCaptionService(api_key="test-key")
 
-        mock_model = Mock()
-        mock_model.device = "cpu"
-        mock_model.generate.return_value = [list(range(20))]
-        mock_model_class.from_pretrained.return_value = mock_model
+        # First 2 calls fail, 3rd succeeds
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "choices": [
+                {"message": {"content": "Success after retries"}}
+            ]
+        }
+        mock_response.raise_for_status = Mock()
 
-        service = ImageCaptionService()
-        service._initialized = True
-        service.processor = mock_processor
-        service.model = mock_model
+        service.client = Mock()
+        service.client.post = AsyncMock(
+            side_effect=[
+                httpx.HTTPError("First failure"),
+                httpx.HTTPError("Second failure"),
+                mock_response
+            ]
+        )
 
-        test_image = Image.new('RGB', (100, 100), color='red')
-        caption = await service.generate_caption(test_image, max_length=50)
-
-        assert len(caption) <= 53  # 50 + "..."
-        assert caption.endswith("...")
+        # Should succeed after retries
+        result = await service._call_api("base64encodedimage")
+        assert result == "Success after retries"
+        assert service.client.post.call_count == 3
