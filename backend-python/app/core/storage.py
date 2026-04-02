@@ -9,6 +9,8 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+from io import BytesIO
+
 from minio import Minio
 from minio.error import S3Error
 
@@ -263,6 +265,77 @@ class ObjectStorage:
             return True
         except S3Error:
             return False
+
+    async def upload_image_bytes(
+        self,
+        key: str,
+        image_bytes: bytes,
+        content_type: str = "image/png"
+    ) -> str:
+        """Upload image bytes to object storage.
+
+        Args:
+            key: Storage key (path)
+            image_bytes: Image data as bytes
+            content_type: MIME type (default: image/png)
+
+        Returns:
+            Full S3 URL or local path
+        """
+        if self.use_local_storage:
+            dest_path = self._get_local_path(key)
+            try:
+                logger.info(
+                    "Storing image to local storage",
+                    key=key,
+                    destination=str(dest_path),
+                    size=len(image_bytes),
+                )
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                dest_path.write_bytes(image_bytes)
+                logger.info(
+                    "Image stored successfully",
+                    key=key,
+                    destination=str(dest_path),
+                )
+                return str(dest_path)
+            except Exception as e:
+                logger.error(
+                    "Failed to store image to local storage",
+                    key=key,
+                    error=str(e),
+                )
+                raise
+
+        try:
+            logger.info(
+                "Uploading image to storage",
+                bucket=self.bucket,
+                key=key,
+                size=len(image_bytes),
+                content_type=content_type,
+            )
+            self.client.put_object(
+                self.bucket,
+                key,
+                BytesIO(image_bytes),
+                length=len(image_bytes),
+                content_type=content_type,
+            )
+            url = f"s3://{self.bucket}/{key}"
+            logger.info(
+                "Image uploaded successfully",
+                key=key,
+                url=url,
+            )
+            return url
+        except S3Error as e:
+            logger.error(
+                "Failed to upload image",
+                key=key,
+                error=str(e),
+            )
+            raise
 
 
 # Global storage instance
