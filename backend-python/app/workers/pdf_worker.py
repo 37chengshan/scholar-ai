@@ -206,9 +206,12 @@ class PDFProcessor:
             await self._update_status(task_id, "storing_vectors")
             logger.info("Starting chunking and embedding", task_id=task_id)
 
-            # Get chunks from parser with section context
-            chunks = self.parser.chunk_by_paragraph(
+            # Chunking strategy: Semantic splitting with LlamaIndex (per D-03)
+            # Parameters: buffer_size=1, breakpoint_percentile_threshold=95
+            # Overlap: 100 tokens for context continuity
+            chunks = self.parser.chunk_by_semantic(
                 parsed["items"],
+                paper_id=paper_id,
                 imrad_structure=imrad if imrad else None
             )
 
