@@ -859,3 +859,164 @@ async def multimodal_search(
             status_code=500,
             detail=f"Multimodal search failed: {str(e)}"
         )
+
+
+# =============================================================================
+# Fusion Search Endpoint
+# =============================================================================
+
+
+@router.post("/fusion", response_model=FusionSearchResponse)
+async def fusion_search(
+    request: FusionSearchRequest,
+) -> FusionSearchResponse:
+    """Unified search across library + external sources with merging and deduplication.
+
+    Searches user's library (Milvus) AND external APIs (arXiv, Semantic Scholar).
+    Results are merged, deduplicated, and ranked by citation score.
+
+    Args:
+        request: FusionSearchRequest with query, paper_ids, limit, sources
+
+    Returns:
+        FusionSearchResponse with merged results, source status, and warnings
+
+    Degradation Strategy:
+        - If external API fails: continue with other sources
+        - If library search fails: return external results only
+        - Track failures in warnings and sources.status
+
+    Example:
+        POST /search/fusion
+        {
+            "query": "transformer architecture",
+            "paper_ids": ["paper-1", "paper-2"],
+            "limit": 20,
+            "sources": ["library", "arxiv", "semantic_scholar"]
+        }
+    """
+    logger.info(
+        "Fusion search initiated",
+        query=request.query[:50],
+        paper_count=len(request.paper_ids),
+        sources=request.sources,
+    )
+
+    results: List[SearchResult] = []
+    sources_status: Dict[str, Dict[str, Any]] = {}
+    warnings: List[str] = []
+
+    # Prepare parallel search tasks
+    tasks = []
+
+    # 1. Library search (Milvus)
+    if "library" in request.sources and request.paper_ids:
+        async def search_library_internal():
+            from app.core.multimodal_search_service import get_multimodal_search_service
+
+            service = get_multimodal_search_service()
+            result = await service.search(
+                query=request.query,
+                paper_ids=request.paper_ids,
+                user_id="placeholder-user-id",  # TODO: Get from auth
+                top_k=20,  # Fetch more for dedup
+                use_reranker=True,
+            )
+
+            # Transform to SearchResult format
+            library_results = []
+            for r in result.get("results", []):
+                library_results.append(
+                    SearchResult(
+                        id=r.get("id", ""),
+                        title=r.get("title", "Unknown"),
+                        authors=[],  # Library chunks don't have authors
+                        year=r.get("year", 0),
+                        abstract=r.get("content_data", "")[:500],
+                        source="library",
+                        url="",  # Internal papers don't have URL
+                        pdfUrl=None,
+                        citationCount=None,
+                        arxivId=None,
+                    )
+                )
+            return library_results
+
+        tasks.append(("library", search_library_internal()))
+
+    # 2. arXiv search
+    if "arxiv" in request.sources:
+        tasks.append(("arxiv", search_arxiv(query=request.query, limit=10)))
+
+    # 3. Semantic Scholar search
+    if "semantic_scholar" in request.sources:
+        tasks.append(("semantic_scholar", search_semantic_scholar(query=request.query, limit=10)))
+
+    # Execute all searches in parallel with error handling
+    search_results = await asyncio.gather(
+        *[task[1] for task in tasks],
+        return_exceptions=True
+    )
+
+    # Process results
+    for (source_name, _), result in zip(tasks, search_results):
+        if isinstance(result, Exception):
+            error_msg = f"{source_name} search failed: {str(result)}"
+            warnings.append(error_msg)
+            sources_status[source_name] = {
+                "count": 0,
+                "success": False,
+                "error": str(result),
+            }
+            logger.warning(
+                "Search source failed",
+                source=source_name,
+                error=str(result),
+            )
+        else:
+            # Extract results
+            if source_name == "library":
+                source_results = result  # Already List[SearchResult]
+            else:
+                # External search returns {"results": [...]}
+                source_results = result.get("results", [])
+
+            # Mark external results
+            for r in source_results:
+                if source_name != "library":
+                    r.in_library = False
+
+            results.extend(source_results)
+            sources_status[source_name] = {
+                "count": len(source_results),
+                "success": True,
+            }
+
+    # Deduplicate results (arXiv ID + title similarity)
+    unique_results = deduplicate_results(results)
+
+    # Score and sort
+    scored_results = sorted(
+        unique_results,
+        key=lambda r: calculate_paper_score(
+            r.citationCount,
+            r.year,
+            relevance=1.0 if r.source == "library" else 0.5  # D-05: internal > external
+        ),
+        reverse=True,
+    )
+
+    logger.info(
+        "Fusion search complete",
+        query=request.query[:50],
+        total_results=len(results),
+        unique_results=len(unique_results),
+        returned=len(scored_results[:request.limit]),
+    )
+
+    return FusionSearchResponse(
+        query=request.query,
+        results=scored_results[:request.limit],
+        sources=sources_status,
+        warnings=warnings,
+    )
