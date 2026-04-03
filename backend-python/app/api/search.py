@@ -509,7 +509,7 @@ async def resolve_doi(doi: str):
 
 
 # =============================================================================
-# Library Search Endpoint (Hybrid Search)
+# Library Search Endpoint (Milvus-based)
 # =============================================================================
 
 
@@ -518,95 +518,65 @@ async def search_library(
     q: str = Query(..., description="Search query", min_length=1, max_length=500),
     paper_ids: List[str] = Query(default=[], description="Specific paper IDs to search (optional)"),
     limit: int = Query(default=10, description="Maximum results to return", ge=1, le=50),
-    hybrid: bool = Query(default=True, description="Use hybrid search (dense + sparse + RRF)"),
-    dense_weight: float = Query(default=0.6, description="Weight for dense search (0.0-1.0)", ge=0.0, le=1.0),
-    sparse_weight: float = Query(default=0.4, description="Weight for sparse search (0.0-1.0)", ge=0.0, le=1.0),
     # user_id: str = Depends(get_current_user_id),  # Auth placeholder
 ) -> Dict[str, Any]:
-    """Search within user's library using hybrid search.
+    """Search within user's library using Milvus vector search.
 
-    Performs hybrid search combining:
-    - Dense: PGVector cosine similarity (semantic understanding)
-    - Sparse: PostgreSQL tsvector full-text search (lexical matching)
-    - RRF: Reciprocal Rank Fusion with configurable weights
-
-    Default weights: 0.6 dense / 0.4 sparse (semantic priority)
+    Performs semantic search using Milvus with BGE-M3 embeddings.
+    MultimodalSearchService handles intent detection and optional reranking.
 
     Args:
         q: Search query text
         paper_ids: Optional list of specific paper IDs to search within
         limit: Maximum number of results to return
-        hybrid: If True, use hybrid search; else dense only
-        dense_weight: Weight for dense results in RRF fusion
-        sparse_weight: Weight for sparse results in RRF fusion
 
     Returns:
         LibrarySearchResponse with ranked chunk results
     """
-    from app.core.hybrid_search import HybridSearchService
-    from app.core.database import get_db_connection
-
     logger.info(
         "Library search initiated",
         query=q[:50],
         paper_count=len(paper_ids),
-        hybrid=hybrid,
-        dense_weight=dense_weight,
-        sparse_weight=sparse_weight,
     )
 
-    # Validate weights sum to approximately 1.0
-    total_weight = dense_weight + sparse_weight
-    if abs(total_weight - 1.0) > 0.01:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Weights must sum to 1.0, got {total_weight}"
-        )
-
     # If no paper_ids provided, search would return empty
-    # In production, this would query user's papers from database
     if not paper_ids:
         logger.warning("No paper_ids provided for library search")
         return {
             "query": q,
             "paper_count": 0,
             "result_count": 0,
-            "weights": {"dense": dense_weight, "sparse": sparse_weight},
+            "weights": {"dense": 1.0, "sparse": 0.0},
             "results": [],
         }
 
     try:
-        async with get_db_connection() as conn:
-            service = HybridSearchService(
-                connection=conn,
-                dense_weight=dense_weight,
-                sparse_weight=sparse_weight,
-                rrf_k=60,
-            )
-
-            results = await service.search(
-                query=q,
-                paper_ids=paper_ids,
-                limit=limit,
-                use_hybrid=hybrid,
-            )
+        # Use MultimodalSearchService for unified search
+        result = await get_multimodal_search_service().search(
+            query=q,
+            paper_ids=paper_ids,
+            user_id="placeholder-user-id",  # TODO: Get from auth
+            top_k=limit,
+            use_reranker=True,
+        )
 
         # Transform results to response format
-        library_results = [
-            LibrarySearchResult(
-                id=r["id"],
-                paper_id=r["paper_id"],
-                content=r["content"][:500] if r.get("content") else "",  # Preview
-                section=r.get("section"),
-                page=r.get("page"),
-                rrf_score=r["rrf_score"],
-                dense_score=r.get("dense_score", 0.0),
-                sparse_score=r.get("sparse_score", 0.0),
-                dense_rank=r.get("dense_rank"),
-                sparse_rank=r.get("sparse_rank"),
+        library_results = []
+        for r in result.get("results", []):
+            library_results.append(
+                LibrarySearchResult(
+                    id=str(r.get("id", "")),
+                    paper_id=r.get("paper_id", ""),
+                    content=r.get("content_data", "")[:500] if r.get("content_data") else "",
+                    section=r.get("section"),
+                    page=r.get("page_num"),
+                    rrf_score=r.get("reranker_score", r.get("distance", 0.0)),
+                    dense_score=r.get("distance", 0.0),
+                    sparse_score=0.0,  # Not used in Milvus-only search
+                    dense_rank=None,
+                    sparse_rank=None,
+                )
             )
-            for r in results
-        ]
 
         logger.info(
             "Library search completed",
@@ -618,7 +588,7 @@ async def search_library(
             "query": q,
             "paper_count": len(paper_ids),
             "result_count": len(library_results),
-            "weights": {"dense": dense_weight, "sparse": sparse_weight},
+            "weights": {"dense": 1.0, "sparse": 0.0},  # Milvus-only now
             "results": library_results,
         }
 
