@@ -48,6 +48,7 @@ class ToolRegistry:
     def __init__(self):
         """Initialize ToolRegistry with default tools."""
         self.tools: Dict[str, Tool] = {}
+        self.executors: Dict[str, callable] = {}  # Map tool names to execution functions
         self._register_default_tools()
     
     def register(self, tool: Tool) -> None:
@@ -88,6 +89,58 @@ class ToolRegistry:
         """
         tool = self.get(tool_name)
         return tool.needs_confirmation if tool else False
+    
+    def register_executor(self, tool_name: str, executor: callable) -> None:
+        """Register an execution function for a tool.
+        
+        Args:
+            tool_name: Name of the tool
+            executor: Async function to execute when tool is called
+        """
+        self.executors[tool_name] = executor
+    
+    async def execute(self, tool_name: str, params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Execute a tool by name.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            params: Parameters for the tool
+            **kwargs: Additional context (e.g., user_id)
+            
+        Returns:
+            Tool execution result: {success: bool, data: any, error: str?}
+            
+        Raises:
+            ValueError: If tool not found or no executor registered
+        """
+        # Check tool exists
+        tool = self.get(tool_name)
+        if not tool:
+            return {
+                "success": False,
+                "error": f"Tool '{tool_name}' not found",
+                "data": None
+            }
+        
+        # Check executor registered
+        executor = self.executors.get(tool_name)
+        if not executor:
+            return {
+                "success": False,
+                "error": f"No executor registered for tool '{tool_name}'",
+                "data": None
+            }
+        
+        # Execute tool
+        try:
+            result = await executor(params, **kwargs)
+            return result
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Tool execution failed: {str(e)}",
+                "data": None
+            }
     
     def list_tools_schema(self) -> List[Dict[str, Any]]:
         """Generate LLM-compatible tool schemas (OpenAI Functions format).
