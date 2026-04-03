@@ -582,7 +582,7 @@ class MilvusService:
         return collection
 
     def insert_contents(self, data: List[Dict[str, Any]]) -> List[int]:
-        """Insert content embeddings into unified collection.
+        """Insert content embeddings with enhanced metadata (per D-06).
 
         Args:
             data: List of content items with:
@@ -590,31 +590,50 @@ class MilvusService:
                 - user_id: User UUID
                 - content_type: 'image' | 'table' | 'text'
                 - page_num: Page number
+                - section: Document section (optional)
+                - text: Content text (optional, for quality scoring)
                 - content_data: Caption/description/text
                 - raw_data: JSON with type-specific data
                 - embedding: 1024-dim vector
+                - has_equations: Boolean (optional)
+                - has_figures: Boolean (optional)
 
         Returns:
             List of inserted IDs
         """
         collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS)
 
-        # Prepare data
+        # Prepare enhanced data with metadata (per D-06)
         entities = []
         for item in data:
+            # Calculate quality score
+            quality_score = calculate_chunk_quality(item)
+            
             entities.append({
                 "paper_id": item["paper_id"],
                 "user_id": item["user_id"],
-                "content_type": item["content_type"],
-                "page_num": item["page_num"],
-                "content_data": item.get("content_data", ""),
+                "content_type": item.get("content_type", "text"),
+                "page_num": item.get("page_num", 0),
+                
+                # New metadata fields (per D-06)
+                "section": item.get("section", ""),
+                "quality_score": quality_score,
+                "word_count": len(item.get("text", "").split()),
+                "has_equations": bool(item.get("has_equations", False)),
+                "has_figures": bool(item.get("has_figures", False)),
+                "extraction_version": 2,  # Incremented per D-06
+                
+                "content_data": item.get("content_data", item.get("text", "")),
                 "raw_data": item.get("raw_data", {}),
                 "embedding": item["embedding"],
             })
 
         ids = collection.insert(entities)
         collection.flush()
-        logger.info(f"Inserted {len(entities)} content items")
+        logger.info(
+            f"Inserted {len(entities)} content items with enhanced metadata",
+            avg_quality=sum(e["quality_score"] for e in entities) / len(entities) if entities else 0
+        )
         return ids.primary_keys
 
     def search_contents(
