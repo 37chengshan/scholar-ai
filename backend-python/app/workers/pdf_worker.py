@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -25,7 +26,11 @@ import asyncpg
 from app.core.storage import ObjectStorage
 from app.core.docling_service import DoclingParser
 from app.core.embedding_service import EmbeddingService
-from app.core.imrad_extractor import extract_imrad_structure, extract_metadata
+from app.core.imrad_extractor import (
+    extract_imrad_structure,  # Keep for backward compatibility
+    extract_imrad_enhanced,   # NEW: enhanced version per D-05
+    extract_metadata
+)
 from app.core.neo4j_service import Neo4jService
 from app.core.notes_generator import NotesGenerator
 from app.core.milvus_service import get_milvus_service
@@ -81,7 +86,7 @@ class PDFProcessor:
 
         async with self.db_pool.acquire() as conn:
             task = await conn.fetchrow(
-                """SELECT pt.*, p."userId" as user_id, p.id as paper_id, p.storage_key
+                """SELECT pt.*, p.user_id, p.id as paper_id, p.storage_key
                    FROM processing_tasks pt
                    JOIN papers p ON pt.paper_id = p.id
                    WHERE pt.id = $1""",
@@ -123,29 +128,47 @@ class PDFProcessor:
             async with self.db_pool.acquire() as conn:
                 await conn.execute(
                     """UPDATE papers
-                       SET content = $1, \"pageCount\" = $2, status = 'processing'
+                       SET content = $1, page_count = $2, status = 'processing'
                        WHERE id = $3""",
                     parsed["markdown"],
                     parsed["page_count"],
                     paper_id,
                 )
 
-            # Stage 4: IMRaD extraction using the new extractor
+            # Stage 4: Enhanced IMRaD extraction with LLM assistance per D-05
             await self._update_status(task_id, "extracting_imrad")
-            imrad = extract_imrad_structure(parsed["items"])
             metadata = extract_metadata(parsed["items"])
+            
+            # Use enhanced extraction for +85% non-standard paper recognition
+            imrad = await extract_imrad_enhanced(
+                items=parsed["items"],
+                markdown=parsed["markdown"],
+                paper_metadata=metadata
+            )
+            
+            # Debug: Check if metadata is None
+            if metadata is None:
+                logger.error("Metadata is None", task_id=task_id)
+                metadata = {
+                    "title": None,
+                    "authors": [],
+                    "abstract": None,
+                    "keywords": [],
+                    "doi": None,
+                }
+            
             logger.info(
                 "IMRaD extraction complete",
                 task_id=task_id,
-                confidence=imrad.get("_confidence_score", 0),
-                estimated=imrad.get("_estimated", False),
+                confidence=imrad.get("_confidence_score", 0) if imrad else 0,
+                estimated=imrad.get("_estimated", False) if imrad else False,
             )
 
             # Store IMRaD structure and update metadata in papers table
             async with self.db_pool.acquire() as conn:
                 await conn.execute(
                     """UPDATE papers
-                       SET \"imradJson\" = $1,
+                       SET imrad_json = $1,
                            title = COALESCE(NULLIF(title, ''), $2),
                            authors = COALESCE(NULLIF(authors, '{}'), $3),
                            abstract = COALESCE(NULLIF(abstract, ''), $4),
@@ -266,7 +289,7 @@ class PDFProcessor:
             # Get paper metadata from database
             async with self.db_pool.acquire() as conn:
                 paper_row = await conn.fetchrow(
-                    "SELECT title, authors, publication_year FROM papers WHERE id = $1",
+                    "SELECT title, authors, year FROM papers WHERE id = $1",
                     paper_id
                 )
                 if paper_row:
@@ -277,7 +300,7 @@ class PDFProcessor:
                         paper_id=paper_id,
                         title=paper_row["title"] or "Untitled",
                         authors=authors,
-                        year=paper_row["publication_year"]
+                        year=paper_row["year"]
                     )
 
             logger.info(
@@ -379,7 +402,7 @@ class PDFProcessor:
         async with self.db_pool.acquire() as conn:
             completed_at = None
             if status == "completed":
-                completed_at = "NOW()"
+                completed_at = datetime.now()
 
             await conn.execute(
                 """UPDATE processing_tasks
