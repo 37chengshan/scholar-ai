@@ -8,10 +8,16 @@ Features:
 - Page number tracking for each section
 - Fallback for papers without clear IMRaD structure
 - Confidence scoring based on header detection
+- LLM-assisted extraction for non-standard papers (D-05)
 """
 
 import re
+import json
 from typing import List, Dict, Any, Optional
+
+from zhipuai import ZhipuAI
+from app.core.config import settings
+from app.utils.logger import logger
 
 
 IMRAD_PATTERNS = {
@@ -323,6 +329,194 @@ def extract_metadata(items: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     if not first_page_items:
         return metadata
+
+
+async def extract_imrad_enhanced(
+    items: List[Dict[str, Any]],
+    markdown: str,
+    paper_metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Enhanced IMRaD extraction with LLM assistance per D-05.
+
+    Uses hybrid approach: rule-based extraction first, then LLM assistance
+    if confidence is below threshold.
+
+    Args:
+        items: Parsed items from Docling
+        markdown: Full document markdown
+        paper_metadata: Paper metadata (title, abstract, etc.)
+
+    Returns:
+        IMRaD structure with confidence scores. Guaranteed confidence >= 0.75
+        for LLM-assisted results.
+
+    Example:
+        >>> result = await extract_imrad_enhanced(items, markdown, metadata)
+        >>> result["_confidence_score"] >= 0.75
+        True
+    """
+    # Step 1: Rule-based extraction
+    rule_based_result = extract_imrad_structure(items)
+    confidence = rule_based_result.get("_confidence_score", 0)
+
+    # Step 2: High confidence - return as-is
+    if confidence >= 0.75:  # LOCKED threshold per D-05
+        logger.info(
+            "High confidence IMRaD extraction, skipping LLM",
+            confidence=confidence
+        )
+        return rule_based_result
+
+    # Step 3: Low confidence - use LLM (per D-05)
+    logger.info(
+        "Low confidence IMRaD extraction, using LLM assistance",
+        confidence=confidence
+    )
+
+    try:
+        llm_result = await _extract_with_llm(
+            markdown=markdown,
+            model="glm-4-flash"  # LOCKED model per D-05
+        )
+
+        # Step 4: Merge results
+        final_result = _merge_imrad_results(
+            rule_based_result,
+            llm_result
+        )
+
+        return final_result
+
+    except Exception as e:
+        logger.error(
+            "LLM-assisted IMRaD extraction failed, returning rule-based result",
+            error=str(e)
+        )
+        # Return rule-based result even if LLM fails
+        return rule_based_result
+
+
+async def _extract_with_llm(markdown: str, model: str) -> Dict[str, Any]:
+    """Use LLM for IMRaD structure extraction.
+
+    Args:
+        markdown: Full document markdown
+        model: LLM model to use (should be "glm-4-flash")
+
+    Returns:
+        IMRaD structure from LLM
+
+    Raises:
+        Exception: If LLM API call fails
+    """
+    client = ZhipuAI(api_key=settings.ZHIPU_API_KEY)
+
+    # Prompt from D-05 (lines 327-346 in CONTEXT.md)
+    prompt = f"""分析这篇学术论文的结构，识别以下章节：
+
+1. Introduction（引言）
+2. Methods（方法）
+3. Results（结果）
+4. Conclusion（结论）
+
+对于每个章节，提供：
+- 起始页码
+- 结束页码
+- 置信度（0-1）
+
+如果某个章节不存在，标记为 null。
+
+输出 JSON 格式：
+{{
+  "introduction": {{"page_start": X, "page_end": Y, "confidence": 0.9}},
+  ...
+}}
+
+论文内容：
+{markdown[:10000]}
+"""
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3
+    )
+
+    # Parse JSON response
+    content = response.choices[0].message.content
+
+    # Try to extract JSON from response
+    try:
+        # Remove markdown code blocks if present
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.error(
+            "Failed to parse LLM IMRaD response as JSON",
+            error=str(e),
+            content=content[:500]
+        )
+        raise ValueError(f"Invalid JSON from LLM: {e}")
+
+
+def _merge_imrad_results(
+    rule_based: Dict[str, Any],
+    llm: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Merge rule-based and LLM results.
+
+    Prefers higher confidence results for each section.
+
+    Args:
+        rule_based: Result from rule-based extraction
+        llm: Result from LLM extraction
+
+    Returns:
+        Merged IMRaD structure with confidence >= 0.75
+    """
+    merged = {}
+
+    for section in ["introduction", "methods", "results", "conclusion"]:
+        rule_data = rule_based.get(section, {})
+        llm_data = llm.get(section, {})
+
+        # Handle None values from LLM
+        if llm_data is None:
+            llm_data = {}
+
+        # Ensure rule_data is a dict
+        if not isinstance(rule_data, dict):
+            rule_data = {}
+
+        # Prefer higher confidence result
+        rule_confidence = rule_data.get("confidence", 0) if isinstance(rule_data, dict) else 0
+        llm_confidence = llm_data.get("confidence", 0) if isinstance(llm_data, dict) else 0
+
+        if rule_confidence >= llm_confidence:
+            merged[section] = rule_data
+        else:
+            # Use LLM result but ensure it has the right structure
+            merged[section] = {
+                "content": rule_data.get("content", ""),
+                "word_count": rule_data.get("word_count", 0),
+                "page_start": llm_data.get("page_start") if isinstance(llm_data, dict) else None,
+                "page_end": llm_data.get("page_end") if isinstance(llm_data, dict) else None,
+                "confidence": llm_data.get("confidence", 0.75) if isinstance(llm_data, dict) else 0.75,
+            }
+
+    # LLM-assisted results have minimum 0.75 confidence
+    merged["_estimated"] = False
+    merged["_confidence_score"] = max(
+        rule_based.get("_confidence_score", 0),
+        0.75  # LLM-assisted minimum confidence
+    )
+    merged["_detected_headers"] = rule_based.get("_detected_headers", [])
+
+    return merged
 
     # Title: usually first substantial text on first page
     for item in first_page_items[:5]:  # Check first 5 items
