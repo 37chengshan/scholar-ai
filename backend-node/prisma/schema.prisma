@@ -15,7 +15,7 @@ model User {
   passwordHash  String   @map("password_hash")
   emailVerified Boolean  @default(false) @map("email_verified")
   avatar        String?
-  settings      Json?    @map("settings")  // { language: 'zh'|'en', defaultModel: string, theme: string }
+  settings      Json?    @map("settings") // { language: 'zh'|'en', defaultModel: string, theme: string }
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -34,15 +34,15 @@ model User {
 
 // API密钥表
 model ApiKey {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
-  name      String
-  keyHash   String    @map("key_hash")  // Argon2 hash of full key
-  prefix    String    // First 8 chars for display (e.g., "sk_live_a")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  name       String
+  keyHash    String    @map("key_hash") // Argon2 hash of full key
+  prefix     String // First 8 chars for display (e.g., "sk_live_a")
   lastUsedAt DateTime? @map("last_used_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("api_keys")
@@ -65,9 +65,6 @@ model Paper {
   fileSize  Int?     @map("file_size") // PDF文件大小
   pageCount Int?     @map("page_count") // 页数
 
-  // 向量嵌入 (通过PGVector)
-  embedding Unsupported("vector(768)")?
-
   // 元数据
   keywords  String[]
   venue     String? // 发表会议/期刊
@@ -77,7 +74,7 @@ model Paper {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // 关联
-  userId  String  @map("user_id")
+  userId  String       @map("user_id")
   user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   queries Query[]      @relation("QueryPapers")
   chunks  PaperChunk[]
@@ -89,11 +86,11 @@ model Paper {
   processingTask ProcessingTask?
 
   // 批量上传字段 (Phase 11)
-  batchId       String?         @map("batch_id")
-  batch         PaperBatch?     @relation("BatchPapers", fields: [batchId], references: [id])
-  uploadStatus  String?         @map("upload_status") // pending/uploading/completed/failed
-  uploadProgress Int?           @map("upload_progress") // 0-100
-  uploadedAt    DateTime?       @map("uploaded_at")
+  batchId        String?     @map("batch_id")
+  batch          PaperBatch? @relation("BatchPapers", fields: [batchId], references: [id])
+  uploadStatus   String?     @map("upload_status") // pending/uploading/completed/failed
+  uploadProgress Int?        @map("upload_progress") // 0-100
+  uploadedAt     DateTime?   @map("uploaded_at")
 
   @@map("papers")
 }
@@ -106,9 +103,6 @@ model PaperChunk {
   pageStart Int?    @map("page_start") // 起始页码
   pageEnd   Int?    @map("page_end") // 结束页码
 
-  // 向量嵌入
-  embedding Unsupported("vector(768)")
-
   // 元数据
   isTable   Boolean @default(false) @map("is_table")
   isFigure  Boolean @default(false) @map("is_figure")
@@ -117,7 +111,7 @@ model PaperChunk {
   createdAt DateTime @default(now()) @map("created_at")
 
   // 关联
-  paperId String  @map("paper_id")
+  paperId String @map("paper_id")
   paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
 
   @@index([paperId])
@@ -137,7 +131,7 @@ model Query {
   createdAt DateTime @default(now()) @map("created_at")
 
   // 关联
-  userId   String  @map("user_id")
+  userId   String   @map("user_id")
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   paperIds String[] @map("paper_ids") // 关联的论文ID列表
   papers   Paper[]  @relation("QueryPapers")
@@ -162,7 +156,7 @@ model KnowledgeMap {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // 关联
-  userId String  @map("user_id")
+  userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("knowledge_maps")
@@ -239,7 +233,7 @@ model ProcessingTask {
 // 刷新令牌表
 model RefreshToken {
   id        String   @id @default(uuid())
-  tokenHash String   @map("token_hash") @unique
+  tokenHash String   @unique @map("token_hash")
   userId    String   @map("user_id")
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
@@ -319,7 +313,7 @@ model PaperBatch {
   status        String   @default("uploading") // uploading/processing/completed/partial_failure
   createdAt     DateTime @default(now()) @map("created_at")
 
-  papers        Paper[]  @relation("BatchPapers")
+  papers Paper[] @relation("BatchPapers")
 
   @@index([userId])
   @@index([status])
