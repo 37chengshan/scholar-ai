@@ -1,10 +1,29 @@
 import { Router } from 'express';
+import crypto from 'crypto';
+import multer from 'multer';
 import { authenticate } from '../middleware/auth';
 import { requirePermission } from '../middleware/rbac';
+import { requireReauth, ReauthRequest } from '../middleware/reauth';
 import { prisma } from '../config/database';
 import { AuthRequest } from '../types/auth';
+import { hashPassword } from '../utils/crypto';
+import { uploadFile } from '../services/storage';
+import { Errors } from '../middleware/errorHandler';
+import { logger } from '../utils/logger';
 
 const router = Router();
+
+// Multer configuration for avatar upload (5MB max, memory storage)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+});
+
+// Generate API key: sk_live_xxxx format
+const generateApiKey = (): string => {
+  const randomBytes = crypto.randomBytes(32).toString('base64url');
+  return `sk_live_${randomBytes}`;
+};
 
 // GET /api/users/me - 获取当前用户信息
 router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
@@ -142,6 +161,122 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res, next) => {
         subjectDistribution,
         storageUsage,
       },
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/users/me/api-keys - List user API keys
+router.get('/me/api-keys', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+
+    const apiKeys = await prisma.apiKey.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        name: true,
+        prefix: true,
+        createdAt: true,
+        lastUsedAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    logger.info('API keys listed', { userId, count: apiKeys.length });
+
+    res.json({
+      success: true,
+      data: apiKeys,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/users/me/api-keys - Create new API key
+router.post('/me/api-keys', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const { name } = req.body;
+
+    if (!name || name.length < 1) {
+      throw Errors.validation('API key name required');
+    }
+
+    // Generate key
+    const apiKey = generateApiKey();
+    const prefix = apiKey.substring(0, 12); // "sk_live_abc"
+
+    // Hash key (reuse Argon2 from crypto utils)
+    const keyHash = await hashPassword(apiKey);
+
+    // Save to database
+    const newKey = await prisma.apiKey.create({
+      data: {
+        userId,
+        name,
+        keyHash,
+        prefix,
+      },
+      select: {
+        id: true,
+        name: true,
+        prefix: true,
+        createdAt: true,
+      },
+    });
+
+    logger.info('API key created', { userId, keyId: newKey.id, name });
+
+    // Return full key ONLY on creation (never again)
+    res.json({
+      success: true,
+      data: {
+        ...newKey,
+        key: apiKey, // Full key shown once
+        message: 'Save this key securely. It will not be shown again.',
+      },
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/users/me/api-keys/:keyId - Delete API key
+router.delete('/me/api-keys/:keyId', authenticate, requireReauth, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const { keyId } = req.params;
+
+    // requireReauth already validated currentPassword
+    if (!req.reauthVerified) {
+      throw Errors.validation('Re-authentication required');
+    }
+
+    // Verify ownership
+    const apiKey = await prisma.apiKey.findFirst({
+      where: { id: keyId, userId },
+    });
+
+    if (!apiKey) {
+      throw Errors.notFound('API key not found');
+    }
+
+    // Delete key
+    await prisma.apiKey.delete({
+      where: { id: keyId },
+    });
+
+    logger.info('API key deleted', { userId, keyId });
+
+    res.json({
+      success: true,
+      data: { message: 'API key deleted' },
     });
 
   } catch (error) {
