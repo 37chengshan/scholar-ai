@@ -447,6 +447,38 @@ async def search_semantic_scholar(
         return result_data
 
 
+@router.get("/doi/{doi:path}", response_model=SearchResult)
+async def resolve_doi(doi: str):
+    """Resolve DOI to paper metadata via CrossRef API.
+
+    Args:
+        doi: DOI identifier (e.g., "10.1038/nature12373")
+
+    Returns:
+        SearchResult with paper metadata (title, authors, year, abstract)
+
+    Raises:
+        HTTPException: 404 if DOI not found
+
+    Example:
+        GET /search/doi/10.1038/nature12373
+        Returns: {
+            "id": "10.1038/nature12373",
+            "title": "The DNA sequence...",
+            "authors": ["John Doe"],
+            "year": 2001,
+            ...
+        }
+    """
+    from app.core.crossref_service import CrossRefService
+
+    service = CrossRefService()
+    redis_client = await get_redis_client()
+
+    result = await service.resolve_doi(doi, redis_client)
+    return SearchResult(**result)
+
+
 # =============================================================================
 # Library Search Endpoint (Hybrid Search)
 # =============================================================================
