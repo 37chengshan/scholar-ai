@@ -233,4 +233,178 @@ router.get(
   }
 );
 
+/**
+ * Helper function to get processing stage name
+ */
+function getProcessingStage(status: string): string {
+  const stageNames: Record<string, string> = {
+    'processing_ocr': 'OCR Processing',
+    'parsing': 'Parsing Document',
+    'extracting_imrad': 'Extracting Structure',
+    'generating_notes': 'Generating Notes',
+    'storing_vectors': 'Storing Vectors',
+    'indexing_multimodal': 'Indexing Multimodal',
+    'completed': 'Completed',
+    'failed': 'Failed',
+    'pending': 'Pending',
+  };
+  return stageNames[status] || status;
+}
+
+/**
+ * Helper function to calculate progress percentage
+ */
+function getProgressPercent(status: string): number {
+  const progressMap: Record<string, number> = {
+    'pending': 0,
+    'processing_ocr': 15,
+    'parsing': 30,
+    'extracting_imrad': 45,
+    'generating_notes': 60,
+    'storing_vectors': 75,
+    'indexing_multimodal': 90,
+    'completed': 100,
+    'failed': 0,
+  };
+  return progressMap[status] || 0;
+}
+
+/**
+ * GET /api/papers/batch/:batchId/progress - Query batch progress
+ *
+ * Returns detailed progress information for all files in a batch.
+ * Per D-05: Shows processing stages with progress percentages.
+ */
+router.get(
+  '/:batchId/progress',
+  requirePermission('papers', 'read'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        throw Errors.unauthorized('User not authenticated');
+      }
+
+      const { batchId } = req.params;
+
+      // Query batch basic info
+      const batch = await prisma.paperBatch.findFirst({
+        where: { id: batchId, userId },
+      });
+
+      if (!batch) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            type: '/errors/not-found',
+            title: 'Not Found',
+            status: 404,
+            detail: 'Batch not found',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Query all papers with processing tasks
+      const papers = await prisma.paper.findMany({
+        where: { batchId },
+        include: {
+          processingTask: {
+            select: {
+              status: true,
+              errorMessage: true,
+              errorStage: true,
+              errorTime: true,
+              retryCount: true,
+              updatedAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      // Calculate aggregated statistics
+      const uploadedCount = papers.filter(p => p.uploadStatus === 'completed').length;
+      const processingCount = papers.filter(
+        p => p.processingTask && !['completed', 'failed', 'pending'].includes(p.processingTask.status)
+      ).length;
+      const completedCount = papers.filter(p => p.status === 'completed').length;
+      const failedCount = papers.filter(p => p.status === 'failed').length;
+
+      // Overall progress: upload (20%) + processing (80%)
+      const uploadProgress = Math.round((uploadedCount / batch.totalFiles) * 20);
+      const processingProgress = Math.round((completedCount / batch.totalFiles) * 80);
+      const overallProgress = uploadProgress + processingProgress;
+
+      // Format per-file progress
+      const formattedPapers = papers.map(paper => {
+        const processingStatus = paper.processingTask?.status || paper.status || 'pending';
+        const processingProgress = getProgressPercent(processingStatus);
+        const processingStage = getProcessingStage(processingStatus);
+
+        return {
+          id: paper.id,
+          filename: paper.title || 'Untitled',
+
+          // Upload phase
+          uploadStatus: paper.uploadStatus || 'pending',
+          uploadProgress: paper.uploadProgress || 0,
+
+          // Processing phase
+          processingStatus,
+          processingProgress,
+          processingStage,
+
+          // Error info
+          errorMessage: paper.processingTask?.errorMessage || null,
+          errorStage: paper.processingTask?.errorStage || null,
+          retryCount: paper.processingTask?.retryCount || 0,
+
+          // Timestamps
+          uploadedAt: paper.uploadedAt,
+          processingStartedAt: paper.processingTask?.updatedAt || null,
+          completedAt: paper.status === 'completed' ? paper.updatedAt : null,
+        };
+      });
+
+      // Estimated times (simplified - could be enhanced with historical data)
+      const avgProcessingTime = 300; // 5 minutes per paper
+      const estimatedUploadTime = Math.max(0, (batch.totalFiles - uploadedCount) * 30);
+      const estimatedProcessingTime = Math.max(
+        0,
+        (batch.totalFiles - completedCount - failedCount) * avgProcessingTime
+      );
+
+      res.json({
+        success: true,
+        data: {
+          batchId,
+          totalFiles: batch.totalFiles,
+          status: batch.status,
+
+          // Upload phase
+          uploadedCount,
+          uploadProgress: Math.round((uploadedCount / batch.totalFiles) * 100),
+
+          // Processing phase
+          processingCount,
+          completedCount,
+          failedCount,
+          overallProgress,
+
+          // Time estimates
+          estimatedUploadTime,
+          estimatedProcessingTime,
+
+          // Per-file details
+          papers: formattedPapers,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export { router as batchRouter };
