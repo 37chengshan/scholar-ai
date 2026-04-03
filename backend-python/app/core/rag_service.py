@@ -1,19 +1,18 @@
-"""DEPRECATED: RAG (Retrieval-Augmented Generation) service with PaperQA2 integration.
+"""DEPRECATED: RAG (Retrieval-Augmented Generation) service.
 
 ⚠️ This module is deprecated and will be removed in a future version.
 
 Migration Guide:
 - Use MultimodalSearchService instead of RAGService
 - All queries should go through unified multimodal search
-- PGVector is replaced by Milvus for vector storage
+- PGVector has been removed - all vectors now in Milvus
 - Benefits: multimodal search, better reranking, intent detection
 
 See: Phase 04 documentation for migration details.
 
 Provides:
-- PGVectorStore: Custom vector store for PaperQA2 using existing PGVector infrastructure (DEPRECATED)
-- RAGService: High-level RAG query service with citation tracking (DEPRECATED)
-- Integration with existing embedding_service.py for 768-dim embeddings
+- RAGService: High-level RAG query service (DEPRECATED - uses Milvus)
+- retrieve_with_reranking: Milvus search with BGE-Reranker (kept for compatibility)
 - Semantic caching for reduced LLM API calls
 """
 
@@ -21,160 +20,15 @@ import warnings
 
 # Emit deprecation warning when module is imported
 warnings.warn(
-    "RAGService is deprecated. Use MultimodalSearchService instead.",
+    "RAGService is deprecated. Use MultimodalSearchService instead. "
+    "PGVector has been removed - all vectors now in Milvus.",
     DeprecationWarning,
     stacklevel=2,
 )
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.utils.logger import logger
-
-
-class PGVectorStore:
-    """DEPRECATED: Custom PGVector store for RAG operations.
-
-    ⚠️ Use MultimodalSearchService for all queries.
-    This class will be removed in v2.0.
-
-    Wraps the existing PGVector infrastructure to provide a unified interface
-    for similarity search over paper chunks. Works with or without PaperQA2.
-
-    Attributes:
-        connection: Database connection (asyncpg Connection)
-        table_name: Name of the chunks table (default: paper_chunks)
-        dimension: Embedding dimension (default: 768)
-    """
-
-    def __init__(
-        self,
-        connection: Any,
-        table_name: str = "paper_chunks",
-        dimension: int = 768,
-    ):
-        """Initialize PGVectorStore.
-
-        Args:
-            connection: asyncpg database connection
-            table_name: PostgreSQL table name for chunks
-            dimension: Embedding vector dimension
-        """
-        logger.warning(
-            "PGVectorStore.__init__ is DEPRECATED. "
-            "Use MultimodalSearchService instead."
-        )
-        self.connection = connection
-        self.table_name = table_name
-        self.dimension = dimension
-
-    async def search(
-        self,
-        query: str,
-        paper_ids: List[str],
-        limit: int = 5,
-    ) -> List[Dict[str, Any]]:
-        """Search for similar chunks in PGVector.
-
-        Performs cosine similarity search over the paper_chunks table
-        filtered by the specified paper IDs.
-
-        Args:
-            query: Search query text
-            paper_ids: List of paper UUIDs to search within
-            limit: Maximum number of results to return
-
-        Returns:
-            List of chunk dictionaries with content, metadata, and similarity scores
-        """
-        # Generate query embedding using the embedding service
-        from app.core.embedding_service import EmbeddingService
-
-        embedding_service = EmbeddingService()
-        query_embedding = embedding_service.generate_embedding(query)
-        embedding_str = f"[{','.join(str(x) for x in query_embedding)}]"
-
-        # Query database using PGVector cosine distance operator
-        rows = await self.connection.fetch(
-            f"""SELECT id, paper_id, content, section, page_start, page_end,
-                      embedding <=> $1::vector as distance
-               FROM {self.table_name}
-               WHERE paper_id = ANY($2)
-               ORDER BY embedding <=> $1::vector
-               LIMIT $3""",
-            embedding_str,
-            paper_ids,
-            limit,
-        )
-
-        results = []
-        for row in rows:
-            # Convert distance to similarity (1 - distance for cosine)
-            distance = row["distance"]
-            similarity = 1.0 - distance
-
-            results.append({
-                "id": row["id"],
-                "paper_id": row["paper_id"],
-                "content": row["content"],
-                "section": row["section"],
-                "page": row["page_start"],
-                "page_start": row["page_start"],
-                "page_end": row["page_end"],
-                "similarity": round(similarity, 4),
-                "distance": round(distance, 4),
-            })
-
-        logger.info(
-            "PGVector search completed",
-            query=query[:50],
-            paper_count=len(paper_ids),
-            results_found=len(results),
-        )
-
-        return results
-
-    async def add_chunks(
-        self,
-        chunks: List[Dict[str, Any]],
-    ) -> List[str]:
-        """Add chunks to the store (placeholder for PaperQA2 compatibility).
-
-        In the current architecture, chunks are added via embedding_service.py.
-        This method exists for interface compatibility.
-
-        Args:
-            chunks: List of chunk dictionaries to add
-
-        Returns:
-            List of chunk IDs
-        """
-        # Chunks are already stored via embedding_service
-        # Return IDs for compatibility
-        return [c.get("id", str(uuid.uuid4())) for c in chunks]
-
-    async def delete_by_paper(self, paper_id: str) -> int:
-        """Delete all chunks for a paper.
-
-        Args:
-            paper_id: Paper UUID
-
-        Returns:
-            Number of chunks deleted
-        """
-        result = await self.connection.execute(
-            f"DELETE FROM {self.table_name} WHERE paper_id = $1",
-            paper_id,
-        )
-        # Parse result like "DELETE 5"
-        parts = result.split()
-        if len(parts) >= 2 and parts[0] == "DELETE":
-            return int(parts[1])
-        return 0
-
-    def clear(self) -> None:
-        """Clear local cache (no-op for database-backed store)."""
-        pass
 
 
 class RAGService:
@@ -189,29 +43,26 @@ class RAGService:
 
     Provides high-level RAG capabilities for answering questions based on
     paper content with proper citation tracking and source attribution.
+    Uses Milvus for vector search (PGVector removed).
 
     Attributes:
-        pg_store: PGVectorStore instance for similarity search
         embedding_service: EmbeddingService for query embedding
         semantic_cache: SemanticCache for reducing redundant LLM calls
     """
 
     def __init__(
         self,
-        pg_store: Optional[PGVectorStore] = None,
         embedding_service: Optional[Any] = None,
     ):
         """Initialize RAGService.
 
         Args:
-            pg_store: Optional PGVectorStore instance
             embedding_service: Optional EmbeddingService instance
         """
         logger.warning(
             "RAGService.__init__ is DEPRECATED. "
             "Use MultimodalSearchService instead."
         )
-        self.pg_store = pg_store
         self._embedding_service = embedding_service
         # Initialize semantic cache with user decision D-02 settings
         from app.core.semantic_cache import SemanticCache
@@ -229,8 +80,9 @@ class RAGService:
         self,
         question: str,
         paper_ids: List[str],
+        user_id: str = "placeholder-user-id",
         top_k: int = 5,
-        connection: Optional[Any] = None,
+        connection: Optional[Any] = None,  # Kept for API compatibility, not used
     ) -> Dict[str, Any]:
         """Execute RAG query with citations and semantic caching.
 
@@ -241,15 +93,14 @@ class RAGService:
             OLD: RAGService().query(question, paper_ids, top_k=5)
             NEW: MultimodalSearchService().search(query, paper_ids, user_id, top_k=5)
 
-        Retrieves relevant chunks and generates an answer with proper citations.
-        This is a simplified implementation that returns retrieved contexts.
-        Full PaperQA2 integration can be added later.
+        Retrieves relevant chunks from Milvus and generates an answer with proper citations.
 
         Args:
             question: User question
             paper_ids: List of paper UUIDs to search
+            user_id: User ID for Milvus filtering
             top_k: Number of chunks to retrieve
-            connection: Database connection (required if pg_store not set)
+            connection: Kept for API compatibility (not used - Milvus only)
 
         Returns:
             Dictionary with answer, citations, and confidence score
@@ -258,8 +109,14 @@ class RAGService:
             "RAGService.query is DEPRECATED. "
             "Use MultimodalSearchService.search instead."
         )
-        if self.pg_store is None and connection is None:
-            raise ValueError("Either pg_store or connection must be provided")
+
+        if not paper_ids:
+            return {
+                "answer": "No papers specified for search.",
+                "citations": [],
+                "confidence": 0.0,
+                "cached": False,
+            }
 
         # Check semantic cache first
         cached = await self.semantic_cache.get(question, paper_ids)
@@ -271,14 +128,29 @@ class RAGService:
             cached["cached"] = True
             return cached
 
-        store = self.pg_store or PGVectorStore(connection)
+        # Use Milvus for search (PGVector removed)
+        from app.core.milvus_service import get_milvus_service
+        from app.core.bge_m3_service import get_bge_m3_service
 
-        # Retrieve relevant chunks
-        chunks = await store.search(
-            query=question,
-            paper_ids=paper_ids,
-            limit=top_k,
+        milvus_service = get_milvus_service()
+        bge_m3_service = get_bge_m3_service()
+
+        # Generate query embedding (1024-dim BGE-M3)
+        query_embedding = bge_m3_service.encode_text(question)
+        # Ensure we have a single embedding (not a list of embeddings)
+        if isinstance(query_embedding[0], list):
+            query_embedding = query_embedding[0]  # type: ignore
+
+        # Search Milvus
+        results = milvus_service.search_contents(
+            embedding=query_embedding,
+            user_id=user_id,
+            content_type="text",
+            top_k=top_k,
         )
+
+        # Filter by paper_ids
+        chunks = [r for r in results if r.get("paper_id") in paper_ids]
 
         if not chunks:
             return {
@@ -291,21 +163,21 @@ class RAGService:
         # Build citations from retrieved chunks
         citations = []
         for chunk in chunks:
+            content_data = chunk.get("content_data", "")
             citations.append({
-                "text": chunk["content"][:500],  # Preview
-                "paper_id": chunk["paper_id"],
-                "chunk_id": chunk["id"],
-                "content_preview": chunk["content"][:500],
-                "page": chunk["page"],
-                "similarity": chunk["similarity"],
+                "text": content_data[:500],  # Preview
+                "paper_id": chunk.get("paper_id"),
+                "chunk_id": chunk.get("id"),
+                "content_preview": content_data[:500],
+                "page": chunk.get("page_num"),
+                "similarity": 1.0 - chunk.get("distance", 0.0),  # Convert distance to similarity
             })
 
         # Calculate confidence as average similarity of top results
-        avg_similarity = sum(c["similarity"] for c in citations) / len(citations)
+        avg_similarity = sum(c.get("similarity", 0) for c in citations) / len(citations) if citations else 0
         confidence = min(avg_similarity * 1.2, 1.0)  # Scale up slightly, cap at 1.0
 
         # Build context-aware answer (simplified)
-        # Full implementation would use LLM to generate answer from contexts
         context_preview = "\n\n".join([
             f"[Source {i+1}, Page {c['page']}, Score {c['similarity']:.2f}]: {c['text'][:200]}..."
             for i, c in enumerate(citations[:3])
@@ -340,6 +212,7 @@ class RAGService:
         self,
         question: str,
         paper_ids: List[str],
+        user_id: str = "placeholder-user-id",
         top_k: int = 5,
         connection: Optional[Any] = None,
     ) -> Any:
@@ -351,8 +224,9 @@ class RAGService:
         Args:
             question: User question
             paper_ids: List of paper UUIDs to search
+            user_id: User ID for Milvus filtering
             top_k: Number of chunks to retrieve
-            connection: Database connection
+            connection: Kept for API compatibility (not used)
 
         Yields:
             Token strings for streaming
@@ -361,6 +235,7 @@ class RAGService:
         result = await self.query(
             question=question,
             paper_ids=paper_ids,
+            user_id=user_id,
             top_k=top_k,
             connection=connection,
         )
@@ -373,23 +248,26 @@ class RAGService:
         # Yield citations marker
         yield "\n\n[CITATIONS]\n"
         for citation in result["citations"]:
-            yield f"- Paper {citation['paper_id'][:8]}..., Page {citation['page']}, Score {citation['similarity']:.2f}\n"
+            paper_id = citation.get("paper_id", "")[:8]
+            yield f"- Paper {paper_id}..., Page {citation['page']}, Score {citation['similarity']:.2f}\n"
 
 
 # Convenience function for direct usage
 async def rag_query(
     question: str,
     paper_ids: List[str],
-    connection: Any,
+    user_id: str = "placeholder-user-id",
     top_k: int = 5,
+    connection: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Execute RAG query with minimal setup.
 
     Args:
         question: User question
         paper_ids: List of paper UUIDs to search
-        connection: Database connection
+        user_id: User ID for Milvus filtering
         top_k: Number of chunks to retrieve
+        connection: Kept for API compatibility (not used)
 
     Returns:
         RAG response with answer and citations
@@ -398,6 +276,7 @@ async def rag_query(
     return await service.query(
         question=question,
         paper_ids=paper_ids,
+        user_id=user_id,
         top_k=top_k,
         connection=connection,
     )
@@ -433,26 +312,28 @@ async def retrieve_with_reranking(
     bge_m3_service = get_bge_m3_service()
     reranker_service = get_reranker_service()
 
-    # Step 1: Generate query embedding
+    # Step 1: Generate query embedding (1024-dim BGE-M3)
     query_embedding = bge_m3_service.encode_text(query)
+    # Ensure we have a single embedding (not a list of embeddings)
+    if isinstance(query_embedding[0], list):
+        query_embedding = query_embedding[0]  # type: ignore
 
-    # Step 2: Build filter expression
-    filter_expr = f'user_id == "{user_id}"'
-    if paper_ids:
-        paper_list = ', '.join(f'"{pid}"' for pid in paper_ids)
-        filter_expr += f' and paper_id in [{paper_list}]'
-
-    # Step 3: Initial retrieval from Milvus (top_k=20 per D-02)
+    # Step 2: Search Milvus
     initial_results = milvus_service.search_contents(
-        embedding=query_embedding,
-        filter_expr=filter_expr,
+        embedding=query_embedding,  # type: ignore
+        user_id=user_id,
+        content_type="text",
         top_k=top_k
     )
+
+    # Filter by paper_ids if provided
+    if paper_ids:
+        initial_results = [r for r in initial_results if r.get("paper_id") in paper_ids]
 
     if not initial_results:
         return []
 
-    # Step 4: Reranking (per D-02)
+    # Step 3: Reranking (per D-02)
     documents = [r.get("content_data", "") for r in initial_results]
 
     reranked = reranker_service.rerank(
@@ -461,11 +342,15 @@ async def retrieve_with_reranking(
         top_k=rerank_top_n
     )
 
-    # Step 5: Build final results with rerank scores
+    # Step 4: Build final results with rerank scores
+    # reranked is List[Tuple[document, score]]
     final_results = []
-    for item in reranked:
-        original_result = initial_results[item.index]
-        original_result["rerank_score"] = item.relevance_score
-        final_results.append(original_result)
+    for doc, score in reranked:
+        # Find the original result by document content
+        for r in initial_results:
+            if r.get("content_data", "") == doc:
+                r["rerank_score"] = score
+                final_results.append(r)
+                break
 
     return final_results
