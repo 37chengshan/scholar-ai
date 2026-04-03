@@ -364,3 +364,86 @@ class TestAgentWorkflow:
 
         # Verify session_id was used in context
         assert session_context["session_id"] in str(mock_context.environment)
+
+    async def test_tool_execution_via_registry(self, agent_runner, session_context):
+        """Test that tool execution uses Tool Registry (not mock).
+
+        Scenario: Agent executes tool
+        Expected:
+        - _execute_tool calls self.tool_registry.execute()
+        - No mock execution code is executed
+        - Registry returns real result from executor
+        """
+        # Mock context
+        mock_context = Context(
+            objective="测试真实执行",
+            important_messages=[
+                Message(role="user", content="测试真实执行")
+            ],
+            environment={
+                "user_id": session_context["user_id"],
+                "session_id": session_context["session_id"]
+            }
+        )
+
+        with patch.object(
+            agent_runner.context_manager,
+            'build_context',
+            return_value=mock_context
+        ):
+            # Mock LLM to select a tool
+            think_responses = [
+                {
+                    "is_complete": False,
+                    "tool_call": {
+                        "name": "list_papers",
+                        "parameters": {"limit": 10}
+                    }
+                },
+                {
+                    "is_complete": True,
+                    "content": "找到论文列表"
+                }
+            ]
+
+            with patch.object(agent_runner, '_think', side_effect=think_responses):
+                # Track registry.execute() calls
+                original_execute = agent_runner.tool_registry.execute
+                execute_calls = []
+
+                async def track_execute(tool_name, params, **kwargs):
+                    execute_calls.append({
+                        "tool_name": tool_name,
+                        "params": params,
+                        "kwargs": kwargs
+                    })
+                    return await original_execute(tool_name, params, **kwargs)
+
+                with patch.object(
+                    agent_runner.tool_registry,
+                    'execute',
+                    side_effect=track_execute
+                ):
+                    result = await agent_runner.execute(
+                        user_input="测试真实执行",
+                        session_id=session_context["session_id"],
+                        user_id=session_context["user_id"]
+                    )
+
+        # Verify result succeeded
+        assert result["success"] is True
+        assert len(result["tool_calls"]) >= 1
+
+        # Verify registry.execute() was called
+        assert len(execute_calls) >= 1
+        assert execute_calls[0]["tool_name"] == "list_papers"
+        assert execute_calls[0]["params"]["limit"] == 10
+
+        # Verify tool result came from registry (not mock)
+        tool_result = result["tool_calls"][0]["result"]
+        assert tool_result["success"] is True
+        # Should have real data from registry, not mock "Mock result for list_papers"
+        assert "papers" in tool_result["data"]
+        # Verify it's not the old mock pattern
+        assert tool_result["data"].get("tool") != "list_papers"
+        assert "Mock result" not in str(tool_result)

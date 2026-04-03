@@ -446,24 +446,25 @@ class AgentRunner:
             }
         
         try:
-            # Execute tool (placeholder - actual implementation in tools/)
-            # For now, return mock result
+            # Execute tool via Tool Registry (actual implementation)
             logger.info(
-                "Executing tool",
+                "Executing tool via registry",
                 tool=tool_name,
                 parameters=parameters
             )
-            
-            # Mock execution result (actual implementation will call services)
-            result = {
-                "success": True,
-                "data": {
-                    "tool": tool_name,
-                    "parameters": parameters,
-                    "result": f"Mock result for {tool_name}"
-                }
-            }
-            
+
+            result = await self.tool_registry.execute(
+                tool_name,
+                parameters,
+                context=context.environment
+            )
+
+            logger.info(
+                "Tool execution completed",
+                tool=tool_name,
+                success=result.get("success")
+            )
+
             return result
             
         except Exception as e:
