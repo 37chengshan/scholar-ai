@@ -168,7 +168,8 @@ class EmbeddingService:
         self,
         conn: Any,  # asyncpg.Connection
         paper_id: str,
-        chunks: List[Dict[str, Any]]
+        chunks: List[Dict[str, Any]],
+        whole_document: Optional[str] = None
     ) -> List[str]:
         """
         Store chunks with embeddings in PostgreSQL.
@@ -177,6 +178,7 @@ class EmbeddingService:
             conn: Database connection (asyncpg)
             paper_id: Paper UUID
             chunks: List of chunk dicts with text, section, page info
+            whole_document: Optional full document text for contextual embeddings (Gap 1)
 
         Returns:
             List of generated chunk IDs
@@ -185,17 +187,52 @@ class EmbeddingService:
             return []
 
         chunk_ids = []
-        texts = [c.get("text", "") for c in chunks]
 
-        # Generate embeddings in batch
-        logger.info(
-            "Generating embeddings for chunks",
-            paper_id=paper_id,
-            chunk_count=len(chunks)
-        )
-        embeddings = self.generate_embeddings_batch(texts)
+        # Generate embeddings - contextual or batch (per Gap 1 closure)
+        if whole_document and whole_document.strip():
+            # Contextual embedding per chunk (per D-01)
+            logger.info(
+                "Using contextual embeddings for chunks",
+                paper_id=paper_id,
+                chunk_count=len(chunks)
+            )
+            embeddings_and_texts = []
+            for i, chunk in enumerate(chunks):
+                chunk_text = chunk.get("text", "")
+                try:
+                    embedding, contextualized_text = self.create_contextual_embedding(
+                        chunk_text, whole_document
+                    )
+                    embeddings_and_texts.append((embedding, contextualized_text))
+                    logger.debug(
+                        "Generated contextual embedding",
+                        paper_id=paper_id,
+                        chunk_index=i,
+                        original_length=len(chunk_text),
+                        contextualized_length=len(contextualized_text)
+                    )
+                except Exception as e:
+                    # Fallback to basic embedding if contextual fails
+                    logger.warning(
+                        "Contextual embedding failed, using fallback",
+                        paper_id=paper_id,
+                        chunk_index=i,
+                        error=str(e)
+                    )
+                    embedding = self.generate_embedding(chunk_text)
+                    embeddings_and_texts.append((embedding, chunk_text))
+        else:
+            # Fallback to basic batch embedding
+            texts = [c.get("text", "") for c in chunks]
+            logger.info(
+                "Using batch embeddings for chunks (no whole_document)",
+                paper_id=paper_id,
+                chunk_count=len(chunks)
+            )
+            embeddings = self.generate_embeddings_batch(texts)
+            embeddings_and_texts = [(emb, txt) for emb, txt in zip(embeddings, texts)]
 
-        for chunk, embedding in zip(chunks, embeddings):
+        for chunk, (embedding, content_text) in zip(chunks, embeddings_and_texts):
             chunk_id = str(uuid.uuid4())
 
             # Extract metadata
@@ -209,15 +246,15 @@ class EmbeddingService:
             is_figure = any(m.get("type") == "picture" for m in media)
             is_formula = any(m.get("type") == "formula" for m in media)
 
-            # Limit content size
-            content = chunk.get("text", "")[:8000]
+            # Use contextualized_text for content (per Gap 1)
+            content = content_text[:8000]  # Limit size
 
             # Convert embedding to PostgreSQL vector format
             embedding_str = f"[{','.join(str(x) for x in embedding)}]"
 
             await conn.execute(
                 """INSERT INTO paper_chunks (
-                    id, "paperId", content, section, page_start, page_end,
+                    id, paper_id, content, section, page_start, page_end,
                     embedding, is_table, is_figure, is_formula
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8, $9, $10)""",
                 chunk_id,

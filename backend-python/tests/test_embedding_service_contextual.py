@@ -151,10 +151,10 @@ async def test_contextualized_text_stored(mock_conn, sample_chunks, mock_glm_api
         assert mock_conn.execute.call_count == len(sample_chunks)
 
         # Check that the content stored is contextualized (not original chunk text)
-        # The third argument to execute is the content
+        # The fourth argument to execute is the content (after SQL, chunk_id, paper_id)
         for call in mock_conn.execute.call_args_list:
             args = call[0]
-            stored_content = args[2]  # content is third argument after SQL and params
+            stored_content = args[3]  # content is fourth argument after SQL string
 
             # Contextualized content should contain GLM-generated context
             # Original chunk text: "We evaluated our model..."
@@ -184,7 +184,7 @@ async def test_fallback_to_basic_embedding_when_none(mock_conn, sample_chunks):
 
         # Check stored content is original chunk text
         first_call_args = mock_conn.execute.call_args_list[0][0]
-        stored_content = first_call_args[2]
+        stored_content = first_call_args[3]  # content is fourth argument
         assert stored_content == sample_chunks[0]["text"][:8000]
 
 
