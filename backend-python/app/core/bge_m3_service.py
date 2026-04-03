@@ -57,11 +57,28 @@ class BGEM3Service:
                 device=self.device,
             )
 
-            # Load with FP16 for memory efficiency
+            import os
+            from pathlib import Path
+            
+            cache_dir = Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-m3"
+            snapshot_file = cache_dir / "refs" / "main"
+            
+            if snapshot_file.exists():
+                snapshot_hash = snapshot_file.read_text().strip()
+                local_path = cache_dir / "snapshots" / snapshot_hash
+                if local_path.exists():
+                    logger.info("Using cached BGE-M3 model", path=str(local_path))
+                    model_path = str(local_path)
+                else:
+                    model_path = self.MODEL_NAME
+            else:
+                model_path = self.MODEL_NAME
+
             use_fp16 = self.device == "cuda"
             self.model = BGEM3FlagModel(
-                self.MODEL_NAME,
+                model_path,
                 use_fp16=use_fp16,
+                devices=self.device,
             )
             self._initialized = True
 

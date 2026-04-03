@@ -19,6 +19,7 @@ from app.core.database import init_databases, close_databases
 from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker_service import get_reranker_service
+from app.core.bge_m3_service import get_bge_m3_service
 
 
 @asynccontextmanager
@@ -59,6 +60,18 @@ async def lifespan(app: FastAPI):
         logger.error("Failed to initialize ReRanker", error=str(e))
         # Don't fail startup - ReRanker is optional for basic functionality
         app.state.reranker_service = None
+
+    # Initialize BGE-M3
+    try:
+        logger.info("Initializing BGE-M3...")
+        bge_m3_service = get_bge_m3_service()
+        bge_m3_service.load_model()
+        app.state.bge_m3_service = bge_m3_service
+        logger.info("BGE-M3 model loaded", model=bge_m3_service.MODEL_NAME)
+    except Exception as e:
+        logger.error("Failed to initialize BGE-M3", error=str(e))
+        # Don't fail startup - BGE-M3 is optional for basic functionality
+        app.state.bge_m3_service = None
 
     yield
 

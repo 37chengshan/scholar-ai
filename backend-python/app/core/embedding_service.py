@@ -215,7 +215,7 @@ class EmbeddingService:
 
             await conn.execute(
                 """INSERT INTO paper_chunks (
-                    id, \"paperId\", content, section, page_start, page_end,
+                    id, "paperId", content, section, page_start, page_end,
                     embedding, is_table, is_figure, is_formula
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8, $9, $10)""",
                 chunk_id,
