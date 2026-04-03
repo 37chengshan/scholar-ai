@@ -401,3 +401,71 @@ async def rag_query(
         top_k=top_k,
         connection=connection,
     )
+
+
+async def retrieve_with_reranking(
+    query: str,
+    user_id: str,
+    paper_ids: Optional[List[str]] = None,
+    top_k: int = 20,
+    rerank_top_n: int = 5
+) -> List[Dict[str, Any]]:
+    """Retrieve chunks with reranking per D-02.
+
+    Performs initial Milvus search and reranks results using BGE-Reranker-large.
+
+    Args:
+        query: Search query
+        user_id: User ID for filtering
+        paper_ids: Optional paper IDs to filter
+        top_k: Initial retrieval candidates (default 20 per D-02)
+        rerank_top_n: Number of results after reranking (default 5 per D-02)
+
+    Returns:
+        List of chunks with rerank_score field
+    """
+    from app.core.milvus_service import get_milvus_service
+    from app.core.bge_m3_service import get_bge_m3_service
+    from app.core.reranker_service import get_reranker_service
+
+    # Get singleton instances
+    milvus_service = get_milvus_service()
+    bge_m3_service = get_bge_m3_service()
+    reranker_service = get_reranker_service()
+
+    # Step 1: Generate query embedding
+    query_embedding = bge_m3_service.encode_text(query)
+
+    # Step 2: Build filter expression
+    filter_expr = f'user_id == "{user_id}"'
+    if paper_ids:
+        paper_list = ', '.join(f'"{pid}"' for pid in paper_ids)
+        filter_expr += f' and paper_id in [{paper_list}]'
+
+    # Step 3: Initial retrieval from Milvus (top_k=20 per D-02)
+    initial_results = milvus_service.search_contents(
+        embedding=query_embedding,
+        filter_expr=filter_expr,
+        top_k=top_k
+    )
+
+    if not initial_results:
+        return []
+
+    # Step 4: Reranking (per D-02)
+    documents = [r.get("content_data", "") for r in initial_results]
+
+    reranked = reranker_service.rerank(
+        query=query,
+        documents=documents,
+        top_k=rerank_top_n
+    )
+
+    # Step 5: Build final results with rerank scores
+    final_results = []
+    for item in reranked:
+        original_result = initial_results[item.index]
+        original_result["rerank_score"] = item.relevance_score
+        final_results.append(original_result)
+
+    return final_results
