@@ -19,6 +19,11 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
 from docling_core.types.doc import TextItem, TableItem, PictureItem
 
+# Semantic chunking imports (per D-03)
+from llama_index.core.node_parser import SemanticSplitterNodeParser
+from llama_index.core import Document
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
 from app.utils.logger import logger
 
 
@@ -248,6 +253,97 @@ class DoclingParser:
         )
 
         return chunks
+
+    def chunk_by_semantic(
+        self,
+        items: List[dict],
+        paper_id: str,
+        imrad_structure: Optional[dict] = None
+    ) -> List[dict]:
+        """Create chunks using semantic splitting per D-03.
+
+        Args:
+            items: List of parsed items from Docling
+            paper_id: Paper ID
+            imrad_structure: Optional IMRaD structure
+
+        Returns:
+            List of semantic chunks with overlap
+        """
+        # Extract text items
+        texts = []
+        for item in items:
+            if item.get("type") == "text" and item.get("text"):
+                texts.append(item["text"])
+
+        if not texts:
+            return []
+
+        # Create embedding model (reuse BGE-M3)
+        from app.core.bge_m3_service import bge_m3_service
+
+        embed_model = HuggingFaceEmbedding(
+            model_name="BAAI/bge-m3",
+            embed_model=bge_m3_service.model
+        )
+
+        # Create semantic splitter with LOCKED parameters (per D-03)
+        splitter = SemanticSplitterNodeParser(
+            buffer_size=1,  # LOCKED per D-03
+            breakpoint_percentile_threshold=95,  # LOCKED per D-03
+            embed_model=embed_model
+        )
+
+        # Create LlamaIndex documents
+        documents = [Document(text=t) for t in texts]
+
+        # Perform semantic splitting
+        nodes = splitter.get_nodes_from_documents(documents)
+
+        # Convert to our chunk format with overlap
+        chunks = []
+        for i, node in enumerate(nodes):
+            chunk = {
+                "text": node.text,
+                "page_start": None,  # Will be assigned by PDF worker
+                "page_end": None,
+                "section": None,
+                "overlap": 100 if i > 0 else 0,  # 100 tokens overlap per D-03
+                "media": []
+            }
+
+            # Assign section from IMRaD if available
+            if imrad_structure:
+                chunk["section"] = self._assign_section(
+                    node.text,
+                    imrad_structure
+                )
+
+            chunks.append(chunk)
+
+        logger.info(
+            "Semantic chunking complete",
+            input_texts=len(texts),
+            output_chunks=len(chunks),
+            paper_id=paper_id,
+        )
+
+        return chunks
+
+    def _assign_section(self, text: str, imrad_structure: dict) -> Optional[str]:
+        """Assign section based on IMRaD structure.
+
+        This is a placeholder - actual section assignment
+        will be done by PDF worker with page information.
+        """
+        # Simple heuristic: check text length and position
+        # This will be improved by PDF worker with page info
+        for section_name, section_data in imrad_structure.items():
+            if section_name.startswith("_"):
+                continue
+            # Placeholder - actual assignment done by PDF worker
+            pass
+        return None
 
     async def extract_imrad(self, markdown: str) -> dict:
         """
