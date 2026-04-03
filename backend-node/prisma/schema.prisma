@@ -15,6 +15,7 @@ model User {
   passwordHash  String   @map("password_hash")
   emailVerified Boolean  @default(false) @map("email_verified")
   avatar        String?
+  settings      Json?    @map("settings")  // { language: 'zh'|'en', defaultModel: string, theme: string }
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -26,8 +27,25 @@ model User {
   refreshTokens RefreshToken[]
   sessions      Session[]
   notes         Note[]
+  apiKeys       ApiKey[]
 
   @@map("users")
+}
+
+// API密钥表
+model ApiKey {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  name      String
+  keyHash   String    @map("key_hash")  // Argon2 hash of full key
+  prefix    String    // First 8 chars for display (e.g., "sk_live_a")
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
 }
 
 // 论文表
