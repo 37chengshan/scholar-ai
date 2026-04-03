@@ -115,7 +115,9 @@ router.post('/stream', requirePermission('chat', 'create'), async (req: AuthRequ
     // Handle client disconnect
     req.on('close', () => {
       logger.info('Client disconnected from SSE stream');
-      response.body?.destroy();
+      // Removed: response.body?.destroy();
+      // Reason: Fetch API ReadableStream doesn't have destroy() method
+      // req.on('close') event already handles cleanup when client disconnects
     });
 
   } catch (error) {
