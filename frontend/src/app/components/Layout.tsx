@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router";
 import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, FileText, UploadCloud, LogOut } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { mockLogout } from "../../mocks/auth";
+import { Logo } from "./landing/Logo";
 
 const navItemsEN = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Overview" },
@@ -39,12 +40,7 @@ export function Layout() {
         {/* Left Side: Logo & Main Navigation */}
         <div className="flex items-center gap-6 lg:gap-8 h-full">
           {/* Logo Area */}
-          <div className="flex items-baseline gap-2">
-            <h1 className="font-serif text-lg lg:text-xl font-black tracking-tighter leading-none text-foreground">
-              ScholarAI
-            </h1>
-            <div className="text-[8px] font-bold tracking-[0.3em] uppercase text-primary hidden sm:block">Vol.4</div>
-          </div>
+          <Logo />
 
           {/* Navigation Links */}
           <nav className="hidden md:flex items-center gap-1 lg:gap-2 pl-6 lg:pl-8 border-l border-border/50 h-8">
