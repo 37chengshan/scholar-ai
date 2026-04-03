@@ -6,8 +6,10 @@ Provides:
 - Vector insertion, search, and deletion
 - Index management (IVF_FLAT with Cosine similarity)
 - Proper connection lifecycle management
+- Quality scoring for chunks (per D-06)
 """
 
+import re
 import time
 from typing import List, Dict, Any, Optional
 from functools import wraps
@@ -42,6 +44,53 @@ def retry_with_backoff(max_retries: int = 5, base_delay: float = 1.0):
             return None
         return wrapper
     return decorator
+
+
+def is_header_footer(text: str) -> bool:
+    """Detect if text is header/footer (per D-06).
+    
+    Args:
+        text: Text to check
+        
+    Returns:
+        True if text matches header/footer patterns
+    """
+    # Check for common patterns (per D-06 lines 407-427 in CONTEXT.md)
+    patterns = [
+        r"^\d+\s*$",  # Page numbers
+        r"^\d{4}-\d{2}-\d{2}",  # Dates
+        r"^(Page|第)\s*\d+",  # Page labels
+    ]
+    return any(re.match(p, text.strip()) for p in patterns)
+
+
+def calculate_chunk_quality(chunk: dict) -> float:
+    """Calculate chunk quality score per D-06.
+    
+    Args:
+        chunk: Chunk dictionary with text and metadata
+        
+    Returns:
+        Quality score in 0-1 range
+    """
+    score = 1.0
+    text = chunk.get("text", "")
+    
+    # Reduce low-quality content (per D-06 lines 407-427 in CONTEXT.md)
+    if len(text) < 50:
+        score *= 0.3  # Too short
+    
+    if is_header_footer(text):
+        score *= 0.2  # Header/footer
+    
+    if "references" in chunk.get("section", "").lower():
+        score *= 0.5  # References section
+    
+    # Boost high-quality content
+    if chunk.get("has_equations") or chunk.get("has_figures"):
+        score *= 1.2
+    
+    return min(score, 1.0)
 
 
 class MilvusService:
@@ -424,10 +473,18 @@ class MilvusService:
         logger.info(f"Deleted vectors for paper {paper_id}")
 
     def create_paper_contents_collection(self) -> Collection:
-        """Create unified paper_contents collection with 1024-dim schema.
+        """Create unified paper_contents collection with enhanced schema (per D-06).
 
         This collection stores all multimodal content (images, tables, text)
         with BGE-M3 1024-dimensional embeddings for unified retrieval.
+        
+        Enhanced with 6 metadata fields for quality scoring and version management:
+        - section: Document section (Introduction, Methods, Results, etc.)
+        - quality_score: Chunk quality (0-1 range)
+        - word_count: Number of words in chunk
+        - has_equations: Boolean flag for mathematical content
+        - has_figures: Boolean flag for figure/table content
+        - extraction_version: Version number for incremental updates
         """
         fields = [
             FieldSchema(
@@ -460,6 +517,40 @@ class MilvusService:
                 dtype=DataType.INT32,
                 description="Page number"
             ),
+            
+            # New metadata fields (per D-06, lines 384-402 in CONTEXT.md)
+            FieldSchema(
+                name="section",
+                dtype=DataType.VARCHAR,
+                max_length=64,
+                description="Document section: Introduction/Methods/Results/etc."
+            ),
+            FieldSchema(
+                name="quality_score",
+                dtype=DataType.FLOAT,
+                description="Chunk quality score (0-1 range)"
+            ),
+            FieldSchema(
+                name="word_count",
+                dtype=DataType.INT32,
+                description="Number of words in chunk"
+            ),
+            FieldSchema(
+                name="has_equations",
+                dtype=DataType.BOOL,
+                description="Contains mathematical equations"
+            ),
+            FieldSchema(
+                name="has_figures",
+                dtype=DataType.BOOL,
+                description="Contains figures or charts"
+            ),
+            FieldSchema(
+                name="extraction_version",
+                dtype=DataType.INT32,
+                description="Extraction version for incremental updates"
+            ),
+            
             FieldSchema(
                 name="content_data",
                 dtype=DataType.VARCHAR,
@@ -484,8 +575,9 @@ class MilvusService:
         collection.load()
 
         logger.info(
-            "Created paper_contents collection",
-            embedding_dim=self.BGE_EMBEDDING_DIM
+            "Created paper_contents collection with enhanced schema",
+            embedding_dim=self.BGE_EMBEDDING_DIM,
+            metadata_fields=6
         )
         return collection
 
