@@ -14,6 +14,18 @@ from app.models.chat_message import (
     ChatMessageResponse,
     MessageRole,
 )
+from app.models.chat import (
+    ChatStreamRequest,
+    ChatConfirmRequest,
+    SSEEvent,
+    SSEEventType,
+    ThoughtEventData,
+    ToolCallEventData,
+    ToolResultEventData,
+    ConfirmationRequiredEventData,
+    MessageEventData,
+    ErrorEventData,
+)
 from app.models.note import (
     NoteBase,
     NoteCreate,
@@ -43,6 +55,17 @@ __all__ = [
     "ChatMessageResponse",
     "ChatMessageListResponse",
     "MessageRole",
+    # Chat API models
+    "ChatStreamRequest",
+    "ChatConfirmRequest",
+    "SSEEvent",
+    "SSEEventType",
+    "ThoughtEventData",
+    "ToolCallEventData",
+    "ToolResultEventData",
+    "ConfirmationRequiredEventData",
+    "MessageEventData",
+    "ErrorEventData",
     # Note models
     "NoteBase",
     "NoteCreate",
