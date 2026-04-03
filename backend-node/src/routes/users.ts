@@ -72,6 +72,225 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
+// PATCH /api/users/me - Update user profile
+router.patch('/me', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const { name, email, avatar } = req.body;
+
+    // Validate at least one field provided
+    if (!name && !email && !avatar) {
+      throw Errors.validation('At least one field (name, email, avatar) required');
+    }
+
+    // Build update object
+    const updates: { name?: string; email?: string; avatar?: string } = {};
+    if (name) updates.name = name;
+    if (email) {
+      // Check email uniqueness
+      const existingUser = await prisma.user.findUnique({ where: { email } });
+      if (existingUser && existingUser.id !== userId) {
+        throw Errors.validation('Email already in use');
+      }
+      updates.email = email;
+    }
+    if (avatar) updates.avatar = avatar;
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: updates,
+      select: { id: true, name: true, email: true, avatar: true },
+    });
+
+    logger.info('Profile updated', { userId, fields: Object.keys(updates) });
+
+    res.json({
+      success: true,
+      data: user,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/users/me/avatar - Upload avatar
+router.post('/me/avatar', authenticate, upload.single('avatar'), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+
+    if (!userId) {
+      throw Errors.unauthorized('User not authenticated');
+    }
+
+    if (!req.file) {
+      throw Errors.validation('Avatar file required');
+    }
+
+    // Validate file type (image only)
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      throw Errors.validation('Invalid file type. Allowed: JPEG, PNG, WebP');
+    }
+
+    // Upload to S3/MinIO
+    const filename = `avatars/${userId}-${Date.now()}.${req.file.mimetype.split('/')[1]}`;
+    const avatarUrl = await uploadFile(
+      userId,
+      req.file.buffer,
+      filename,
+      req.file.mimetype
+    );
+
+    // Update user avatar URL
+    await prisma.user.update({
+      where: { id: userId },
+      data: { avatar: avatarUrl },
+    });
+
+    logger.info('Avatar uploaded', { userId, url: avatarUrl });
+
+    res.json({
+      success: true,
+      data: { avatar: avatarUrl },
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/users/me/settings - Get user preferences
+router.get('/me/settings', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { settings: true },
+    });
+
+    if (!user) {
+      throw Errors.notFound('User not found');
+    }
+
+    // Default settings if null
+    const settings = user.settings || {
+      language: 'zh',
+      defaultModel: 'glm-4-flash',
+      theme: 'light',
+    };
+
+    res.json({
+      success: true,
+      data: settings,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/users/me/settings - Update user preferences
+router.patch('/me/settings', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const { language, defaultModel, theme } = req.body;
+
+    if (!userId) {
+      throw Errors.unauthorized('User not authenticated');
+    }
+
+    // Validate language
+    if (language && !['zh', 'en'].includes(language)) {
+      throw Errors.validation('Invalid language. Allowed: zh, en');
+    }
+
+    // Validate theme
+    if (theme && !['light', 'dark'].includes(theme)) {
+      throw Errors.validation('Invalid theme. Allowed: light, dark');
+    }
+
+    // Get current settings or default
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { settings: true },
+    });
+
+    const defaultSettings = { language: 'zh', defaultModel: 'glm-4-flash', theme: 'light' };
+    const currentSettings = (user?.settings as Record<string, unknown>) || defaultSettings;
+
+    // Merge updates
+    const updatedSettings = {
+      ...currentSettings,
+      ...(language && { language }),
+      ...(defaultModel && { defaultModel }),
+      ...(theme && { theme }),
+    };
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { settings: updatedSettings },
+    });
+
+    logger.info('Settings updated', { userId, settings: updatedSettings });
+
+    res.json({
+      success: true,
+      data: updatedSettings,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/users/me/password - Change password
+router.patch('/me/password', authenticate, requireReauth, async (req: ReauthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const { newPassword } = req.body;
+
+    if (!userId) {
+      throw Errors.unauthorized('User not authenticated');
+    }
+
+    // requireReauth already validated currentPassword
+    if (!req.reauthVerified) {
+      throw Errors.validation('Re-authentication required');
+    }
+
+    // Validate new password strength
+    if (!newPassword || newPassword.length < 8) {
+      throw Errors.validation('New password must be at least 8 characters');
+    }
+
+    // Hash new password
+    const passwordHash = await hashPassword(newPassword);
+
+    // Update user password
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    logger.info('Password changed', { userId });
+
+    // Invalidate all refresh tokens (security measure)
+    await prisma.refreshToken.deleteMany({
+      where: { userId },
+    });
+
+    res.json({
+      success: true,
+      data: { message: 'Password changed successfully. Please log in again.' },
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/users/:id/stats - Get user statistics for Dashboard
 router.get('/:id/stats', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -203,6 +422,10 @@ router.post('/me/api-keys', authenticate, async (req: AuthRequest, res, next) =>
     const userId = req.user?.sub;
     const { name } = req.body;
 
+    if (!userId) {
+      throw Errors.unauthorized('User not authenticated');
+    }
+
     if (!name || name.length < 1) {
       throw Errors.validation('API key name required');
     }
@@ -248,10 +471,14 @@ router.post('/me/api-keys', authenticate, async (req: AuthRequest, res, next) =>
 });
 
 // DELETE /api/users/me/api-keys/:keyId - Delete API key
-router.delete('/me/api-keys/:keyId', authenticate, requireReauth, async (req: AuthRequest, res, next) => {
+router.delete('/me/api-keys/:keyId', authenticate, requireReauth, async (req: ReauthRequest, res, next) => {
   try {
     const userId = req.user?.sub;
     const { keyId } = req.params;
+
+    if (!userId) {
+      throw Errors.unauthorized('User not authenticated');
+    }
 
     // requireReauth already validated currentPassword
     if (!req.reauthVerified) {

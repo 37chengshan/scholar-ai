@@ -261,6 +261,49 @@ export async function objectExists(storageKey: string): Promise<boolean> {
   }
 }
 
+/**
+ * Upload file buffer directly to storage and return URL
+ * Used for avatar uploads and small files
+ */
+export async function uploadFile(
+  userId: string,
+  fileBuffer: Buffer,
+  filename: string,
+  contentType: string
+): Promise<string> {
+  const storageKey = filename;
+
+  if (USE_LOCAL_STORAGE) {
+    // Save to local storage
+    const filePath = getLocalFilePath(storageKey);
+    await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
+    await fsPromises.writeFile(filePath, fileBuffer);
+    logger.info(`Uploaded file to local storage: ${filePath}`);
+    // Return local URL
+    return `http://localhost:${process.env.PORT || 4000}/api/download/local/${encodeURIComponent(storageKey)}`;
+  }
+
+  // Upload to S3/MinIO
+  const command = new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: storageKey,
+    Body: fileBuffer,
+    ContentType: contentType,
+  });
+
+  try {
+    await s3Client.send(command);
+    // Return public URL (MinIO/S3 format)
+    const endpoint = process.env.OSS_ENDPOINT || '';
+    const url = `${endpoint}/${BUCKET_NAME}/${storageKey}`;
+    logger.info(`Uploaded file to object storage: ${url}`);
+    return url;
+  } catch (error) {
+    logger.error('Failed to upload file:', error);
+    throw new Error('Failed to upload file');
+  }
+}
+
 export {
   s3Client,
   BUCKET_NAME,
