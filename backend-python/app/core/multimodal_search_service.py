@@ -54,6 +54,47 @@ class MultimodalSearchService:
         self.milvus = get_milvus_service()
         self.reranker = get_reranker_service()
 
+    def _format_compare_response(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Format results for compare intent - group by paper.
+
+        Per D-15: Intent-based post-processing for compare queries.
+
+        Args:
+            results: List of search results
+
+        Returns:
+            List grouped by paper_id: [{"paper_id": pid, "results": [...]}, ...]
+        """
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        
+        for result in results:
+            paper_id = result.get("paper_id", "unknown")
+            if paper_id not in grouped:
+                grouped[paper_id] = []
+            grouped[paper_id].append(result)
+        
+        # Convert to list format
+        return [
+            {"paper_id": paper_id, "results": paper_results}
+            for paper_id, paper_results in grouped.items()
+        ]
+
+    def _format_summary_response(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Format results for summary intent - extract key points.
+
+        Per D-15: Intent-based post-processing for summary queries.
+
+        Args:
+            results: List of search results
+
+        Returns:
+            Dict with key_points (top 3) and total_chunks count
+        """
+        return {
+            "key_points": results[:3] if len(results) > 3 else results,
+            "total_chunks": len(results),
+        }
+
     async def search(
         self,
         query: str,
@@ -163,15 +204,37 @@ class MultimodalSearchService:
                     error=str(e),
                 )
 
-        return {
+        # Step 6: Intent-based result formatting (per D-15)
+        final_results = fused[:top_k]
+        additional_fields = {}
+        
+        if query_intent == "compare":
+            # Add grouped_by_paper for compare intent
+            grouped_results = self._format_compare_response(fused[:top_k])
+            additional_fields["grouped_by_paper"] = grouped_results
+            logger.info("Applied compare formatting", groups=len(grouped_results))
+        elif query_intent == "summary":
+            # Add key_points for summary intent
+            summary_format = self._format_summary_response(fused)
+            additional_fields["key_points"] = summary_format["key_points"]
+            additional_fields["total_chunks"] = summary_format["total_chunks"]
+            logger.info("Applied summary formatting", key_points=len(summary_format["key_points"]))
+
+        # Build response
+        response = {
             "query": query,
             "expanded_query": expanded_query,
             "intent": query_intent,
             "metadata_filters": metadata_filters,
             "weights": weights,
-            "results": fused[:top_k],
+            "results": final_results,
             "total_count": len(fused),
         }
+        
+        # Add intent-specific fields
+        response.update(additional_fields)
+        
+        return response
 
     def _apply_reranking(
         self,
