@@ -1,9 +1,10 @@
 import { ArrowRight, Fingerprint, Database, Cpu, Activity, ShieldCheck, TerminalSquare, Command } from "lucide-react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
-import { clsx } from "clsx";
 import { useState, useEffect } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
+import { Badge } from "../components/ui/badge";
+import { mockLogin } from "../../mocks/auth";
 
 const SYSTEM_LOGS_EN = [
   "[SYS] Initializing Node 04 environment...",
@@ -27,7 +28,11 @@ export function Login() {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const [logs, setLogs] = useState<string[]>([]);
-  
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
   const isZh = language === "zh";
   const SYSTEM_LOGS = isZh ? SYSTEM_LOGS_ZH : SYSTEM_LOGS_EN;
 
@@ -76,9 +81,23 @@ export function Login() {
     return () => clearInterval(interval);
   }, [language]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate("/");
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const result = await mockLogin(email, password);
+      if (result.success) {
+        navigate("/dashboard");
+      } else {
+        setError(result.error || (isZh ? "登录失败" : "Login failed"));
+      }
+    } catch (err) {
+      setError(isZh ? "登录失败" : "Login failed");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -119,10 +138,7 @@ export function Login() {
           className="flex flex-col gap-8 max-w-xl my-12 md:my-0"
         >
           <div className="flex flex-col">
-            <h2 className={clsx(
-              "font-serif font-black leading-[0.85] tracking-tighter text-foreground",
-              isZh ? "text-[60px] md:text-[80px] xl:text-[100px] mb-2" : "text-[60px] md:text-[90px] xl:text-[120px]"
-            )}>
+            <h2 className={`font-serif font-black leading-[0.85] tracking-tighter text-foreground ${isZh ? "text-[60px] md:text-[80px] xl:text-[100px] mb-2" : "text-[60px] md:text-[90px] xl:text-[120px]"}`}>
               {t.title1}<br />
               <span className="text-primary/90 italic font-medium tracking-tight">{t.title2}</span>
             </h2>
@@ -194,6 +210,13 @@ export function Login() {
 
       {/* Right Column: Login Form */}
       <div className="w-full md:w-[480px] lg:w-[540px] flex flex-col justify-center items-center p-8 lg:p-16 bg-background relative z-10 shadow-2xl">
+        {/* Development Indicator */}
+        <div className="absolute top-2 right-2 z-50">
+          <Badge variant="secondary" className="text-xs">
+            {isZh ? "认证开发中" : "Auth Under Development"}
+          </Badge>
+        </div>
+
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -217,11 +240,13 @@ export function Login() {
                 <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                   {t.userId}
                 </label>
-                <input 
-                  type="text" 
-                  defaultValue="vance.e@institute.edu"
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-serif focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
                   placeholder={t.enterCreds}
+                  required
                 />
               </div>
 
@@ -234,22 +259,33 @@ export function Login() {
                     {t.reset}
                   </a>
                 </div>
-                <input 
-                  type="password" 
-                  defaultValue="**********"
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-mono tracking-[0.3em] focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
                   placeholder={t.enterKey}
+                  required
                 />
               </div>
             </div>
 
+            {error && (
+              <div className="text-sm text-red-500 font-medium">
+                {error}
+              </div>
+            )}
+
             <div className="flex flex-col gap-4 mt-4">
-              <button 
-                type="submit" 
-                className="w-full bg-foreground text-background py-4 flex items-center justify-center gap-3 rounded-sm group hover:bg-primary transition-colors shadow-lg hover:shadow-primary/20"
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-foreground text-background py-4 flex items-center justify-center gap-3 rounded-sm group hover:bg-primary transition-colors shadow-lg hover:shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="text-[10px] font-bold tracking-[0.3em] uppercase">{t.connect}</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                <span className="text-[10px] font-bold tracking-[0.3em] uppercase">
+                  {isLoading ? (isZh ? "连接中..." : "Connecting...") : t.connect}
+                </span>
+                {!isLoading && <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />}
               </button>
               
               <div className="grid grid-cols-2 gap-4">
