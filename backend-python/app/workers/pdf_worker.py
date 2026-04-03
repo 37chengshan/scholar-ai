@@ -229,6 +229,9 @@ class PDFProcessor:
             await self._update_status(task_id, "storing_vectors")
             logger.info("Starting chunking and embedding", task_id=task_id)
 
+            # Extract whole document markdown for contextual embeddings (Gap 1)
+            whole_document = parsed.get("markdown", "")
+
             # Chunking strategy: Semantic splitting with LlamaIndex (per D-03)
             # Parameters: buffer_size=1, breakpoint_percentile_threshold=95
             # Overlap: 100 tokens for context continuity
@@ -259,10 +262,11 @@ class PDFProcessor:
                 chunk_count=len(chunks)
             )
 
-            # Store chunks in PostgreSQL with embeddings
+            # Store chunks in PostgreSQL with embeddings (Gap 1: contextual embeddings)
             async with self.db_pool.acquire() as conn:
                 chunk_ids = await self.embedding_service.store_chunks(
-                    conn, paper_id, chunks
+                    conn, paper_id, chunks,
+                    whole_document=whole_document  # Pass whole document for contextual embedding
                 )
 
             logger.info(

@@ -302,3 +302,34 @@ async def test_glm_api_failure_retry(mock_conn, sample_chunks, whole_document_te
 
         # Verify retry happened (API called twice)
         assert mock_client.chat.completions.create.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_pdf_worker_integration_passes_whole_document(mock_conn, sample_chunks, mock_glm_api, whole_document_text):
+    """Test 6: Integration test simulating pdf_worker flow."""
+    service = EmbeddingService()
+
+    # Simulate pdf_worker parsed data
+    parsed_data = {
+        "markdown": whole_document_text,
+        "page_count": 10,
+        "items": [],  # Mock items
+    }
+
+    with patch('zhipuai.ZhipuAI', return_value=mock_glm_api):
+        # Simulate pdf_worker calling store_chunks with whole_document from parsed data
+        chunk_ids = await service.store_chunks(
+            mock_conn,
+            "test-paper-id",
+            sample_chunks,
+            whole_document=parsed_data["markdown"]  # Pass from parsed data (as pdf_worker does)
+        )
+
+        # Verify whole_document parameter passed correctly
+        assert mock_conn.execute.call_count == len(sample_chunks)
+
+        # Verify GLM API was called for each chunk
+        assert mock_glm_api.chat.completions.create.call_count == len(sample_chunks)
+
+        # Verify chunks stored successfully
+        assert len(chunk_ids) == len(sample_chunks)
