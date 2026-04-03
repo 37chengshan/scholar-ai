@@ -82,6 +82,35 @@ class LibrarySearchResponse(BaseModel):
 
 
 # =============================================================================
+# Fusion Search Models
+# =============================================================================
+
+
+class FusionSearchRequest(BaseModel):
+    """Fusion search request combining library + external sources."""
+
+    query: str = Field(..., description="Search query", min_length=1, max_length=500)
+    paper_ids: List[str] = Field(default=[], description="User's library paper IDs to search")
+    limit: int = Field(default=20, description="Maximum results to return", ge=1, le=50)
+    sources: List[str] = Field(
+        default=["library", "arxiv", "semantic_scholar"],
+        description="Sources to search (library, arxiv, semantic_scholar)"
+    )
+
+
+class FusionSearchResponse(BaseModel):
+    """Fusion search response with merged results."""
+
+    query: str = Field(..., description="Original search query")
+    results: List[SearchResult] = Field(..., description="Merged and ranked results")
+    sources: Dict[str, Dict[str, Any]] = Field(
+        ...,
+        description="Per-source status {count, success, error?}"
+    )
+    warnings: List[str] = Field(default=[], description="Warnings for failed sources")
+
+
+# =============================================================================
 # Redis Client Helper
 # =============================================================================
 
