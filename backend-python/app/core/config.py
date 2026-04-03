@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     # LLM配置
     DEFAULT_MODEL: str = "gpt-4o-mini"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
+    
+    # GLM-4.5-Air Configuration (for Agent Runner)
+    LLM_MODEL: str = "zhipu/glm-4.5-air"  # LiteLLM model identifier
+    LLM_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"  # Zhipu AI API base
+    LLM_MAX_TOKENS: int = 2048  # Maximum output tokens
+    LLM_TEMPERATURE: float = 0.7  # Sampling temperature
+    LLM_MAX_RETRIES: int = 5  # Max retries for rate limits
 
     # JWT内部服务通信 (RS256公钥用于验证Node.js Gateway发来的token)
     JWT_INTERNAL_PUBLIC_KEY: str = ""
