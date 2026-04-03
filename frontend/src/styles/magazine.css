@@ -1,0 +1,208 @@
+/* Magazine-style landing page styles */
+
+/* Import Google Fonts for magazine aesthetic */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+/* Magazine landing page specific variables */
+:root {
+  /* Warm paper-like background */
+  --magazine-bg: #F4ECE1;
+  --magazine-bg-light: #fdfaf6;
+  --magazine-bg-dark: #f4eee0;
+  
+  /* Serif font family for magazine feel */
+  --magazine-font-serif: 'Playfair Display', 'Noto Serif SC', Georgia, serif;
+  --magazine-font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  /* Paper texture overlay opacity */
+  --paper-texture-opacity: 0.03;
+}
+
+/* Magazine landing page root styles */
+.magazine-landing {
+  background-color: var(--magazine-bg);
+  font-family: var(--magazine-font-serif);
+}
+
+/* Paper texture overlay effect */
+.paper-texture {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  opacity: var(--paper-texture-opacity);
+  pointer-events: none;
+  background-image: 
+    /* Subtle grain texture */
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+/* Magazine typography styles */
+.magazine-title {
+  font-family: var(--magazine-font-serif);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.magazine-subtitle {
+  font-family: var(--magazine-font-serif);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.magazine-body {
+  font-family: var(--magazine-font-sans);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* Magazine section styles */
+.magazine-section {
+  padding-top: 6rem;
+  padding-bottom: 6rem;
+}
+
+.magazine-section-header {
+  text-align: center;
+  margin-bottom: 4rem;
+}
+
+/* Smooth scroll behavior for landing page navigation */
+.magazine-landing {
+  scroll-behavior: smooth;
+}
+
+/* Magazine card styles */
+.magazine-card {
+  background: white;
+  border: 1px solid rgba(45, 36, 30, 0.1);
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px rgba(45, 36, 30, 0.05);
+  transition: all 0.3s ease;
+}
+
+.magazine-card:hover {
+  box-shadow: 0 8px 12px rgba(45, 36, 30, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Magazine button styles */
+.magazine-btn-primary {
+  background-color: #d35400;
+  color: white;
+  font-family: var(--magazine-font-sans);
+  font-weight: 600;
+  border-radius: 9999px;
+  padding: 0.75rem 2rem;
+  transition: all 0.3s ease;
+}
+
+.magazine-btn-primary:hover {
+  background-color: #e67e22;
+  transform: scale(1.05);
+}
+
+.magazine-btn-secondary {
+  background-color: transparent;
+  color: #d35400;
+  font-family: var(--magazine-font-sans);
+  font-weight: 600;
+  border: 2px solid #d35400;
+  border-radius: 9999px;
+  padding: 0.75rem 2rem;
+  transition: all 0.3s ease;
+}
+
+.magazine-btn-secondary:hover {
+  background-color: #d35400;
+  color: white;
+}
+
+/* Magazine navigation styles */
+.magazine-nav {
+  background: rgba(244, 236, 225, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(45, 36, 30, 0.1);
+}
+
+.magazine-nav-link {
+  font-family: var(--magazine-font-sans);
+  font-weight: 500;
+  color: rgba(45, 36, 30, 0.7);
+  transition: color 0.3s ease;
+}
+
+.magazine-nav-link:hover {
+  color: #d35400;
+}
+
+/* Magazine footer styles */
+.magazine-footer {
+  background: rgba(45, 36, 30, 0.05);
+  border-top: 1px solid rgba(45, 36, 30, 0.1);
+  padding: 3rem 0;
+}
+
+/* Animation utilities for magazine landing */
+.magazine-fade-in {
+  animation: fadeIn 0.8s ease-out;
+}
+
+.magazine-slide-up {
+  animation: slideUp 0.8s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .magazine-section {
+    padding-top: 4rem;
+    padding-bottom: 4rem;
+  }
+  
+  .magazine-section-header {
+    margin-bottom: 2rem;
+  }
+  
+  .magazine-title {
+    font-size: 2rem;
+  }
+  
+  .magazine-subtitle {
+    font-size: 1.125rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .magazine-section {
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+  }
+  
+  .magazine-title {
+    font-size: 1.5rem;
+  }
+  
+  .magazine-subtitle {
+    font-size: 1rem;
+  }
+}
