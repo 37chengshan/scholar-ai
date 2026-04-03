@@ -16,8 +16,8 @@ model User {
   emailVerified Boolean  @default(false) @map("email_verified")
   avatar        String?
   settings      Json?    @map("settings")  // { language: 'zh'|'en', defaultModel: string, theme: string }
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   // 关联
   papers        Paper[]
@@ -56,14 +56,14 @@ model Paper {
   year      Int?
   abstract  String?
   doi       String?
-  arxivId   String?
-  pdfUrl    String?
-  pdfPath   String? // 本地存储路径
+  arxivId   String?  @map("arxiv_id")
+  pdfUrl    String?  @map("pdf_url")
+  pdfPath   String?  @map("pdf_path") // 本地存储路径
   content   String? // 解析后的Markdown内容
-  imradJson Json? // IMRaD结构化数据
+  imradJson Json?    @map("imrad_json") // IMRaD结构化数据
   status    String   @default("pending") // pending, processing, completed, error
-  fileSize  Int? // PDF文件大小
-  pageCount Int? // 页数
+  fileSize  Int?     @map("file_size") // PDF文件大小
+  pageCount Int?     @map("page_count") // 页数
 
   // 向量嵌入 (通过PGVector)
   embedding Unsupported("vector(768)")?
@@ -73,11 +73,11 @@ model Paper {
   venue     String? // 发表会议/期刊
   citations Int? // 被引次数
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // 关联
-  userId  String
+  userId  String  @map("user_id")
   user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   queries Query[]      @relation("QueryPapers")
   chunks  PaperChunk[]
@@ -88,6 +88,13 @@ model Paper {
   notesVersion   Int             @default(0) @map("notes_version")
   processingTask ProcessingTask?
 
+  // 批量上传字段 (Phase 11)
+  batchId       String?         @map("batch_id")
+  batch         PaperBatch?     @relation("BatchPapers", fields: [batchId], references: [id])
+  uploadStatus  String?         @map("upload_status") // pending/uploading/completed/failed
+  uploadProgress Int?           @map("upload_progress") // 0-100
+  uploadedAt    DateTime?       @map("uploaded_at")
+
   @@map("papers")
 }
 
@@ -96,21 +103,21 @@ model PaperChunk {
   id        String  @id @default(uuid())
   content   String // 分块内容
   section   String? // 所属章节 (Introduction/Method/Results/Conclusion)
-  pageStart Int? // 起始页码
-  pageEnd   Int? // 结束页码
+  pageStart Int?    @map("page_start") // 起始页码
+  pageEnd   Int?    @map("page_end") // 结束页码
 
   // 向量嵌入
   embedding Unsupported("vector(768)")
 
   // 元数据
-  isTable   Boolean @default(false)
-  isFigure  Boolean @default(false)
-  isFormula Boolean @default(false)
+  isTable   Boolean @default(false) @map("is_table")
+  isFigure  Boolean @default(false) @map("is_figure")
+  isFormula Boolean @default(false) @map("is_formula")
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
 
   // 关联
-  paperId String
+  paperId String  @map("paper_id")
   paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
 
   @@index([paperId])
@@ -123,16 +130,16 @@ model Query {
   question   String // 用户问题
   answer     String? // AI回答
   sources    Json? // 引用来源 [{paperId, chunkId, score}]
-  queryType  String  @default("single") // single, cross_paper, evolution
+  queryType  String  @default("single") @map("query_type") // single, cross_paper, evolution
   status     String  @default("pending") // pending, processing, completed, error
-  durationMs Int? // 响应时间
+  durationMs Int?    @map("duration_ms") // 响应时间
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
 
   // 关联
-  userId   String
+  userId   String  @map("user_id")
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paperIds String[] // 关联的论文ID列表
+  paperIds String[] @map("paper_ids") // 关联的论文ID列表
   papers   Paper[]  @relation("QueryPapers")
 
   @@index([userId])
@@ -148,14 +155,14 @@ model KnowledgeMap {
   domain      String? // 研究领域
 
   // 图谱数据存储在Neo4j，这里只存元数据
-  nodeCount Int @default(0)
-  edgeCount Int @default(0)
+  nodeCount Int @default(0) @map("node_count")
+  edgeCount Int @default(0) @map("edge_count")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // 关联
-  userId String
+  userId String  @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("knowledge_maps")
@@ -167,7 +174,7 @@ model Config {
   key         String   @unique
   value       Json
   description String?
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("configs")
 }
@@ -186,9 +193,10 @@ model Role {
 // RBAC 权限表
 model Permission {
   id       String @id @default(uuid())
+  roleId   String @map("role_id")
   resource String // papers, queries, admin
   action   String // create, read, update, delete
-  roles    Role[]
+  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([resource, action])
   @@map("permissions")
@@ -197,8 +205,8 @@ model Permission {
 // 用户角色关联表
 model UserRole {
   id     String @id @default(uuid())
-  userId String
-  roleId String
+  userId String @map("user_id")
+  roleId String @map("role_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
@@ -214,6 +222,9 @@ model ProcessingTask {
   status          String    @default("pending") // pending, processing_ocr, parsing, extracting_imrad, generating_notes, storing_vectors, indexing_multimodal, completed, failed
   storageKey      String    @map("storage_key") // Object storage path: userId_originalName
   errorMessage    String?   @map("error_message")
+  errorStage      String?   @map("error_stage") // OCR/Parsing/VectorStore 等
+  errorTime       DateTime? @map("error_time")
+  retryCount      Int       @default(0) @map("retry_count")
   partialFailures Json?     @map("partial_failures") // JSON array of partial indexing failures
   attempts        Int       @default(0) // Retry attempt counter
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -228,10 +239,10 @@ model ProcessingTask {
 // 刷新令牌表
 model RefreshToken {
   id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  tokenHash String   @map("token_hash") @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
@@ -240,7 +251,7 @@ model RefreshToken {
 // 会话表 (Agent-Native architecture)
 model Session {
   id             String    @id @default(uuid())
-  userId         String
+  userId         String    @map("user_id")
   title          String?
   status         String    @default("active") // active, archived, deleted
   metadata       Json? // {paper_ids: [], tags: [], intent: "..."}
@@ -297,4 +308,20 @@ model Note {
   user User @relation(fields: [userId], references: [id])
 
   @@map("notes")
+}
+
+// 批量上传表 (Phase 11)
+model PaperBatch {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  totalFiles    Int      @map("total_files")
+  uploadedCount Int      @default(0) @map("uploaded_count")
+  status        String   @default("uploading") // uploading/processing/completed/partial_failure
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  papers        Paper[]  @relation("BatchPapers")
+
+  @@index([userId])
+  @@index([status])
+  @@map("paper_batches")
 }
