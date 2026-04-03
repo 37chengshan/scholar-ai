@@ -45,7 +45,7 @@ async def test_resolve_doi_valid():
 
         assert result["id"] == "10.1038/nature12373"
         assert result["title"] == "The DNA sequence of the human genome"
-        assert result["authors"] == ["J. Craig Adams", "Mark D. Adams"]
+        assert result["authors"] == ["J. Craig Venter", "Mark D. Adams"]
         assert result["year"] == 2001
         assert result["abstract"] == "The human genome is a complete set of human genetic information."
         assert result["source"] == "crossref"
