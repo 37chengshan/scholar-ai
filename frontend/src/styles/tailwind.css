@@ -1,0 +1,6 @@
+/* Tailwind CSS v4 configuration */
+@import 'tailwindcss' source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+
+/* Animation utilities */
+@import 'tw-animate-css';
