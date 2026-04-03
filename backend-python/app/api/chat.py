@@ -18,15 +18,17 @@ SSE Event Types:
 import json
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import AsyncIterator, Dict, List, Optional
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app.core.agent_runner import AgentRunner
 from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
 from app.core.context_manager import ContextManager
+from app.core.database import get_db_connection
 from app.llm.glm_client import GLMClient
 from app.models.chat import (
     ChatStreamRequest,
@@ -45,6 +47,60 @@ from app.utils.sse_manager import sse_manager
 from app.utils.logger import logger
 
 router = APIRouter()
+
+
+# =============================================================================
+# Message Persistence Helper
+# =============================================================================
+
+
+async def save_message(
+    session_id: str,
+    role: str,
+    content: str,
+    tool_name: Optional[str] = None,
+    tool_params: Optional[Dict] = None
+) -> str:
+    """Save chat message to PostgreSQL.
+    
+    Args:
+        session_id: Session UUID
+        role: Message role (user, assistant, tool, system)
+        content: Message content
+        tool_name: Tool name if role=tool
+        tool_params: Tool parameters if role=tool
+        
+    Returns:
+        Message UUID
+        
+    Raises:
+        Exception: If database insert fails
+    """
+    message_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc)
+    
+    async with get_db_connection() as conn:
+        await conn.execute(
+            """
+            INSERT INTO chat_messages (id, session_id, role, content, tool_name, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            message_id,
+            session_id,
+            role,
+            content,
+            tool_name,
+            created_at
+        )
+    
+    logger.debug(
+        "Message saved",
+        message_id=message_id,
+        session_id=session_id,
+        role=role
+    )
+    
+    return message_id
 
 
 # =============================================================================
@@ -223,6 +279,16 @@ async def chat_stream(
                 # Business event generator
                 async def business_events() -> AsyncIterator[str]:
                     """Generate business events from Agent execution."""
+                    # Save user message before execution
+                    try:
+                        await save_message(
+                            session_id=session_id,
+                            role="user",
+                            content=request.message
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to save user message", error=str(e))
+                    
                     # Send initial thought event
                     yield await stream_sse_event(
                         SSEEventType.THOUGHT,
@@ -270,6 +336,18 @@ async def chat_stream(
                                     parameters=tc.get("parameters", {})
                                 ).model_dump()
                             )
+                            
+                            # Save tool call message
+                            try:
+                                await save_message(
+                                    session_id=session_id,
+                                    role="tool",
+                                    content=json.dumps(tc.get("result", {})),
+                                    tool_name=tc.get("tool", "unknown"),
+                                    tool_params=tc.get("parameters", {})
+                                )
+                            except Exception as e:
+                                logger.warning("Failed to save tool message", error=str(e))
 
                             # Tool result event
                             tool_result = tc.get("result", {})
@@ -285,13 +363,24 @@ async def chat_stream(
                             )
 
                         # Send final message
+                        final_content = result.get("answer", "Task completed")
                         yield await stream_sse_event(
                             SSEEventType.MESSAGE,
                             MessageEventData(
                                 type="message",
-                                content=result.get("answer", "Task completed")
+                                content=final_content
                             ).model_dump()
                         )
+                        
+                        # Save assistant message
+                        try:
+                            await save_message(
+                                session_id=session_id,
+                                role="assistant",
+                                content=final_content
+                            )
+                        except Exception as e:
+                            logger.warning("Failed to save assistant message", error=str(e))
 
                         # Send done event
                         yield await stream_sse_event(
@@ -430,7 +519,8 @@ async def confirm_action(
 async def get_session_messages(
     session_id: str,
     user_id: str = Header(None, alias="X-User-ID"),
-    limit: int = 50
+    limit: int = 50,
+    offset: int = 0
 ):
     """
     Retrieve chat history for a session.
@@ -468,9 +558,22 @@ async def get_session_messages(
                 detail="You don't have permission to access this session"
             )
 
-        # TODO: Retrieve messages from PostgreSQL chat_messages table
-        # For now, return empty list
-        messages: List[Dict] = []
+        # Retrieve messages from PostgreSQL chat_messages table
+        async with get_db_connection() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, session_id, role, content, tool_name, created_at
+                FROM chat_messages
+                WHERE session_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2 OFFSET $3
+                """,
+                session_id,
+                limit,
+                offset
+            )
+            
+            messages = [dict(row) for row in rows]
 
         return {
             "success": True,
