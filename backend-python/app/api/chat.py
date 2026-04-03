@@ -41,6 +41,7 @@ from app.models.chat import (
     ErrorEventData,
 )
 from app.utils.session_manager import session_manager
+from app.utils.sse_manager import sse_manager
 from app.utils.logger import logger
 
 router = APIRouter()
@@ -202,96 +203,119 @@ async def chat_stream(
         if request.context:
             auto_confirm = request.context.get("auto_confirm", False)
 
-        # SSE event generator
+        # SSE event generator with heartbeat and reconnection support
         async def event_generator() -> AsyncIterator[str]:
-            """Generate SSE events from Agent execution."""
+            """Generate SSE events from Agent execution with heartbeat."""
             try:
-                # Send initial thought event
-                yield await stream_sse_event(
-                    SSEEventType.THOUGHT,
-                    ThoughtEventData(
-                        type="thinking",
-                        content="Analyzing your request..."
-                    ).model_dump()
-                )
+                # Check for Last-Event-ID header (reconnection)
+                last_event_id = None
+                if hasattr(request, 'headers') and 'last-event-id' in request.headers:
+                    last_event_id = request.headers['last-event-id']
 
-                # Execute Agent
-                result = await runner.execute(
-                    user_input=request.message,
-                    session_id=session_id,
-                    user_id=user_id,
-                    auto_confirm=auto_confirm
-                )
+                # If reconnecting, replay missed events first
+                if last_event_id:
+                    async for replay_event in sse_manager.handle_reconnect(
+                        session_id,
+                        last_event_id
+                    ):
+                        yield replay_event
 
-                # Handle confirmation required
-                if result.get("needs_confirmation"):
-                    confirmation_id = str(uuid.uuid4())
-
+                # Business event generator
+                async def business_events() -> AsyncIterator[str]:
+                    """Generate business events from Agent execution."""
+                    # Send initial thought event
                     yield await stream_sse_event(
-                        SSEEventType.CONFIRMATION_REQUIRED,
-                        ConfirmationRequiredEventData(
-                            type="confirmation_required",
-                            confirmation_id=confirmation_id,
-                            message=result.get("message", "Agent wants to execute a dangerous operation"),
-                            tool_name=result.get("tool_name", "unknown"),
-                            parameters=result.get("tool_parameters", {})
+                        SSEEventType.THOUGHT,
+                        ThoughtEventData(
+                            type="thinking",
+                            content="Analyzing your request..."
                         ).model_dump()
                     )
-                    return
 
-                # Handle final message
-                if result.get("success"):
-                    # Send tool calls history (optional)
-                    tool_calls = result.get("tool_calls", [])
-                    for tc in tool_calls:
-                        # Tool call event
+                    # Execute Agent
+                    result = await runner.execute(
+                        user_input=request.message,
+                        session_id=session_id,
+                        user_id=user_id,
+                        auto_confirm=auto_confirm
+                    )
+
+                    # Handle confirmation required
+                    if result.get("needs_confirmation"):
+                        confirmation_id = str(uuid.uuid4())
+
                         yield await stream_sse_event(
-                            SSEEventType.TOOL_CALL,
-                            ToolCallEventData(
-                                type="tool_call",
-                                tool=tc.get("tool", "unknown"),
-                                parameters=tc.get("parameters", {})
+                            SSEEventType.CONFIRMATION_REQUIRED,
+                            ConfirmationRequiredEventData(
+                                type="confirmation_required",
+                                confirmation_id=confirmation_id,
+                                message=result.get("message", "Agent wants to execute a dangerous operation"),
+                                tool_name=result.get("tool_name", "unknown"),
+                                parameters=result.get("tool_parameters", {})
+                            ).model_dump()
+                        )
+                        return
+
+                    # Handle final message
+                    if result.get("success"):
+                        # Send tool calls history (optional)
+                        tool_calls = result.get("tool_calls", [])
+                        for tc in tool_calls:
+                            # Tool call event
+                            yield await stream_sse_event(
+                                SSEEventType.TOOL_CALL,
+                                ToolCallEventData(
+                                    type="tool_call",
+                                    tool=tc.get("tool", "unknown"),
+                                    parameters=tc.get("parameters", {})
+                                ).model_dump()
+                            )
+
+                            # Tool result event
+                            tool_result = tc.get("result", {})
+                            yield await stream_sse_event(
+                                SSEEventType.TOOL_RESULT,
+                                ToolResultEventData(
+                                    type="tool_result",
+                                    tool=tc.get("tool", "unknown"),
+                                    success=tool_result.get("success", False),
+                                    data=tool_result.get("data"),
+                                    error=tool_result.get("error")
+                                ).model_dump()
+                            )
+
+                        # Send final message
+                        yield await stream_sse_event(
+                            SSEEventType.MESSAGE,
+                            MessageEventData(
+                                type="message",
+                                content=result.get("answer", "Task completed")
                             ).model_dump()
                         )
 
-                        # Tool result event
-                        tool_result = tc.get("result", {})
+                        # Send done event
                         yield await stream_sse_event(
-                            SSEEventType.TOOL_RESULT,
-                            ToolResultEventData(
-                                type="tool_result",
-                                tool=tc.get("tool", "unknown"),
-                                success=tool_result.get("success", False),
-                                data=tool_result.get("data"),
-                                error=tool_result.get("error")
+                            SSEEventType.DONE,
+                            {"type": "done", "content": "[DONE]"}
+                        )
+
+                    else:
+                        # Error case
+                        yield await stream_sse_event(
+                            SSEEventType.ERROR,
+                            ErrorEventData(
+                                type="error",
+                                error=result.get("error", "Unknown error"),
+                                details={"iterations": result.get("iterations", 0)}
                             ).model_dump()
                         )
 
-                    # Send final message
-                    yield await stream_sse_event(
-                        SSEEventType.MESSAGE,
-                        MessageEventData(
-                            type="message",
-                            content=result.get("answer", "Task completed")
-                        ).model_dump()
-                    )
-
-                    # Send done event
-                    yield await stream_sse_event(
-                        SSEEventType.DONE,
-                        {"type": "done", "content": "[DONE]"}
-                    )
-
-                else:
-                    # Error case
-                    yield await stream_sse_event(
-                        SSEEventType.ERROR,
-                        ErrorEventData(
-                            type="error",
-                            error=result.get("error", "Unknown error"),
-                            details={"iterations": result.get("iterations", 0)}
-                        ).model_dump()
-                    )
+                # Stream with heartbeat
+                async for event in sse_manager.stream_with_heartbeat(
+                    session_id,
+                    business_events()
+                ):
+                    yield event
 
             except Exception as e:
                 logger.error("SSE stream error", error=str(e))
