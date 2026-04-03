@@ -44,9 +44,47 @@ from app.models.chat import (
 )
 from app.utils.session_manager import session_manager
 from app.utils.sse_manager import sse_manager
+from app.utils.auth import validate_jwt_token
 from app.utils.logger import logger
 
 router = APIRouter()
+
+
+# =============================================================================
+# Authentication Helper
+# =============================================================================
+
+
+async def get_current_user_id(
+    authorization: Optional[str] = Header(None)
+) -> str:
+    """Extract and validate user ID from JWT token.
+    
+    Args:
+        authorization: Authorization header (Bearer token)
+        
+    Returns:
+        User ID from validated token
+        
+    Raises:
+        HTTPException: 401 if token missing or invalid
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization token"
+        )
+    
+    token = authorization.split(" ")[1]
+    user_id = await validate_jwt_token(token)
+    
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    return user_id
 
 
 # =============================================================================
@@ -104,102 +142,14 @@ async def save_message(
 
 
 # =============================================================================
-# Authentication Helper (placeholder - implement based on your auth system)
-# =============================================================================
-
-
-async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
-    """
-    Extract user ID from JWT token.
-
-    TODO: Implement actual JWT validation
-    For now, extract user_id from a test header or return a test user.
-
-    Args:
-        authorization: Authorization header with Bearer token
-
-    Returns:
-        User UUID
-
-    Raises:
-        HTTPException: If authentication fails
-    """
-    if not authorization:
-        # For development/testing, return a test user ID
-        # TODO: Remove this in production and enforce authentication
-        logger.warning("No authorization header - using test user")
-        return "00000000-0000-0000-0000-000000000001"
-
-    # TODO: Implement JWT validation
-    # For now, just extract user_id from token payload
-    try:
-        # Placeholder: In real implementation, decode and validate JWT
-        return "00000000-0000-0000-0000-000000000001"
-
-    except Exception as e:
-        logger.error(f"Authentication failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials"
-        )
-
-
-# =============================================================================
-# Helper: Initialize Agent components
-# =============================================================================
-
-
-def initialize_agent_components() -> tuple[AgentRunner, ToolRegistry, SafetyLayer, ContextManager]:
-    """Initialize Agent Runner and its dependencies.
-
-    Returns:
-        Tuple of (AgentRunner, ToolRegistry, SafetyLayer, ContextManager)
-    """
-    # Initialize components
-    tool_registry = ToolRegistry()
-    safety_layer = SafetyLayer()
-    context_manager = ContextManager()
-    llm_client = GLMClient()
-
-    # Create Agent Runner
-    runner = AgentRunner(
-        llm_client=llm_client,
-        tool_registry=tool_registry,
-        context_manager=context_manager,
-        safety_layer=safety_layer,
-        max_iterations=10
-    )
-
-    return runner, tool_registry, safety_layer, context_manager
-
-
-# =============================================================================
-# SSE Streaming Helper
-# =============================================================================
-
-
-async def stream_sse_event(event_type: str, data: Dict) -> str:
-    """Format data as SSE event.
-
-    Args:
-        event_type: Event type (thought, tool_call, etc.)
-        data: Event data dictionary
-
-    Returns:
-        Formatted SSE string
-    """
-    return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-# =============================================================================
-# Chat Streaming Endpoint
+# Chat Stream Endpoint
 # =============================================================================
 
 
 @router.post("/chat/stream")
 async def chat_stream(
     request: ChatStreamRequest,
-    user_id: str = Header(None, alias="X-User-ID")
+    authorization: Optional[str] = Header(None, alias="Authorization")
 ):
     """
     SSE streaming chat with Agent.
