@@ -36,6 +36,9 @@ neo4j>=5.14.0
 # 全文搜索
 tantivy>=0.20.0
 
+# 中文NLP (Chinese text processing)
+jieba>=0.42.0
+
 # 工具库
 pydantic>=2.0.0,<3.0.0
 pydantic-settings>=2.0.0
