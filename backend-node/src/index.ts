@@ -18,6 +18,8 @@ import { authRouter } from './routes/auth';
 import { compareRouter } from './routes/compare';
 import graphRouter from './routes/graph';
 import entitiesRouter from './routes/entities';
+import { chatRouter } from './routes/chat';
+import { sessionRouter } from './routes/session';
 
 dotenv.config();
 
@@ -45,6 +47,8 @@ app.use('/api/search', searchRouter);
 app.use('/api/compare', compareRouter);
 app.use('/api/graph', graphRouter);
 app.use('/api/entities', entitiesRouter);
+app.use('/api/chat', chatRouter);
+app.use('/api/sessions', sessionRouter);
 
 // 错误处理
 app.use(errorHandler);
