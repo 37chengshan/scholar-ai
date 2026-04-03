@@ -1,11 +1,30 @@
-"""RAG (Retrieval-Augmented Generation) service with PaperQA2 integration.
+"""DEPRECATED: RAG (Retrieval-Augmented Generation) service with PaperQA2 integration.
+
+⚠️ This module is deprecated and will be removed in a future version.
+
+Migration Guide:
+- Use MultimodalSearchService instead of RAGService
+- All queries should go through unified multimodal search
+- PGVector is replaced by Milvus for vector storage
+- Benefits: multimodal search, better reranking, intent detection
+
+See: Phase 04 documentation for migration details.
 
 Provides:
-- PGVectorStore: Custom vector store for PaperQA2 using existing PGVector infrastructure
-- RAGService: High-level RAG query service with citation tracking
+- PGVectorStore: Custom vector store for PaperQA2 using existing PGVector infrastructure (DEPRECATED)
+- RAGService: High-level RAG query service with citation tracking (DEPRECATED)
 - Integration with existing embedding_service.py for 768-dim embeddings
 - Semantic caching for reduced LLM API calls
 """
+
+import warnings
+
+# Emit deprecation warning when module is imported
+warnings.warn(
+    "RAGService is deprecated. Use MultimodalSearchService instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 import uuid
@@ -14,7 +33,10 @@ from app.utils.logger import logger
 
 
 class PGVectorStore:
-    """Custom PGVector store for RAG operations.
+    """DEPRECATED: Custom PGVector store for RAG operations.
+
+    ⚠️ Use MultimodalSearchService for all queries.
+    This class will be removed in v2.0.
 
     Wraps the existing PGVector infrastructure to provide a unified interface
     for similarity search over paper chunks. Works with or without PaperQA2.
@@ -38,6 +60,10 @@ class PGVectorStore:
             table_name: PostgreSQL table name for chunks
             dimension: Embedding vector dimension
         """
+        logger.warning(
+            "PGVectorStore.__init__ is DEPRECATED. "
+            "Use MultimodalSearchService instead."
+        )
         self.connection = connection
         self.table_name = table_name
         self.dimension = dimension
@@ -152,7 +178,14 @@ class PGVectorStore:
 
 
 class RAGService:
-    """RAG query service with citation-aware answering.
+    """DEPRECATED: RAG query service with citation-aware answering.
+
+    ⚠️ Use MultimodalSearchService for all queries.
+    This class will be removed in v2.0.
+
+    Migration:
+        OLD: RAGService().query(question, paper_ids, connection=conn)
+        NEW: MultimodalSearchService().search(query, paper_ids, user_id)
 
     Provides high-level RAG capabilities for answering questions based on
     paper content with proper citation tracking and source attribution.
@@ -174,6 +207,10 @@ class RAGService:
             pg_store: Optional PGVectorStore instance
             embedding_service: Optional EmbeddingService instance
         """
+        logger.warning(
+            "RAGService.__init__ is DEPRECATED. "
+            "Use MultimodalSearchService instead."
+        )
         self.pg_store = pg_store
         self._embedding_service = embedding_service
         # Initialize semantic cache with user decision D-02 settings
@@ -197,6 +234,13 @@ class RAGService:
     ) -> Dict[str, Any]:
         """Execute RAG query with citations and semantic caching.
 
+        ⚠️ DEPRECATED: Use MultimodalSearchService.search() instead.
+        This method will be removed in v2.0.
+
+        Migration:
+            OLD: RAGService().query(question, paper_ids, top_k=5)
+            NEW: MultimodalSearchService().search(query, paper_ids, user_id, top_k=5)
+
         Retrieves relevant chunks and generates an answer with proper citations.
         This is a simplified implementation that returns retrieved contexts.
         Full PaperQA2 integration can be added later.
@@ -210,6 +254,10 @@ class RAGService:
         Returns:
             Dictionary with answer, citations, and confidence score
         """
+        logger.warning(
+            "RAGService.query is DEPRECATED. "
+            "Use MultimodalSearchService.search instead."
+        )
         if self.pg_store is None and connection is None:
             raise ValueError("Either pg_store or connection must be provided")
 
