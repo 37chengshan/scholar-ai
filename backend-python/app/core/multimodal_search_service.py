@@ -224,7 +224,8 @@ class MultimodalSearchService:
         response = {
             "query": query,
             "expanded_query": expanded_query,
-            "intent": query_intent,
+            "intent": modality_intent,
+            "query_intent": query_intent,
             "metadata_filters": metadata_filters,
             "weights": weights,
             "results": final_results,

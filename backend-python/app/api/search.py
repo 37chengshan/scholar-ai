@@ -312,7 +312,7 @@ async def search_arxiv(
 
     logger.info("arXiv search cache miss", query=query, limit=limit)
 
-    url = "http://export.arxiv.org/api/query"
+    url = "https://export.arxiv.org/api/query"
     params = {
         "search_query": f"all:{query}",
         "start": 0,
@@ -761,7 +761,8 @@ class MultimodalSearchResponse(BaseModel):
     """Multimodal search response model."""
 
     query: str = Field(..., description="Search query")
-    intent: str = Field(..., description="Detected query intent (default, image_weighted, table_weighted)")
+    intent: str = Field(..., description="Detected modality intent (default, image_weighted, table_weighted)")
+    query_intent: Optional[str] = Field(None, description="Detected query intent (question, compare, summary, evolution)")
     weights: Dict[str, float] = Field(..., description="Modality weights applied")
     clusters: Optional[List[ClusterResult]] = Field(None, description="Page clusters if enabled")
     results: List[Dict[str, Any]] = Field(..., description="Search results")
