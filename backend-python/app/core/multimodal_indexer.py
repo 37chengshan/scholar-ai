@@ -158,7 +158,8 @@ class MultimodalIndexer:
         paper_id: str,
         user_id: str,
         pdf_path: str,
-        parsed_items: List[Dict[str, Any]]
+        parsed_items: List[Dict[str, Any]],
+        paper_markdown: Optional[str] = None
     ) -> Dict[str, Any]:
         """Index all multimodal content from a paper.
 
@@ -167,6 +168,7 @@ class MultimodalIndexer:
             user_id: UUID of the user
             pdf_path: Path to the PDF file
             parsed_items: List of parsed items from Docling
+            paper_markdown: Full document markdown for reference context (D-04)
 
         Returns:
             Dictionary with indexing results:
@@ -183,7 +185,7 @@ class MultimodalIndexer:
         # Index images
         try:
             image_results = await self._index_images(
-                paper_id, user_id, pdf_path, parsed_items
+                paper_id, user_id, pdf_path, parsed_items, paper_markdown
             )
             results["images_indexed"] = image_results["count"]
             results["partial_failures"].extend(image_results["failures"])
@@ -201,7 +203,7 @@ class MultimodalIndexer:
         # Index tables
         try:
             table_results = await self._index_tables(
-                paper_id, user_id, parsed_items
+                paper_id, user_id, parsed_items, paper_markdown
             )
             results["tables_indexed"] = table_results["count"]
             results["partial_failures"].extend(table_results["failures"])
@@ -231,7 +233,8 @@ class MultimodalIndexer:
         paper_id: str,
         user_id: str,
         pdf_path: str,
-        parsed_items: List[Dict[str, Any]]
+        parsed_items: List[Dict[str, Any]],
+        paper_markdown: Optional[str] = None
     ) -> Dict[str, Any]:
         """Index images from the paper.
 
@@ -240,6 +243,7 @@ class MultimodalIndexer:
             user_id: UUID of the user
             pdf_path: Path to the PDF file
             parsed_items: List of parsed items from Docling
+            paper_markdown: Full document markdown for reference context (D-04)
 
         Returns:
             Dictionary with count and failures
@@ -266,7 +270,7 @@ class MultimodalIndexer:
         for idx, image_data in enumerate(image_data_list):
             try:
                 entry = await self._process_single_image(
-                    paper_id, user_id, image_data, idx
+                    paper_id, user_id, image_data, idx, paper_markdown
                 )
                 if entry:
                     milvus_entries.append(entry)
@@ -316,7 +320,8 @@ class MultimodalIndexer:
         paper_id: str,
         user_id: str,
         image_data: Any,
-        idx: int
+        idx: int,
+        paper_markdown: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Process a single image.
 
@@ -325,6 +330,7 @@ class MultimodalIndexer:
             user_id: UUID of the user
             image_data: ImageData object
             idx: Index for naming
+            paper_markdown: Full document markdown for reference context (D-04)
 
         Returns:
             Dictionary ready for Milvus insertion, or None on failure
@@ -343,16 +349,29 @@ class MultimodalIndexer:
             )
             caption = "Figure showing research data"
 
-        # Encode caption to 1024-dim vector
+        # Create enhanced embedding with reference context (per D-04)
         try:
-            embedding = self.bge_m3.encode_text(caption)
+            if paper_markdown:
+                embedding, content_data = await create_enhanced_multimodal_embedding(
+                    figure_type="image",
+                    figure_label=str(idx + 1),
+                    caption=caption,
+                    markdown=paper_markdown,
+                    bge_m3_service=self.bge_m3,
+                    vlm_description=None  # Can add VLM description later
+                )
+            else:
+                # Fallback to simple embedding if markdown not available
+                embedding = self.bge_m3.encode_text(caption)
+                content_data = caption
         except Exception as e:
             logger.error(
-                "Failed to encode caption",
+                "Failed to create enhanced embedding",
                 page=image_data.page_num,
                 error=str(e)
             )
             embedding = [0.0] * self.EMBEDDING_DIM
+            content_data = caption
 
         # Upload image to S3
         storage_key = f"images/{user_id}/{paper_id}/p{image_data.page_num}_{idx}.png"
@@ -381,7 +400,7 @@ class MultimodalIndexer:
             "user_id": user_id,
             "page_num": image_data.page_num,
             "content_type": "image",
-            "content_data": caption,
+            "content_data": content_data,
             "raw_data": {
                 "bbox": image_data.bbox,
                 "storage_key": storage_key,
@@ -398,7 +417,8 @@ class MultimodalIndexer:
         self,
         paper_id: str,
         user_id: str,
-        parsed_items: List[Dict[str, Any]]
+        parsed_items: List[Dict[str, Any]],
+        paper_markdown: Optional[str] = None
     ) -> Dict[str, Any]:
         """Index tables from the paper.
 
@@ -406,6 +426,7 @@ class MultimodalIndexer:
             paper_id: UUID of the paper
             user_id: UUID of the user
             parsed_items: List of parsed items from Docling
+            paper_markdown: Full document markdown for reference context (D-04)
 
         Returns:
             Dictionary with count and failures
@@ -430,7 +451,7 @@ class MultimodalIndexer:
         for table_data in table_data_list:
             try:
                 entry = await self._process_single_table(
-                    paper_id, user_id, table_data
+                    paper_id, user_id, table_data, paper_markdown
                 )
                 if entry:
                     milvus_entries.append(entry)
@@ -474,7 +495,8 @@ class MultimodalIndexer:
         self,
         paper_id: str,
         user_id: str,
-        table_data: Any
+        table_data: Any,
+        paper_markdown: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Process a single table.
 
@@ -482,6 +504,7 @@ class MultimodalIndexer:
             paper_id: UUID of the paper
             user_id: UUID of the user
             table_data: TableData object
+            paper_markdown: Full document markdown for reference context (D-04)
 
         Returns:
             Dictionary ready for Milvus insertion, or None on failure
@@ -509,12 +532,26 @@ class MultimodalIndexer:
         if not content_data:
             content_data = f"Table with {len(table_data.headers)} columns"
 
-        # Encode to 1024-dim vector
+        # Create enhanced embedding with reference context (per D-04)
         try:
-            embedding = self.bge_m3.encode_text(content_data)
+            if paper_markdown:
+                # Extract table number from markdown or use index
+                table_label = self._extract_table_label(table_data.markdown)
+                embedding, enhanced_content = await create_enhanced_multimodal_embedding(
+                    figure_type="table",
+                    figure_label=table_label,
+                    caption=caption if caption else content_data,
+                    markdown=paper_markdown,
+                    bge_m3_service=self.bge_m3,
+                    vlm_description=description
+                )
+                content_data = enhanced_content
+            else:
+                # Fallback to simple embedding
+                embedding = self.bge_m3.encode_text(content_data)
         except Exception as e:
             logger.error(
-                "Failed to encode table content",
+                "Failed to create enhanced embedding",
                 page=table_data.page_num,
                 error=str(e)
             )
@@ -535,6 +572,26 @@ class MultimodalIndexer:
         }
 
         return entry
+
+    def _extract_table_label(self, table_markdown: str) -> str:
+        """Extract table label from markdown.
+
+        Args:
+            table_markdown: Markdown containing table
+
+        Returns:
+            Table label (e.g., "1", "2") or "1" as default
+        """
+        import re
+        # Try to extract table number from markdown
+        match = re.search(r'Table\s*(\d+)', table_markdown, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        match = re.search(r'表\s*(\d+)', table_markdown)
+        if match:
+            return match.group(1)
+        # Default to "1"
+        return "1"
 
 
 # Singleton instance
