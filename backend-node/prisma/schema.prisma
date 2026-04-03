@@ -9,14 +9,14 @@ datasource db {
 
 // 用户表
 model User {
-  id             String    @id @default(uuid())
-  email          String    @unique
-  name           String
-  passwordHash   String    @map("password_hash")
-  emailVerified  Boolean   @default(false) @map("email_verified")
-  avatar         String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id            String   @id @default(uuid())
+  email         String   @unique
+  name          String
+  passwordHash  String   @map("password_hash")
+  emailVerified Boolean  @default(false) @map("email_verified")
+  avatar        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // 关联
   papers        Paper[]
@@ -24,74 +24,76 @@ model User {
   knowledgeMaps KnowledgeMap[]
   userRoles     UserRole[]
   refreshTokens RefreshToken[]
+  sessions      Session[]
+  notes         Note[]
 
   @@map("users")
 }
 
 // 论文表
 model Paper {
-  id          String    @id @default(uuid())
-  title       String
-  authors     String[]
-  year        Int?
-  abstract    String?
-  doi         String?
-  arxivId     String?
-  pdfUrl      String?
-  pdfPath     String?   // 本地存储路径
-  content     String?   // 解析后的Markdown内容
-  imradJson   Json?     // IMRaD结构化数据
-  status      String    @default("pending") // pending, processing, completed, error
-  fileSize    Int?      // PDF文件大小
-  pageCount   Int?      // 页数
+  id        String   @id @default(uuid())
+  title     String
+  authors   String[]
+  year      Int?
+  abstract  String?
+  doi       String?
+  arxivId   String?
+  pdfUrl    String?
+  pdfPath   String? // 本地存储路径
+  content   String? // 解析后的Markdown内容
+  imradJson Json? // IMRaD结构化数据
+  status    String   @default("pending") // pending, processing, completed, error
+  fileSize  Int? // PDF文件大小
+  pageCount Int? // 页数
 
   // 向量嵌入 (通过PGVector)
-  embedding   Unsupported("vector(768)")?
+  embedding Unsupported("vector(768)")?
 
   // 元数据
-  keywords    String[]
-  venue       String?   // 发表会议/期刊
-  citations   Int?      // 被引次数
+  keywords  String[]
+  venue     String? // 发表会议/期刊
+  citations Int? // 被引次数
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // 关联
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  queries     Query[]   @relation("QueryPapers")
-  chunks      PaperChunk[]
+  userId  String
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  queries Query[]      @relation("QueryPapers")
+  chunks  PaperChunk[]
 
   // 存储和笔记
-  storageKey      String?         @map("storage_key")
-  readingNotes    String?         @map("reading_notes") @db.Text
-  notesVersion    Int             @default(0) @map("notes_version")
-  processingTask  ProcessingTask?
+  storageKey     String?         @map("storage_key")
+  readingNotes   String?         @map("reading_notes") @db.Text
+  notesVersion   Int             @default(0) @map("notes_version")
+  processingTask ProcessingTask?
 
   @@map("papers")
 }
 
 // 论文分块表 (用于RAG检索)
 model PaperChunk {
-  id          String    @id @default(uuid())
-  content     String    // 分块内容
-  section     String?   // 所属章节 (Introduction/Method/Results/Conclusion)
-  pageStart   Int?      // 起始页码
-  pageEnd     Int?      // 结束页码
+  id        String  @id @default(uuid())
+  content   String // 分块内容
+  section   String? // 所属章节 (Introduction/Method/Results/Conclusion)
+  pageStart Int? // 起始页码
+  pageEnd   Int? // 结束页码
 
   // 向量嵌入
-  embedding   Unsupported("vector(768)")
+  embedding Unsupported("vector(768)")
 
   // 元数据
-  isTable     Boolean   @default(false)
-  isFigure    Boolean   @default(false)
-  isFormula   Boolean   @default(false)
+  isTable   Boolean @default(false)
+  isFigure  Boolean @default(false)
+  isFormula Boolean @default(false)
 
-  createdAt   DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   // 关联
-  paperId     String
-  paper       Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  paperId String
+  paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
 
   @@index([paperId])
   @@map("paper_chunks")
@@ -99,21 +101,21 @@ model PaperChunk {
 
 // 查询记录表
 model Query {
-  id          String    @id @default(uuid())
-  question    String    // 用户问题
-  answer      String?   // AI回答
-  sources     Json?     // 引用来源 [{paperId, chunkId, score}]
-  queryType   String    @default("single") // single, cross_paper, evolution
-  status      String    @default("pending") // pending, processing, completed, error
-  durationMs  Int?      // 响应时间
+  id         String  @id @default(uuid())
+  question   String // 用户问题
+  answer     String? // AI回答
+  sources    Json? // 引用来源 [{paperId, chunkId, score}]
+  queryType  String  @default("single") // single, cross_paper, evolution
+  status     String  @default("pending") // pending, processing, completed, error
+  durationMs Int? // 响应时间
 
-  createdAt   DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   // 关联
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paperIds    String[]  // 关联的论文ID列表
-  papers      Paper[]   @relation("QueryPapers")
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paperIds String[] // 关联的论文ID列表
+  papers   Paper[]  @relation("QueryPapers")
 
   @@index([userId])
   @@index([createdAt])
@@ -122,32 +124,32 @@ model Query {
 
 // 知识图谱表
 model KnowledgeMap {
-  id          String    @id @default(uuid())
-  name        String    // 图谱名称
-  description String?   // 描述
-  domain      String?   // 研究领域
+  id          String  @id @default(uuid())
+  name        String // 图谱名称
+  description String? // 描述
+  domain      String? // 研究领域
 
   // 图谱数据存储在Neo4j，这里只存元数据
-  nodeCount   Int       @default(0)
-  edgeCount   Int       @default(0)
+  nodeCount Int @default(0)
+  edgeCount Int @default(0)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // 关联
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("knowledge_maps")
 }
 
 // 系统配置表
 model Config {
-  id          String    @id @default(uuid())
-  key         String    @unique
+  id          String   @id @default(uuid())
+  key         String   @unique
   value       Json
   description String?
-  updatedAt   DateTime  @updatedAt
+  updatedAt   DateTime @updatedAt
 
   @@map("configs")
 }
@@ -188,17 +190,17 @@ model UserRole {
 
 // 论文处理任务表 (用于PDF处理和AI解析)
 model ProcessingTask {
-  id            String    @id @default(uuid())
-  paperId       String    @unique @map("paper_id")
-  paper         Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  status        String    @default("pending") // pending, processing_ocr, parsing, extracting_imrad, generating_notes, storing_vectors, indexing_multimodal, completed, failed
-  storageKey    String    @map("storage_key") // Object storage path: userId_originalName
-  errorMessage  String?   @map("error_message")
-  partialFailures Json?   @map("partial_failures") // JSON array of partial indexing failures
-  attempts      Int       @default(0) // Retry attempt counter
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  completedAt   DateTime? @map("completed_at")
+  id              String    @id @default(uuid())
+  paperId         String    @unique @map("paper_id")
+  paper           Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  status          String    @default("pending") // pending, processing_ocr, parsing, extracting_imrad, generating_notes, storing_vectors, indexing_multimodal, completed, failed
+  storageKey      String    @map("storage_key") // Object storage path: userId_originalName
+  errorMessage    String?   @map("error_message")
+  partialFailures Json?     @map("partial_failures") // JSON array of partial indexing failures
+  attempts        Int       @default(0) // Retry attempt counter
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  completedAt     DateTime? @map("completed_at")
 
   @@index([status])
   @@index([paperId])
@@ -215,4 +217,66 @@ model RefreshToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
+}
+
+// 会话表 (Agent-Native architecture)
+model Session {
+  id             String    @id @default(uuid())
+  userId         String
+  title          String?
+  status         String    @default("active") // active, archived, deleted
+  metadata       Json? // {paper_ids: [], tags: [], intent: "..."}
+  messageCount   Int       @default(0) @map("message_count")
+  toolCallCount  Int       @default(0) @map("tool_call_count")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  lastActivityAt DateTime  @default(now()) @map("last_activity_at")
+  expiresAt      DateTime? @map("expires_at") // 30-day expiration
+
+  messages ChatMessage[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// 聊天消息表
+model ChatMessage {
+  id         String   @id @default(uuid())
+  sessionId  String   @map("session_id")
+  role       String // user, assistant, tool, system
+  content    String   @db.Text
+  toolCalls  Json?    @map("tool_calls") // tool call data
+  toolCallId String?  @map("tool_call_id") // for tool response correlation
+  metadata   Json? // {intent, confidence, citations}
+  sources    Json? // [{paperId, chunkId, score}]
+  tokensUsed Int?     @map("tokens_used") // token consumption
+  durationMs Int?     @map("duration_ms") // response time
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([role])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+// 笔记表
+model Note {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  content   String   @db.Text
+  tags      String[]
+  paperIds  String[] @map("paper_ids")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notes")
 }
