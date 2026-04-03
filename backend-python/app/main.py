@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, parse, rag, entities, papers, internal, search, notes, compare, graph
+from app.api import health, parse, rag, entities, papers, internal, search, notes, compare, graph, session
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
@@ -116,6 +116,7 @@ app.include_router(internal.router, prefix="/internal", tags=["Internal API"])
 app.include_router(search.router, prefix="/search", tags=["External Search"])
 app.include_router(compare.router, prefix="/compare", tags=["Comparison"])
 app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
+app.include_router(session.router, prefix="/api", tags=["Session"])
 
 
 @app.get("/")
