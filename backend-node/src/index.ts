@@ -42,8 +42,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // 路由
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
-app.use('/api/papers', papersRouter);
 app.use('/api/papers/batch', batchRouter);
+app.use('/api/papers', papersRouter);
 app.use('/api/queries', queriesRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/notes', notesRouter);
