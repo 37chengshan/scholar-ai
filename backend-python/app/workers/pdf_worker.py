@@ -300,7 +300,8 @@ class PDFProcessor:
                     paper_id=paper_id,
                     user_id=task["user_id"],
                     pdf_path=local_path,
-                    parsed_items=parsed["items"]
+                    parsed_items=parsed["items"],
+                    paper_markdown=parsed.get("markdown")  # Pass markdown for D-04 context
                 )
 
                 # Store partial failures if any
