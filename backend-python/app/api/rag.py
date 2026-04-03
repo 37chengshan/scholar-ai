@@ -4,11 +4,12 @@ Provides endpoints for:
 - Blocking RAG queries with caching
 - Streaming RAG queries via SSE
 - Conversation session management
+- Unified multimodal search with query understanding
 """
 
 import time
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from fastapi import APIRouter, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
@@ -28,6 +29,7 @@ from app.core.streaming import (
     create_streaming_response,
     mock_token_generator
 )
+from app.core.multimodal_search_service import get_multimodal_search_service
 
 router = APIRouter()
 
@@ -40,6 +42,7 @@ class RAGQueryRequest(BaseModel):
     """RAG查询请求"""
     question: str = Field(..., min_length=1, description="用户问题")
     paper_ids: Optional[List[str]] = Field(None, description="要查询的论文ID列表")
+    user_id: str = Field(..., description="用户ID")  # Required for unified service
     query_type: str = Field("single", description="查询类型: single, cross_paper, evolution")
     top_k: int = Field(10, ge=1, le=50, description="返回的chunk数量")
     conversation_id: Optional[str] = Field(None, description="对话会话ID (多轮对话)")
@@ -48,6 +51,10 @@ class RAGQueryRequest(BaseModel):
 class RAGQueryResponse(BaseModel):
     """RAG查询响应"""
     answer: str = Field(..., description="回答内容")
+    query: Optional[str] = Field(None, description="原始查询")
+    expanded_query: Optional[str] = Field(None, description="扩展后的查询")
+    intent: Optional[str] = Field(None, description="查询意图 (question/compare/summary/evolution)")
+    metadata_filters: Optional[Dict] = Field(None, description="提取的元数据过滤条件")
     sources: List[dict] = Field(..., description="引用来源")
     confidence: float = Field(..., ge=0, le=1, description="置信度")
     conversation_id: Optional[str] = Field(None, description="对话会话ID")
@@ -103,6 +110,7 @@ async def rag_query(request: RAGQueryRequest):
     - 支持跨文档查询
     - 1小时缓存相同查询
     - 支持多轮对话 (通过conversation_id)
+    - 使用统一MultimodalSearchService with query understanding
     """
     try:
         logger.info(f"RAG query: {request.question}, type: {request.query_type}")
@@ -119,32 +127,56 @@ async def rag_query(request: RAGQueryRequest):
             logger.info(f"Returning cached response for query: {request.question[:50]}...")
             return RAGQueryResponse(
                 answer=cached.get("answer", ""),
+                query=request.question,
                 sources=cached.get("sources", []),
                 confidence=cached.get("confidence", 0.0),
                 conversation_id=request.conversation_id,
                 cached=True
             )
 
-        # TODO: 集成PaperQA2 进行实际RAG查询
-        # For now, return mock response
-        answer = (
-            f"这是一个关于'{request.question}'的模拟回答。"
-            f"PaperQA2集成完成后将提供真实回答。"
-        )
-        sources = [
-            {
-                "paper_id": "paper-1",
-                "title": "示例论文",
-                "chunk_id": "chunk-1",
-                "score": 0.95,
-                "page": 5
-            }
-        ]
-        confidence = 0.85
+        # Use unified MultimodalSearchService (per D-15)
+        service = get_multimodal_search_service()
 
-        # Build response
+        # Execute multimodal search with query understanding
+        result = await service.search(
+            query=request.question,
+            paper_ids=paper_ids,
+            user_id=request.user_id,
+            top_k=request.top_k,
+            use_reranker=True,
+        )
+
+        # Format response with query understanding fields
+        # Build answer from results (simplified for now, full LLM integration pending)
+        answer = (
+            f"Based on {result['total_count']} relevant chunks from your papers:\n\n"
+            f"(Full LLM synthesis pending)"
+        )
+
+        # Format sources from results
+        sources = []
+        for res in result.get("results", [])[:5]:  # Top 5 sources
+            sources.append({
+                "paper_id": res.get("paper_id"),
+                "chunk_id": res.get("id"),
+                "content_preview": res.get("content_data", "")[:200],
+                "score": res.get("score", 0.0),
+                "page": res.get("page_num"),
+                "content_type": res.get("content_type"),
+            })
+
+        # Calculate confidence from top results
+        confidence = 0.0
+        if sources:
+            confidence = min(sum(s.get("score", 0.0) for s in sources[:3]) / len(sources[:3]), 1.0)
+
+        # Build response with query understanding fields (per D-15)
         response = RAGQueryResponse(
             answer=answer,
+            query=request.question,
+            expanded_query=result.get("expanded_query"),
+            intent=result.get("intent"),
+            metadata_filters=result.get("metadata_filters"),
             sources=sources,
             confidence=confidence,
             conversation_id=request.conversation_id,

@@ -152,7 +152,8 @@ class TestRAGAPIUnified:
 
             # Check metadata_filters field (D-07 requirement)
             assert "metadata_filters" in data
-            assert data["metadata_filters"]["year_range"] == (2023, 2023)
+            # JSON serialization converts tuples to lists
+            assert data["metadata_filters"]["year_range"] == [2023, 2023] or data["metadata_filters"]["year_range"] == (2023, 2023)
 
     @pytest.mark.asyncio
     async def test_rag_query_backward_compat(self, client, mock_multimodal_service):
@@ -210,6 +211,7 @@ class TestRAGAPIUnified:
             intent="question",
             metadata_filters={"year_range": (2023, 2023)},
             sources=[],
+            confidence=0.85,  # Required field
         )
         assert resp.expanded_query == "expanded test"
         assert resp.intent == "question"
