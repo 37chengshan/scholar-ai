@@ -7,12 +7,17 @@ ScholarAI Python AI Service
 - 实体抽取
 """
 
+# Set HuggingFace offline mode before importing any ML libraries
+import os
+os.environ['HF_HUB_OFFLINE'] = '1'
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, parse, rag, entities, papers, internal, search, notes, compare, graph, session, chat
+from app.api import health, parse, rag, entities, papers, internal, search, notes, compare, graph, session, chat, tasks
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
@@ -118,6 +123,7 @@ app.include_router(compare.router, prefix="/compare", tags=["Comparison"])
 app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
 app.include_router(session.router, prefix="/api", tags=["Session"])
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
+app.include_router(tasks.router, tags=["Tasks"])
 
 
 @app.get("/")

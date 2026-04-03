@@ -7,6 +7,7 @@ import { prisma } from '../config/database';
 import { generateStorageKey, generatePresignedUploadUrl } from '../services/storage';
 import { logger } from '../utils/logger';
 import type { AuthRequest } from '../types/auth';
+import { retrySinglePdf, retryBatchFailedPapers } from '../services/celery_client';
 
 const router = Router();
 
@@ -400,6 +401,180 @@ router.get(
           // Per-file details
           papers: formattedPapers,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/papers/batch/:id/retry - Retry single failed paper
+ *
+ * Per D-07: Manual retry by user
+ */
+router.post(
+  '/:id/retry',
+  requirePermission('papers', 'update'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        throw Errors.unauthorized('User not authenticated');
+      }
+
+      const paperId = req.params.id;
+
+      // Verify paper exists and is failed
+      const paper = await prisma.paper.findFirst({
+        where: {
+          id: paperId,
+          userId,
+          status: 'failed',
+        },
+        include: {
+          processingTask: true,
+        },
+      });
+
+      if (!paper) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            type: '/errors/not-found',
+            title: 'Not Found',
+            status: 404,
+            detail: 'Paper not found or not in failed state',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Increment retry count
+      if (paper.processingTask) {
+        await prisma.processingTask.update({
+          where: { id: paper.processingTask.id },
+          data: {
+            retryCount: { increment: 1 },
+            errorMessage: null,
+            errorStage: null,
+            status: 'pending',
+          },
+        });
+      }
+
+      // Reset paper status
+      await prisma.paper.update({
+        where: { id: paperId },
+        data: { status: 'pending' },
+      });
+
+      // Trigger Celery retry task
+      await retrySinglePdf(paperId);
+
+      logger.info('Retry initiated for paper', { userId, paperId });
+
+      res.json({
+        success: true,
+        message: 'Retry initiated',
+        data: { paperId },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/papers/batch/:batchId/retry-failed - Retry all failed papers in batch
+ *
+ * Per D-07: Batch retry for all failed papers
+ */
+router.post(
+  '/:batchId/retry-failed',
+  requirePermission('papers', 'update'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        throw Errors.unauthorized('User not authenticated');
+      }
+
+      const { batchId } = req.params;
+
+      // Verify batch exists
+      const batch = await prisma.paperBatch.findFirst({
+        where: { id: batchId, userId },
+      });
+
+      if (!batch) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            type: '/errors/not-found',
+            title: 'Not Found',
+            status: 404,
+            detail: 'Batch not found',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Count failed papers
+      const failedCount = await prisma.paper.count({
+        where: {
+          batchId,
+          userId,
+          status: 'failed',
+        },
+      });
+
+      if (failedCount === 0) {
+        return res.json({
+          success: true,
+          message: 'No failed papers to retry',
+          data: { batchId, retryCount: 0 },
+        });
+      }
+
+      // Reset failed papers to pending
+      await prisma.paper.updateMany({
+        where: {
+          batchId,
+          userId,
+          status: 'failed',
+        },
+        data: { status: 'pending' },
+      });
+
+      // Reset processing tasks
+      await prisma.processingTask.updateMany({
+        where: {
+          paper: {
+            batchId,
+            userId,
+          },
+          status: 'failed',
+        },
+        data: {
+          status: 'pending',
+          errorMessage: null,
+          errorStage: null,
+          retryCount: { increment: 1 },
+        },
+      });
+
+      // Trigger Celery batch retry task
+      await retryBatchFailedPapers(batchId);
+
+      logger.info('Batch retry initiated', { userId, batchId, failedCount });
+
+      res.json({
+        success: true,
+        message: 'Batch retry initiated',
+        data: { batchId, retryCount: failedCount },
       });
     } catch (error) {
       next(error);
