@@ -21,6 +21,7 @@ import graphRouter from './routes/graph';
 import entitiesRouter from './routes/entities';
 import { chatRouter } from './routes/chat';
 import { sessionRouter } from './routes/session';
+import { batchRouter } from './routes/batch';
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/papers', papersRouter);
+app.use('/api/papers/batch', batchRouter);
 app.use('/api/queries', queriesRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/notes', notesRouter);
