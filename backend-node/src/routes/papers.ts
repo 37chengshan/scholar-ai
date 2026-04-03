@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
 import { authenticate } from '../middleware/auth';
 import { requirePermission } from '../middleware/rbac';
-import { requireReauth } from '../middleware/reauth';
+import { requireReauth, ReauthRequest } from '../middleware/reauth';
 import { Errors } from '../middleware/errorHandler';
 import { prisma } from '../config/database';
 import { AuthRequest } from '../types/auth';
@@ -20,10 +20,68 @@ import {
   TaskStatus,
   getProgressPercent,
 } from '../services/tasks';
+import { triggerBatchProcessing } from '../services/celery_client';
 
 const router = Router();
 
-// Apply authentication to all routes
+// POST /api/upload/local/:storageKey - Local file upload endpoint (development only)
+// 注意：此端点必须在 authenticate middleware 之前，因为它不需要认证
+router.post(
+  '/upload/local/:storageKey',
+  raw({ type: 'application/octet-stream', limit: '50mb' }),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const { storageKey } = req.params;
+
+      if (!storageKey) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'Storage key is required',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const fileBuffer = req.body as Buffer;
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'Empty file',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      await uploadToLocalStorage(storageKey, fileBuffer);
+
+      logger.info(`File uploaded to local storage: ${storageKey} (${fileBuffer.length} bytes)`);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          storageKey,
+          size: fileBuffer.length,
+          message: 'File uploaded successfully',
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Apply authentication to all other routes
 router.use(authenticate);
 
 // GET /api/papers - 获取论文列表
@@ -276,13 +334,53 @@ router.post(
       // Create processing task
       const task = await createTask(paperId, storageKey);
 
-      // Update paper status
+      // Update paper status and upload info
       await prisma.paper.update({
         where: { id: paperId },
-        data: { status: 'processing' },
+        data: {
+          status: 'processing',
+          uploadStatus: 'completed',
+          uploadProgress: 100,
+          uploadedAt: new Date(),
+        },
       });
 
       logger.info(`Created processing task ${task.taskId} for paper ${paperId}`);
+
+      // Batch tracking logic (per D-02: auto-start when all files uploaded)
+      if (paper.batchId) {
+        // Increment batch uploaded count
+        await prisma.paperBatch.update({
+          where: { id: paper.batchId },
+          data: { uploadedCount: { increment: 1 } },
+        });
+
+        // Check if all files uploaded
+        const batch = await prisma.paperBatch.findUnique({
+          where: { id: paper.batchId },
+          select: { uploadedCount: true, totalFiles: true },
+        });
+
+        if (batch && batch.uploadedCount === batch.totalFiles) {
+          logger.info('All files uploaded for batch, triggering processing', {
+            batchId: paper.batchId,
+          });
+
+          // Update batch status
+          await prisma.paperBatch.update({
+            where: { id: paper.batchId },
+            data: { status: 'processing' },
+          });
+
+          // Trigger Celery batch processing task
+          try {
+            await triggerBatchProcessing(paper.batchId);
+          } catch (error) {
+            logger.error('Failed to trigger batch processing:', error);
+            // Don't fail the webhook if batch trigger fails
+          }
+        }
+      }
 
       res.status(201).json({
         success: true,
@@ -787,7 +885,7 @@ router.delete(
   '/:id',
   requirePermission('papers', 'delete'),
   requireReauth,
-  async (req: AuthRequest, res, next) => {
+  async (req: ReauthRequest, res, next) => {
     try {
       const userId = req.user?.sub;
       if (!userId) {
@@ -852,63 +950,6 @@ router.delete(
       res.json({
         success: true,
         data: { id, deleted: true },
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// POST /api/upload/local/:storageKey - Local file upload endpoint (development only)
-// 注意：此端点始终注册以支持测试环境
-router.post(
-  '/upload/local/:storageKey',
-  raw({ type: 'application/octet-stream', limit: '50mb' }),
-  async (req: AuthRequest, res, next) => {
-    try {
-      const { storageKey } = req.params;
-
-      if (!storageKey) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            type: '/errors/validation-error',
-            title: 'Validation Error',
-            status: 400,
-            detail: 'Storage key is required',
-            requestId: uuidv4(),
-            timestamp: new Date().toISOString(),
-          },
-        });
-      }
-
-      const fileBuffer = req.body as Buffer;
-
-      if (!fileBuffer || fileBuffer.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            type: '/errors/validation-error',
-            title: 'Validation Error',
-            status: 400,
-            detail: 'Empty file',
-            requestId: uuidv4(),
-            timestamp: new Date().toISOString(),
-          },
-        });
-      }
-
-      await uploadToLocalStorage(storageKey, fileBuffer);
-
-      logger.info(`File uploaded to local storage: ${storageKey} (${fileBuffer.length} bytes)`);
-
-      res.status(200).json({
-        success: true,
-        data: {
-          storageKey,
-          size: fileBuffer.length,
-          message: 'File uploaded successfully',
-        },
       });
     } catch (error) {
       next(error);
