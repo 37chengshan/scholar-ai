@@ -7,9 +7,11 @@ Provides:
 - 1024-dim embedding generation via BGE-M3
 - Milvus unified collection storage
 - Partial failure tracking
+- Reference context extraction for figures/tables (D-04)
 """
 
 import gc
+import re
 from io import BytesIO
 from typing import Dict, List, Optional, Any
 
@@ -23,6 +25,53 @@ from app.core.bge_m3_service import get_bge_m3_service
 from app.core.milvus_service import get_milvus_service
 from app.core.storage import ObjectStorage
 from app.utils.logger import logger
+
+
+def extract_figure_references(
+    markdown: str,
+    figure_label: str,
+    figure_type: str = "figure"
+) -> List[str]:
+    """Extract reference contexts for figures/tables per D-04.
+
+    Extracts text segments that reference a specific figure or table,
+    providing contextual information about how the figure/table is discussed
+    in the paper.
+
+    Args:
+        markdown: Full document markdown text
+        figure_label: Figure/table label (e.g., "1", "2")
+        figure_type: "figure" or "table"
+
+    Returns:
+        List of reference contexts (max 3), each containing text that
+        mentions the figure/table.
+
+    Example:
+        >>> markdown = "As shown in Figure 1, the results are significant."
+        >>> contexts = extract_figure_references(markdown, "1", "figure")
+        >>> len(contexts) <= 3
+        True
+    """
+    # Regex patterns for figure/table references (per D-04)
+    if figure_type.lower() == "table":
+        patterns = [
+            rf"(Table\s*{figure_label}.*?)(?=Table\s*\d+|Figure|$)",
+            rf"(表\s*{figure_label}.*?)(?=表\s*\d+|图|$)",
+        ]
+    else:  # figure
+        patterns = [
+            rf"(Figure\s*{figure_label}.*?)(?=Figure\s*\d+|Table|$)",
+            rf"(图\s*{figure_label}.*?)(?=图\s*\d+|表|$)",
+        ]
+
+    contexts = []
+    for pattern in patterns:
+        matches = re.findall(pattern, markdown, re.DOTALL | re.IGNORECASE)
+        contexts.extend(matches)
+
+    # Limit to 3 context fragments (per D-04)
+    return contexts[:3]
 
 
 class MultimodalIndexer:
