@@ -1,10 +1,10 @@
-import { NavLink, Outlet } from "react-router";
-import { clsx } from "clsx";
-import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, FileText, UploadCloud } from "lucide-react";
+import { NavLink, Outlet, useNavigate } from "react-router";
+import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, FileText, UploadCloud, LogOut } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
+import { mockLogout } from "../../mocks/auth";
 
 const navItemsEN = [
-  { to: "/", icon: LayoutDashboard, label: "Overview" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Overview" },
   { to: "/upload", icon: UploadCloud, label: "Ingest" },
   { to: "/library", icon: BookOpen, label: "Literature" },
   { to: "/search", icon: Search, label: "Discovery" },
@@ -13,7 +13,7 @@ const navItemsEN = [
 ];
 
 const navItemsZH = [
-  { to: "/", icon: LayoutDashboard, label: "仪表盘" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "仪表盘" },
   { to: "/upload", icon: UploadCloud, label: "上传/导入" },
   { to: "/library", icon: BookOpen, label: "文献库" },
   { to: "/search", icon: Search, label: "检索" },
@@ -23,8 +23,14 @@ const navItemsZH = [
 
 export function Layout() {
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const isZh = language === "zh";
   const navItems = isZh ? navItemsZH : navItemsEN;
+
+  const handleLogout = () => {
+    mockLogout();
+    navigate('/');
+  };
 
   return (
     <div className="h-screen bg-background text-foreground font-sans flex flex-col antialiased overflow-hidden">
@@ -47,17 +53,16 @@ export function Layout() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  clsx(
-                    "px-3 py-1.5 rounded-full flex items-center gap-2 transition-all duration-300 group",
-                    isActive 
-                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" 
+                  `px-3 py-1.5 rounded-full flex items-center gap-2 transition-all duration-300 group ${
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
                       : "hover:bg-muted text-foreground/70 hover:text-primary"
-                  )
+                  }`
                 }
               >
                 {({ isActive }) => (
                   <>
-                    <item.icon className={clsx("w-3.5 h-3.5", isActive ? "text-primary-foreground" : "text-primary/70 group-hover:text-primary")} />
+                    <item.icon className={`w-3.5 h-3.5 ${isActive ? "text-primary-foreground" : "text-primary/70 group-hover:text-primary"}`} />
                     <span className="text-[9px] lg:text-[10px] font-bold tracking-[0.2em] uppercase">{item.label}</span>
                   </>
                 )}
@@ -66,17 +71,16 @@ export function Layout() {
           </nav>
         </div>
 
-        {/* Right Side: Settings & User Profile */}
+        {/* Right Side: Settings & User Profile & Logout */}
         <div className="flex items-center gap-3 lg:gap-4 h-full">
           <NavLink
             to="/settings"
             className={({ isActive }) =>
-              clsx(
-                "p-1.5 rounded-full transition-all duration-300 group border border-transparent",
-                isActive 
-                  ? "bg-muted text-primary border-border/50" 
+              `p-1.5 rounded-full transition-all duration-300 group border border-transparent ${
+                isActive
+                  ? "bg-muted text-primary border-border/50"
                   : "text-foreground/60 hover:bg-muted hover:text-primary hover:border-border/50"
-              )
+              }`
             }
           >
             <Settings className="w-4 h-4" />
@@ -92,13 +96,22 @@ export function Layout() {
               <span className="text-[11px] font-serif font-bold text-foreground leading-none">Dr. Vance</span>
             </div>
             <div className="w-7 h-7 rounded-full overflow-hidden border border-primary/20 p-0.5 shadow-sm group-hover:shadow-primary/20 transition-all duration-300">
-              <img 
-                src="https://images.unsplash.com/photo-1631885628966-a14af9faaa9b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21hbiUyMHByb2ZpbGUlMjBwb3J0cmFpdHxlbnwxfHx8fDE3NzUxMDc0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080" 
+              <img
+                src="https://images.unsplash.com/photo-1631885628966-a14af9faaa9b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21hbiUyMHByb2ZpbGUlMjBwb3J0cmFpdHxlbnwxfHx8fDE3NzUxMDc0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080"
                 alt="Profile"
                 className="w-full h-full rounded-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
               />
             </div>
           </div>
+
+          {/* Logout Button */}
+          <button
+            onClick={handleLogout}
+            className="p-1.5 rounded-full transition-all duration-300 text-foreground/60 hover:bg-muted hover:text-primary hover:border-border/50 border border-transparent flex items-center gap-2"
+            title={isZh ? "退出登录" : "Logout"}
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
