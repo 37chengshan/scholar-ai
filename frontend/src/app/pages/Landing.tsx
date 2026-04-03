@@ -66,8 +66,7 @@ export function Landing() {
   // Check authentication status (mock for now)
   const isAuthenticated = (): boolean => {
     // Check localStorage/session for auth token
-    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-    console.log('User authenticated:', !!token);
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
     return !!token;
   };
 

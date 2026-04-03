@@ -26,8 +26,8 @@ export const router = createBrowserRouter([
     Component: Login,
   },
   {
-    path: "/",
-    Component: Layout,
+    // Layout is a wrapper for all app pages, no path needed
+    element: <Layout />,
     children: [
       {
         path: "dashboard",
