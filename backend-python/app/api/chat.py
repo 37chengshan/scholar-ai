@@ -432,10 +432,33 @@ async def confirm_action(
             session_id=request.session_id
         )
 
-        # TODO: Validate confirmation_id from database/cache
-        # For now, assume it's valid
+        # Validate confirmation_id from Redis
+        import redis.asyncio as redis
+        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        
+        confirmation_key = f"confirmation:{request.confirmation_id}"
+        confirmation_data = await r.get(confirmation_key)
+        
+        if not confirmation_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired confirmation_id"
+            )
+        
+        # Parse confirmation data
+        import json
+        data = json.loads(confirmation_data)
+        
+        # Verify user ownership
+        if data.get("user_id") != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Confirmation belongs to different user"
+            )
 
         if not request.approved:
+            # Clear confirmation from Redis
+            await r.delete(confirmation_key)
             return {
                 "success": False,
                 "message": "User declined the operation"
@@ -443,12 +466,21 @@ async def confirm_action(
 
         # Resume Agent execution
         runner, _, _, _ = initialize_agent_components()
-
-        # TODO: Retrieve tool_name and parameters from confirmation request storage
-        # For now, return success
+        
+        # Retrieve tool_name and parameters from confirmation data
+        tool_name = data.get("tool_name")
+        tool_params = data.get("tool_params", {})
+        session_id = data.get("session_id")
+        
+        # Clear confirmation from Redis
+        await r.delete(confirmation_key)
+        
         return {
             "success": True,
-            "message": "Operation confirmed. Agent execution resumed."
+            "message": "Operation confirmed. Agent execution resumed.",
+            "tool_name": tool_name,
+            "tool_params": tool_params,
+            "session_id": session_id
         }
 
     except Exception as e:
