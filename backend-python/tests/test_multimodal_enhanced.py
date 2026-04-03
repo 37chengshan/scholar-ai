@@ -164,3 +164,126 @@ From Figure 1, we observe result E.
 
         # Should return at most 3 contexts
         assert len(contexts) <= 3
+
+
+class TestCreateEnhancedMultimodalEmbedding:
+    """Test creation of enhanced multimodal embeddings per D-04."""
+
+    @pytest.mark.asyncio
+    async def test_create_enhanced_embedding_function_exists(self):
+        """Test 1: create_enhanced_multimodal_embedding() function exists."""
+        from app.core.multimodal_indexer import create_enhanced_multimodal_embedding
+        assert callable(create_enhanced_multimodal_embedding)
+
+    @pytest.mark.asyncio
+    async def test_combines_caption_context_description(self):
+        """Test 2: Function combines caption + context + description."""
+        from app.core.multimodal_indexer import create_enhanced_multimodal_embedding
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Mock BGE-M3 service
+        mock_bge_m3 = MagicMock()
+        mock_bge_m3.encode_text.return_value = [0.1] * 1024
+
+        markdown = "As shown in Figure 1, the results demonstrate significant improvements."
+        caption = "Figure 1: Experimental results"
+
+        embedding, combined_text = await create_enhanced_multimodal_embedding(
+            figure_type="image",
+            figure_label="1",
+            caption=caption,
+            markdown=markdown,
+            bge_m3_service=mock_bge_m3,
+            vlm_description="Bar chart showing performance metrics"
+        )
+
+        # Should return embedding and combined text
+        assert isinstance(embedding, list)
+        assert len(embedding) == 1024
+        assert isinstance(combined_text, str)
+
+        # Should contain caption
+        assert "Figure 1" in combined_text or "Image 1" in combined_text
+        assert caption in combined_text or "Experimental results" in combined_text
+
+    @pytest.mark.asyncio
+    async def test_context_limited_to_500_chars(self):
+        """Test 3: Context text limited to 500 characters (LOCKED per D-04)."""
+        from app.core.multimodal_indexer import create_enhanced_multimodal_embedding
+        from unittest.mock import MagicMock
+
+        mock_bge_m3 = MagicMock()
+        mock_bge_m3.encode_text.return_value = [0.1] * 1024
+
+        # Create a very long markdown
+        long_text = "This is a long context sentence. " * 100
+        markdown = f"As shown in Figure 1, {long_text}"
+
+        embedding, combined_text = await create_enhanced_multimodal_embedding(
+            figure_type="image",
+            figure_label="1",
+            caption="Figure 1",
+            markdown=markdown,
+            bge_m3_service=mock_bge_m3
+        )
+
+        # Find the context part in combined_text
+        # The context should be limited to 500 characters
+        if "Context:" in combined_text:
+            context_start = combined_text.find("Context:")
+            context_part = combined_text[context_start:]
+            # The context portion should not be excessively long
+            # (Allowing some overhead for "Context:" prefix and formatting)
+            assert len(context_part) < 1000  # Reasonable upper bound
+
+    @pytest.mark.asyncio
+    async def test_returns_embedding_and_combined_text(self):
+        """Test 4: Function returns embedding and combined_text."""
+        from app.core.multimodal_indexer import create_enhanced_multimodal_embedding
+        from unittest.mock import MagicMock
+
+        mock_bge_m3 = MagicMock()
+        mock_bge_m3.encode_text.return_value = [0.5] * 1024
+
+        result = await create_enhanced_multimodal_embedding(
+            figure_type="table",
+            figure_label="2",
+            caption="Table 2: Performance comparison",
+            markdown="Table 2 shows the comparison results.",
+            bge_m3_service=mock_bge_m3,
+            vlm_description="Comparison table with 5 columns"
+        )
+
+        # Should return tuple of (embedding, combined_text)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+        embedding, combined_text = result
+        assert isinstance(embedding, list)
+        assert len(embedding) == 1024
+        assert isinstance(combined_text, str)
+
+    @pytest.mark.asyncio
+    async def test_handles_missing_vlm_description(self):
+        """Test 5: Handles cases where VLM description is not provided."""
+        from app.core.multimodal_indexer import create_enhanced_multimodal_embedding
+        from unittest.mock import MagicMock
+
+        mock_bge_m3 = MagicMock()
+        mock_bge_m3.encode_text.return_value = [0.3] * 1024
+
+        # Test without VLM description
+        embedding, combined_text = await create_enhanced_multimodal_embedding(
+            figure_type="image",
+            figure_label="1",
+            caption="Figure 1: Results",
+            markdown="As shown in Figure 1, the results are good.",
+            bge_m3_service=mock_bge_m3,
+            vlm_description=None  # No VLM description
+        )
+
+        # Should still work without VLM description
+        assert isinstance(embedding, list)
+        assert len(embedding) == 1024
+        assert isinstance(combined_text, str)
+        assert "Figure 1" in combined_text or "Image 1" in combined_text

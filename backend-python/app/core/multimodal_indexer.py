@@ -74,6 +74,66 @@ def extract_figure_references(
     return contexts[:3]
 
 
+async def create_enhanced_multimodal_embedding(
+    figure_type: str,  # "image" or "table"
+    figure_label: str,
+    caption: str,
+    markdown: str,
+    bge_m3_service,
+    vlm_description: Optional[str] = None
+) -> tuple[List[float], str]:
+    """Create enhanced multimodal embedding per D-04.
+
+    Combines caption, reference context, and optional VLM description
+    to create a rich embedding for figures and tables.
+
+    Args:
+        figure_type: "image" or "table"
+        figure_label: Figure/table number (e.g., "1", "2")
+        caption: Figure/table caption
+        markdown: Full document markdown for context extraction
+        bge_m3_service: BGE-M3 service for embedding
+        vlm_description: Optional VLM-generated description
+
+    Returns:
+        Tuple of (embedding, combined_text) where:
+        - embedding: 1024-dim vector
+        - combined_text: Text used for embedding (caption + context + description)
+
+    Example:
+        >>> embedding, text = await create_enhanced_multimodal_embedding(
+        ...     "image", "1", "Figure 1: Results", markdown, bge_m3
+        ... )
+        >>> len(embedding)
+        1024
+    """
+    # Extract reference contexts (per D-04)
+    reference_contexts = extract_figure_references(
+        markdown,
+        figure_label,
+        figure_type
+    )
+
+    # Limit context to 500 characters (LOCKED per D-04)
+    context_text = " ".join(reference_contexts)[:500]
+
+    # Combine parts (per D-04 lines 259-282 in CONTEXT.md)
+    parts = [f"{figure_type.capitalize()} {figure_label}: {caption}"]
+
+    if context_text:
+        parts.append(f"Context: {context_text}")
+
+    if vlm_description:
+        parts.append(f"Description: {vlm_description}")
+
+    combined_text = "\n\n".join(parts)
+
+    # Generate embedding
+    embedding = bge_m3_service.encode_text(combined_text)
+
+    return embedding, combined_text
+
+
 class MultimodalIndexer:
     """Orchestrate multimodal content extraction and indexing.
 
