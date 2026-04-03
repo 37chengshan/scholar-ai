@@ -99,6 +99,7 @@ export const ErrorTypes = {
   CONFLICT: '/errors/conflict',
   INTERNAL_ERROR: '/errors/internal-error',
   SERVICE_UNAVAILABLE: '/errors/service-unavailable',
+  BAD_GATEWAY: '/errors/bad-gateway',
 } as const;
 
 export type ErrorType = typeof ErrorTypes[keyof typeof ErrorTypes];

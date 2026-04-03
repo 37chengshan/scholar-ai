@@ -21,6 +21,7 @@ const mapErrorCodeToType = (code: string | undefined): string => {
     CONFLICT: ErrorTypes.CONFLICT,
     INTERNAL_ERROR: ErrorTypes.INTERNAL_ERROR,
     SERVICE_UNAVAILABLE: ErrorTypes.SERVICE_UNAVAILABLE,
+    BAD_GATEWAY: ErrorTypes.BAD_GATEWAY,
   };
 
   return codeMap[code || ''] || ErrorTypes.INTERNAL_ERROR;
@@ -38,6 +39,7 @@ const getErrorTitle = (statusCode: number): string => {
     409: 'Conflict',
     422: 'Unprocessable Entity',
     500: 'Internal Server Error',
+    502: 'Bad Gateway',
     503: 'Service Unavailable',
   };
 
@@ -150,4 +152,7 @@ export const Errors = {
 
   invalidCredentials: (message = 'Invalid credentials') =>
     createError(message, 401, 'INVALID_CREDENTIALS'),
+
+  badGateway: (message = 'Bad Gateway') =>
+    createError(message, 502, 'BAD_GATEWAY'),
 };
