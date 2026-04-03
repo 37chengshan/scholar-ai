@@ -35,7 +35,7 @@ services:
     container_name: scholarai-neo4j
     environment:
       NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/scholarai123}
-      NEO4J_PLUGINS: '["apoc", "gds"]'
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
       NEO4J_dbms_memory_heap_max__size: 1G
     ports:
       - "7474:7474"  # HTTP
@@ -90,6 +90,7 @@ services:
   milvus-standalone:
     image: milvusdb/milvus:v2.3.3
     container_name: scholarai-milvus
+    command: ["milvus", "run", "standalone"]
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
@@ -126,11 +127,14 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-scholarai}:${POSTGRES_PASSWORD:-scholarai123}@postgres:5432/${POSTGRES_DB:-scholarai}
       - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
     ports:
       - "8000:8000"
     volumes:
       - ./papers:/app/papers:ro
       - ai_models:/app/models
+      - ~/.cache/huggingface:/root/.cache/huggingface:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,6 +146,65 @@ services:
       resources:
         limits:
           memory: 4G
+
+  # Celery Worker for batch PDF processing
+  # Per D-10: Celery task queue framework
+  # Per D-03: Dynamic concurrency based on memory (8 initial workers)
+  celery_worker:
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    container_name: scholarai-celery-worker
+    command: celery -A app.core.celery_config worker --loglevel=info --concurrency=8
+    environment:
+      # Database
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-scholarai}:${POSTGRES_PASSWORD:-scholarai123}@postgres:5432/${POSTGRES_DB:-scholarai}
+
+      # Redis (Celery broker and backend)
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+
+      # Object Storage
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-http://minio:9000}
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID:-minioadmin}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET:-minioadmin}
+      - OSS_BUCKET=${OSS_BUCKET:-scholarai-papers}
+      - OSS_REGION=${OSS_REGION:-us-east-1}
+
+      # LLM APIs
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ZHIPU_API_KEY=${ZHIPU_API_KEY}
+
+      # Other
+      - PYTHONUNBUFFERED=1
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - default
+    deploy:
+      resources:
+        limits:
+          memory: 4G  # Per D-10: Python service memory constraint
+        reservations:
+          memory: 2G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.core.celery_config", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Node.js API 服务
   api:
