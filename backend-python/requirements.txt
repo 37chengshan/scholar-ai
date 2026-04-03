@@ -54,7 +54,11 @@ aiofiles>=23.0.0
 structlog>=23.0.0
 
 # 缓存
-redis>=5.0.0,<6.0.0
+redis>=5.0.1,<6.0.0
+
+# Celery任务队列 (Phase 11)
+celery==5.3.6
+psutil==5.9.8  # 内存监控
 
 # 开发工具
 pytest>=7.4.0
