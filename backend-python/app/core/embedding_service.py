@@ -5,13 +5,15 @@ Provides:
 - Batch processing for efficiency
 - PostgreSQL PGVector storage with asyncpg
 - Similarity search using pgvector operators
+- Contextual embedding generation using GLM-4.5-Air
 """
 
 import hashlib
 import math
 import os
+import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -396,6 +398,87 @@ class EmbeddingService:
         if len(parts) >= 2 and parts[0] == "UPDATE":
             return int(parts[1]) > 0
         return False
+
+    def create_contextual_embedding(
+        self,
+        chunk_text: str,
+        whole_document: str
+    ) -> Tuple[List[float], str]:
+        """Generate contextual embedding using GLM-4.5-Air per D-01.
+
+        Uses Anthropic's official prompt template to generate context
+        that situates the chunk within the whole document.
+
+        Args:
+            chunk_text: The chunk to contextualize
+            whole_document: Full document text for context
+
+        Returns:
+            Tuple of (embedding, contextualized_text)
+
+        Raises:
+            Exception: If GLM API fails after retries
+        """
+        from zhipuai import ZhipuAI
+        from app.core.config import settings
+
+        # Anthropic official prompt template (per D-01)
+        prompt = f"""<document>
+{whole_document}
+</document>
+Here is the chunk we want to situate within the whole document
+<chunk>
+{chunk_text}
+</chunk>
+Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
+
+        # Initialize ZhipuAI client
+        client = ZhipuAI(api_key=settings.ZHIPU_API_KEY)
+
+        # Retry logic with exponential backoff
+        max_retries = 5
+        base_delay = 1
+
+        for attempt in range(max_retries):
+            try:
+                # Generate context with GLM-4.5-Air (per D-01)
+                response = client.chat.completions.create(
+                    model="glm-4.5-air",
+                    messages=[{"role": "user", "content": prompt}],
+                    thinking={"type": "disabled"},
+                    max_tokens=100,
+                    temperature=0.3
+                )
+
+                context = response.choices[0].message.content
+
+                # Combine context and chunk (per D-01)
+                contextualized_text = f"{context}\n\n{chunk_text}"
+
+                # Generate embedding using existing encode method
+                embedding = self.generate_embedding(contextualized_text)
+
+                return embedding, contextualized_text
+
+            except Exception as e:
+                logger.warning(
+                    "GLM API call failed, retrying",
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    error=str(e)
+                )
+
+                if attempt < max_retries - 1:
+                    # Exponential backoff
+                    delay = base_delay * (2 ** attempt)
+                    time.sleep(delay)
+                else:
+                    # All retries exhausted
+                    logger.error(
+                        "GLM API failed after all retries",
+                        error=str(e)
+                    )
+                    raise
 
 
 # Convenience functions for direct usage

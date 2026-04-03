@@ -73,3 +73,6 @@ rapidfuzz>=3.0.0
 tenacity>=8.0.0
 scikit-learn>=1.3.0
 python-jose
+
+# Zhipu AI SDK for GLM-4.5-Air contextual embeddings
+zhipuai>=2.0.0

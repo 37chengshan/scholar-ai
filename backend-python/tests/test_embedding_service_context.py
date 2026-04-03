@@ -6,8 +6,15 @@ Tests the create_contextual_embedding method which:
 3. Returns embedding and contextualized text
 """
 
+import sys
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
+# Mock zhipuai module before importing the service
+sys.modules['zhipuai'] = MagicMock()
+
 from app.core.embedding_service import EmbeddingService
 
 
@@ -27,10 +34,12 @@ class TestContextualEmbedding:
         # Check it's callable
         assert callable(getattr(embedding_service, 'create_contextual_embedding'))
 
-    @patch('app.core.embedding_service.ZhipuAI')
-    def test_create_contextual_embedding_generates_context_with_glm(self, mock_zhipu, embedding_service):
+    @patch('app.core.config.settings')
+    @patch('zhipuai.ZhipuAI')
+    def test_create_contextual_embedding_generates_context_with_glm(self, mock_zhipu, mock_settings, embedding_service):
         """Test 2: Function generates context using GLM-4.5-Air with Anthropic prompt template."""
         # Setup mock
+        mock_settings.ZHIPU_API_KEY = "test-key"
         mock_client = MagicMock()
         mock_zhipu.return_value = mock_client
         
@@ -61,10 +70,12 @@ class TestContextualEmbedding:
         assert whole_document in prompt
         assert chunk_text in prompt
 
-    @patch('app.core.embedding_service.ZhipuAI')
-    def test_create_contextual_embedding_returns_embedding_and_text(self, mock_zhipu, embedding_service):
+    @patch('app.core.config.settings')
+    @patch('zhipuai.ZhipuAI')
+    def test_create_contextual_embedding_returns_embedding_and_text(self, mock_zhipu, mock_settings, embedding_service):
         """Test 3: Function combines context + chunk_text and returns embedding."""
         # Setup mock
+        mock_settings.ZHIPU_API_KEY = "test-key"
         mock_client = MagicMock()
         mock_zhipu.return_value = mock_client
         
@@ -91,10 +102,12 @@ class TestContextualEmbedding:
         assert chunk_text in contextualized_text
         assert contextualized_text.startswith("This chunk discusses")
 
-    @patch('app.core.embedding_service.ZhipuAI')
-    def test_create_contextual_embedding_returns_contextualized_text(self, mock_zhipu, embedding_service):
+    @patch('app.core.config.settings')
+    @patch('zhipuai.ZhipuAI')
+    def test_create_contextual_embedding_returns_contextualized_text(self, mock_zhipu, mock_settings, embedding_service):
         """Test 4: Function returns contextualized_text for storage."""
         # Setup mock
+        mock_settings.ZHIPU_API_KEY = "test-key"
         mock_client = MagicMock()
         mock_zhipu.return_value = mock_client
         
@@ -112,14 +125,16 @@ class TestContextualEmbedding:
             chunk_text, whole_document
         )
 
-        # Verify structure: context + "\n\n" + chunk
+# Verify structure: context + "\n\n" + chunk
         assert contextualized_text == f"{context}\n\n{chunk_text}"
 
-    @patch('app.core.embedding_service.ZhipuAI')
+    @patch('app.core.config.settings')
     @patch('time.sleep')
-    def test_create_contextual_embedding_error_handling(self, mock_sleep, mock_zhipu, embedding_service):
+    @patch('zhipuai.ZhipuAI')
+    def test_create_contextual_embedding_error_handling(self, mock_zhipu, mock_sleep, mock_settings, embedding_service):
         """Test 5: Error handling for API failures (retry with exponential backoff)."""
-        # Setup mock to fail twice then succeed
+        # Setup mock
+        mock_settings.ZHIPU_API_KEY = "test-key"
         mock_client = MagicMock()
         mock_zhipu.return_value = mock_client
         
@@ -151,10 +166,12 @@ class TestContextualEmbedding:
         assert mock_sleep.call_args_list[0][0][0] >= 1
         assert mock_sleep.call_args_list[1][0][0] >= 2
 
-    @patch('app.core.embedding_service.ZhipuAI')
-    def test_create_contextual_embedding_max_tokens_and_temperature(self, mock_zhipu, embedding_service):
+    @patch('app.core.config.settings')
+    @patch('zhipuai.ZhipuAI')
+    def test_create_contextual_embedding_max_tokens_and_temperature(self, mock_zhipu, mock_settings, embedding_service):
         """Test 6: Verify GLM-4.5-Air is called with correct parameters."""
         # Setup mock
+        mock_settings.ZHIPU_API_KEY = "test-key"
         mock_client = MagicMock()
         mock_zhipu.return_value = mock_client
         
