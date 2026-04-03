@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
 import { authenticate } from '../middleware/auth';
 import { requirePermission } from '../middleware/rbac';
+import { requireReauth } from '../middleware/reauth';
+import { Errors } from '../middleware/errorHandler';
 import { prisma } from '../config/database';
 import { AuthRequest } from '../types/auth';
 import {
@@ -780,10 +782,11 @@ router.get(
   }
 );
 
-// DELETE /api/papers/:id - Delete paper
+// DELETE /api/papers/:id - Delete paper (requires re-auth)
 router.delete(
   '/:id',
   requirePermission('papers', 'delete'),
+  requireReauth,
   async (req: AuthRequest, res, next) => {
     try {
       const userId = req.user?.sub;
@@ -802,6 +805,11 @@ router.delete(
       }
 
       const { id } = req.params;
+
+      // requireReauth already validated currentPassword
+      if (!req.reauthVerified) {
+        throw Errors.validation('Re-authentication required');
+      }
 
       // Verify paper exists and belongs to user
       const paper = await prisma.paper.findFirst({
