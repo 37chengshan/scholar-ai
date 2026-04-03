@@ -262,12 +262,13 @@ class PDFProcessor:
                 chunk_count=len(chunks)
             )
 
-            # Store chunks in PostgreSQL with embeddings (Gap 1: contextual embeddings)
-            async with self.db_pool.acquire() as conn:
-                chunk_ids = await self.embedding_service.store_chunks(
-                    conn, paper_id, chunks,
-                    whole_document=whole_document  # Pass whole document for contextual embedding
-                )
+            # Store chunks in Milvus with embeddings (Gap 1: contextual embeddings)
+            chunk_ids = await self.embedding_service.store_chunks(
+                paper_id=paper_id,
+                user_id=task["user_id"],
+                chunks=chunks,
+                whole_document=whole_document  # Pass whole document for contextual embedding
+            )
 
             logger.info(
                 "Chunks stored in PostgreSQL",

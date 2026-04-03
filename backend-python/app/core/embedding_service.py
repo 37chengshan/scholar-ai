@@ -1,92 +1,52 @@
 """Embedding service for generating and storing vector embeddings.
 
 Provides:
-- Sentence-transformer based embedding generation
+- BGE-M3 based embedding generation (1024-dim)
 - Batch processing for efficiency
-- PostgreSQL PGVector storage with asyncpg
-- Similarity search using pgvector operators
-- Contextual embedding generation using GLM-4.5-Air
+- Milvus vector storage
+- Contextual embedding generation using GLM-4.5-Air (Phase 12)
 """
 
 import hashlib
 import math
-import os
 import time
-import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from app.core.bge_m3_service import get_bge_m3_service
+from app.core.milvus_service import get_milvus_service
 from app.utils.logger import logger
 
 
 class EmbeddingService:
-    """Service for generating embeddings and storing chunks in PGVector."""
+    """Service for generating embeddings and storing chunks in Milvus.
 
-    # Model configurations with their dimensions
-    MODEL_CONFIGS = {
-        "sentence-transformers/all-MiniLM-L6-v2": {"dims": 384, "normalize": True},
-        "sentence-transformers/all-mpnet-base-v2": {"dims": 768, "normalize": True},
-        "sentence-transformers/all-distilroberta-v1": {"dims": 768, "normalize": True},
-    }
+    Uses BGE-M3 for 1024-dimensional embeddings.
+    """
 
-    def __init__(self, model_name: Optional[str] = None, mock_mode: bool = False):
+    EMBEDDING_DIM = 1024  # BGE-M3
+
+    def __init__(self, mock_mode: bool = False):
         """
         Initialize embedding service.
 
         Args:
-            model_name: HuggingFace model name. Defaults to all-mpnet-base-v2
-                       for 768 dimensions matching test expectations.
             mock_mode: If True, use mock embeddings instead of loading model.
-                      Useful for testing without network access.
+                       Useful for testing without model files.
         """
-        self.model_name = model_name or os.getenv(
-            "EMBEDDING_MODEL",
-            "sentence-transformers/all-mpnet-base-v2"  # 768 dims for test compatibility
-        )
-        self._model = None
-        self._mock_mode = mock_mode or os.getenv("EMBEDDING_MOCK_MODE", "").lower() == "true"
-        self._dimension = self._get_expected_dimension()
-
-    def _get_expected_dimension(self) -> int:
-        """Get expected embedding dimension for configured model."""
-        if self.model_name in self.MODEL_CONFIGS:
-            return self.MODEL_CONFIGS[self.model_name]["dims"]
-        # Default to 768 for unknown models
-        return 768
-
-    @property
-    def model(self):
-        """Lazy load the embedding model."""
-        if self._model is None and not self._mock_mode:
-            try:
-                from sentence_transformers import SentenceTransformer
-                logger.info("Loading embedding model", model=self.model_name)
-                self._model = SentenceTransformer(self.model_name)
-                # Verify actual dimension
-                self._dimension = self._model.get_sentence_embedding_dimension()
-                logger.info(
-                    "Embedding model loaded",
-                    model=self.model_name,
-                    dimension=self._dimension
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to load embedding model, using mock mode",
-                    error=str(e)
-                )
-                self._mock_mode = True
-        return self._model
+        self.bge_m3 = get_bge_m3_service()
+        self.milvus = get_milvus_service()
+        self._dimension = 1024  # BGE-M3
+        self._mock_mode = mock_mode or False
 
     @property
     def dimension(self) -> int:
-        """Return the embedding dimension."""
-        if self._model is not None and not self._mock_mode:
-            return self._model.get_sentence_embedding_dimension()
-        return self._dimension
+        """Return the embedding dimension (1024 for BGE-M3)."""
+        return 1024  # BGE-M3 fixed dimension
 
     def _generate_mock_embedding(self, text: str) -> List[float]:
-        """Generate deterministic mock embedding for testing."""
+        """Generate deterministic mock embedding for testing (1024-dim)."""
         # Use text hash as seed for deterministic embeddings
         hash_val = hashlib.md5(text.encode()).hexdigest()
 
@@ -112,23 +72,22 @@ class EmbeddingService:
 
     def generate_embedding(self, text: str) -> List[float]:
         """
-        Generate embedding for a single text.
+        Generate 1024-dim embedding using BGE-M3.
 
         Args:
             text: Input text to embed
 
         Returns:
-            List of float values representing the embedding vector
+            List of float values representing the 1024-dim embedding vector
         """
         if not text or not text.strip():
             # Return zero vector for empty text
-            return [0.0] * self.dimension
+            return [0.0] * self._dimension
 
         if self._mock_mode:
             return self._generate_mock_embedding(text)
 
-        embedding = self.model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
-        return embedding.tolist()
+        return self.bge_m3.encode_text(text)
 
     def generate_embeddings_batch(
         self,
@@ -136,14 +95,14 @@ class EmbeddingService:
         batch_size: int = 32
     ) -> List[List[float]]:
         """
-        Generate embeddings for multiple texts efficiently.
+        Generate 1024-dim embeddings using BGE-M3.
 
         Args:
             texts: List of input texts
-            batch_size: Number of texts to process at once
+            batch_size: Number of texts to process at once (not used, for API compatibility)
 
         Returns:
-            List of embedding vectors
+            List of 1024-dim embedding vectors
         """
         if not texts:
             return []
@@ -151,59 +110,56 @@ class EmbeddingService:
         if self._mock_mode:
             return [self._generate_mock_embedding(t) for t in texts]
 
-        # Filter out empty texts
-        valid_texts = [t if t and t.strip() else "" for t in texts]
-
-        embeddings = self.model.encode(
-            valid_texts,
-            convert_to_numpy=True,
-            batch_size=batch_size,
-            normalize_embeddings=True,
-            show_progress_bar=False
-        )
-
-        return [e.tolist() for e in embeddings]
+        return self.bge_m3.encode_text(texts)
 
     async def store_chunks(
         self,
-        conn: Any,  # asyncpg.Connection
         paper_id: str,
+        user_id: str,
         chunks: List[Dict[str, Any]],
         whole_document: Optional[str] = None
     ) -> List[str]:
         """
-        Store chunks with embeddings in PostgreSQL.
+        Store chunks with embeddings in Milvus.
 
         Args:
-            conn: Database connection (asyncpg)
             paper_id: Paper UUID
+            user_id: User UUID for Milvus filtering
             chunks: List of chunk dicts with text, section, page info
-            whole_document: Optional full document text for contextual embeddings (Gap 1)
+            whole_document: Optional full document text for contextual embeddings (Phase 12)
 
         Returns:
-            List of generated chunk IDs
+            List of generated chunk IDs (as strings)
         """
         if not chunks:
             return []
 
-        chunk_ids = []
-
-        # Generate embeddings - contextual or batch (per Gap 1 closure)
+        # Generate embeddings - contextual or batch (per Phase 12 Gap 1)
+        embeddings_data = []
+        
         if whole_document and whole_document.strip():
-            # Contextual embedding per chunk (per D-01)
+            # Contextual embedding per chunk (per Phase 12 D-01)
             logger.info(
                 "Using contextual embeddings for chunks",
                 paper_id=paper_id,
                 chunk_count=len(chunks)
             )
-            embeddings_and_texts = []
             for i, chunk in enumerate(chunks):
                 chunk_text = chunk.get("text", "")
                 try:
                     embedding, contextualized_text = self.create_contextual_embedding(
                         chunk_text, whole_document
                     )
-                    embeddings_and_texts.append((embedding, contextualized_text))
+                    embeddings_data.append({
+                        "paper_id": paper_id,
+                        "user_id": user_id,
+                        "content_type": "text",
+                        "page_num": chunk.get("page_start", 0),
+                        "section": chunk.get("section", ""),
+                        "content_data": contextualized_text[:8000],
+                        "embedding": embedding,
+                        "text": chunk_text,
+                    })
                     logger.debug(
                         "Generated contextual embedding",
                         paper_id=paper_id,
@@ -220,7 +176,16 @@ class EmbeddingService:
                         error=str(e)
                     )
                     embedding = self.generate_embedding(chunk_text)
-                    embeddings_and_texts.append((embedding, chunk_text))
+                    embeddings_data.append({
+                        "paper_id": paper_id,
+                        "user_id": user_id,
+                        "content_type": "text",
+                        "page_num": chunk.get("page_start", 0),
+                        "section": chunk.get("section", ""),
+                        "content_data": chunk_text[:8000],
+                        "embedding": embedding,
+                        "text": chunk_text,
+                    })
         else:
             # Fallback to basic batch embedding
             texts = [c.get("text", "") for c in chunks]
@@ -230,218 +195,37 @@ class EmbeddingService:
                 chunk_count=len(chunks)
             )
             embeddings = self.generate_embeddings_batch(texts)
-            embeddings_and_texts = [(emb, txt) for emb, txt in zip(embeddings, texts)]
+            
+            for chunk, embedding in zip(chunks, embeddings):
+                chunk_text = chunk.get("text", "")
+                embeddings_data.append({
+                    "paper_id": paper_id,
+                    "user_id": user_id,
+                    "content_type": "text",
+                    "page_num": chunk.get("page_start", 0),
+                    "section": chunk.get("section", ""),
+                    "content_data": chunk_text[:8000],
+                    "embedding": embedding,
+                    "text": chunk_text,
+                })
 
-        for chunk, (embedding, content_text) in zip(chunks, embeddings_and_texts):
-            chunk_id = str(uuid.uuid4())
-
-            # Extract metadata
-            section = chunk.get("section")
-            page_start = chunk.get("page_start")
-            page_end = chunk.get("page_end", page_start)
-            media = chunk.get("media", [])
-
-            # Determine media flags
-            is_table = any(m.get("type") == "table" for m in media)
-            is_figure = any(m.get("type") == "picture" for m in media)
-            is_formula = any(m.get("type") == "formula" for m in media)
-
-            # Use contextualized_text for content (per Gap 1)
-            content = content_text[:8000]  # Limit size
-
-            # Convert embedding to PostgreSQL vector format
-            embedding_str = f"[{','.join(str(x) for x in embedding)}]"
-
-            await conn.execute(
-                """INSERT INTO paper_chunks (
-                    id, paper_id, content, section, page_start, page_end,
-                    embedding, is_table, is_figure, is_formula
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8, $9, $10)""",
-                chunk_id,
-                paper_id,
-                content,
-                section,
-                page_start,
-                page_end,
-                embedding_str,
-                is_table,
-                is_figure,
-                is_formula
-            )
-
-            chunk_ids.append(chunk_id)
-
+        # Insert to Milvus
+        ids = self.milvus.insert_contents(embeddings_data)
+        
         logger.info(
-            "Stored chunks in PostgreSQL",
+            "Stored chunks in Milvus",
             paper_id=paper_id,
-            chunk_count=len(chunk_ids)
+            chunk_count=len(ids)
         )
 
-        return chunk_ids
-
-    async def search_similar(
-        self,
-        conn: Any,  # asyncpg.Connection
-        query: str,
-        paper_ids: Optional[List[str]] = None,
-        limit: int = 10,
-        section: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Search for similar chunks by vector similarity.
-
-        Uses PGVector <=> operator for cosine distance.
-
-        Args:
-            conn: Database connection
-            query: Search query text
-            paper_ids: Optional list of paper IDs to search within
-            limit: Maximum number of results
-            section: Optional section filter
-
-        Returns:
-            List of matching chunks with similarity scores
-        """
-        query_embedding = self.generate_embedding(query)
-        embedding_str = f"[{','.join(str(x) for x in query_embedding)}]"
-
-        # Build query based on filters
-        if paper_ids and section:
-            # Filter by both paper IDs and section
-            rows = await conn.fetch(
-                """SELECT id, paper_id, content, section, page_start, page_end,
-                          embedding <=> $1::vector as distance
-                   FROM paper_chunks
-                   WHERE paper_id = ANY($2) AND section = $3
-                   ORDER BY embedding <=> $1::vector
-                   LIMIT $4""",
-                embedding_str,
-                paper_ids,
-                section,
-                limit
-            )
-        elif paper_ids:
-            # Filter by paper IDs only
-            rows = await conn.fetch(
-                """SELECT id, paper_id, content, section, page_start, page_end,
-                          embedding <=> $1::vector as distance
-                   FROM paper_chunks
-                   WHERE paper_id = ANY($2)
-                   ORDER BY embedding <=> $1::vector
-                   LIMIT $3""",
-                embedding_str,
-                paper_ids,
-                limit
-            )
-        elif section:
-            # Filter by section only
-            rows = await conn.fetch(
-                """SELECT id, paper_id, content, section, page_start, page_end,
-                          embedding <=> $1::vector as distance
-                   FROM paper_chunks
-                   WHERE section = $2
-                   ORDER BY embedding <=> $1::vector
-                   LIMIT $3""",
-                embedding_str,
-                section,
-                limit
-            )
-        else:
-            # No filters
-            rows = await conn.fetch(
-                """SELECT id, paper_id, content, section, page_start, page_end,
-                          embedding <=> $1::vector as distance
-                   FROM paper_chunks
-                   ORDER BY embedding <=> $1::vector
-                   LIMIT $2""",
-                embedding_str,
-                limit
-            )
-
-        results = []
-        for row in rows:
-            # Convert distance to similarity (1 - distance for cosine)
-            distance = row["distance"]
-            similarity = 1.0 - distance
-
-            results.append({
-                "id": row["id"],
-                "paper_id": row["paper_id"],
-                "content": row["content"],
-                "section": row["section"],
-                "page": row["page_start"],
-                "similarity": round(similarity, 4),
-                "distance": round(distance, 4),
-            })
-
-        return results
-
-    async def delete_chunks_by_paper(
-        self,
-        conn: Any,  # asyncpg.Connection
-        paper_id: str
-    ) -> int:
-        """
-        Delete all chunks for a paper.
-
-        Args:
-            conn: Database connection
-            paper_id: Paper UUID
-
-        Returns:
-            Number of chunks deleted
-        """
-        result = await conn.execute(
-            "DELETE FROM paper_chunks WHERE paper_id = $1",
-            paper_id
-        )
-        # Parse result like "DELETE 5"
-        parts = result.split()
-        if len(parts) >= 2 and parts[0] == "DELETE":
-            return int(parts[1])
-        return 0
-
-    async def update_chunk_embedding(
-        self,
-        conn: Any,  # asyncpg.Connection
-        chunk_id: str,
-        new_text: str
-    ) -> bool:
-        """
-        Update a chunk's embedding after text change.
-
-        Args:
-            conn: Database connection
-            chunk_id: Chunk UUID
-            new_text: New text content
-
-        Returns:
-            True if updated, False if chunk not found
-        """
-        new_embedding = self.generate_embedding(new_text)
-        embedding_str = f"[{','.join(str(x) for x in new_embedding)}]"
-
-        result = await conn.execute(
-            """UPDATE paper_chunks
-               SET content = $1, embedding = $2::vector
-               WHERE id = $3""",
-            new_text[:8000],
-            embedding_str,
-            chunk_id
-        )
-
-        # Parse result like "UPDATE 1"
-        parts = result.split()
-        if len(parts) >= 2 and parts[0] == "UPDATE":
-            return int(parts[1]) > 0
-        return False
+        return [str(id) for id in ids]
 
     def create_contextual_embedding(
         self,
         chunk_text: str,
         whole_document: str
     ) -> Tuple[List[float], str]:
-        """Generate contextual embedding using GLM-4.5-Air per D-01.
+        """Generate contextual embedding using GLM-4.5-Air per Phase 12 D-01.
 
         Uses Anthropic's official prompt template to generate context
         that situates the chunk within the whole document.
@@ -459,7 +243,7 @@ class EmbeddingService:
         from zhipuai import ZhipuAI
         from app.core.config import settings
 
-        # Anthropic official prompt template (per D-01)
+        # Anthropic official prompt template (per Phase 12 D-01)
         prompt = f"""<document>
 {whole_document}
 </document>
@@ -478,7 +262,7 @@ Please give a short succinct context to situate this chunk within the overall do
 
         for attempt in range(max_retries):
             try:
-                # Generate context with GLM-4.5-Air (per D-01)
+                # Generate context with GLM-4.5-Air (per Phase 12 D-01)
                 response = client.chat.completions.create(
                     model="glm-4.5-air",
                     messages=[{"role": "user", "content": prompt}],
@@ -489,10 +273,10 @@ Please give a short succinct context to situate this chunk within the overall do
 
                 context = response.choices[0].message.content
 
-                # Combine context and chunk (per D-01)
+                # Combine context and chunk (per Phase 12 D-01)
                 contextualized_text = f"{context}\n\n{chunk_text}"
 
-                # Generate embedding using existing encode method
+                # Generate embedding using BGE-M3
                 embedding = self.generate_embedding(contextualized_text)
 
                 return embedding, contextualized_text
@@ -519,38 +303,35 @@ Please give a short succinct context to situate this chunk within the overall do
 
 
 # Convenience functions for direct usage
-def generate_embeddings(texts: List[str], model_name: Optional[str] = None) -> List[List[float]]:
+def generate_embeddings(texts: List[str]) -> List[List[float]]:
     """
     Generate embeddings for texts without instantiating service.
 
     Args:
         texts: List of input texts
-        model_name: Optional model name override
 
     Returns:
-        List of embedding vectors
+        List of 1024-dim embedding vectors
     """
-    service = EmbeddingService(model_name=model_name)
+    service = EmbeddingService()
     return service.generate_embeddings_batch(texts)
 
 
 async def store_chunks(
-    conn: Any,
     paper_id: str,
+    user_id: str,
     chunks: List[Dict[str, Any]],
-    model_name: Optional[str] = None
 ) -> List[str]:
     """
-    Store chunks with embeddings.
+    Store chunks with embeddings in Milvus.
 
     Args:
-        conn: Database connection
         paper_id: Paper UUID
+        user_id: User UUID
         chunks: List of chunk dictionaries
-        model_name: Optional model name override
 
     Returns:
         List of chunk IDs
     """
-    service = EmbeddingService(model_name=model_name)
-    return await service.store_chunks(conn, paper_id, chunks)
+    service = EmbeddingService()
+    return await service.store_chunks(paper_id, user_id, chunks)
