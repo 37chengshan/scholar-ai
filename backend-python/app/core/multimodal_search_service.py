@@ -5,18 +5,23 @@ Provides:
 - Intent detection and modality-aware weighting
 - Weighted RRF fusion of multimodal results
 - Optional ReRanker integration for improved relevance
+- Query understanding integration (intent, expansion, metadata)
 
 Search flow:
-1. Detect query intent (image/table/default)
-2. Encode query with BGE-M3
-3. Search Milvus across modalities (text, image, table)
-4. Apply weighted RRF fusion
-5. Optionally rerank with BGE-Reranker-large
+1. Detect query intent (question/compare/summary/evolution) via intent_rules
+2. Detect modality intent (image/table/default) via modality_fusion
+3. Expand query with synonyms
+4. Extract metadata filters
+5. Encode expanded query with BGE-M3
+6. Search Milvus across modalities (text, image, table)
+7. Apply weighted RRF fusion
+8. Optionally rerank with BGE-Reranker-large
 
 Requirements:
 - RAG-03: Image search endpoint
 - RAG-04: Table search endpoint
 - RAG-05: Cross-modal fusion
+- RAG-06: Query understanding integration (per D-15)
 """
 
 from typing import Any, Dict, List, Optional
@@ -24,7 +29,10 @@ from typing import Any, Dict, List, Optional
 from app.core.bge_m3_service import get_bge_m3_service
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker_service import get_reranker_service
-from app.core.modality_fusion import detect_intent, weighted_rrf_fusion, WEIGHT_PRESETS
+from app.core.modality_fusion import detect_intent as detect_modality_intent, weighted_rrf_fusion, WEIGHT_PRESETS
+from app.core.intent_rules import detect_intent as detect_query_intent
+from app.core.synonyms import expand_query
+from app.core.query_metadata_extractor import extract_metadata_filters
 from app.utils.logger import logger
 
 
@@ -66,21 +74,35 @@ class MultimodalSearchService:
             content_types: Content types to search (default: all)
 
         Returns:
-            Dictionary with query, intent, weights, results, and metadata
+            Dictionary with query, intent, expanded_query, metadata_filters, weights, results, and metadata
         """
-        # Step 1: Intent detection
-        intent = detect_intent(query)
-        weights = WEIGHT_PRESETS[intent]
+        # Step 1: Detect query intent (question/compare/summary/evolution) per D-15
+        query_intent = detect_query_intent(query)
+        logger.info(f"Detected intent: {query_intent} for query: {query[:50]}")
+
+        # Step 2: Detect modality intent (image/table/default) for weights
+        modality_intent = detect_modality_intent(query)
+        weights = WEIGHT_PRESETS[modality_intent]
 
         logger.info(
             "Multimodal search started",
             query=query[:50],
-            intent=intent,
+            intent=query_intent,
+            modality=modality_intent,
             paper_count=len(paper_ids),
         )
 
-        # Step 2: Encode query with BGE-M3
-        query_embedding = self.bge_service.encode_text(query)
+        # Step 3: Expand query with synonyms per D-04
+        expanded_query = expand_query(query)
+        logger.info(f"Expanded query: {expanded_query[:100]}")
+
+        # Step 4: Extract metadata filters per D-07
+        metadata_filters = extract_metadata_filters(query)
+        if metadata_filters:
+            logger.info(f"Metadata filters: {metadata_filters}")
+
+        # Step 5: Encode expanded query with BGE-M3
+        query_embedding = self.bge_service.encode_text(expanded_query)
 
         # Step 3: Search Milvus across modalities
         content_types = content_types or ["text", "image", "table"]
@@ -118,7 +140,7 @@ class MultimodalSearchService:
         logger.info(
             "RRF fusion completed",
             total_results=len(fused),
-            intent=intent,
+            intent=query_intent,
         )
 
         # Step 5: ReRanker (optional)
@@ -143,7 +165,9 @@ class MultimodalSearchService:
 
         return {
             "query": query,
-            "intent": intent,
+            "expanded_query": expanded_query,
+            "intent": query_intent,
+            "metadata_filters": metadata_filters,
             "weights": weights,
             "results": fused[:top_k],
             "total_count": len(fused),
