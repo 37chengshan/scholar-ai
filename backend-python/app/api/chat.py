@@ -29,7 +29,7 @@ from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
 from app.core.context_manager import ContextManager
 from app.core.database import get_db_connection
-from app.llm.glm_client import GLMClient
+from app.utils.agent_init import initialize_agent_components
 from app.models.chat import (
     ChatStreamRequest,
     ChatConfirmRequest,
