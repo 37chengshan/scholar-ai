@@ -210,12 +210,10 @@ export const getUserPermissions = async (
   // Query: Find all permissions associated with roles that the user has
   const permissions = await prisma.permission.findMany({
     where: {
-      roles: {
-        some: {
-          userRoles: {
-            some: {
-              userId,
-            },
+      role: {
+        userRoles: {
+          some: {
+            userId,
           },
         },
       },
