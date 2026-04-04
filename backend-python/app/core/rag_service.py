@@ -72,8 +72,8 @@ class RAGService:
     def embedding_service(self) -> Any:
         """Lazy load embedding service."""
         if self._embedding_service is None:
-            from app.core.embedding_service import EmbeddingService
-            self._embedding_service = EmbeddingService()
+            from app.core.qwen3vl_service import get_qwen3vl_service
+            self._embedding_service = get_qwen3vl_service()
         return self._embedding_service
 
     async def query(
@@ -130,13 +130,13 @@ class RAGService:
 
         # Use Milvus for search (PGVector removed)
         from app.core.milvus_service import get_milvus_service
-        from app.core.bge_m3_service import get_bge_m3_service
+        from app.core.qwen3vl_service import get_qwen3vl_service
 
         milvus_service = get_milvus_service()
-        bge_m3_service = get_bge_m3_service()
+        qwen3vl_service = get_qwen3vl_service()
 
-        # Generate query embedding (1024-dim BGE-M3)
-        query_embedding = bge_m3_service.encode_text(question)
+        # Generate query embedding (2048-dim Qwen3VL)
+        query_embedding = await qwen3vl_service.encode_text(question)
         # Ensure we have a single embedding (not a list of embeddings)
         if isinstance(query_embedding[0], list):
             query_embedding = query_embedding[0]  # type: ignore
@@ -304,16 +304,16 @@ async def retrieve_with_reranking(
         List of chunks with rerank_score field
     """
     from app.core.milvus_service import get_milvus_service
-    from app.core.bge_m3_service import get_bge_m3_service
+    from app.core.qwen3vl_service import get_qwen3vl_service
     from app.core.reranker_service import get_reranker_service
 
     # Get singleton instances
     milvus_service = get_milvus_service()
-    bge_m3_service = get_bge_m3_service()
+    qwen3vl_service = get_qwen3vl_service()
     reranker_service = get_reranker_service()
 
-    # Step 1: Generate query embedding (1024-dim BGE-M3)
-    query_embedding = bge_m3_service.encode_text(query)
+    # Step 1: Generate query embedding (2048-dim Qwen3VL)
+    query_embedding = await qwen3vl_service.encode_text(query)
     # Ensure we have a single embedding (not a list of embeddings)
     if isinstance(query_embedding[0], list):
         query_embedding = query_embedding[0]  # type: ignore
