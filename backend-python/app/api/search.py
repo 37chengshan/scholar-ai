@@ -23,6 +23,7 @@ from app.core.config import settings
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.page_clustering import cluster_pages
 from app.utils.logger import logger
+from app.core.auth import CurrentUserId
 
 router = APIRouter()
 
@@ -274,20 +275,6 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
 
 
 # =============================================================================
-# Authentication Dependency (placeholder - will be replaced by actual auth)
-# =============================================================================
-
-async def get_current_user_id() -> str:
-    """Get current user ID from auth token.
-
-    In production, this validates JWT and returns user ID.
-    For now, returns a placeholder for API structure.
-    """
-    # This will be replaced by actual auth middleware
-    return "placeholder-user-id"
-
-
-# =============================================================================
 # External Search Endpoints
 # =============================================================================
 
@@ -518,7 +505,7 @@ async def search_library(
     q: str = Query(..., description="Search query", min_length=1, max_length=500),
     paper_ids: List[str] = Query(default=[], description="Specific paper IDs to search (optional)"),
     limit: int = Query(default=10, description="Maximum results to return", ge=1, le=50),
-    # user_id: str = Depends(get_current_user_id),  # Auth placeholder
+    user_id: str = CurrentUserId,
 ) -> Dict[str, Any]:
     """Search within user's library using Milvus vector search.
 
@@ -529,6 +516,7 @@ async def search_library(
         q: Search query text
         paper_ids: Optional list of specific paper IDs to search within
         limit: Maximum number of results to return
+        user_id: Authenticated user ID
 
     Returns:
         LibrarySearchResponse with ranked chunk results
@@ -537,6 +525,7 @@ async def search_library(
         "Library search initiated",
         query=q[:50],
         paper_count=len(paper_ids),
+        user_id=user_id,
     )
 
     # If no paper_ids provided, search would return empty
@@ -555,7 +544,7 @@ async def search_library(
         result = await get_multimodal_search_service().search(
             query=q,
             paper_ids=paper_ids,
-            user_id="placeholder-user-id",  # TODO: Get from auth
+            user_id=user_id,
             top_k=limit,
             use_reranker=True,
         )
@@ -747,7 +736,7 @@ class MultimodalSearchResponse(BaseModel):
 @router.post("/multimodal", response_model=MultimodalSearchResponse)
 async def multimodal_search(
     request: MultimodalSearchRequest,
-    # current_user: dict = Depends(get_current_user)  # Auth placeholder
+    user_id: str = CurrentUserId,
 ) -> Dict[str, Any]:
     """Multimodal search across text, images, and tables.
 
@@ -756,6 +745,7 @@ async def multimodal_search(
 
     Args:
         request: MultimodalSearchRequest with query, paper_ids, and options
+        user_id: Authenticated user ID
 
     Returns:
         MultimodalSearchResponse with query, intent, clusters, and results
@@ -777,6 +767,7 @@ async def multimodal_search(
         top_k=request.top_k,
         use_reranker=request.use_reranker,
         enable_clustering=request.enable_clustering,
+        user_id=user_id,
     )
 
     try:
@@ -787,7 +778,7 @@ async def multimodal_search(
         result = await service.search(
             query=request.query,
             paper_ids=request.paper_ids,
-            user_id="placeholder-user-id",  # TODO: Get from auth
+            user_id=user_id,
             top_k=request.top_k,
             use_reranker=request.use_reranker,
             content_types=request.content_types
@@ -840,6 +831,7 @@ async def multimodal_search(
 @router.post("/fusion", response_model=FusionSearchResponse)
 async def fusion_search(
     request: FusionSearchRequest,
+    user_id: str = CurrentUserId,
 ) -> FusionSearchResponse:
     """Unified search across library + external sources with merging and deduplication.
 
@@ -848,6 +840,7 @@ async def fusion_search(
 
     Args:
         request: FusionSearchRequest with query, paper_ids, limit, sources
+        user_id: Authenticated user ID
 
     Returns:
         FusionSearchResponse with merged results, source status, and warnings
@@ -871,6 +864,7 @@ async def fusion_search(
         query=request.query[:50],
         paper_count=len(request.paper_ids),
         sources=request.sources,
+        user_id=user_id,
     )
 
     results: List[SearchResult] = []
@@ -889,7 +883,7 @@ async def fusion_search(
             result = await service.search(
                 query=request.query,
                 paper_ids=request.paper_ids,
-                user_id="placeholder-user-id",  # TODO: Get from auth
+                user_id=user_id,  # Use authenticated user_id
                 top_k=20,  # Fetch more for dedup
                 use_reranker=True,
             )

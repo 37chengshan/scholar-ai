@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import AsyncIterator, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.core.agent_runner import AgentRunner
@@ -29,6 +29,7 @@ from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
 from app.core.context_manager import ContextManager
 from app.core.database import get_db_connection
+from app.core.config import settings
 from app.utils.agent_init import initialize_agent_components
 from app.models.chat import (
     ChatStreamRequest,
@@ -44,51 +45,33 @@ from app.models.chat import (
 )
 from app.utils.session_manager import session_manager
 from app.utils.sse_manager import sse_manager
-from app.utils.auth import validate_jwt_token
 from app.utils.logger import logger
+from app.core.auth import CurrentUserId
 
 router = APIRouter()
 
 
 # =============================================================================
-# Authentication Helper
+# SSE Helper
 # =============================================================================
 
 
-async def get_current_user_id(
-    authorization: Optional[str] = Header(None)
-) -> str:
-    """Extract and validate user ID from JWT token.
+async def stream_sse_event(event_type: str, data: dict) -> str:
+    """Format SSE event as string.
     
     Args:
-        authorization: Authorization header (Bearer token)
+        event_type: SSE event type (thought, tool_call, message, etc.)
+        data: Event data payload
         
     Returns:
-        User ID from validated token
-        
-    Raises:
-        HTTPException: 401 if token missing or invalid
+        SSE formatted string: "event: {type}\\ndata: {json}\\n\\n"
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid authorization token"
-        )
-    
-    token = authorization.split(" ")[1]
-    user_id = await validate_jwt_token(token)
-    
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token"
-        )
-    
-    return user_id
+    event_str = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+    return event_str
 
 
 # =============================================================================
-# Message Persistence Helper
+# Chat Stream Endpoint
 # =============================================================================
 
 
@@ -115,7 +98,7 @@ async def save_message(
         Exception: If database insert fails
     """
     message_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     
     async with get_db_connection() as conn:
         await conn.execute(
@@ -142,14 +125,15 @@ async def save_message(
 
 
 # =============================================================================
-# Chat Stream Endpoint
+# SSE Helper
 # =============================================================================
 
 
 @router.post("/chat/stream")
 async def chat_stream(
     request: ChatStreamRequest,
-    authorization: Optional[str] = Header(None, alias="Authorization")
+    http_request: Request,
+    user_id: str = CurrentUserId
 ):
     """
     SSE streaming chat with Agent.
@@ -172,10 +156,6 @@ async def chat_stream(
     - event: done - Stream complete
     """
     try:
-        # Get user ID
-        if not user_id:
-            user_id = await get_current_user_id()
-
         logger.info(
             "Chat stream started",
             user_id=user_id,
@@ -215,8 +195,8 @@ async def chat_stream(
             try:
                 # Check for Last-Event-ID header (reconnection)
                 last_event_id = None
-                if hasattr(request, 'headers') and 'last-event-id' in request.headers:
-                    last_event_id = request.headers['last-event-id']
+                if 'last-event-id' in http_request.headers:
+                    last_event_id = http_request.headers['last-event-id']
 
                 # If reconnecting, replay missed events first
                 if last_event_id:
@@ -363,7 +343,8 @@ async def chat_stream(
                     SSEEventType.ERROR,
                     ErrorEventData(
                         type="error",
-                        error=str(e)
+                        error=str(e),
+                        details=None
                     ).model_dump()
                 )
 
@@ -382,13 +363,17 @@ async def chat_stream(
     except Exception as e:
         logger.error("Chat stream initialization error", error=str(e))
 
+        # Capture error message for closure
+        error_msg = str(e)
+
         # Return error as SSE event
         async def error_stream():
             yield await stream_sse_event(
                 SSEEventType.ERROR,
                 ErrorEventData(
                     type="error",
-                    error=str(e)
+                    error=error_msg,
+                    details=None
                 ).model_dump()
             )
 
@@ -407,7 +392,7 @@ async def chat_stream(
 @router.post("/chat/confirm")
 async def confirm_action(
     request: ChatConfirmRequest,
-    user_id: str = Header(None, alias="X-User-ID")
+    user_id: str = CurrentUserId
 ):
     """
     User confirmation for dangerous operations.
@@ -422,9 +407,6 @@ async def confirm_action(
         Result of resumed Agent execution
     """
     try:
-        if not user_id:
-            user_id = await get_current_user_id()
-
         logger.info(
             "Confirmation received",
             confirmation_id=request.confirmation_id,
@@ -500,7 +482,7 @@ async def confirm_action(
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(
     session_id: str,
-    user_id: str = Header(None, alias="X-User-ID"),
+    user_id: str = CurrentUserId,
     limit: int = 50,
     offset: int = 0
 ):
@@ -521,9 +503,6 @@ async def get_session_messages(
         List of ChatMessage objects
     """
     try:
-        if not user_id:
-            user_id = await get_current_user_id()
-
         # Get session
         session = await session_manager.get_session(session_id)
 

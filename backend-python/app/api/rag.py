@@ -11,7 +11,7 @@ import time
 import uuid
 from typing import List, Optional, Dict
 
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,7 @@ from app.core.streaming import (
     mock_token_generator
 )
 from app.core.multimodal_search_service import get_multimodal_search_service
+from app.core.auth import CurrentUserId
 
 router = APIRouter()
 
@@ -42,7 +43,6 @@ class RAGQueryRequest(BaseModel):
     """RAG查询请求"""
     question: str = Field(..., min_length=1, description="用户问题")
     paper_ids: Optional[List[str]] = Field(None, description="要查询的论文ID列表")
-    user_id: str = Field(..., description="用户ID")  # Required for unified service
     query_type: str = Field("single", description="查询类型: single, cross_paper, evolution")
     top_k: int = Field(10, ge=1, le=50, description="返回的chunk数量")
     conversation_id: Optional[str] = Field(None, description="对话会话ID (多轮对话)")
@@ -101,7 +101,10 @@ class AgenticSearchResponse(BaseModel):
 # =============================================================================
 
 @router.post("/query", response_model=RAGQueryResponse)
-async def rag_query(request: RAGQueryRequest):
+async def rag_query(
+    request: RAGQueryRequest,
+    user_id: str = CurrentUserId
+):
     """
     RAG问答 (阻塞式)
 
@@ -113,7 +116,7 @@ async def rag_query(request: RAGQueryRequest):
     - 使用统一MultimodalSearchService with query understanding
     """
     try:
-        logger.info(f"RAG query: {request.question}, type: {request.query_type}")
+        logger.info(f"RAG query: {request.question}, type: {request.query_type}, user: {user_id}")
 
         # Check cache first
         paper_ids = request.paper_ids or []
@@ -141,7 +144,7 @@ async def rag_query(request: RAGQueryRequest):
         result = await service.search(
             query=request.question,
             paper_ids=paper_ids,
-            user_id=request.user_id,
+            user_id=user_id,
             top_k=request.top_k,
             use_reranker=True,
         )
@@ -214,7 +217,10 @@ async def rag_query(request: RAGQueryRequest):
 # =============================================================================
 
 @router.post("/stream")
-async def rag_query_stream(request: RAGQueryRequest):
+async def rag_query_stream(
+    request: RAGQueryRequest,
+    user_id: str = CurrentUserId
+):
     """
     流式RAG问答 (SSE)
 
@@ -225,7 +231,7 @@ async def rag_query_stream(request: RAGQueryRequest):
     - 结束标记: data: [DONE]
     """
     try:
-        logger.info(f"RAG stream query: {request.question}")
+        logger.info(f"RAG stream query: {request.question}, user: {user_id}")
 
         paper_ids = request.paper_ids or []
 
@@ -409,7 +415,10 @@ async def delete_conversation(session_id: str):
 # =============================================================================
 
 @router.post("/agentic", response_model=AgenticSearchResponse)
-async def agentic_search(request: AgenticSearchRequest):
+async def agentic_search(
+    request: AgenticSearchRequest,
+    user_id: str = CurrentUserId
+):
     """
     Agentic search for complex cross-paper queries.
 
@@ -426,7 +435,7 @@ async def agentic_search(request: AgenticSearchRequest):
     """
     try:
         logger.info(
-            f"Agentic search: {request.query}, type: {request.query_type}"
+            f"Agentic search: {request.query}, type: {request.query_type}, user: {user_id}"
         )
 
         # Initialize orchestrator
@@ -439,7 +448,7 @@ async def agentic_search(request: AgenticSearchRequest):
             query=request.query,
             query_type=request.query_type,
             paper_ids=request.paper_ids or [],
-            user_id="placeholder-user-id",  # TODO: Get from auth
+            user_id=user_id,  # Use authenticated user_id
             top_k_per_subquestion=request.top_k,
         )
 
