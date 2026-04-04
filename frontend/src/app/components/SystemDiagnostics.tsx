@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Progress } from './ui/progress';
+import { Label } from './ui/label';
 import { Info, AlertTriangle, AlertCircle } from 'lucide-react';
 
 interface StorageMetric {
@@ -146,6 +147,3 @@ export function SystemDiagnostics() {
     </div>
   );
 }
-
-// Import Label
-import { Label } from './ui/label';
