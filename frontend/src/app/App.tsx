@@ -1,12 +1,19 @@
 import { RouterProvider } from "react-router";
 import { router } from "./routes";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { Toaster } from "react-hot-toast";
 
 function App() {
   return (
-    <LanguageProvider>
-      <RouterProvider router={router} />
-    </LanguageProvider>
+    <>
+      <Toaster position="top-right" />
+      <LanguageProvider>
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </LanguageProvider>
+    </>
   );
 }
 
