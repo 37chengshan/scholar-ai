@@ -79,9 +79,12 @@ class TestMilvusService:
         assert service.pool_size == 20
         assert service.timeout == 30
 
-    def test_embedding_dim_constant(self):
-        """Test embedding dimension constant."""
+    def test_embedding_dim_constants(self):
+        """Test embedding dimension constants."""
+        # SigLIP for image/table (768-dim)
         assert MilvusService.EMBEDDING_DIM == 768
+        # BGE-M3 for text (1024-dim) per D-34
+        assert MilvusService.BGE_EMBEDDING_DIM == 1024
 
     @patch("app.core.milvus_service.connections")
     def test_connect(self, mock_connections):
