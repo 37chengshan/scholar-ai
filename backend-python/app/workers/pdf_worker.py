@@ -26,7 +26,7 @@ import asyncpg
 
 from app.core.storage import ObjectStorage
 from app.core.docling_service import DoclingParser
-from app.core.embedding_service import EmbeddingService
+from app.core.qwen3vl_service import get_qwen3vl_service
 from app.core.imrad_extractor import (
     extract_imrad_structure,  # Keep for backward compatibility
     extract_imrad_enhanced,   # NEW: enhanced version per D-05
@@ -79,7 +79,7 @@ class PDFProcessor:
     def __init__(self):
         self.storage = ObjectStorage()
         self.parser = DoclingParser()
-        self.embedding_service = EmbeddingService()
+        self.embedding_service = get_qwen3vl_service()
         self.neo4j_service = Neo4jService()
         self.notes_generator = NotesGenerator()
         self.milvus_service = get_milvus_service()
