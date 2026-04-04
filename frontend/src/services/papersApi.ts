@@ -6,6 +6,7 @@
  * - get(): Get paper details
  * - delete(): Delete paper (requires re-auth)
  * - getStatus(): Get processing status
+ * - toggleStar(): Toggle paper starred status
  *
  * All endpoints require authentication.
  */
@@ -185,6 +186,32 @@ export async function exportNotes(id: string): Promise<string> {
   });
 
   return response.data;
+}
+
+/**
+ * Toggle paper starred status
+ *
+ * PATCH /api/papers/:id/starred
+ * Updates the starred boolean on a paper
+ *
+ * NOTE: This endpoint requires Plan 15-01 to be completed first.
+ * Backend must have:
+ * - `starred` field in Paper model (Prisma schema)
+ * - PATCH /api/papers/:id/starred route implementation
+ *
+ * @param id - Paper ID
+ * @param starred - New starred status
+ * @returns Updated paper data
+ */
+export async function toggleStar(id: string, starred: boolean): Promise<Paper> {
+  const response = await apiClient.patch<{
+    success: boolean;
+    data: Paper;
+  }>(`/api/papers/${id}/starred`, {
+    starred,
+  });
+
+  return response.data.data;
 }
 
 /**

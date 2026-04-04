@@ -59,6 +59,7 @@ export interface Paper {
   keywords: string[];
   venue?: string | null;
   citations?: number | null;
+  starred?: boolean; // Requires Plan 15-01 backend endpoint
   createdAt: string;
   updatedAt: string;
   processingError?: string | null;
