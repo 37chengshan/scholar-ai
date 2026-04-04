@@ -96,9 +96,6 @@ def calculate_chunk_quality(chunk: dict) -> float:
 class MilvusService:
     """Milvus connection wrapper with connection pooling."""
 
-    EMBEDDING_DIM = 768
-    BGE_EMBEDDING_DIM = 1024  # For BGE-M3 unified embeddings
-
     def __init__(
         self,
         host: Optional[str] = None,
@@ -112,6 +109,10 @@ class MilvusService:
         self.timeout = timeout
         self._alias = "scholarai"
         self._connected = False
+        
+        # Use embedding dimension from config (per Phase 18)
+        # Supports: Qwen3-VL (2048), BGE-M3 (1024), or other models
+        self.embedding_dim = settings.EMBEDDING_DIMENSION
 
         # Create paper_contents_v2 collection if not exists per D-09
         # This happens on first use, not on instantiation
@@ -239,7 +240,7 @@ class MilvusService:
             FieldSchema(
                 name="embedding",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=self.EMBEDDING_DIM,
+                dim=self.embedding_dim,
                 description="768-dim embedding"
             ),
             FieldSchema(
@@ -255,7 +256,7 @@ class MilvusService:
 
         logger.info(
             "Created paper_images collection",
-            embedding_dim=self.EMBEDDING_DIM
+            embedding_dim=self.embedding_dim
         )
         return collection
 
@@ -300,7 +301,7 @@ class MilvusService:
             FieldSchema(
                 name="embedding",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=self.EMBEDDING_DIM,
+                dim=self.embedding_dim,
                 description="768-dim embedding"
             ),
         ]
@@ -311,7 +312,7 @@ class MilvusService:
 
         logger.info(
             "Created paper_tables collection",
-            embedding_dim=self.EMBEDDING_DIM
+            embedding_dim=self.embedding_dim
         )
         return collection
 
@@ -585,11 +586,11 @@ class MilvusService:
                 dtype=DataType.JSON,
                 description="Raw data: bbox, headers, etc."
             ),
-            FieldSchema(
+FieldSchema(
                 name="embedding",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=2048,
-                description="2048-dim Qwen3-VL embedding"
+                dim=self.embedding_dim,
+                description="Embedding vector"
             ),
         ]
 
@@ -616,7 +617,7 @@ class MilvusService:
 
         logger.info(
             "Created paper_contents_v2 collection",
-            embedding_dim=2048,
+            embedding_dim=self.embedding_dim,
             index_type="IVF_FLAT"
         )
 
@@ -713,7 +714,7 @@ class MilvusService:
             FieldSchema(
                 name="embedding",
                 dtype=DataType.FLOAT_VECTOR,
-                dim=self.BGE_EMBEDDING_DIM,
+                dim=self.embedding_dim,
                 description="1024-dim BGE-M3 embedding"
             ),
         ]
@@ -724,7 +725,7 @@ class MilvusService:
 
         logger.info(
             "Created paper_contents collection with enhanced schema",
-            embedding_dim=self.BGE_EMBEDDING_DIM,
+            embedding_dim=self.embedding_dim,
             metadata_fields=6
         )
         return collection

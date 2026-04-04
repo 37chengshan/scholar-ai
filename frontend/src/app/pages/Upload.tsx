@@ -6,6 +6,7 @@ import { useDropzone } from "react-dropzone";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useUpload } from "../hooks/useUpload";
 import { Progress } from "../components/ui/progress";
+import { UploadInputSwitch } from "../components/UploadInputSwitch";
 
 export function Upload() {
   const [activeTab, setActiveTab] = useState("local");
@@ -21,6 +22,7 @@ export function Upload() {
     localFiles: isZh ? "本地文件" : "Local Files",
     urlDoi: isZh ? "URL / DOI" : "URL / DOI",
     syncZotero: isZh ? "同步 Zotero" : "Sync Zotero",
+    uploadInputSwitch: isZh ? "上传方式" : "Upload Method",
     recentBatches: isZh ? "最近批次" : "Recent Batches",
     filesCount: isZh ? "个文件" : "Files",
     ingestionQueue: isZh ? "处理队列" : "Ingestion Queue",
@@ -305,6 +307,18 @@ export function Upload() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
+
+          {/* Upload Input Switch */}
+          <div className="flex flex-col gap-4">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">{t.uploadInputSwitch}</h3>
+            <UploadInputSwitch
+              onFileSelect={(fileList) => {
+                if (fileList.length > 0) {
+                  addFiles(Array.from(fileList));
+                }
+              }}
+            />
+          </div>
           
           <div className="flex flex-col gap-4">
             <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">{t.extraction}</h3>

@@ -18,6 +18,7 @@ import {
 } from "../components/ui/pagination";
 import { ListSkeleton } from "../components/Skeleton";
 import { NoPapersState } from "../components/EmptyState";
+import { LibraryFilters } from "../components/LibraryFilters";
 
 export function Library() {
   const { language } = useLanguage();
@@ -42,8 +43,19 @@ export function Library() {
     search: debouncedSearch || undefined,
   });
 
-  // Calculate starred count from papers
-  const starredCount = papers.filter(p => p.starred).length;
+  // Apply LibraryFilters to papers
+  const filteredPapers = papers.filter(paper => {
+    if (libraryFilters.starred && !paper.starred) return false;
+    if (libraryFilters.author && !paper.authors?.some(a => a.toLowerCase().includes(libraryFilters.author!.toLowerCase()))) return false;
+    if (libraryFilters.projectId) {
+      // TODO: Filter by project when project assignment is implemented
+      return false;
+    }
+    return true;
+  });
+
+  // Calculate starred count from filtered papers
+  const starredCount = filteredPapers.filter(p => p.starred).length;
   
   // Calculate recent count (papers with reading progress)
   const recentCount = papers.filter(p => p.progress && p.progress > 0).length;
@@ -91,6 +103,13 @@ export function Library() {
     x: number;
     y: number;
   } | null>(null);
+
+  // Filter state for LibraryFilters
+  const [libraryFilters, setLibraryFilters] = useState<{
+    starred?: boolean;
+    author?: string;
+    projectId?: string;
+  }>({});
 
   // Handle create project
   const handleCreateProject = useCallback(async () => {
@@ -336,7 +355,6 @@ export function Library() {
                 </div>
               </>
             )}
-          </>
         </div>
       </div>
       </motion.div>
@@ -387,7 +405,7 @@ export function Library() {
                 transition={{ duration: 0.5 }}
                 className="grid grid-cols-1 xl:grid-cols-2 gap-5"
               >
-                {papers.map((paper) => (
+                {filteredPapers.map((paper) => (
                   <div
                     key={paper.id}
                     onClick={() => navigate(`/read/${paper.id}`)}
@@ -488,6 +506,9 @@ export function Library() {
 
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
 
+          {/* LibraryFilters Component */}
+          <LibraryFilters filters={libraryFilters} onFilterChange={setLibraryFilters} />
+
           {/* Sorting */}
           <div className="flex flex-col gap-3">
             <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
@@ -506,24 +527,6 @@ export function Library() {
                 <input type="radio" name="sort" className="accent-primary w-3.5 h-3.5" />
                 <span className="text-xs font-bold uppercase tracking-widest text-foreground/80 group-hover:text-primary transition-colors">{t.authorAZ}</span>
               </label>
-            </div>
-          </div>
-
-          {/* Publication Year */}
-          <div className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
-              <Calendar className="w-3 h-3" /> {t.year}
-            </h3>
-            <div className="flex flex-col gap-1.5 mt-1">
-              {["2024", "2023", "2022", "2021", t.older].map((year) => (
-                <label key={year} className="flex items-center justify-between cursor-pointer group">
-                  <div className="flex items-center gap-2.5">
-                    <input type="checkbox" className="accent-primary w-3.5 h-3.5 rounded-sm border-border/50" />
-                    <span className="text-xs font-medium text-foreground/80 group-hover:text-primary transition-colors">{year}</span>
-                  </div>
-                  <span className="text-[9px] font-mono text-muted-foreground">12</span>
-                </label>
-              ))}
             </div>
           </div>
 

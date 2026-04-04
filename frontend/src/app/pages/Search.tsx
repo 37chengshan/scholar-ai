@@ -18,6 +18,7 @@ import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSearch } from "@/hooks/useSearch";
 import { SearchResultCard } from "../components/SearchResultCard";
+import { SearchFilters } from "../components/SearchFilters";
 import * as papersApi from "@/services/papersApi";
 import toast from "react-hot-toast";
 import { NoSearchResultsState } from "../components/EmptyState";
@@ -26,6 +27,15 @@ export function Search() {
   const [activeSource, setActiveSource] = useState("all");
   const { language } = useLanguage();
   const isZh = language === "zh";
+
+  // Search filters state
+  const [searchFilters, setSearchFilters] = useState<{
+    sources?: string[];
+    yearFrom?: number;
+    yearTo?: number;
+    author?: string;
+    sortBy?: 'relevance' | 'date';
+  }>({});
 
   const {
     query,
@@ -272,6 +282,9 @@ export function Search() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
+
+          {/* Search Filters Component */}
+          <SearchFilters filters={searchFilters} onFilterChange={setSearchFilters} />
 
           {/* Publication Year Histogram */}
           <div className="flex flex-col gap-3">
