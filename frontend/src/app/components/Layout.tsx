@@ -83,9 +83,12 @@ export function Layout() {
             <Settings className="w-4 h-4" />
           </NavLink>
 
-          <div className="w-px h-6 bg-border/50 hidden lg:block" />
+<div className="w-px h-6 bg-border/50 hidden lg:block" />
 
-          <div className="flex items-center gap-3 cursor-pointer group">
+           <div 
+             onClick={() => navigate('/settings')}
+             className="flex items-center gap-3 cursor-pointer group"
+           >
             <div className="hidden lg:flex flex-col text-right justify-center">
               <span className="text-[8px] font-bold tracking-[0.3em] uppercase text-primary leading-none mb-0.5">
                 {isZh ? "在线" : "Active"}
