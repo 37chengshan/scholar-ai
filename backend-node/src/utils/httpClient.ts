@@ -1,5 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import axiosRetry from 'axios-retry';
 import { logger } from './logger';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface HttpClientConfig {
   baseURL: string;
@@ -18,10 +20,36 @@ export class HttpClient {
       },
     });
 
+    // Configure exponential backoff retry (per D-05)
+    axiosRetry(this.client, {
+      retries: 3,
+      retryDelay: (retryCount) => {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, retryCount - 1) * 1000;
+        logger.warn(`Retrying request (attempt ${retryCount}/3) after ${delay}ms`);
+        return delay;
+      },
+      retryCondition: (error: AxiosError) => {
+        // Retry on rate limit, server errors, or connection reset
+        const shouldRetry = (
+          error.response?.status === 429 ||
+          (error.response?.status ?? 0) >= 500 ||
+          error.code === 'ECONNRESET' ||
+          error.code === 'ETIMEDOUT'
+        );
+        if (shouldRetry) {
+          logger.warn(`Retrying due to: ${error.response?.status || error.code}`);
+        }
+        return shouldRetry;
+      },
+    });
+
     // Request interceptor
     this.client.interceptors.request.use(
       (config) => {
-        logger.debug(`HTTP request: ${config.method?.toUpperCase()} ${config.url}`);
+        logger.debug(`HTTP request: ${config.method?.toUpperCase()} ${config.url}`, {
+          request_id: uuidv4(),
+        });
         return config;
       },
       (error) => {
