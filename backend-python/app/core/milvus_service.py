@@ -113,6 +113,29 @@ class MilvusService:
         self._alias = "scholarai"
         self._connected = False
 
+        # Create paper_contents_v2 collection if not exists per D-09
+        # This happens on first use, not on instantiation
+        # The actual creation happens in create_collections() or create_collection_v2()
+
+    def initialize_collections(self) -> None:
+        """Initialize collections on startup.
+
+        Creates paper_contents_v2 collection per D-09.
+        Deletes old paper_contents collection per D-08, D-10.
+        """
+        self.connect()
+
+        # Create paper_contents_v2 collection if not exists per D-09
+        if not self.has_collection(settings.MILVUS_COLLECTION_CONTENTS_V2):
+            self.create_collection_v2()
+            logger.info("Created paper_contents_v2 collection on startup")
+
+        # Delete old paper_contents collection per D-08, D-10
+        if self.has_collection(settings.MILVUS_COLLECTION_CONTENTS):  # "paper_contents"
+            logger.warning("Deleting old paper_contents collection (1024-dim BGE-M3 data)")
+            self.drop_collection(settings.MILVUS_COLLECTION_CONTENTS)
+            logger.info("Old paper_contents collection deleted, all BGE-M3 data removed")
+
     @retry_with_backoff(max_retries=5)
     def connect(self) -> None:
         """Establish connection with connection pooling."""
@@ -471,6 +494,131 @@ class MilvusService:
         tbl_collection.flush()
 
         logger.info(f"Deleted vectors for paper {paper_id}")
+
+    def has_collection(self, collection_name: str) -> bool:
+        """Check if collection exists.
+
+        Args:
+            collection_name: Name of collection to check
+
+        Returns:
+            True if collection exists, False otherwise
+        """
+        try:
+            self.connect()
+            return connections.has_collection(collection_name, using=self._alias)
+        except Exception as e:
+            logger.warning(f"Error checking collection existence: {e}")
+            return False
+
+    def drop_collection(self, collection_name: str) -> None:
+        """Drop a Milvus collection per D-08.
+
+        Args:
+            collection_name: Name of collection to drop
+        """
+        if self.has_collection(collection_name):
+            try:
+                collection = Collection(collection_name, using=self._alias)
+                collection.drop()
+                logger.info(f"Dropped collection {collection_name}")
+            except Exception as e:
+                logger.error(f"Failed to drop collection {collection_name}: {e}")
+                raise
+        else:
+            logger.warning(f"Collection {collection_name} does not exist, skip dropping")
+
+    def create_collection_v2(self) -> None:
+        """Create paper_contents_v2 collection with 2048-dim embeddings per D-09.
+
+        Schema:
+        - id: INT64 (primary key, auto_id)
+        - paper_id: VARCHAR(36)
+        - user_id: VARCHAR(36)
+        - page_num: INT64
+        - content_type: VARCHAR(20)  # text/image/table
+        - content_data: VARCHAR(8000)
+        - raw_data: JSON
+        - embedding: FLOAT_VECTOR(2048)
+
+        Index: IVF_FLAT with nlist=100, COSINE metric
+        """
+        fields = [
+            FieldSchema(
+                name="id",
+                dtype=DataType.INT64,
+                is_primary=True,
+                auto_id=True,
+                description="Auto-increment ID"
+            ),
+            FieldSchema(
+                name="paper_id",
+                dtype=DataType.VARCHAR,
+                max_length=36,
+                description="Paper UUID"
+            ),
+            FieldSchema(
+                name="user_id",
+                dtype=DataType.VARCHAR,
+                max_length=36,
+                description="User UUID"
+            ),
+            FieldSchema(
+                name="page_num",
+                dtype=DataType.INT64,
+                description="Page number"
+            ),
+            FieldSchema(
+                name="content_type",
+                dtype=DataType.VARCHAR,
+                max_length=20,
+                description="Content type: text/image/table"
+            ),
+            FieldSchema(
+                name="content_data",
+                dtype=DataType.VARCHAR,
+                max_length=8000,
+                description="Content text or description"
+            ),
+            FieldSchema(
+                name="raw_data",
+                dtype=DataType.JSON,
+                description="Raw data: bbox, headers, etc."
+            ),
+            FieldSchema(
+                name="embedding",
+                dtype=DataType.FLOAT_VECTOR,
+                dim=2048,
+                description="2048-dim Qwen3-VL embedding"
+            ),
+        ]
+
+        schema = CollectionSchema(
+            fields,
+            "Multimodal content with Qwen3-VL embeddings"
+        )
+
+        collection = Collection(
+            settings.MILVUS_COLLECTION_CONTENTS_V2,
+            schema,
+            using=self._alias
+        )
+
+        # Create IVF_FLAT index per D-09, RESEARCH.md 2.2
+        index_params = {
+            "metric_type": "COSINE",
+            "index_type": "IVF_FLAT",
+            "params": {"nlist": 100}
+        }
+
+        collection.create_index("embedding", index_params)
+        collection.load()
+
+        logger.info(
+            "Created paper_contents_v2 collection",
+            embedding_dim=2048,
+            index_type="IVF_FLAT"
+        )
 
     def create_paper_contents_collection(self) -> Collection:
         """Create unified paper_contents collection with enhanced schema (per D-06).
