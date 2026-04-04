@@ -53,3 +53,30 @@ export function DashboardSkeleton() {
     </div>
   );
 }
+
+export function ChatSkeleton() {
+  return (
+    <div className="flex flex-col h-full">
+      {/* Message list skeleton */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className={`flex gap-3 ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
+            <div className={`space-y-2 ${i % 2 === 0 ? 'max-w-[80%]' : 'max-w-[70%]'}`}>
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {/* Input area skeleton */}
+      <div className="border-t p-4">
+        <div className="flex gap-2">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-20" />
+        </div>
+      </div>
+    </div>
+  );
+}
