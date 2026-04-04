@@ -1,14 +1,19 @@
 import { UploadCloud, FolderUp, Link, History, Settings2, FileText, CheckCircle2, Clock, Play, Server, Tags, AlertCircle, RefreshCw } from "lucide-react";
 import { clsx } from "clsx";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useDropzone } from "react-dropzone";
 import { useLanguage } from "../contexts/LanguageContext";
-import { uploadApi } from "@/services";
+import { useUpload } from "../hooks/useUpload";
+import { Progress } from "../components/ui/progress";
 
 export function Upload() {
   const [activeTab, setActiveTab] = useState("local");
   const { language } = useLanguage();
   const isZh = language === "zh";
+  
+  // Real upload hook
+  const { files, addFiles, uploadAll, removeFile, clearFiles, isUploading } = useUpload();
 
   const t = {
     sources: isZh ? "数据来源" : "Sources",
@@ -19,7 +24,7 @@ export function Upload() {
     recentBatches: isZh ? "最近批次" : "Recent Batches",
     filesCount: isZh ? "个文件" : "Files",
     ingestionQueue: isZh ? "处理队列" : "Ingestion Queue",
-    itemsPending: isZh ? "5 个项目待处理" : "5 items pending",
+    itemsPending: isZh ? `${files.length} 个项目待处理` : `${files.length} items pending`,
     clearAll: isZh ? "清空全部" : "Clear All",
     startProc: isZh ? "开始处理" : "Start Processing",
     dropHere: isZh ? "将 PDF 文件拖拽至此" : "Drop PDF files here",
@@ -29,6 +34,7 @@ export function Upload() {
     colFilename: isZh ? "文件名与元数据" : "Filename & Metadata",
     colStatus: isZh ? "状态" : "Status",
     colSize: isZh ? "大小" : "Size",
+    colProgress: isZh ? "进度" : "Progress",
     colActions: isZh ? "操作" : "Actions",
     btnEdit: isZh ? "编辑" : "Edit",
     btnDrop: isZh ? "移除" : "Drop",
@@ -52,7 +58,9 @@ export function Upload() {
     autoTag: isZh ? "自动打标签" : "Auto-Tagging",
     tagPlaceholder: isZh ? "输入标签，以逗号分隔..." : "Comma separated tags...",
     estProc: isZh ? "预计处理时间" : "Est. Processing",
-    mins: isZh ? "~4 分钟" : "~4 mins"
+    mins: isZh ? `~${Math.ceil(files.length * 0.4)} 分钟` : `~${Math.ceil(files.length * 0.4)} mins`,
+    uploading: isZh ? "上传中..." : "Uploading...",
+    noFiles: isZh ? "暂无文件" : "No files",
   };
 
   const BATCHES = [
@@ -61,13 +69,38 @@ export function Upload() {
     { id: "B-840", time: isZh ? "昨天" : "Yesterday", count: 28, status: "completed" },
   ];
 
-  const PARSED_FILES = [
-    { id: 1, filename: "attention_is_all_you_need.pdf", title: "Attention Is All You Need", authors: "Vaswani et al.", status: isZh ? "就绪" : "Ready", statusType: "Ready", size: "2.1 MB" },
-    { id: 2, filename: "bert_pretraining.pdf", title: "BERT: Pre-training of Deep Bidirectional Transformers", authors: "Devlin et al.", status: isZh ? "处理中" : "Processing", statusType: "Processing", size: "4.5 MB" },
-    { id: 3, filename: "instructgpt.pdf", title: "InstructGPT: Training language models...", authors: "Ouyang et al.", status: isZh ? "等待中" : "Pending", statusType: "Pending", size: "3.2 MB" },
-    { id: 4, filename: "scaling_laws.pdf", title: "Scaling Laws for Neural Language Models", authors: "Kaplan et al.", status: isZh ? "失败" : "Failed", statusType: "Failed", size: "1.8 MB" },
-    { id: 5, filename: "1706.03762.pdf", title: isZh ? "提取标题中..." : "Extracted Title Pending...", authors: isZh ? "等待中..." : "Pending...", status: isZh ? "解析中" : "Parsing", statusType: "Parsing", size: "900 KB" },
-  ];
+  // Dropzone configuration
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    addFiles(acceptedFiles);
+  }, [addFiles]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/pdf': ['.pdf']
+    },
+    maxSize: 50 * 1024 * 1024, // 50MB
+    maxFiles: 50,
+  });
+
+  // Format file size
+  const formatSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Map status to display
+  const getStatusDisplay = (status: string) => {
+    const statusMap: Record<string, { text: string; type: string }> = {
+      pending: { text: isZh ? "等待中" : "Pending", type: "Pending" },
+      uploading: { text: isZh ? "上传中" : "Uploading", type: "Processing" },
+      processing: { text: isZh ? "处理中" : "Processing", type: "Processing" },
+      completed: { text: isZh ? "完成" : "Completed", type: "Ready" },
+      failed: { text: isZh ? "失败" : "Failed", type: "Failed" },
+    };
+    return statusMap[status] || { text: status, type: "Pending" };
+  };
 
   return (
     <div className="h-full flex font-sans bg-background text-foreground relative selection:bg-primary selection:text-primary-foreground">
@@ -150,18 +183,35 @@ export function Upload() {
             <span className="text-[9px] font-mono tracking-[0.2em] text-muted-foreground">{t.itemsPending}</span>
           </div>
           <div className="flex gap-2">
-            <button className="text-[9px] font-bold uppercase tracking-[0.2em] bg-background border border-foreground/20 text-foreground px-3 py-1.5 rounded-sm hover:bg-muted transition-colors shadow-sm">
+            <button 
+              onClick={clearFiles}
+              disabled={files.length === 0}
+              className="text-[9px] font-bold uppercase tracking-[0.2em] bg-background border border-foreground/20 text-foreground px-3 py-1.5 rounded-sm hover:bg-muted transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {t.clearAll}
             </button>
-            <button className="text-[9px] font-bold uppercase tracking-[0.2em] bg-primary text-primary-foreground px-4 py-1.5 rounded-sm hover:bg-secondary transition-colors shadow-sm flex items-center gap-1.5">
-              <Play className="w-3 h-3" /> {t.startProc}
+            <button 
+              onClick={uploadAll}
+              disabled={isUploading || files.length === 0 || files.every(f => f.status !== 'pending')}
+              className="text-[9px] font-bold uppercase tracking-[0.2em] bg-primary text-primary-foreground px-4 py-1.5 rounded-sm hover:bg-secondary transition-colors shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Play className="w-3 h-3" /> {isUploading ? t.uploading : t.startProc}
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 bg-muted/5">
           {/* Dropzone */}
-          <div className="w-full border-2 border-dashed border-primary/20 hover:border-primary/50 bg-primary/5 hover:bg-primary/10 transition-colors rounded-sm flex flex-col items-center justify-center py-12 px-6 cursor-pointer group">
+          <div 
+            {...getRootProps()} 
+            className={clsx(
+              "w-full border-2 border-dashed transition-colors rounded-sm flex flex-col items-center justify-center py-12 px-6 cursor-pointer group",
+              isDragActive 
+                ? "border-primary bg-primary/10" 
+                : "border-primary/20 hover:border-primary/50 bg-primary/5 hover:bg-primary/10"
+            )}
+          >
+            <input {...getInputProps()} />
             <div className="w-12 h-12 bg-background border border-primary/20 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
               <UploadCloud className="w-5 h-5 text-primary" />
             </div>
@@ -174,47 +224,69 @@ export function Upload() {
           </div>
 
           {/* Table / List */}
-          <div className="flex flex-col border border-border/50 bg-card rounded-sm shadow-sm overflow-hidden">
-            <div className="grid grid-cols-12 gap-4 p-3 border-b border-border/50 bg-muted/30 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-              <div className="col-span-5">{t.colFilename}</div>
-              <div className="col-span-3">{t.colStatus}</div>
-              <div className="col-span-2 text-right">{t.colSize}</div>
-              <div className="col-span-2 text-right">{t.colActions}</div>
+          {files.length > 0 ? (
+            <div className="flex flex-col border border-border/50 bg-card rounded-sm shadow-sm overflow-hidden">
+              <div className="grid grid-cols-12 gap-4 p-3 border-b border-border/50 bg-muted/30 text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                <div className="col-span-5">{t.colFilename}</div>
+                <div className="col-span-2">{t.colStatus}</div>
+                <div className="col-span-2">{t.colProgress}</div>
+                <div className="col-span-1 text-right">{t.colSize}</div>
+                <div className="col-span-2 text-right">{t.colActions}</div>
+              </div>
+              <div className="flex flex-col divide-y divide-border/30">
+                {files.map((file, index) => {
+                  const statusDisplay = getStatusDisplay(file.status);
+                  return (
+                    <div key={index} className="grid grid-cols-12 gap-4 p-3 items-center hover:bg-muted/20 transition-colors group">
+                      <div className="col-span-5 flex flex-col gap-1 min-w-0">
+                        <span className="text-[11px] font-mono font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                          {file.file.name}
+                        </span>
+                        {file.error && (
+                          <span className="text-[9px] text-red-500 truncate">{file.error}</span>
+                        )}
+                      </div>
+                      <div className="col-span-2 flex items-center">
+                        <span className={clsx(
+                          "text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm flex items-center gap-1.5",
+                          statusDisplay.type === "Ready" ? "bg-green-500/10 text-green-600 border border-green-500/20" :
+                          statusDisplay.type === "Processing" ? "bg-primary/10 text-primary border border-primary/20" :
+                          statusDisplay.type === "Failed" ? "bg-red-500/10 text-red-600 border border-red-500/20" :
+                          "bg-muted text-muted-foreground border border-border/50"
+                        )}>
+                          {statusDisplay.type === "Processing" && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
+                          {statusDisplay.type === "Failed" && <AlertCircle className="w-2.5 h-2.5" />}
+                          {statusDisplay.type === "Ready" && <CheckCircle2 className="w-2.5 h-2.5" />}
+                          {statusDisplay.type === "Pending" && <Clock className="w-2.5 h-2.5" />}
+                          {statusDisplay.text}
+                        </span>
+                      </div>
+                      <div className="col-span-2">
+                        <Progress value={file.progress} className="h-1" />
+                      </div>
+                      <div className="col-span-1 text-right text-[10px] font-mono text-muted-foreground">
+                        {formatSize(file.file.size)}
+                      </div>
+                      <div className="col-span-2 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => removeFile(index)}
+                          disabled={file.status === 'uploading' || file.status === 'processing'}
+                          className="text-[9px] font-bold uppercase tracking-widest text-destructive hover:text-destructive/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {t.btnDrop}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex flex-col divide-y divide-border/30">
-              {PARSED_FILES.map((file) => (
-                <div key={file.id} className="grid grid-cols-12 gap-4 p-3 items-center hover:bg-muted/20 transition-colors group">
-                  <div className="col-span-5 flex flex-col gap-1 min-w-0">
-                    <span className="text-[11px] font-mono font-bold text-foreground truncate group-hover:text-primary transition-colors">{file.filename}</span>
-                    <span className="text-[10px] font-serif text-muted-foreground truncate">{file.title}</span>
-                  </div>
-                  <div className="col-span-3 flex items-center">
-                    <span className={clsx(
-                      "text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm flex items-center gap-1.5",
-                      file.statusType === "Ready" ? "bg-green-500/10 text-green-600 border border-green-500/20" :
-                      file.statusType === "Processing" ? "bg-primary/10 text-primary border border-primary/20" :
-                      file.statusType === "Failed" ? "bg-red-500/10 text-red-600 border border-red-500/20" :
-                      "bg-muted text-muted-foreground border border-border/50"
-                    )}>
-                      {file.statusType === "Processing" && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
-                      {file.statusType === "Failed" && <AlertCircle className="w-2.5 h-2.5" />}
-                      {file.statusType === "Ready" && <CheckCircle2 className="w-2.5 h-2.5" />}
-                      {file.statusType === "Pending" && <Clock className="w-2.5 h-2.5" />}
-                      {file.statusType === "Parsing" && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
-                      {file.status}
-                    </span>
-                  </div>
-                  <div className="col-span-2 text-right text-[10px] font-mono text-muted-foreground">
-                    {file.size}
-                  </div>
-                  <div className="col-span-2 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="text-[9px] font-bold uppercase tracking-widest text-primary hover:text-secondary transition-colors">{t.btnEdit}</button>
-                    <button className="text-[9px] font-bold uppercase tracking-widest text-destructive hover:text-destructive/80 transition-colors">{t.btnDrop}</button>
-                  </div>
-                </div>
-              ))}
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <FileText className="w-12 h-12 mb-4 opacity-30" />
+              <p className="text-[11px] font-bold uppercase tracking-widest">{t.noFiles}</p>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
