@@ -331,21 +331,27 @@ router.post(
         });
       }
 
-      // Create processing task
-      const task = await createTask(paperId, storageKey);
+      // Create processing task and update paper status atomically
+      const [task] = await prisma.$transaction([
+        prisma.processingTask.create({
+          data: {
+            paperId,
+            status: 'pending',
+            storageKey,
+          },
+        }),
+        prisma.paper.update({
+          where: { id: paperId },
+          data: {
+            status: 'processing',
+            uploadStatus: 'completed',
+            uploadProgress: 100,
+            uploadedAt: new Date(),
+          },
+        }),
+      ]);
 
-      // Update paper status and upload info
-      await prisma.paper.update({
-        where: { id: paperId },
-        data: {
-          status: 'processing',
-          uploadStatus: 'completed',
-          uploadProgress: 100,
-          uploadedAt: new Date(),
-        },
-      });
-
-      logger.info(`Created processing task ${task.taskId} for paper ${paperId}`);
+      logger.info(`Created processing task ${task.id} for paper ${paperId}`);
 
       // Batch tracking logic (per D-02: auto-start when all files uploaded)
       if (paper.batchId) {
@@ -385,10 +391,10 @@ router.post(
       res.status(201).json({
         success: true,
         data: {
-          taskId: task.taskId,
+          taskId: task.id,
           paperId,
           status: task.status,
-          progress: task.progress,
+          progress: 0,
           message: 'Upload confirmed. Processing task created.',
         },
       });
