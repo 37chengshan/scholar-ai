@@ -31,7 +31,9 @@ numpy>=1.24.0
 pymilvus>=2.3.0
 
 # CLIP/SigLIP多模态嵌入
-transformers>=4.30.0
+# Qwen3-VL multimodal embedding
+qwen-vl-utils>=0.0.14  # Qwen3-VL utilities
+transformers>=4.57.0   # Upgraded for Qwen3-VL support
 torchvision>=0.15.0
 pillow>=10.0.0
 
