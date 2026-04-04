@@ -8,6 +8,7 @@
 import { HttpClient } from '../utils/httpClient';
 import { logger } from '../utils/logger';
 import { Errors } from '../middleware/errorHandler';
+import { v4 as uuidv4 } from 'uuid';
 
 // Environment configuration
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -75,8 +76,11 @@ class AIService {
    * will return cached responses without LLM calls.
    */
   async ragQuery(request: RAGQueryRequest): Promise<RAGQueryResponse> {
+    const requestId = uuidv4();
+    
     try {
       logger.info('RAG query request', {
+        request_id: requestId,
         question: request.question.substring(0, 50),
         paper_count: request.paper_ids?.length || 0,
         query_type: request.query_type,
@@ -91,6 +95,7 @@ class AIService {
       });
 
       logger.info('RAG query response', {
+        request_id: requestId,
         cached: response.cached,
         confidence: response.confidence,
         source_count: response.sources.length,
@@ -99,7 +104,10 @@ class AIService {
       return response;
 
     } catch (error) {
-      logger.error('RAG query failed', { error: (error as Error).message });
+      logger.error('RAG query failed', {
+        request_id: requestId,
+        error: (error as Error).message,
+      });
       throw Errors.serviceUnavailable('AI service unavailable');
     }
   }
@@ -108,8 +116,11 @@ class AIService {
    * Execute agentic search for complex cross-paper queries
    */
   async agenticSearch(request: AgenticSearchRequest): Promise<AgenticSearchResponse> {
+    const requestId = uuidv4();
+    
     try {
       logger.info('Agentic search request', {
+        request_id: requestId,
         query: request.query.substring(0, 50),
         query_type: request.query_type,
       });
@@ -123,6 +134,7 @@ class AIService {
       });
 
       logger.info('Agentic search response', {
+        request_id: requestId,
         rounds: response.rounds_executed,
         converged: response.converged,
       });
@@ -130,7 +142,10 @@ class AIService {
       return response;
 
     } catch (error) {
-      logger.error('Agentic search failed', { error: (error as Error).message });
+      logger.error('Agentic search failed', {
+        request_id: requestId,
+        error: (error as Error).message,
+      });
       throw Errors.serviceUnavailable('AI service unavailable');
     }
   }
