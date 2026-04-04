@@ -458,7 +458,7 @@ def create_embedding_service(
     elif backend == "specter2":
         return Specter2EmbeddingService(**kwargs)
     elif backend == "sentence-transformers":
-        from app.core.embedding_service import EmbeddingService
-        return EmbeddingService(**kwargs)
+        from app.core.qwen3vl_service import get_qwen3vl_service
+        return get_qwen3vl_service()
     else:
         raise ValueError(f"Unknown backend: {backend}")
