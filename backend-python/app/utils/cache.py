@@ -12,6 +12,26 @@ from typing import Any, Optional
 from app.core.database import redis_db
 from app.utils.logger import logger
 
+
+# =============================================================================
+# Custom Exceptions
+# =============================================================================
+
+
+class CacheError(Exception):
+    """Redis cache operation failed.
+    
+    Raised when Redis operations fail, ensuring errors are not silently caught.
+    This allows calling code to handle cache failures appropriately.
+    """
+    pass
+
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+
 # Default TTL: 1 hour (3600 seconds)
 DEFAULT_CACHE_TTL = 3600
 
@@ -20,6 +40,11 @@ CACHE_PREFIX = "rag:query"
 
 # Cache key prefix for conversation sessions
 CONVERSATION_PREFIX = "rag:conversation"
+
+
+# =============================================================================
+# Cache Key Generation
+# =============================================================================
 
 
 def generate_cache_key(
@@ -82,6 +107,9 @@ async def get_cached_response(
 
     Returns:
         Cached response dict if found, None otherwise
+
+    Raises:
+        CacheError: If Redis operation fails
     """
     cache_key = generate_cache_key(query, paper_ids, query_type)
     full_key = f"{CACHE_PREFIX}:{cache_key}"
@@ -98,7 +126,7 @@ async def get_cached_response(
 
     except Exception as e:
         logger.error(f"Cache retrieval error: {e}")
-        return None
+        raise CacheError(f"Redis get failed: {e}") from e
 
 
 async def set_cached_response(
@@ -119,7 +147,10 @@ async def set_cached_response(
         ttl: Time to live in seconds (default: 3600)
 
     Returns:
-        True if cached successfully, False otherwise
+        True if cached successfully
+
+    Raises:
+        CacheError: If Redis operation fails
     """
     cache_key = generate_cache_key(query, paper_ids, query_type)
     full_key = f"{CACHE_PREFIX}:{cache_key}"
@@ -138,7 +169,7 @@ async def set_cached_response(
 
     except Exception as e:
         logger.error(f"Cache storage error: {e}")
-        return False
+        raise CacheError(f"Redis set failed: {e}") from e
 
 
 async def delete_cached_response(
@@ -179,6 +210,9 @@ async def get_conversation_session(session_id: str) -> Optional[dict[str, Any]]:
 
     Returns:
         Session data if found, None otherwise
+
+    Raises:
+        CacheError: If Redis operation fails
     """
     key = generate_conversation_key(session_id)
 
@@ -194,7 +228,7 @@ async def get_conversation_session(session_id: str) -> Optional[dict[str, Any]]:
 
     except Exception as e:
         logger.error(f"Conversation retrieval error: {e}")
-        return None
+        raise CacheError(f"Redis get conversation failed: {e}") from e
 
 
 async def save_conversation_session(
@@ -211,7 +245,10 @@ async def save_conversation_session(
         ttl: Time to live in seconds (default: 3600)
 
     Returns:
-        True if saved successfully, False otherwise
+        True if saved successfully
+
+    Raises:
+        CacheError: If Redis operation fails
     """
     key = generate_conversation_key(session_id)
 
@@ -225,7 +262,7 @@ async def save_conversation_session(
 
     except Exception as e:
         logger.error(f"Conversation save error: {e}")
-        return False
+        raise CacheError(f"Redis set conversation failed: {e}") from e
 
 
 async def delete_conversation_session(session_id: str) -> bool:
