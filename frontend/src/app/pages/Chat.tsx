@@ -29,7 +29,6 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useSSE } from '../hooks/useSSE';
 import { CitationsPanel, Citation } from '../components/CitationsPanel';
 import { MessageBubble } from '../components/MessageBubble';
-import { chatApi } from '@/services';
 
 /**
  * Chat message type
@@ -64,14 +63,14 @@ export function Chat() {
   // State
   const [input, setInput] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [selectedPapers, setSelectedPapers] = useState<PaperItem[]>([]);
+  const [selectedPapers] = useState<PaperItem[]>([]);
   const [citations, setCitations] = useState<Citation[]>([]);
 
   // Hooks
   const { language } = useLanguage();
-  const { isConnected, messages, error, connect, disconnect, clearMessages } = useSSE();
+  const { isConnected, messages, error, connect, clearMessages } = useSSE();
 
   const isZh = language === 'zh';
 
@@ -167,7 +166,7 @@ export function Chat() {
     if (latestMessage.type === 'tool_result' && latestMessage.tool === 'rag_search') {
       const result = latestMessage.result;
       if (result?.sources && Array.isArray(result.sources)) {
-        const newCitations: Citation[] = result.sources.map((source: any, idx: number) => ({
+        const newCitations: Citation[] = result.sources.map((source: any) => ({
           paper_id: source.paperId || source.paper_id || '',
           paper_title: source.paperTitle || source.paper_title || 'Unknown',
           page: source.pageNumber || source.page,

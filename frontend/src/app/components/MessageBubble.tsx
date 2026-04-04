@@ -13,7 +13,7 @@
 
 import { clsx } from 'clsx';
 import { motion } from 'motion/react';
-import { Bot, User, Copy, ThumbsUp, ThumbsDown, RefreshCw } from 'lucide-react';
+import { Bot, Copy, ThumbsUp, ThumbsDown, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 
 /**
