@@ -18,6 +18,7 @@ import json
 import os
 import tempfile
 from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -37,7 +38,37 @@ from app.core.milvus_service import get_milvus_service
 from app.core.image_extractor import ImageExtractor
 from app.core.table_extractor import TableExtractor
 from app.core.multimodal_indexer import MultimodalIndexer, get_multimodal_indexer
+from app.core.semantic_scholar_service import get_semantic_scholar_service
 from app.utils.logger import logger
+
+
+def fuzzy_match_title(target: str, candidates: List[Dict], threshold: float = 0.8) -> Optional[Dict]:
+    """Find best matching paper by title similarity.
+    
+    Per D-09: Similarity threshold 80%.
+    
+    Args:
+        target: Target title to match
+        candidates: List of candidate papers with 'title' field
+        threshold: Minimum similarity ratio (0.0-1.0)
+        
+    Returns:
+        Best matching paper or None
+    """
+    best_match = None
+    best_ratio = 0.0
+    
+    for candidate in candidates:
+        candidate_title = candidate.get("title", "")
+        if not candidate_title:
+            continue
+        
+        ratio = SequenceMatcher(None, target.lower(), candidate_title.lower()).ratio()
+        if ratio > best_ratio and ratio >= threshold:
+            best_ratio = ratio
+            best_match = candidate
+    
+    return best_match
 
 
 class PDFProcessor:
@@ -69,6 +100,107 @@ class PDFProcessor:
                 min_size=1,
                 max_size=10,
             )
+
+    async def enrich_metadata_if_needed(
+        self,
+        conn,
+        paper_id: str,
+        title: Optional[str],
+        authors: List[str]
+    ) -> bool:
+        """Enrich paper metadata using Semantic Scholar.
+        
+        Per D-07: Triggered after PDF parsing.
+        Per D-08: Only when title or authors missing.
+        Per D-09: Fuzzy match with 80% threshold.
+        
+        Args:
+            conn: Database connection
+            paper_id: Paper UUID
+            title: Extracted title (may be None)
+            authors: Extracted authors list (may be empty)
+            
+        Returns:
+            True if enrichment succeeded, False otherwise
+        """
+        # Per D-08: Skip if metadata complete
+        if title and authors:
+            logger.info("Metadata already complete, skipping enrichment", paper_id=paper_id)
+            return False
+        
+        if not title:
+            logger.info("No title to search with", paper_id=paper_id)
+            return False
+        
+        try:
+            s2_service = get_semantic_scholar_service()
+            
+            # Search S2 by title
+            logger.info("Searching Semantic Scholar for metadata", title=title[:50])
+            search_results = await s2_service.search_papers(
+                query=title,
+                fields="paperId,title,year,authors,abstract,citationCount,venue,publicationDate",
+                limit=5
+            )
+            
+            candidates = search_results.get("data", [])
+            if not candidates:
+                logger.info("No S2 search results found", title=title[:50])
+                return False
+            
+            # Per D-09: Fuzzy match
+            best_match = fuzzy_match_title(title, candidates, threshold=0.8)
+            if not best_match:
+                logger.info("No matching paper found above threshold", title=title[:50])
+                return False
+            
+            # Update database with enriched metadata
+            paper_id_s2 = best_match.get("paperId")
+            enriched_title = best_match.get("title", title)
+            enriched_year = best_match.get("year")
+            enriched_abstract = best_match.get("abstract")
+            citation_count = best_match.get("citationCount", 0)
+            venue = best_match.get("venue")
+            
+            # Extract authors
+            s2_authors = best_match.get("authors", [])
+            author_names = [a.get("name") for a in s2_authors if a.get("name")]
+            
+            # Update paper record
+            await conn.execute(
+                """
+                UPDATE papers 
+                SET title = COALESCE($2, title),
+                    year = COALESCE($3, year),
+                    abstract = COALESCE($4, abstract),
+                    s2_paper_id = $5,
+                    citation_count = $6,
+                    venue = $7,
+                    updated_at = NOW()
+                WHERE id = $1
+                """,
+                paper_id,
+                enriched_title if enriched_title != title else None,
+                enriched_year,
+                enriched_abstract,
+                paper_id_s2,
+                citation_count,
+                venue
+            )
+            
+            logger.info(
+                "Paper metadata enriched",
+                paper_id=paper_id,
+                s2_id=paper_id_s2,
+                citations=citation_count
+            )
+            
+            return True
+            
+        except Exception as e:
+            # Per D-09: Don't block PDF processing on enrichment failure
+            logger.error("Metadata enrichment failed", paper_id=paper_id, error=str(e))
+            return False
 
     async def process_pdf_task(self, task_id: str) -> bool:
         """
@@ -123,6 +255,9 @@ class PDFProcessor:
                 pages=parsed["page_count"],
                 items=len(parsed["items"]),
             )
+            
+            # Extract metadata early for enrichment check
+            metadata = extract_metadata(parsed["items"])
 
             # Stage 3: Store parsed content in papers table
             async with self.db_pool.acquire() as conn:
@@ -135,9 +270,16 @@ class PDFProcessor:
                     paper_id,
                 )
 
+            # Per D-07: Metadata enrichment after parsing
+            # Enrich if title or authors are missing
+            title = metadata.get("title")
+            authors = metadata.get("authors", [])
+            
+            async with self.db_pool.acquire() as conn:
+                await self.enrich_metadata_if_needed(conn, paper_id, title, authors)
+
             # Stage 4: Enhanced IMRaD extraction with LLM assistance per D-05
             await self._update_status(task_id, "extracting_imrad")
-            metadata = extract_metadata(parsed["items"])
             
             # Use enhanced extraction for +85% non-standard paper recognition
             imrad = await extract_imrad_enhanced(
