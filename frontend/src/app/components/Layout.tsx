@@ -1,8 +1,10 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, FileText, UploadCloud, LogOut } from "lucide-react";
+import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, FileText, UploadCloud, LogOut, Menu } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "./landing/Logo";
+import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
+import { useState } from "react";
 
 const navItemsEN = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Overview" },
@@ -28,10 +30,16 @@ export function Layout() {
   const navigate = useNavigate();
   const isZh = language === "zh";
   const navItems = isZh ? navItemsZH : navItemsEN;
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
     navigate('/');
+  };
+  
+  const handleNavClick = (to: string) => {
+    navigate(to);
+    setMobileMenuOpen(false);
   };
 
   return (
@@ -43,7 +51,16 @@ export function Layout() {
           {/* Logo Area */}
           <Logo />
 
-          {/* Navigation Links */}
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="md:hidden p-2 rounded-sm hover:bg-muted transition-colors"
+            aria-label="Open menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          {/* Desktop Navigation Links */}
           <nav className="hidden md:flex items-center gap-1 lg:gap-2 pl-6 lg:pl-8 border-l border-border/50 h-8">
             {navItems.map((item) => (
               <NavLink
@@ -127,6 +144,69 @@ export function Layout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Mobile Navigation Sheet */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="w-[320px] p-0">
+          <div className="flex flex-col h-full bg-[#fdfaf6]">
+            {/* Header */}
+            <div className="p-4 border-b border-[#f4ece1] flex justify-between items-center">
+              <Logo />
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-2 hover:bg-muted rounded-sm"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Navigation Links */}
+            <nav className="flex-1 overflow-y-auto py-4">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-6 py-3 text-sm font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-[#d35400] text-white'
+                        : 'text-foreground hover:bg-muted'
+                    }`
+                  }
+                >
+                  <item.icon className="w-4 h-4" />
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+
+            {/* User Profile */}
+            <div className="p-4 border-t border-[#f4ece1]">
+              <div
+                onClick={() => {
+                  handleNavClick('/settings');
+                }}
+                className="flex items-center gap-3 cursor-pointer hover:bg-muted p-2 rounded-sm"
+              >
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-[#d35400]/20">
+                  <img
+                    src="https://images.unsplash.com/photo-1631885628966-a14af9faaa9b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21hbiUyMHByb2ZpbGUlMjBwb3J0cmFpdHxlbnwxfHx8fDE3NzUxMDc0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080"
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold">Dr. Vance</div>
+                  <div className="text-xs text-muted-foreground">
+                    {isZh ? "查看个人设置" : "View Settings"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
