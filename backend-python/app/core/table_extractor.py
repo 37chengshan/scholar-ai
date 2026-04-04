@@ -3,8 +3,7 @@
 Provides:
 - Table extraction from Docling parsed items
 - Markdown table parsing (headers, rows)
-- Description generation via TableDescriptionService
-- 1024-dim embedding generation via BGE-M3 service
+- 2048-dim embedding generation via Qwen3VL service (multimodal)
 - Structured data output for Milvus storage
 """
 
@@ -12,8 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
-from app.core.table_description_service import get_table_description_service
-from app.core.bge_m3_service import get_bge_m3_service
+from app.core.qwen3vl_service import get_qwen3vl_service
 from app.utils.logger import logger
 
 
@@ -29,24 +27,17 @@ class TableData:
 class TableExtractor:
     """Extract tables from PDF documents and generate embeddings."""
 
-    EMBEDDING_DIM = 1024
+    EMBEDDING_DIM = 2048  # Qwen3VL outputs 2048-dim
 
     def __init__(self):
         """Initialize the table extractor."""
-        self._description_service = None
-        self._bge_service = None
+        self._qwen3vl_service = None
 
-    def _get_description_service(self):
-        """Lazy load description service."""
-        if self._description_service is None:
-            self._description_service = get_table_description_service()
-        return self._description_service
-
-    def _get_bge_service(self):
-        """Lazy load BGE-M3 service."""
-        if self._bge_service is None:
-            self._bge_service = get_bge_m3_service()
-        return self._bge_service
+    def _get_qwen3vl_service(self):
+        """Lazy load Qwen3VL service."""
+        if self._qwen3vl_service is None:
+            self._qwen3vl_service = get_qwen3vl_service()
+        return self._qwen3vl_service
 
     def extract_tables_from_pdf(
         self,
@@ -207,7 +198,7 @@ class TableExtractor:
         paper_id: str,
         user_id: str
     ) -> Dict[str, Any]:
-        """Generate description and embedding for a table.
+        """Generate embedding for a table using Qwen3VL multimodal encoding.
 
         Args:
             table_data: TableData object containing the extracted table
@@ -217,41 +208,29 @@ class TableExtractor:
         Returns:
             Dictionary ready for Milvus insertion with:
             - paper_id, user_id, page_num, content_type
-            - content_data: the description
+            - content_data: serialized table representation
             - raw_data: headers, rows, row_count
-            - embedding: 1024-dim vector
+            - embedding: 2048-dim vector
         """
-        desc_service = self._get_description_service()
-        bge_service = self._get_bge_service()
+        qwen3vl_service = self._get_qwen3vl_service()
 
         # Extract caption
         caption = self._extract_caption(table_data.markdown)
 
-        # Generate description
-        description = ""
+        # Serialize table for Qwen3VL encoding per D-01, D-02
+        # Format: Table: {caption}\\nColumns: {headers}\\nSample data: {rows}
+        serialized_table = f"Table: {caption}\nColumns: {', '.join(table_data.headers)}\nSample data: {table_data.rows[:3]}"
+
+        # Direct table encoding via Qwen3VL
         try:
-            description = await desc_service.generate_description(
+            embedding = await qwen3vl_service.encode_table(
                 caption=caption,
                 headers=table_data.headers,
-                sample_rows=table_data.rows[:3]  # First 3 rows
+                rows=table_data.rows[:3]  # First 3 rows per D-02
             )
-            logger.debug(
-                "Generated description for table",
-                description=description[:50] if description else None
-            )
+            logger.debug("Generated table embedding", dim=len(embedding))
         except Exception as e:
-            logger.error("Failed to generate description", error=str(e))
-            description = None
-
-        # Use caption as fallback if no description
-        content_data = description if description else caption
-
-        # Encode to 1024-dim vector
-        try:
-            embedding = bge_service.encode_text(content_data if content_data else "")
-            logger.debug("Generated embedding", dim=len(embedding))
-        except Exception as e:
-            logger.error("Failed to encode description", error=str(e))
+            logger.error("Failed to encode table", error=str(e))
             embedding = [0.0] * self.EMBEDDING_DIM
 
         return {
@@ -259,7 +238,7 @@ class TableExtractor:
             "user_id": user_id,
             "page_num": table_data.page_num,
             "content_type": "table",
-            "content_data": content_data if content_data else "",
+            "content_data": serialized_table,  # Serialized table representation
             "raw_data": {
                 "headers": table_data.headers,
                 "row_count": len(table_data.rows),
