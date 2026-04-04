@@ -20,7 +20,7 @@ from app.core.database import get_db_connection
 from app.utils.logger import logger
 
 
-async def execute_external_search(params: Dict[str, Any]) -> Dict[str, Any]:
+async def execute_external_search(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute external_search tool.
     
     Searches arXiv and/or Semantic Scholar for papers.
@@ -31,6 +31,7 @@ async def execute_external_search(params: Dict[str, Any]) -> Dict[str, Any]:
             "sources": ["arxiv", "semantic_scholar"],
             "limit": int
         }
+        **kwargs: Additional context (ignored for external search)
     
     Returns:
         {success: bool, data: {results: [...]}, error: str?}
@@ -65,7 +66,12 @@ async def execute_external_search(params: Dict[str, Any]) -> Dict[str, Any]:
                 continue
             
             source_results = result.get("results", [])
-            all_results.extend(source_results)
+            # Convert SearchResult objects to dicts for JSON serialization
+            for item in source_results:
+                if hasattr(item, 'model_dump'):
+                    all_results.append(item.model_dump())
+                else:
+                    all_results.append(item)
         
         # TODO: Deduplicate results by arXiv ID + title similarity
         # For now, return all combined results
@@ -89,7 +95,7 @@ async def execute_external_search(params: Dict[str, Any]) -> Dict[str, Any]:
 
 async def execute_rag_search(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute rag_search tool.
     
@@ -101,11 +107,12 @@ async def execute_rag_search(
             "paper_ids": [str],
             "top_k": int
         }
-        user_id: User ID for access control
+        **kwargs: Additional context (user_id, session_id)
     
     Returns:
         {success: bool, data: {results: [...], total_count: int}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         question = params.get("question", "")
         paper_ids = params.get("paper_ids", [])
@@ -152,7 +159,7 @@ async def execute_rag_search(
 
 async def execute_list_papers(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute list_papers tool.
     
@@ -164,11 +171,12 @@ async def execute_list_papers(
             "sort": str,
             "limit": int
         }
-        user_id: User ID for ownership
+        **kwargs: Additional context (user_id, session_id)
     
     Returns:
         {success: bool, data: {papers: [...]}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         filter_dict = params.get("filter", {})
         sort = params.get("sort", "created_at")
@@ -181,7 +189,7 @@ async def execute_list_papers(
             query = """
                 SELECT id, title, authors, year, status, created_at
                 FROM papers
-                WHERE "userId" = $1
+                WHERE user_id = $1
             """
             query_params = [user_id]
             
@@ -201,6 +209,11 @@ async def execute_list_papers(
             rows = await conn.fetch(query, *query_params)
             
             papers = [dict(row) for row in rows]
+            
+            # Convert datetime to ISO string for JSON serialization
+            for paper in papers:
+                if "created_at" in paper:
+                    paper["created_at"] = paper["created_at"].isoformat()
         
         logger.info("List papers completed", user_id=user_id, count=len(papers))
         
@@ -217,7 +230,7 @@ async def execute_list_papers(
 
 async def execute_read_paper(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute read_paper tool.
     
@@ -228,11 +241,12 @@ async def execute_read_paper(
             "paper_id": str,
             "sections": ["metadata", "abstract", "content", "notes", "chunks"]
         }
-        user_id: User ID for access control
+        **kwargs: Additional context (user_id, session_id)
     
     Returns:
-        {success: bool, data: {paper details}, error: str?}
+        {success: bool, data: {paper: {...}}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         paper_id = params.get("paper_id")
         sections = params.get("sections", ["metadata", "abstract"])
@@ -257,7 +271,7 @@ async def execute_read_paper(
             query = f"""
                 SELECT {', '.join(select_fields)}
                 FROM papers
-                WHERE id = $1 AND "userId" = $2
+                WHERE id = $1 AND user_id = $2
             """
             
             row = await conn.fetchrow(query, paper_id, user_id)
@@ -286,7 +300,7 @@ async def execute_read_paper(
 
 async def execute_list_notes(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute list_notes tool.
     
@@ -297,11 +311,12 @@ async def execute_list_notes(
             "filter": {paper_id?: str},
             "limit": int
         }
-        user_id: User ID for ownership
+        **kwargs: Additional context (user_id, session_id)
     
     Returns:
         {success: bool, data: {notes: [...]}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         filter_dict = params.get("filter", {})
         limit = params.get("limit", 20)
@@ -326,6 +341,13 @@ async def execute_list_notes(
             rows = await conn.fetch(query, *query_params)
             
             notes = [dict(row) for row in rows]
+            
+            # Convert datetime fields to ISO strings
+            for note in notes:
+                if "created_at" in note:
+                    note["created_at"] = note["created_at"].isoformat()
+                if "updated_at" in note:
+                    note["updated_at"] = note["updated_at"].isoformat()
         
         logger.info("List notes completed", user_id=user_id, count=len(notes))
         
@@ -342,7 +364,7 @@ async def execute_list_notes(
 
 async def execute_read_note(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute read_note tool.
     
@@ -350,11 +372,12 @@ async def execute_read_note(
     
     Args:
         params: {"note_id": str}
-        user_id: User ID for ownership validation
+        **kwargs: Additional context (user_id, session_id)
     
     Returns:
         {success: bool, data: {note details}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         note_id = params.get("note_id")
         
@@ -382,6 +405,12 @@ async def execute_read_note(
                 }
             
             note_data = dict(row)
+            
+            # Convert datetime to ISO string for JSON serialization
+            if note_data and "created_at" in note_data:
+                note_data["created_at"] = note_data["created_at"].isoformat()
+            if note_data and "updated_at" in note_data:
+                note_data["updated_at"] = note_data["updated_at"].isoformat()
         
         logger.info("Read note completed", note_id=note_id)
         

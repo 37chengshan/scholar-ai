@@ -9,6 +9,8 @@ import { Badge } from '../components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDashboard } from '@/app/hooks/useDashboard';
 import { DashboardSkeleton } from '../components/Skeleton';
+import { useState, useEffect } from 'react';
+import apiClient from '@/utils/apiClient';
 
 export function Dashboard() {
   const { language } = useLanguage();
@@ -18,8 +20,113 @@ export function Dashboard() {
   // Use dashboard hook for stats
   const { stats, loading, error, weeklyTrendData, subjectDistData, refresh } = useDashboard(user?.id);
 
+  // Recent papers state
+  const [recentPapers, setRecentPapers] = useState<Array<{
+    id: string;
+    title: string;
+    authors: string[];
+    year?: number;
+    currentPage: number;
+    lastReadAt: string;
+    progress: number;
+  }>>([]);
+  const [recentPapersLoading, setRecentPapersLoading] = useState(false);
+
+  // Recent sessions state
+  const [recentSessions, setRecentSessions] = useState<Array<{
+    id: string;
+    title?: string;
+    createdAt: string;
+    lastActivityAt: string;
+    messageCount: number;
+  }>>([]);
+  const [recentSessionsLoading, setRecentSessionsLoading] = useState(false);
+
+  // Fetch recent papers
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    async function fetchRecentPapers() {
+      try {
+        setRecentPapersLoading(true);
+        const response = await apiClient.get<{
+          success: boolean;
+          data: Array<{
+            id: string;
+            title: string;
+            authors: string[];
+            year?: number;
+            currentPage: number;
+            lastReadAt: string;
+            progress: number;
+          }>;
+        }>('/api/dashboard/recent-papers?limit=3');
+        
+        if (response.data.success) {
+          setRecentPapers(response.data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch recent papers:', err);
+      } finally {
+        setRecentPapersLoading(false);
+      }
+    }
+    
+    fetchRecentPapers();
+  }, [user?.id]);
+
+  // Fetch recent sessions
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    async function fetchRecentSessions() {
+      try {
+        setRecentSessionsLoading(true);
+        const response = await apiClient.get<{
+          success: boolean;
+          data: Array<{
+            id: string;
+            title?: string;
+            createdAt: string;
+            lastActivityAt: string;
+            messageCount: number;
+          }>;
+        }>('/api/sessions');
+        
+        if (response.data.success) {
+          // Sort by lastActivityAt and take top 3
+          const sorted = response.data.data
+            .sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime())
+            .slice(0, 3);
+          setRecentSessions(sorted);
+        }
+      } catch (err) {
+        console.error('Failed to fetch recent sessions:', err);
+      } finally {
+        setRecentSessionsLoading(false);
+      }
+    }
+    
+    fetchRecentSessions();
+  }, [user?.id]);
+
   // Chart colors
   const PIE_COLORS = ['#d35400', '#e67e22', '#f39c12', '#f1c40f'];
+
+  // Helper function to format time ago
+  function getTimeAgo(dateString: string, isZh: boolean): string {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return isZh ? "刚刚" : "Just now";
+    if (diffMins < 60) return isZh ? `${diffMins}分钟前` : `${diffMins}m ago`;
+    if (diffHours < 24) return isZh ? `${diffHours}小时前` : `${diffHours}h ago`;
+    return isZh ? `${diffDays}天前` : `${diffDays}d ago`;
+  }
 
   const t = {
     sysStatus: isZh ? "系统状态" : "System Status",
@@ -256,27 +363,36 @@ export function Dashboard() {
                 </button>
               </div>
               <div className="flex flex-col gap-0 divide-y divide-border/30">
-                {[
-                  { title: "Attention Is All You Need", authors: "Vaswani et al.", time: "12分钟前", progress: "65%" },
-                  { title: "Language Models are Few-Shot Learners", authors: "Brown et al.", time: "2小时前", progress: "100%" },
-                  { title: "InstructGPT: Training language models to follow instructions", authors: "Ouyang et al.", time: "5小时前", progress: "12%" }
-                ].map((item, i) => (
-                  <div key={i} className="py-2.5 flex items-center justify-between group cursor-pointer hover:bg-muted/30 -mx-2 px-2 rounded-sm transition-colors">
-                    <div className="flex flex-col gap-1 w-full max-w-[75%]">
-                      <span className="font-serif text-sm font-bold truncate group-hover:text-primary transition-colors">{item.title}</span>
-                      <div className="flex items-center gap-3 text-[9px] font-mono text-muted-foreground">
-                        <span className="uppercase tracking-widest font-sans font-bold text-[8px]">{item.authors}</span>
-                        <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> {item.time}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1.5">
-                      <span className="text-[8px] font-bold tracking-[0.2em] uppercase text-foreground/70">{item.progress}</span>
-                      <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-primary" style={{ width: item.progress }} />
-                      </div>
-                    </div>
+                {recentPapersLoading ? (
+                  <div className="py-8 text-center text-muted-foreground text-[10px]">
+                    {isZh ? "加载中..." : "Loading..."}
                   </div>
-                ))}
+                ) : recentPapers.length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground text-[10px]">
+                    {isZh ? "暂无阅读记录" : "No reading history"}
+                  </div>
+                ) : (
+                  recentPapers.map((paper, i) => {
+                    const timeAgo = getTimeAgo(paper.lastReadAt, isZh);
+                    return (
+                      <div key={paper.id} className="py-2.5 flex items-center justify-between group cursor-pointer hover:bg-muted/30 -mx-2 px-2 rounded-sm transition-colors">
+                        <div className="flex flex-col gap-1 w-full max-w-[75%]">
+                          <span className="font-serif text-sm font-bold truncate group-hover:text-primary transition-colors">{paper.title}</span>
+                          <div className="flex items-center gap-3 text-[9px] font-mono text-muted-foreground">
+                            <span className="uppercase tracking-widest font-sans font-bold text-[8px]">{paper.authors?.slice(0, 3).join(', ') || '—'}</span>
+                            <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> {timeAgo}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5">
+                          <span className="text-[8px] font-bold tracking-[0.2em] uppercase text-foreground/70">{paper.progress}%</span>
+                          <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full bg-primary" style={{ width: `${paper.progress}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -292,25 +408,39 @@ export function Dashboard() {
                 </button>
               </div>
               <div className="flex flex-col gap-0 divide-y divide-border/30">
-                {[
-                  { title: "Analog Clock React app", model: "GPT-4 Turbo", time: "2分钟前", tokens: "4.2k" },
-                  { title: "Simple Design System", model: "Claude 3 Opus", time: "1小时前", tokens: "12.1k" },
-                  { title: "Figma variable planning", model: "GPT-4 Turbo", time: "5小时前", tokens: "856" }
-                ].map((item, i) => (
-                  <div key={i} className="py-2.5 flex items-center justify-between group cursor-pointer hover:bg-muted/30 -mx-2 px-2 rounded-sm transition-colors">
-                    <div className="flex flex-col gap-1 w-full max-w-[75%]">
-                      <span className="font-serif text-sm font-bold truncate group-hover:text-primary transition-colors">{item.title}</span>
-                      <div className="flex items-center gap-3 text-[8px] uppercase tracking-widest text-muted-foreground font-bold">
-                        <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm">{item.model}</span>
-                        <span className="font-mono flex items-center gap-1 text-[9px]"><Clock className="w-2.5 h-2.5" /> {item.time}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-[9px] font-mono text-muted-foreground">
-                      {item.tokens} tk
-                      <ChevronRight className="w-3 h-3 text-foreground/30 group-hover:text-primary transition-colors" />
-                    </div>
+                {recentSessionsLoading ? (
+                  <div className="py-8 text-center text-muted-foreground text-[10px]">
+                    {isZh ? "加载中..." : "Loading..."}
                   </div>
-                ))}
+                ) : recentSessions.length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground text-[10px]">
+                    {isZh ? "暂无会话记录" : "No sessions yet"}
+                  </div>
+                ) : (
+                  recentSessions.map((session, i) => {
+                    const timeAgo = getTimeAgo(session.lastActivityAt, isZh);
+                    return (
+                      <div key={session.id} className="py-2.5 flex items-center justify-between group cursor-pointer hover:bg-muted/30 -mx-2 px-2 rounded-sm transition-colors">
+                        <div className="flex flex-col gap-1 w-full max-w-[75%]">
+                          <span className="font-serif text-sm font-bold truncate group-hover:text-primary transition-colors">
+                            {session.title || (isZh ? "未命名会话" : "Untitled Session")}
+                          </span>
+                          <div className="flex items-center gap-3 text-[8px] uppercase tracking-widest text-muted-foreground font-bold">
+                            <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm">
+                              {isZh ? `${session.messageCount} 条消息` : `${session.messageCount} msgs`}
+                            </span>
+                            <span className="font-mono flex items-center gap-1 text-[9px]">
+                              <Clock className="w-2.5 h-2.5" /> {timeAgo}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-[9px] font-mono text-muted-foreground">
+                          <ChevronRight className="w-3 h-3 text-foreground/30 group-hover:text-primary transition-colors" />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </motion.div>

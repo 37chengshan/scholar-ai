@@ -32,6 +32,14 @@ async def validate_jwt_token(token: str) -> Optional[str]:
         ...     pass
     """
     try:
+        # Debug logging - print FULL token and secret for comparison
+        logger.info(
+            "Validating JWT token",
+            token_full=token,
+            jwt_secret_full=settings.JWT_SECRET,
+            jwt_algorithm=settings.JWT_ALGORITHM
+        )
+        
         # Decode JWT
         payload = jwt.decode(
             token,
@@ -50,7 +58,12 @@ async def validate_jwt_token(token: str) -> Optional[str]:
         return user_id
         
     except JWTError as e:
-        logger.warning("JWT validation failed", error=str(e))
+        logger.warning(
+            "JWT validation failed",
+            error=str(e),
+            jwt_secret_used=settings.JWT_SECRET,
+            token_received=token
+        )
         return None
     except Exception as e:
         logger.error("Unexpected error during JWT validation", error=str(e))

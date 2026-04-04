@@ -19,13 +19,15 @@ Usage:
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
-import litellm
 import json
 
 from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
 from app.core.context_manager import ContextManager, Context
+from app.core.config import settings
 from app.utils.logger import logger
+from app.utils.zhipu_client import get_llm_client
+from app.utils.token_tracker import TokenTracker
 
 
 class AgentState(Enum):
@@ -87,6 +89,7 @@ class AgentRunner:
         self.max_iterations = max_iterations
         self.current_state = AgentState.IDLE
         self.iteration_count = 0
+        self.token_tracker = TokenTracker()
         
     async def execute(
         self,
@@ -163,7 +166,9 @@ class AgentRunner:
                 
                 # THINKING: Call LLM
                 self.current_state = AgentState.THINKING
-                llm_response = await self._think(system_prompt, messages, tools_schema)
+                llm_response = await self._think(
+                    system_prompt, messages, tools_schema, user_id, session_id
+                )
                 
                 # Check if LLM provided final answer
                 if llm_response.get("is_complete", False):
@@ -360,7 +365,9 @@ class AgentRunner:
         self,
         system_prompt: str,
         messages: List[Dict[str, Any]],
-        tools_schema: List[Dict[str, Any]]
+        tools_schema: List[Dict[str, Any]],
+        user_id: str = "",
+        session_id: str = ""
     ) -> Dict[str, Any]:
         """Call LLM to determine next action.
         
@@ -368,6 +375,8 @@ class AgentRunner:
             system_prompt: System prompt for agent
             messages: Conversation messages
             tools_schema: Available tool schemas
+            user_id: User ID for token tracking
+            session_id: Session ID for token tracking
             
         Returns:
             Dict with:
@@ -376,9 +385,10 @@ class AgentRunner:
                 - tool_call: (if not complete) Tool call dict
         """
         try:
+            llm_client = get_llm_client()
+            
             # Call LLM with tools
-            response = await litellm.acompletion(
-                model="zhipu/glm-4.5-air",
+            response = await llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     *messages
@@ -389,11 +399,32 @@ class AgentRunner:
                 temperature=0.7
             )
             
+            # Track token usage
+            if hasattr(response, 'usage') and response.usage:
+                try:
+                    cost = await self.token_tracker.track_usage(
+                        user_id=user_id,
+                        model="glm-4.5-air",
+                        input_tokens=response.usage.prompt_tokens,
+                        output_tokens=response.usage.completion_tokens,
+                        session_id=session_id
+                    )
+                    
+                    logger.info(
+                        "Token usage tracked",
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        cost_cny=cost
+                    )
+                except Exception as e:
+                    logger.warning("Failed to track token usage", error=str(e))
+            
             # Parse response
             message = response.choices[0].message
             
             # Check if LLM made a tool call
-            if message.tool_calls:
+            if hasattr(message, 'tool_calls') and message.tool_calls:
                 # Extract first tool call
                 tool_call = message.tool_calls[0]
                 
@@ -456,7 +487,7 @@ class AgentRunner:
             result = await self.tool_registry.execute(
                 tool_name,
                 parameters,
-                context=context.environment
+                **context.environment
             )
 
             logger.info(

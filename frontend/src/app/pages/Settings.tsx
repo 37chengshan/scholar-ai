@@ -15,8 +15,8 @@ import { Camera, Key, Lock, Save, User, RefreshCw, TerminalSquare, Cpu, Box, Har
 import { motion } from "motion/react";
 import { clsx } from "clsx";
 import { useLanguage } from "../contexts/LanguageContext";
-import { ProfileForm } from "@/components/ProfileForm";
-import { APIKeyManager } from "@/components/APIKeyManager";
+import { ProfileForm } from "../components/ProfileForm";
+import { APIKeyManager } from "../components/APIKeyManager";
 
 const LOGS = [
   { time: "10:42:01", level: "INFO", message: "User session authenticated." },

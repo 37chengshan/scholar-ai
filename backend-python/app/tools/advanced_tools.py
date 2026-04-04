@@ -14,13 +14,14 @@ from typing import Any, Dict
 from app.utils.logger import logger
 
 
-async def execute_extract_references(params: Dict[str, Any]) -> Dict[str, Any]:
+async def execute_extract_references(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute extract_references tool.
 
     Extracts reference list from papers.
 
     Args:
         params: {"paper_ids": [str], "format": str}
+        **kwargs: Additional context (ignored)
 
     Returns:
         {success: bool, data: {references: [...]}, error: str?}
@@ -43,13 +44,14 @@ async def execute_extract_references(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e), "data": None}
 
 
-async def execute_merge_documents(params: Dict[str, Any]) -> Dict[str, Any]:
+async def execute_merge_documents(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute merge_documents tool.
 
     Merges content from multiple sources.
 
     Args:
         params: {"sources": [...], "output_format": str, "title": str?}
+        **kwargs: Additional context (ignored)
 
     Returns:
         {success: bool, data: {merged_content: str}, error: str?}
@@ -72,13 +74,14 @@ async def execute_merge_documents(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e), "data": None}
 
 
-async def execute_execute_command(params: Dict[str, Any]) -> Dict[str, Any]:
+async def execute_execute_command(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute execute_command tool.
 
     Executes a system command (dangerous, requires confirmation).
 
     Args:
         params: {"command": str, "args": [...]}
+        **kwargs: Additional context (ignored)
 
     Returns:
         {success: bool, data: {output: str}, error: str?}
@@ -101,13 +104,14 @@ async def execute_execute_command(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e), "data": None}
 
 
-async def execute_show_message(params: Dict[str, Any]) -> Dict[str, Any]:
+async def execute_show_message(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute show_message tool.
 
     Displays a message to the user.
 
     Args:
         params: {"message": str, "type": str}
+        **kwargs: Additional context (ignored)
 
     Returns:
         {success: bool, data: {displayed: bool}, error: str?}

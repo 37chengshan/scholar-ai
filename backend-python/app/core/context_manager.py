@@ -18,9 +18,10 @@ Usage:
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 import json
-import litellm
 
+from app.core.config import settings
 from app.utils.logger import logger
+from app.utils.zhipu_client import get_llm_client
 
 
 @dataclass
@@ -198,9 +199,10 @@ class ContextManager:
         combined_text = "\n".join(message_texts)
         
         try:
+            llm_client = get_llm_client()
+            
             # Use GLM-4.5-Air to summarize
-            response = await litellm.acompletion(
-                model="zhipu/glm-4.5-air",
+            response = await llm_client.chat_completion(
                 messages=[
                     {
                         "role": "system",

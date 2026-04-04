@@ -15,7 +15,7 @@ from app.utils.logger import logger
 
 async def execute_upload_paper(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute upload_paper tool.
 
@@ -23,11 +23,12 @@ async def execute_upload_paper(
 
     Args:
         params: {"source": {...}, "metadata": {...}}
-        user_id: User ID for ownership
+        **kwargs: Additional context (user_id, session_id)
 
     Returns:
         {success: bool, data: {paper_id: str}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         logger.info("Upload paper initiated", user_id=user_id)
 
@@ -50,7 +51,7 @@ async def execute_upload_paper(
 
 async def execute_delete_paper(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute delete_paper tool.
 
@@ -58,11 +59,12 @@ async def execute_delete_paper(
 
     Args:
         params: {"paper_id": str}
-        user_id: User ID for ownership validation
+        **kwargs: Additional context (user_id, session_id)
 
     Returns:
         {success: bool, data: {deleted: bool}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         paper_id = params.get("paper_id")
 
@@ -77,7 +79,7 @@ async def execute_delete_paper(
                 """
                 UPDATE papers
                 SET status = 'deleted', updated_at = NOW()
-                WHERE id = $1 AND "userId" = $2
+                WHERE id = $1 AND user_id = $2
                 """,
                 paper_id,
                 user_id

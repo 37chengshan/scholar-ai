@@ -18,7 +18,7 @@ from app.utils.logger import logger
 
 async def execute_create_note(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute create_note tool.
     
@@ -31,11 +31,12 @@ async def execute_create_note(
             "paper_ids": [str],
             "tags": [str]
         }
-        user_id: User ID for ownership
+        **kwargs: Additional context (user_id, session_id)
     
     Returns:
         {success: bool, data: {note details}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         title = params.get("title", "").strip()
         content = params.get("content", "").strip()
@@ -65,7 +66,7 @@ async def execute_create_note(
         )
         
         note_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         
         async with get_db_connection() as conn:
             # Insert note
@@ -95,6 +96,12 @@ async def execute_create_note(
             )
             
             note_data = dict(row) if row else None
+            
+            # Convert datetime to ISO string for JSON serialization
+            if note_data and "created_at" in note_data:
+                note_data["created_at"] = note_data["created_at"].isoformat()
+            if note_data and "updated_at" in note_data:
+                note_data["updated_at"] = note_data["updated_at"].isoformat()
         
         logger.info("Note created", note_id=note_id, user_id=user_id)
         
@@ -111,7 +118,7 @@ async def execute_create_note(
 
 async def execute_update_note(
     params: Dict[str, Any],
-    user_id: str
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute update_note tool.
     
@@ -122,11 +129,12 @@ async def execute_update_note(
             "note_id": str,
             "updates": {title?: str, content?: str, tags?: [str], paper_ids?: [str]}
         }
-        user_id: User ID for ownership validation
+        **kwargs: Additional context (user_id, session_id)
     
     Returns:
         {success: bool, data: {updated note}, error: str?}
     """
+    user_id = kwargs.get("user_id", "")
     try:
         note_id = params.get("note_id")
         updates = params.get("updates", {})
@@ -214,6 +222,12 @@ async def execute_update_note(
             )
             
             note_data = dict(row) if row else None
+            
+            # Convert datetime to ISO string for JSON serialization
+            if note_data and "created_at" in note_data:
+                note_data["created_at"] = note_data["created_at"].isoformat()
+            if note_data and "updated_at" in note_data:
+                note_data["updated_at"] = note_data["updated_at"].isoformat()
         
         logger.info("Note updated", note_id=note_id, user_id=user_id)
         
@@ -229,7 +243,8 @@ async def execute_update_note(
 
 
 async def execute_ask_user_confirmation(
-    params: Dict[str, Any]
+    params: Dict[str, Any],
+    **kwargs
 ) -> Dict[str, Any]:
     """Execute ask_user_confirmation tool.
     
@@ -241,6 +256,7 @@ async def execute_ask_user_confirmation(
             "message": str,
             "details": {operation: str, ...}
         }
+        **kwargs: Additional context (ignored)
     
     Returns:
         {

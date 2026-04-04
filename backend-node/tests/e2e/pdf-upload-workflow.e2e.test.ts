@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import app from '../../src/index';
 import { generateTestUserData, cleanupTestData } from '../helpers/db';
@@ -16,10 +17,10 @@ import path from 'path';
  */
 
 describe('PDF Upload and Processing Workflow E2E', () => {
-  const testPdfDir = '/Users/cc/sc/测试论文';
+  const testPdfDir = '/Users/cc/scholar-ai-deploy/schlar ai/doc/测试论文';
   const testFiles = [
-    { name: '2603.11092v1.pdf', size: '3.2MB' },
-    { name: '2603.12109v1.pdf', size: '954KB' },
+    { name: '2604.01245v1.pdf', size: '265KB' },
+    { name: '2604.01226v1.pdf', size: '5.2MB' },
   ];
 
   // Shared test user and agent for all steps

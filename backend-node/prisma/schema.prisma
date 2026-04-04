@@ -7,389 +7,304 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 用户表
-model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
-  name          String
-  passwordHash  String   @map("password_hash")
-  emailVerified Boolean  @default(false) @map("email_verified")
-  avatar        String?
-  settings      Json?    @map("settings") // { language: 'zh'|'en', defaultModel: string, theme: string }
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+model annotations {
+  id          String   @id
+  paper_id    String
+  user_id     String
+  type        String
+  page_number Int
+  position    Json
+  content     String?
+  color       String   @default("#FFEB3B")
+  created_at  DateTime @default(now())
+  updated_at  DateTime
+  papers      papers   @relation(fields: [paper_id], references: [id], onDelete: Cascade)
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  // 关联
-  papers           Paper[]
-  queries          Query[]
-  knowledgeMaps    KnowledgeMap[]
-  userRoles        UserRole[]
-  refreshTokens    RefreshToken[]
-  sessions         Session[]
-  notes            Note[]
-  apiKeys          ApiKey[]
-  projects         Project[]
-  annotations      Annotation[]
-  readingProgress  ReadingProgress[]
-
-  @@map("users")
+  @@index([paper_id])
+  @@index([paper_id, page_number])
+  @@index([user_id])
 }
 
-// API密钥表
-model ApiKey {
-  id         String    @id @default(uuid())
-  userId     String    @map("user_id")
-  name       String
-  keyHash    String    @map("key_hash") // Argon2 hash of full key
-  prefix     String // First 8 chars for display (e.g., "sk_live_a")
-  lastUsedAt DateTime? @map("last_used_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+model api_keys {
+  id           String    @id
+  user_id      String
+  name         String
+  key_hash     String
+  prefix       String
+  last_used_at DateTime?
+  created_at   DateTime  @default(now())
+  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("api_keys")
+  @@index([user_id])
 }
 
-// 论文表
-model Paper {
-  id        String   @id @default(uuid())
-  title     String
-  authors   String[]
-  year      Int?
-  abstract  String?
-  doi       String?
-  arxivId   String?  @map("arxiv_id")
-  pdfUrl    String?  @map("pdf_url")
-  pdfPath   String?  @map("pdf_path") // 本地存储路径
-  content   String? // 解析后的Markdown内容
-  imradJson Json?    @map("imrad_json") // IMRaD结构化数据
-  status    String   @default("pending") // pending, processing, completed, error
-  starred   Boolean  @default(false) // 收藏标记
-  fileSize  Int?     @map("file_size") // PDF文件大小
-  pageCount Int?     @map("page_count") // 页数
+model chat_messages {
+  id           String   @id
+  session_id   String
+  role         String
+  content      String
+  tool_calls   Json?
+  tool_call_id String?
+  metadata     Json?
+  sources      Json?
+  tokens_used  Int?
+  duration_ms  Int?
+  created_at   DateTime @default(now())
+  sessions     sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
 
-  // 元数据
-  keywords  String[]
-  venue     String? // 发表会议/期刊
-  citations Int? // 被引次数
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // 关联
-  userId  String       @map("user_id")
-  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  queries Query[]      @relation("QueryPapers")
-  chunks  PaperChunk[]
-
-  // 存储和笔记
-  storageKey     String?         @map("storage_key")
-  readingNotes   String?         @map("reading_notes") @db.Text
-  notesVersion   Int             @default(0) @map("notes_version")
-  processingTask ProcessingTask?
-
-  // 批量上传字段 (Phase 11)
-  batchId        String?     @map("batch_id")
-  batch          PaperBatch? @relation("BatchPapers", fields: [batchId], references: [id])
-  uploadStatus   String?     @map("upload_status") // pending/uploading/completed/failed
-  uploadProgress Int?        @map("upload_progress") // 0-100
-  uploadedAt     DateTime?   @map("uploaded_at")
-
-  // 项目分类 (Phase 15)
-  projectId String?   @map("project_id")
-  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-
-  // 批注和阅读进度 (Phase 15)
-  annotations      Annotation[]
-  readingProgress  ReadingProgress[]
-
-  // Indexes for common query patterns (per D-10)
-  @@index([status])
-  @@index([userId, status])
-  @@index([starred])
-  @@index([userId, starred])
-
-  @@map("papers")
+  @@index([created_at])
+  @@index([role])
+  @@index([session_id])
 }
 
-// 论文分块表 (用于RAG检索)
-model PaperChunk {
-  id        String  @id @default(uuid())
-  content   String // 分块内容
-  section   String? // 所属章节 (Introduction/Method/Results/Conclusion)
-  pageStart Int?    @map("page_start") // 起始页码
-  pageEnd   Int?    @map("page_end") // 结束页码
-
-  // 元数据
-  isTable   Boolean @default(false) @map("is_table")
-  isFigure  Boolean @default(false) @map("is_figure")
-  isFormula Boolean @default(false) @map("is_formula")
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  // 关联
-  paperId String @map("paper_id")
-  paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
-
-  @@index([paperId])
-  @@map("paper_chunks")
-}
-
-// 查询记录表
-model Query {
-  id         String  @id @default(uuid())
-  question   String // 用户问题
-  answer     String? // AI回答
-  sources    Json? // 引用来源 [{paperId, chunkId, score}]
-  queryType  String  @default("single") @map("query_type") // single, cross_paper, evolution
-  status     String  @default("pending") // pending, processing, completed, error
-  durationMs Int?    @map("duration_ms") // 响应时间
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  // 关联
-  userId   String   @map("user_id")
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paperIds String[] @map("paper_ids") // 关联的论文ID列表
-  papers   Paper[]  @relation("QueryPapers")
-
-  @@index([userId])
-  @@index([createdAt])
-  @@map("queries")
-}
-
-// 知识图谱表
-model KnowledgeMap {
-  id          String  @id @default(uuid())
-  name        String // 图谱名称
-  description String? // 描述
-  domain      String? // 研究领域
-
-  // 图谱数据存储在Neo4j，这里只存元数据
-  nodeCount Int @default(0) @map("node_count")
-  edgeCount Int @default(0) @map("edge_count")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // 关联
-  userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("knowledge_maps")
-}
-
-// 系统配置表
-model Config {
-  id          String   @id @default(uuid())
+model configs {
+  id          String   @id
   key         String   @unique
   value       Json
   description String?
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@map("configs")
+  updated_at  DateTime
 }
 
-// RBAC 角色表
-model Role {
-  id          String       @id @default(uuid())
-  name        String       @unique
+model knowledge_maps {
+  id          String   @id
+  name        String
   description String?
-  permissions Permission[]
-  userRoles   UserRole[]
-
-  @@map("roles")
+  domain      String?
+  node_count  Int      @default(0)
+  edge_count  Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime
+  user_id     String
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
-// RBAC 权限表
-model Permission {
-  id       String @id @default(uuid())
-  roleId   String @map("role_id")
-  resource String // papers, queries, admin
-  action   String // create, read, update, delete
-  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+model notes {
+  id         String   @id
+  user_id    String
+  title      String
+  content    String
+  tags       String[]
+  paper_ids  String[]
+  created_at DateTime @default(now())
+  updated_at DateTime
+  users      users    @relation(fields: [user_id], references: [id])
+}
+
+model paper_batches {
+  id             String   @id
+  user_id        String
+  total_files    Int
+  uploaded_count Int      @default(0)
+  status         String   @default("uploading")
+  created_at     DateTime @default(now())
+  papers         papers[]
+
+  @@index([status])
+  @@index([user_id])
+}
+
+model paper_chunks {
+  id         String   @id
+  content    String
+  section    String?
+  page_start Int?
+  page_end   Int?
+  is_table   Boolean  @default(false)
+  is_figure  Boolean  @default(false)
+  is_formula Boolean  @default(false)
+  created_at DateTime @default(now())
+  paper_id   String
+  papers     papers   @relation(fields: [paper_id], references: [id], onDelete: Cascade)
+
+  @@index([paper_id])
+}
+
+model papers {
+  id               String             @id
+  title            String
+  authors          String[]
+  year             Int?
+  abstract         String?
+  doi              String?
+  arxiv_id         String?
+  pdf_url          String?
+  pdf_path         String?
+  content          String?
+  imrad_json       Json?
+  status           String             @default("pending")
+  file_size        Int?
+  page_count       Int?
+  keywords         String[]
+  venue            String?
+  citations        Int?
+  created_at       DateTime           @default(now())
+  updated_at       DateTime
+  user_id          String
+  storage_key      String?
+  reading_notes    String?
+  notes_version    Int                @default(0)
+  batch_id         String?
+  upload_progress  Int?
+  upload_status    String?
+  uploaded_at      DateTime?
+  starred          Boolean            @default(false)
+  project_id       String?
+  annotations      annotations[]
+  paper_chunks     paper_chunks[]
+  paper_batches    paper_batches?     @relation(fields: [batch_id], references: [id])
+  projects         projects?          @relation(fields: [project_id], references: [id])
+  users            users              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  processing_tasks processing_tasks?
+  reading_progress reading_progress[]
+  queries          queries[]          @relation("QueryPapers")
+
+  @@index([starred])
+  @@index([user_id, starred])
+}
+
+model permissions {
+  id       String @id
+  role_id  String
+  resource String
+  action   String
+  roles    roles  @relation(fields: [role_id], references: [id], onDelete: Cascade)
 
   @@unique([resource, action])
-  @@map("permissions")
 }
 
-// 用户角色关联表
-model UserRole {
-  id     String @id @default(uuid())
-  userId String @map("user_id")
-  roleId String @map("role_id")
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+model processing_tasks {
+  id               String    @id
+  paper_id         String    @unique
+  status           String    @default("pending")
+  storage_key      String
+  error_message    String?
+  partial_failures Json?
+  attempts         Int       @default(0)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime
+  completed_at     DateTime?
+  error_stage      String?
+  error_time       DateTime?
+  retry_count      Int       @default(0)
+  papers           papers    @relation(fields: [paper_id], references: [id], onDelete: Cascade)
 
-  @@unique([userId, roleId])
-  @@map("user_roles")
-}
-
-// 论文处理任务表 (用于PDF处理和AI解析)
-model ProcessingTask {
-  id              String    @id @default(uuid())
-  paperId         String    @unique @map("paper_id")
-  paper           Paper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  status          String    @default("pending") // pending, processing_ocr, parsing, extracting_imrad, generating_notes, storing_vectors, indexing_multimodal, completed, failed
-  storageKey      String    @map("storage_key") // Object storage path: userId_originalName
-  errorMessage    String?   @map("error_message")
-  errorStage      String?   @map("error_stage") // OCR/Parsing/VectorStore 等
-  errorTime       DateTime? @map("error_time")
-  retryCount      Int       @default(0) @map("retry_count")
-  partialFailures Json?     @map("partial_failures") // JSON array of partial indexing failures
-  attempts        Int       @default(0) // Retry attempt counter
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  completedAt     DateTime? @map("completed_at")
-
+  @@index([paper_id])
   @@index([status])
-  @@index([paperId])
-  @@map("processing_tasks")
 }
 
-// 刷新令牌表
-model RefreshToken {
-  id        String   @id @default(uuid())
-  tokenHash String   @unique @map("token_hash")
-  userId    String   @map("user_id")
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model projects {
+  id         String   @id
+  user_id    String
+  name       String
+  color      String   @default("#3B82F6")
+  created_at DateTime @default(now())
+  updated_at DateTime
+  papers     papers[]
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@map("refresh_tokens")
+  @@index([user_id])
 }
 
-// 会话表 (Agent-Native architecture)
-model Session {
-  id             String    @id @default(uuid())
-  userId         String    @map("user_id")
-  title          String?
-  status         String    @default("active") // active, archived, deleted
-  metadata       Json? // {paper_ids: [], tags: [], intent: "..."}
-  messageCount   Int       @default(0) @map("message_count")
-  toolCallCount  Int       @default(0) @map("tool_call_count")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  lastActivityAt DateTime  @default(now()) @map("last_activity_at")
-  expiresAt      DateTime? @map("expires_at") // 30-day expiration
+model queries {
+  id          String   @id
+  question    String
+  answer      String?
+  sources     Json?
+  query_type  String   @default("single")
+  status      String   @default("pending")
+  duration_ms Int?
+  created_at  DateTime @default(now())
+  user_id     String
+  paper_ids   String[]
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  papers      papers[] @relation("QueryPapers")
 
-  messages ChatMessage[]
+  @@index([created_at])
+  @@index([user_id])
+}
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+model reading_progress {
+  id           String   @id
+  paper_id     String
+  user_id      String
+  current_page Int      @default(1)
+  total_pages  Int?
+  last_read_at DateTime @default(now())
+  papers       papers   @relation(fields: [paper_id], references: [id], onDelete: Cascade)
+  users        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  @@unique([paper_id, user_id])
+  @@index([last_read_at])
+  @@index([user_id])
+}
+
+model refresh_tokens {
+  id         String   @id
+  user_id    String
+  token_hash String   @unique
+  expires_at DateTime
+  created_at DateTime @default(now())
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model roles {
+  id          String        @id
+  name        String        @unique
+  description String?
+  permissions permissions[]
+  user_roles  user_roles[]
+}
+
+model sessions {
+  id               String          @id
+  user_id          String
+  title            String?
+  status           String          @default("active")
+  metadata         Json?
+  message_count    Int             @default(0)
+  tool_call_count  Int             @default(0)
+  created_at       DateTime        @default(now())
+  updated_at       DateTime
+  last_activity_at DateTime        @default(now())
+  expires_at       DateTime?
+  chat_messages    chat_messages[]
+  users            users           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([expires_at])
   @@index([status])
-  @@index([expiresAt])
-  @@map("sessions")
+  @@index([user_id])
 }
 
-// 聊天消息表
-model ChatMessage {
-  id         String   @id @default(uuid())
-  sessionId  String   @map("session_id")
-  role       String // user, assistant, tool, system
-  content    String   @db.Text
-  toolCalls  Json?    @map("tool_calls") // tool call data
-  toolCallId String?  @map("tool_call_id") // for tool response correlation
-  metadata   Json? // {intent, confidence, citations}
-  sources    Json? // [{paperId, chunkId, score}]
-  tokensUsed Int?     @map("tokens_used") // token consumption
-  durationMs Int?     @map("duration_ms") // response time
-  createdAt  DateTime @default(now()) @map("created_at")
+model user_roles {
+  id      String @id
+  user_id String
+  role_id String
+  roles   roles  @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  users   users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId])
-  @@index([role])
-  @@index([createdAt])
-  @@map("chat_messages")
+  @@unique([user_id, role_id])
 }
 
-// 笔记表
-model Note {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  title     String
-  content   String   @db.Text
-  tags      String[]
-  paperIds  String[] @map("paper_ids")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id])
-
-  @@map("notes")
-}
-
-// 批量上传表 (Phase 11)
-model PaperBatch {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  totalFiles    Int      @map("total_files")
-  uploadedCount Int      @default(0) @map("uploaded_count")
-  status        String   @default("uploading") // uploading/processing/completed/partial_failure
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  papers Paper[] @relation("BatchPapers")
-
-  @@index([userId])
-  @@index([status])
-  @@map("paper_batches")
-}
-
-// 项目分类表 (Phase 15)
-model Project {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  name      String
-  color     String   @default("#3B82F6") // 默认蓝色
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  papers  Paper[]
-
-  @@index([userId])
-  @@map("projects")
-}
-
-// 批注表 (Phase 15)
-model Annotation {
-  id         String   @id @default(uuid())
-  paperId    String   @map("paper_id")
-  userId     String   @map("user_id")
-  type       String   // highlight, note, bookmark
-  pageNumber Int      @map("page_number")
-  position   Json     // { x, y, width, height } or { startOffset, endOffset }
-  content    String?  // for notes
-  color      String   @default("#FFEB3B") // 默认黄色高亮
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([paperId])
-  @@index([userId])
-  @@index([paperId, pageNumber])
-  @@map("annotations")
-}
-
-// 阅读进度表 (Phase 15)
-model ReadingProgress {
-  id          String   @id @default(uuid())
-  paperId     String   @map("paper_id")
-  userId      String   @map("user_id")
-  currentPage Int      @default(1) @map("current_page")
-  totalPages  Int?     @map("total_pages")
-  lastReadAt  DateTime @default(now()) @map("last_read_at")
-
-  paper Paper @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([paperId, userId])  // One progress per user per paper
-  @@index([userId])
-  @@index([lastReadAt])
-  @@map("reading_progress")
+model users {
+  id               String             @id
+  email            String             @unique
+  name             String
+  password_hash    String
+  email_verified   Boolean            @default(false)
+  avatar           String?
+  settings         Json?
+  created_at       DateTime           @default(now())
+  updated_at       DateTime
+  annotations      annotations[]
+  api_keys         api_keys[]
+  knowledge_maps   knowledge_maps[]
+  notes            notes[]
+  papers           papers[]
+  projects         projects[]
+  queries          queries[]
+  reading_progress reading_progress[]
+  refresh_tokens   refresh_tokens[]
+  sessions         sessions[]
+  user_roles       user_roles[]
 }

@@ -15,10 +15,10 @@ Entity types:
 import os
 from typing import Dict, List, Optional, Any
 
-import litellm
 import structlog
 
 from app.core.neo4j_service import Neo4jService
+from app.utils.zhipu_client import ZhipuLLMClient
 
 logger = structlog.get_logger()
 
@@ -80,12 +80,12 @@ class EntityExtractor:
         Initialize entity extractor.
 
         Args:
-            model: LiteLLM model string for extraction (defaults to LLM_MODEL env var)
+            model: ZhipuAI model name for extraction (defaults to glm-4.5-air)
             max_text_length: Maximum text length to send to LLM
         """
-        self.model = model or os.getenv("LLM_MODEL", "openai/qwen-plus")
-        self.api_base = os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
+        self.model = model or os.getenv("LLM_MODEL", "glm-4.5-air")
         self.max_text_length = max_text_length
+        self.llm_client = ZhipuLLMClient(model=self.model)
 
     def _truncate_text(self, text: str, max_length: int = None) -> str:
         """Truncate text to fit context window.
@@ -116,13 +116,9 @@ class EntityExtractor:
         truncated = self._truncate_text(text)
 
         try:
-            response = await litellm.acompletion(
-                model=self.model,
-                api_base=self.api_base,
+            response = await self.llm_client.chat_completion(
                 messages=[{"role": "user", "content": EXTRACTION_PROMPT.format(text=truncated)}],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                timeout=30
+                temperature=0.1
             )
 
             content = response.choices[0].message.content
@@ -315,16 +311,13 @@ class EntityAligner:
             True if LLM determines they are the same entity
         """
         try:
-            response = await litellm.acompletion(
-                model=self.llm_model,
-                api_base=self.api_base,
+            response = await self.llm_client.chat_completion(
                 messages=[{
                     "role": "user",
                     "content": ENTITY_SAME_CHECK_PROMPT.format(name1=name1, name2=name2)
                 }],
                 temperature=0,  # Deterministic
-                max_tokens=10,
-                timeout=10
+                max_tokens=10
             )
 
             answer = response.choices[0].message.content.strip().lower()

@@ -79,7 +79,7 @@ export async function uploadFile(
       size: number;
       message: string;
     };
-  }>(`/api/upload/local/${storageKey}`, file, {
+  }>(`/api/papers/upload/local/${storageKey}`, file, {
     headers: {
       'Content-Type': 'application/octet-stream',
     },
@@ -136,20 +136,36 @@ export async function uploadToS3(
   file: File,
   onProgress?: (progress: number) => void
 ): Promise<void> {
-  // Direct S3 upload (no apiClient, no auth needed)
-  await fetch(uploadUrl, {
-    method: 'PUT',
-    body: file,
-    headers: {
-      'Content-Type': 'application/pdf',
-    },
-  });
+  // Check if this is local storage upload (URL contains /upload/local/)
+  const isLocalUpload = uploadUrl.includes('/upload/local/');
 
-  // Note: S3 upload doesn't support progress tracking via fetch
-  // For progress, use axios directly on presigned URL
-  if (onProgress) {
-    // Simulate progress for now (S3 doesn't report progress via fetch)
-    onProgress(50);
-    setTimeout(() => onProgress(100), 500);
+  if (isLocalUpload) {
+    // Local storage upload: Use POST with apiClient (requires auth)
+    await apiClient.post(uploadUrl, file, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(percent);
+        }
+      },
+    });
+  } else {
+    // S3/MinIO upload: Use PUT without auth (presigned URL)
+    await fetch(uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': 'application/pdf',
+      },
+    });
+
+    // Simulate progress for S3 (no native progress tracking with fetch)
+    if (onProgress) {
+      onProgress(50);
+      setTimeout(() => onProgress(100), 500);
+    }
   }
 }

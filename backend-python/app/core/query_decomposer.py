@@ -247,7 +247,7 @@ Requirements:
         return template
 
     async def _call_llm(self, prompt: str) -> str:
-        """Call LiteLLM for query decomposition.
+        """Call ZhipuAI for query decomposition.
 
         Args:
             prompt: Decomposition prompt
@@ -256,19 +256,20 @@ Requirements:
             LLM response text
         """
         try:
-            import litellm
-
-            response = await litellm.acompletion(
-                model="gpt-4o-mini",  # Use smaller model for decomposition
+            from app.utils.zhipu_client import get_llm_client
+            
+            llm_client = get_llm_client()
+            
+            response = await llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": "You are a query decomposition assistant. Respond only with valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,  # Lower temperature for consistent output
-                max_tokens=1000,
+                max_tokens=1000
             )
 
-            return response["choices"][0]["message"]["content"]
+            return response.choices[0].message.content
 
         except Exception as e:
             logger.error("LLM call failed for decomposition", error=str(e))
@@ -483,19 +484,20 @@ Guidelines:
 - confidence should reflect your certainty in the judgment"""
 
         try:
-            import litellm
-
-            response = await litellm.acompletion(
-                model="gpt-4o-mini",
+            from app.utils.zhipu_client import get_llm_client
+            
+            llm_client = get_llm_client()
+            
+            response = await llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": "You are a convergence evaluation assistant. Respond only with valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.2,
-                max_tokens=500,
+                max_tokens=500
             )
 
-            content = response["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
 
             # Parse JSON response
             try:

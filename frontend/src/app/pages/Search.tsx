@@ -17,7 +17,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSearch } from "@/hooks/useSearch";
-import { SearchResultCard } from "@/components/SearchResultCard";
+import { SearchResultCard } from "../components/SearchResultCard";
 import * as papersApi from "@/services/papersApi";
 import toast from "react-hot-toast";
 import { NoSearchResultsState } from "../components/EmptyState";

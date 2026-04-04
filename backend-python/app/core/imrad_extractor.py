@@ -319,6 +319,8 @@ def extract_metadata(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         "abstract": None,
         "keywords": [],
         "doi": None,
+        "year": None,
+        "venue": None,
     }
 
     # Get first page items only
@@ -329,6 +331,10 @@ def extract_metadata(items: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     if not first_page_items:
         return metadata
+    
+    # TODO: Implement actual metadata extraction logic
+    # For now, return default metadata structure
+    return metadata
 
 
 async def extract_imrad_enhanced(

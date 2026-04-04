@@ -1,4 +1,4 @@
-"""Notes generator using LiteLLM for structured reading notes.
+"""Notes generator using ZhipuAI for structured reading notes.
 
 Generates IMRaD-structured reading notes from academic papers using LLM.
 Supports content truncation, regeneration with modifications, and Markdown export.
@@ -7,8 +7,9 @@ Supports content truncation, regeneration with modifications, and Markdown expor
 import os
 from typing import Dict, Any, Optional
 
-import litellm
 import structlog
+
+from app.utils.zhipu_client import ZhipuLLMClient
 
 logger = structlog.get_logger()
 
@@ -83,11 +84,10 @@ class NotesGenerator:
         Initialize notes generator.
 
         Args:
-            model: LiteLLM model string (e.g., "gpt-4o-mini", "claude-3-haiku")
+            model: ZhipuAI model name (defaults to glm-4.5-air)
         """
-        # Support Aliyun DashScope: openai/qwen-plus or openai/deepseek-v3
-        self.model = model or os.getenv("LLM_MODEL", "openai/qwen-plus")
-        self.api_base = os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
+        self.model = model or os.getenv("LLM_MODEL", "glm-4.5-air")
+        self.llm_client = ZhipuLLMClient(model=self.model)
         self.max_content_length = 15000  # Character limit to avoid context overflow
         self.max_tokens = 2000
         self.temperature = 0.3
@@ -142,21 +142,17 @@ class NotesGenerator:
         )
 
         try:
-            response = await litellm.acompletion(
-                model=self.model,
-                api_base=self.api_base,
+            response = await self.llm_client.chat_completion(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                timeout=60  # 60 second timeout
+                max_tokens=self.max_tokens
             )
 
             notes = response.choices[0].message.content
             logger.info(
                 "Generated reading notes",
                 paper_title=paper_metadata.get("title"),
-                model=self.model,
-                tokens_used=response.usage.total_tokens if response.usage else None
+                model=self.model
             )
             return notes
 
@@ -203,12 +199,10 @@ class NotesGenerator:
         )
 
         try:
-            response = await litellm.acompletion(
-                model=self.model,
+            response = await self.llm_client.chat_completion(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                timeout=60
+                max_tokens=self.max_tokens
             )
 
             notes = response.choices[0].message.content
