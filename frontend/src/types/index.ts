@@ -26,6 +26,7 @@ export interface UserSettings {
   language: 'zh' | 'en';
   defaultModel: string;
   theme: 'light' | 'dark';
+  fontSize?: 'small' | 'medium' | 'large' | 'extra-large';
 }
 
 /**
