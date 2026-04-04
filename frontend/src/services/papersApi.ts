@@ -215,6 +215,25 @@ export async function toggleStar(id: string, starred: boolean): Promise<Paper> {
 }
 
 /**
+ * Update paper fields
+ *
+ * PATCH /api/papers/:id
+ * Updates paper metadata (e.g., readingNotes)
+ *
+ * @param id - Paper ID
+ * @param data - Fields to update
+ * @returns Updated paper data
+ */
+export async function update(id: string, data: { readingNotes?: string }): Promise<Paper> {
+  const response = await apiClient.patch<{
+    success: boolean;
+    data: Paper;
+  }>(`/api/papers/${id}`, data);
+
+  return response.data.data;
+}
+
+/**
  * Get PDF download URL
  *
  * GET /api/papers/:id/pdf
