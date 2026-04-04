@@ -23,6 +23,10 @@ import { chatRouter } from './routes/chat';
 import { sessionRouter } from './routes/session';
 import { batchRouter } from './routes/batch';
 import semanticScholarRoutes from './routes/semantic-scholar';
+import { projectsRouter } from './routes/projects';
+import { annotationsRouter } from './routes/annotations';
+import { readingProgressRouter } from './routes/readingProgress';
+import { dashboardRouter } from './routes/dashboard';
 
 dotenv.config();
 
@@ -32,7 +36,7 @@ const PORT = process.env.PORT || 4000;
 // 中间件
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || 'http://localhost:5174',
   credentials: true
 }));
 app.use(cookieParser() as unknown as express.RequestHandler);
@@ -55,6 +59,10 @@ app.use('/api/entities', entitiesRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/sessions', sessionRouter);
 app.use('/api/semantic-scholar', semanticScholarRoutes);
+app.use('/api/projects', projectsRouter);
+app.use('/api/annotations', annotationsRouter);
+app.use('/api/reading-progress', readingProgressRouter);
+app.use('/api/dashboard', dashboardRouter);
 
 // 错误处理
 app.use(errorHandler);

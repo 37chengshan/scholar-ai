@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, FileText, UploadCloud, LogOut } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
-import { mockLogout } from "../../mocks/auth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "./landing/Logo";
 
 const navItemsEN = [
@@ -24,12 +24,13 @@ const navItemsZH = [
 
 export function Layout() {
   const { language } = useLanguage();
+  const { logout } = useAuth();
   const navigate = useNavigate();
   const isZh = language === "zh";
   const navItems = isZh ? navItemsZH : navItemsEN;
 
-  const handleLogout = () => {
-    mockLogout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
