@@ -234,7 +234,7 @@ router.post('/login', async (req, res, next) => {
     // Store refresh token in database for persistence
     await prisma.refreshToken.create({
       data: {
-        token: refreshToken,
+        tokenHash: refreshToken,
         userId: user.id,
         expiresAt: new Date(Date.now() + COOKIE_SETTINGS.refreshToken.maxAge),
       },
@@ -312,7 +312,7 @@ router.post('/logout', async (req: AuthRequest, res, next) => {
         const { jti, sub: userId } = verifyRefreshToken(refreshToken);
         await redisClient.del(`refresh:${userId}:${jti}`);
         await prisma.refreshToken.deleteMany({
-          where: { token: refreshToken },
+          where: { tokenHash: refreshToken },
         });
       } catch {
         // Ignore verify errors on logout
@@ -458,11 +458,11 @@ router.post('/refresh', async (req, res, next) => {
 
     // Update refresh token in database
     await prisma.refreshToken.deleteMany({
-      where: { token: refreshToken },
+      where: { tokenHash: refreshToken },
     });
     await prisma.refreshToken.create({
       data: {
-        token: newRefreshToken,
+        tokenHash: newRefreshToken,
         userId: user.id,
         expiresAt: new Date(Date.now() + COOKIE_SETTINGS.refreshToken.maxAge),
       },
@@ -555,6 +555,171 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
         requestId: uuidv4(),
         timestamp: new Date().toISOString(),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Request password reset - sends reset link to email
+ */
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400).json({
+        success: false,
+        error: {
+          type: ErrorTypes.VALIDATION_ERROR,
+          title: 'Validation Error',
+          status: 400,
+          detail: 'Email is required',
+          instance: '/api/auth/forgot-password',
+          requestId: uuidv4(),
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      res.json({
+        success: true,
+        message: 'If the email exists, a reset link has been sent',
+      });
+      return;
+    }
+
+    // Generate reset token (JWT with 1 hour expiry)
+    const resetToken = generateAccessToken({
+      sub: user.id,
+      email: user.email,
+      type: 'password_reset',
+    });
+
+    // Store token in Redis with 1 hour expiry
+    await redisClient.setex(
+      `password_reset:${user.id}`,
+      3600, // 1 hour
+      resetToken
+    );
+
+    // TODO: Send email with reset link
+    // For MVP, we'll just log the reset link
+    logger.info(`Password reset link for ${email}: http://localhost:3000/reset-password?token=${resetToken}`);
+
+    res.json({
+      success: true,
+      message: 'If the email exists, a reset link has been sent',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using token from email
+ */
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      res.status(400).json({
+        success: false,
+        error: {
+          type: ErrorTypes.VALIDATION_ERROR,
+          title: 'Validation Error',
+          status: 400,
+          detail: 'Token and password are required',
+          instance: '/api/auth/reset-password',
+          requestId: uuidv4(),
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Validate password strength
+    if (password.length < 8) {
+      res.status(400).json({
+        success: false,
+        error: {
+          type: ErrorTypes.VALIDATION_ERROR,
+          title: 'Validation Error',
+          status: 400,
+          detail: 'Password must be at least 8 characters',
+          instance: '/api/auth/reset-password',
+          requestId: uuidv4(),
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Verify token
+    const decoded = verifyRefreshToken(token);
+    if (!decoded || decoded.type !== 'password_reset') {
+      res.status(401).json({
+        success: false,
+        error: {
+          type: ErrorTypes.AUTHENTICATION_ERROR,
+          title: 'Unauthorized',
+          status: 401,
+          detail: 'Invalid or expired reset token',
+          instance: '/api/auth/reset-password',
+          requestId: uuidv4(),
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Check if token exists in Redis
+    const storedToken = await redisClient.get(`password_reset:${decoded.sub}`);
+    if (!storedToken || storedToken !== token) {
+      res.status(401).json({
+        success: false,
+        error: {
+          type: ErrorTypes.AUTHENTICATION_ERROR,
+          title: 'Unauthorized',
+          status: 401,
+          detail: 'Invalid or expired reset token',
+          instance: '/api/auth/reset-password',
+          requestId: uuidv4(),
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Hash new password
+    const passwordHash = await hashPassword(password);
+
+    // Update user password
+    await prisma.user.update({
+      where: { id: decoded.sub },
+      data: { passwordHash },
+    });
+
+    // Delete reset token from Redis
+    await redisClient.del(`password_reset:${decoded.sub}`);
+
+    logger.info(`Password reset successful for user ${decoded.sub}`);
+
+    res.json({
+      success: true,
+      message: 'Password reset successful',
     });
   } catch (error) {
     next(error);
