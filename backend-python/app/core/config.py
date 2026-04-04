@@ -38,10 +38,8 @@ class Settings(BaseSettings):
     MILVUS_POOL_SIZE: int = 10
     MILVUS_TIMEOUT: int = 10
 
-    # API密钥
-    OPENAI_API_KEY: str = ""
-    ANTHROPIC_API_KEY: str = ""
-    ZHIPU_API_KEY: str = ""  # For glm-4v image caption and glm-4-flash table description
+    # Zhipu AI API密钥
+    ZHIPU_API_KEY: str = ""  # For all ZhipuAI models (GLM-4.5-Air, glm-4v, glm-4-flash)
     ZHIPU_MODEL_VISION: str = "glm-4v"  # For image caption generation
     ZHIPU_MODEL_TEXT: str = "glm-4-flash"  # For table description generation
     ZHIPU_MAX_TOKENS: int = 150
@@ -64,7 +62,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     
     # GLM-4.5-Air Configuration (for Agent Runner)
-    LLM_MODEL: str = "zhipu/glm-4.5-air"  # LiteLLM model identifier
+    LLM_MODEL: str = "glm-4.5-air"  # ZhipuAI model name (no prefix)
     LLM_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"  # Zhipu AI API base
     LLM_MAX_TOKENS: int = 2048  # Maximum output tokens
     LLM_TEMPERATURE: float = 0.7  # Sampling temperature
@@ -73,6 +71,16 @@ class Settings(BaseSettings):
     # JWT内部服务通信 (RS256公钥用于验证Node.js Gateway发来的token)
     JWT_INTERNAL_PUBLIC_KEY: str = ""
     JWT_INTERNAL_PUBLIC_KEY_FILE: str = ""
+    
+    # JWT Authentication (HS256 for direct API access)
+    JWT_SECRET: str = "test-secret-key-for-development-only"  # Should be overridden in .env
+    JWT_ALGORITHM: str = "HS256"
+
+    # Semantic Scholar API
+    S2_API_KEY: str = ""  # Optional API key for higher rate limits
+    S2_CACHE_TTL: int = 86400  # 24 hours for search
+    S2_PAPER_TTL: int = 604800  # 7 days for paper details
+    S2_CITATION_TTL: int = 2592000  # 30 days for citations
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
