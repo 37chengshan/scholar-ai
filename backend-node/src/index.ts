@@ -22,6 +22,7 @@ import entitiesRouter from './routes/entities';
 import { chatRouter } from './routes/chat';
 import { sessionRouter } from './routes/session';
 import { batchRouter } from './routes/batch';
+import semanticScholarRoutes from './routes/semantic-scholar';
 
 dotenv.config();
 
@@ -53,6 +54,7 @@ app.use('/api/graph', graphRouter);
 app.use('/api/entities', entitiesRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/sessions', sessionRouter);
+app.use('/api/semantic-scholar', semanticScholarRoutes);
 
 // 错误处理
 app.use(errorHandler);
