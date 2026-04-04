@@ -16,11 +16,11 @@ import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics.pairwise import cosine_similarity
 
-from app.core.bge_m3_service import get_bge_m3_service
+from app.core.qwen3vl_service import get_qwen3vl_service
 from app.utils.logger import logger
 
 
-def cluster_pages(
+async def cluster_pages(
     results: List[Dict[str, Any]],
     threshold: float = 0.8
 ) -> Dict[int, List[Dict[str, Any]]]:
@@ -38,7 +38,7 @@ def cluster_pages(
         ...     {"page_num": 1, "content_data": "Introduction"},
         ...     {"page_num": 2, "content_data": "Introduction continued"},
         ... ]
-        >>> clusters = cluster_pages(results)
+        >>> clusters = await cluster_pages(results)
         >>> len(clusters) >= 1
         True
     """
@@ -74,13 +74,13 @@ def cluster_pages(
         )
         return {0: results}
 
-    # Encode pages with BGE-M3
-    bge_service = get_bge_m3_service()
+    # Encode pages with Qwen3VL (2048-dim)
+    qwen3vl_service = get_qwen3vl_service()
     pages = list(page_content.keys())
     page_texts = [" ".join(page_content[p]) for p in pages]
 
     try:
-        embeddings = bge_service.encode_text(page_texts)
+        embeddings = await qwen3vl_service.encode_text(page_texts)
     except Exception as e:
         logger.error(
             "Failed to encode pages for clustering",
