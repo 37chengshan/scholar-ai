@@ -3,8 +3,7 @@
 Provides:
 - Image extraction from PDF pages using Docling bounding boxes
 - Integration with pdf2image for PDF to PIL Image conversion
-- Caption generation via ImageCaptionService
-- 1024-dim embedding generation via BGE-M3 service
+- 2048-dim embedding generation via Qwen3VL service (multimodal)
 - Structured data output for Milvus storage
 """
 
@@ -14,8 +13,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 from PIL import Image
 
-from app.core.image_caption_service import get_image_caption_service
-from app.core.bge_m3_service import get_bge_m3_service
+from app.core.qwen3vl_service import get_qwen3vl_service
 from app.utils.logger import logger
 
 
@@ -38,24 +36,17 @@ class ImageExtractor:
     """Extract images from PDF documents and generate embeddings."""
 
     DEFAULT_DPI = 150
-    EMBEDDING_DIM = 1024
+    EMBEDDING_DIM = 2048  # Qwen3VL outputs 2048-dim
 
     def __init__(self):
         """Initialize the image extractor."""
-        self._caption_service = None
-        self._bge_service = None
+        self._qwen3vl_service = None
 
-    def _get_caption_service(self):
-        """Lazy load caption service."""
-        if self._caption_service is None:
-            self._caption_service = get_image_caption_service()
-        return self._caption_service
-
-    def _get_bge_service(self):
-        """Lazy load BGE-M3 service."""
-        if self._bge_service is None:
-            self._bge_service = get_bge_m3_service()
-        return self._bge_service
+    def _get_qwen3vl_service(self):
+        """Lazy load Qwen3VL service."""
+        if self._qwen3vl_service is None:
+            self._qwen3vl_service = get_qwen3vl_service()
+        return self._qwen3vl_service
 
     def extract_images_from_pdf(
         self,
@@ -197,7 +188,7 @@ class ImageExtractor:
         paper_id: str,
         user_id: str
     ) -> Dict[str, Any]:
-        """Generate caption and embedding for an image.
+        """Generate embedding for an image using Qwen3VL multimodal encoding.
 
         Args:
             image_data: ImageData object containing the extracted image
@@ -207,35 +198,29 @@ class ImageExtractor:
         Returns:
             Dictionary ready for Milvus insertion with:
             - paper_id, user_id, page_num, content_type
-            - content_data: the caption
+            - content_data: placeholder (direct image encoding, no caption needed)
             - raw_data: bbox info
-            - embedding: 1024-dim vector
+            - embedding: 2048-dim vector
         """
-        caption_service = self._get_caption_service()
-        bge_service = self._get_bge_service()
+        qwen3vl_service = self._get_qwen3vl_service()
 
-        # Generate caption
+        # Direct image encoding via Qwen3VL (no caption generation needed)
         try:
-            caption = await caption_service.generate_caption(image_data.image)
-            logger.debug("Generated caption for image", caption=caption[:50])
+            embedding = await qwen3vl_service.encode_image(image_data.image)
+            logger.debug("Generated image embedding", dim=len(embedding))
+            # Note: content_data is empty since we directly encode the image
+            caption = ""  # Placeholder - actual image content is in embedding
         except Exception as e:
-            logger.error("Failed to generate caption", error=str(e))
-            caption = ""
-
-        # Encode to 1024-dim vector
-        try:
-            embedding = bge_service.encode_text(caption if caption else "")
-            logger.debug("Generated embedding", dim=len(embedding))
-        except Exception as e:
-            logger.error("Failed to encode caption", error=str(e))
+            logger.error("Failed to encode image", error=str(e))
             embedding = [0.0] * self.EMBEDDING_DIM
+            caption = ""
 
         return {
             "paper_id": paper_id,
             "user_id": user_id,
             "page_num": image_data.page_num,
             "content_type": "image",
-            "content_data": caption,
+            "content_data": caption,  # Empty placeholder
             "raw_data": {
                 "bbox": image_data.bbox,
             },
