@@ -258,9 +258,13 @@ export function Login() {
                   <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                     {t.passkey}
                   </label>
-                  <a href="#" className="text-[9px] font-bold tracking-[0.2em] uppercase text-muted-foreground hover:text-primary transition-colors">
-                    {t.reset}
-                  </a>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/forgot-password')}
+                    className="text-[9px] font-bold tracking-[0.2em] uppercase text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    {isZh ? "忘记密码?" : "Forgot Password?"}
+                  </button>
                 </div>
                 <input
                   type="password"

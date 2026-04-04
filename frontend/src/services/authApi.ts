@@ -99,3 +99,31 @@ export async function register(
 
   return response.data.data;
 }
+
+/**
+ * Request password reset
+ *
+ * POST /api/auth/forgot-password
+ * Sends reset link to user's email
+ *
+ * @param email - User email
+ */
+export async function forgotPassword(email: string): Promise<void> {
+  await apiClient.post('/api/auth/forgot-password', { email });
+}
+
+/**
+ * Reset password with token
+ *
+ * POST /api/auth/reset-password
+ * Validates token and updates password
+ *
+ * @param token - Reset token from email link
+ * @param password - New password (min 8 chars)
+ */
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await apiClient.post('/api/auth/reset-password', {
+    token,
+    password,
+  });
+}
