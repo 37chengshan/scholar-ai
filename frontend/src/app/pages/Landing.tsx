@@ -7,6 +7,7 @@ import { DemoAnimation } from "../components/landing/DemoAnimation";
 import { GlobalDragonBackground } from "../components/landing/GlobalDragonBackground";
 import { InteractiveText } from "../components/landing/InteractiveText";
 import { Testimonials } from "../components/landing/Testimonials";
+import { useAuth } from "@/contexts/AuthContext";
 
 function PaperTexture() {
   return (
@@ -62,17 +63,11 @@ const scrollToSection = (id: string) => {
 
 export function Landing() {
   const navigate = useNavigate();
-
-  // Check authentication status (mock for now)
-  const isAuthenticated = (): boolean => {
-    // Check localStorage/session for auth token
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-    return !!token;
-  };
+  const { isAuthenticated } = useAuth();
 
   // Handle "开始探索" button click
   const handleExplore = () => {
-    if (isAuthenticated()) {
+    if (isAuthenticated) {
       navigate('/dashboard');
     } else {
       navigate('/login');
