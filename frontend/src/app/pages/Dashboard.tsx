@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -7,38 +6,18 @@ import { motion } from 'motion/react';
 import { ArrowUpRight, Activity, Database, GitCommit, Search, RefreshCw, Eye, BookOpen, MessageSquare, Clock, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Badge } from '../components/ui/badge';
-import { usersApi } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDashboard } from '@/app/hooks/useDashboard';
 
 export function Dashboard() {
   const { language } = useLanguage();
   const { user } = useAuth();
   const isZh = language === "zh";
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<any>(null);
+  
+  // Use dashboard hook for stats
+  const { stats, loading, error, weeklyTrendData, subjectDistData, refresh } = useDashboard(user?.id);
 
-  // Load dashboard statistics
-  useEffect(() => {
-    async function loadStats() {
-      if (!user?.id) return;
-      
-      try {
-        setLoading(true);
-        const data = await usersApi.getStats(user.id);
-        setStats(data);
-      } catch (error) {
-        console.error('Failed to load dashboard stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadStats();
-  }, [user?.id]);
-
-  // Placeholder chart data (Phase 15 will implement real analytics)
-  const data = [];
-  const pieData = [];
+  // Chart colors
   const PIE_COLORS = ['#d35400', '#e67e22', '#f39c12', '#f1c40f'];
 
   const t = {
@@ -70,11 +49,20 @@ export function Dashboard() {
   return (
     <div className="min-h-full font-sans bg-background text-foreground selection:bg-primary selection:text-primary-foreground relative p-6 lg:p-8 flex flex-col gap-6">
 
-      {/* Development Indicator */}
-      <div className="flex justify-end">
-        <Badge variant="secondary" className="text-xs">
-          {loading ? (isZh ? "加载中..." : "Loading...") : (isZh ? "数据开发中" : "Data Under Development")}
-        </Badge>
+      {/* Status Indicator */}
+      <div className="flex justify-end gap-2">
+        {error && (
+          <Badge variant="destructive" className="text-xs">
+            {isZh ? "加载失败" : "Load Failed"}
+          </Badge>
+        )}
+        <button 
+          onClick={refresh}
+          disabled={loading}
+          className="text-xs"
+        >
+          <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
       {/* Header Info - High Density */}
@@ -160,34 +148,40 @@ export function Dashboard() {
             </button>
           </div>
           <div className="flex-1 w-full min-h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#d35400" stopOpacity={0.15}/>
-                    <stop offset="95%" stopColor="#d35400" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="rgba(45, 36, 30, 0.08)" />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 9, fontFamily: 'Outfit, sans-serif', fill: '#7a6b5d', fontWeight: 600, letterSpacing: '0.1em' }}
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#7a6b5d' }} 
-                />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '2px', border: '1px solid rgba(45, 36, 30, 0.2)', fontFamily: 'Outfit, sans-serif', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 'bold', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: '#ffffff' }}
-                  itemStyle={{ fontFamily: 'JetBrains Mono, monospace', color: '#d35400' }}
-                />
-                <Area type="monotone" dataKey="uv" stroke="#d35400" strokeWidth={2} fillOpacity={1} fill="url(#colorUv)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {weeklyTrendData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={weeklyTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#d35400" stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor="#d35400" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="rgba(45, 36, 30, 0.08)" />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 9, fontFamily: 'Outfit, sans-serif', fill: '#7a6b5d', fontWeight: 600, letterSpacing: '0.1em' }}
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', fill: '#7a6b5d' }} 
+                  />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '2px', border: '1px solid rgba(45, 36, 30, 0.2)', fontFamily: 'Outfit, sans-serif', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 'bold', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: '#ffffff' }}
+                    itemStyle={{ fontFamily: 'JetBrains Mono, monospace', color: '#d35400' }}
+                  />
+                  <Area type="monotone" dataKey="uv" stroke="#d35400" strokeWidth={2} fillOpacity={1} fill="url(#colorUv)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
+                {isZh ? "暂无数据" : "No data yet"}
+              </div>
+            )}
           </div>
         </div>
 
@@ -197,36 +191,44 @@ export function Dashboard() {
             <h3 className="font-serif text-base font-bold tracking-tight">{t.subjDist}</h3>
           </div>
           <div className="flex-1 flex justify-center items-center min-h-[160px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  innerRadius={50}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ borderRadius: '2px', border: '1px solid rgba(45, 36, 30, 0.2)', fontFamily: 'Outfit, sans-serif', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 'bold', backgroundColor: '#ffffff' }} 
-                  itemStyle={{ fontFamily: 'JetBrains Mono, monospace' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="grid grid-cols-2 gap-y-2.5 gap-x-2 mt-2 pt-3 border-t border-border/50">
-            {pieData.map((item, i) => (
-              <div key={i} className="flex items-center gap-1.5 text-[8px] font-bold tracking-[0.1em] uppercase text-foreground/80 group cursor-default">
-                <div className="w-1.5 h-1.5 rounded-sm transition-transform group-hover:scale-150" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                <span className="truncate group-hover:text-primary transition-colors">{item.name}</span>
-                <span className="ml-auto font-mono text-muted-foreground">{item.value}</span>
+            {subjectDistData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={subjectDistData}
+                    innerRadius={50}
+                    outerRadius={70}
+                    paddingAngle={2}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {subjectDistData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '2px', border: '1px solid rgba(45, 36, 30, 0.2)', fontFamily: 'Outfit, sans-serif', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 'bold', backgroundColor: '#ffffff' }} 
+                    itemStyle={{ fontFamily: 'JetBrains Mono, monospace' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
+                {isZh ? "暂无数据" : "No data yet"}
               </div>
-            ))}
+            )}
           </div>
+          {subjectDistData.length > 0 && (
+            <div className="grid grid-cols-2 gap-y-2.5 gap-x-2 mt-2 pt-3 border-t border-border/50">
+              {subjectDistData.map((item, i) => (
+                <div key={i} className="flex items-center gap-1.5 text-[8px] font-bold tracking-[0.1em] uppercase text-foreground/80 group cursor-default">
+                  <div className="w-1.5 h-1.5 rounded-sm transition-transform group-hover:scale-150" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  <span className="truncate group-hover:text-primary transition-colors">{item.name}</span>
+                  <span className="ml-auto font-mono text-muted-foreground">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </motion.div>
 
