@@ -24,7 +24,7 @@ from app.core.database import init_databases, close_databases
 from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker_service import get_reranker_service
-from app.core.bge_m3_service import get_bge_m3_service
+from app.core.qwen3vl_service import get_qwen3vl_service
 from fastapi.exceptions import RequestValidationError
 from app.middleware.error_handler import (
     validation_exception_handler,
@@ -71,17 +71,22 @@ async def lifespan(app: FastAPI):
         # Don't fail startup - ReRanker is optional for basic functionality
         app.state.reranker_service = None
 
-    # Initialize BGE-M3
+    # Initialize Qwen3VL
     try:
-        logger.info("Initializing BGE-M3...")
-        bge_m3_service = get_bge_m3_service()
-        bge_m3_service.load_model()
-        app.state.bge_m3_service = bge_m3_service
-        logger.info("BGE-M3 model loaded", model=bge_m3_service.MODEL_NAME)
+        logger.info("Initializing Qwen3-VL...")
+        qwen3vl_service = get_qwen3vl_service()
+        qwen3vl_service.load_model()
+        app.state.qwen3vl_service = qwen3vl_service
+        logger.info(
+            "Qwen3-VL model loaded",
+            model=qwen3vl_service.MODEL_PATH,
+            quantization=qwen3vl_service.quantization,
+            dimension=qwen3vl_service.EMBEDDING_DIM
+        )
     except Exception as e:
-        logger.error("Failed to initialize BGE-M3", error=str(e))
-        # Don't fail startup - BGE-M3 is optional for basic functionality
-        app.state.bge_m3_service = None
+        logger.error("Failed to initialize Qwen3VL", error=str(e))
+        # Don't fail startup - Qwen3VL is optional for basic functionality
+        app.state.qwen3vl_service = None
 
     yield
 
