@@ -234,6 +234,114 @@ class TestRetryBehavior:
             assert mock_post.call_count == 2
 
 
+class TestSearchPapers:
+    """Tests for search_papers method."""
+
+    @pytest.mark.asyncio
+    async def test_search_papers(self, s2_service, mock_redis):
+        """Test search_papers returns search results."""
+        query = "machine learning"
+        
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {"paperId": "id1", "title": "ML Paper 1"},
+                {"paperId": "id2", "title": "ML Paper 2"}
+            ],
+            "total": 2
+        }
+        mock_response.raise_for_status = MagicMock()
+        
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+            
+            result = await s2_service.search_papers(query, redis_client=mock_redis)
+            
+            assert isinstance(result, dict)
+            assert "data" in result
+            assert len(result["data"]) == 2
+            assert result["data"][0]["paperId"] == "id1"
+
+    @pytest.mark.asyncio
+    async def test_search_papers_with_fields(self, s2_service, mock_redis):
+        """Test search_papers with custom fields."""
+        query = "deep learning"
+        fields = "paperId,title,year,authors"
+        
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": [{"paperId": "id1"}]}
+        mock_response.raise_for_status = MagicMock()
+        
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+            
+            await s2_service.search_papers(query, fields=fields, redis_client=mock_redis)
+            
+            # Check fields parameter
+            call_args = mock_client.return_value.get.call_args
+            assert call_args[1]["params"]["fields"] == fields
+
+    @pytest.mark.asyncio
+    async def test_search_papers_with_limit(self, s2_service):
+        """Test search_papers with limit parameter."""
+        query = "neural networks"
+        limit = 5
+        
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": []}
+        mock_response.raise_for_status = MagicMock()
+        
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+            
+            await s2_service.search_papers(query, limit=limit)
+            
+            # Check limit parameter
+            call_args = mock_client.return_value.get.call_args
+            assert call_args[1]["params"]["limit"] == limit
+
+    @pytest.mark.asyncio
+    async def test_search_papers_cache_hit(self, s2_service):
+        """Test search_papers returns cached results."""
+        query = "transformer models"
+        cached_data = {"data": [{"paperId": "cached-id"}], "total": 1}
+        
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
+        
+        result = await s2_service.search_papers(query, redis_client=mock_redis)
+        
+        assert result == cached_data
+        mock_redis.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_search_papers_cache_key_format(self, s2_service):
+        """Test search_papers cache key follows D-11 format."""
+        query = "attention mechanism"
+        fields = "paperId,title"
+        limit = 10
+        
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+        
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": []}
+        mock_response.raise_for_status = MagicMock()
+        
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+            
+            await s2_service.search_papers(query, fields=fields, limit=limit, redis_client=mock_redis)
+            
+            # Check cache key format: s2:search:{query}:{fields}:{limit}
+            cache_key = mock_redis.setex.call_args[0][0]
+            assert cache_key.startswith("s2:search:")
+            assert query in cache_key
+            assert fields in cache_key
+            assert str(limit) in cache_key
+
+
 class TestSingleton:
     """Tests for singleton pattern."""
 

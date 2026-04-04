@@ -28,6 +28,53 @@ class SemanticScholarService:
         self.timeout = 30.0
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
+    async def search_papers(
+        self,
+        query: str,
+        fields: Optional[str] = None,
+        limit: int = 5,
+        offset: int = 0,
+        redis_client: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """Search papers by query string.
+
+        Args:
+            query: Search query (title, abstract, authors)
+            fields: Comma-separated fields (default: paperId,title,year,authors,abstract,citationCount,venue)
+            limit: Max results (default 5 for metadata enrichment per D-09)
+            offset: Pagination offset
+            redis_client: Optional Redis client for caching
+
+        Returns:
+            Dict with 'data' list and 'total' count
+        """
+        if not fields:
+            fields = "paperId,title,year,authors,abstract,citationCount,venue,publicationDate"
+
+        # Per D-11: Cache key format
+        cache_key = f"s2:search:{query}:{fields}:{limit}:{offset}"
+        if redis_client:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                logger.info("S2 search cache hit", query=query[:50])
+                return json.loads(cached)
+
+        url = f"{self.api_url}/paper/search"
+        params = {"query": query, "fields": fields, "limit": limit, "offset": offset}
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url, params=params, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+
+        # Per D-10: Cache for 24 hours
+        if redis_client:
+            await redis_client.setex(cache_key, 86400, json.dumps(data))
+            logger.info("S2 search cached", query=query[:50])
+
+        return data
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
     async def batch_get_papers(
         self,
         paper_ids: List[str],
