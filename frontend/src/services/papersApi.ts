@@ -249,3 +249,39 @@ export function getPdfUrl(id: string): string {
   // Returns the URL that will redirect to actual PDF
   return `${apiClient.defaults.baseURL}/api/papers/${id}/pdf`;
 }
+
+/**
+ * Create paper from external source
+ *
+ * POST /api/search/external
+ * Adds an external paper (from arXiv, Semantic Scholar) to user's library
+ *
+ * @param paper - External paper data
+ * @returns Created paper info
+ */
+export async function createFromExternal(paper: {
+  source: 'arxiv' | 's2';
+  externalId: string;
+  title: string;
+  authors?: string[];
+  year?: number;
+  abstract?: string;
+  pdfUrl?: string;
+}): Promise<{
+  paperId: string;
+  status: string;
+  downloadTriggered: boolean;
+  message: string;
+}> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: {
+      paperId: string;
+      status: string;
+      downloadTriggered: boolean;
+      message: string;
+    };
+  }>('/api/search/external', paper);
+
+  return response.data.data;
+}
