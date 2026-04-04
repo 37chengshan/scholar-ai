@@ -13,7 +13,7 @@ import time
 import numpy as np
 from typing import Any, Dict, List, Optional
 
-from app.core.embedding_service import EmbeddingService
+from app.core.qwen3vl_service import get_qwen3vl_service
 from app.core.database import redis_db
 from app.utils.logger import logger
 
@@ -35,18 +35,18 @@ class SemanticCache:
         self,
         threshold: float = 0.95,
         ttl: int = 86400,
-        embedding_service: Optional[EmbeddingService] = None,
+        embedding_service: Optional[Any] = None,
     ):
         """Initialize SemanticCache.
 
         Args:
             threshold: Minimum similarity threshold for cache hit (default: 0.95)
             ttl: Cache entry TTL in seconds (default: 86400 for 24 hours)
-            embedding_service: Optional EmbeddingService instance
+            embedding_service: Optional embedding service instance (defaults to Qwen3VL)
         """
         self.threshold = threshold
         self.ttl = ttl
-        self.embedding_service = embedding_service or EmbeddingService()
+        self.embedding_service = embedding_service or get_qwen3vl_service()
         self.prefix = "rag:semantic_cache"
 
     def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
@@ -91,8 +91,8 @@ class SemanticCache:
         if not query or not paper_ids:
             return None
 
-        # Generate embedding for incoming query
-        query_embedding = self.embedding_service.generate_embedding(query)
+        # Generate embedding for incoming query (async)
+        query_embedding = await self.embedding_service.encode_text(query)
 
         # Build key pattern for matching paper_ids
         paper_key = ':'.join(sorted(paper_ids))
@@ -183,8 +183,8 @@ class SemanticCache:
             logger.warning("Cannot cache empty query")
             return False
 
-        # Generate embedding for query
-        query_embedding = self.embedding_service.generate_embedding(query)
+        # Generate embedding for query (async)
+        query_embedding = await self.embedding_service.encode_text(query)
 
         # Build cache key
         paper_key = ':'.join(sorted(paper_ids)) if paper_ids else "all"
