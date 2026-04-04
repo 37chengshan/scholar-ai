@@ -256,9 +256,9 @@ class OpenSourceEmbeddingService:
         if model_name.startswith("BAAI/bge-m3"):
             self._service = BGEM3EmbeddingService(model_name, device)
         elif model_name.startswith("sentence-transformers"):
-            # Use existing sentence-transformers service
-            from app.core.embedding_service import EmbeddingService
-            self._service = EmbeddingService(model_name=model_name)
+            # Use Qwen3VL service instead of legacy EmbeddingService
+            from app.core.qwen3vl_service import get_qwen3vl_service
+            self._service = get_qwen3vl_service()
         else:
             # Generic transformer-based embedding
             self._service = BGEM3EmbeddingService(model_name, device)
