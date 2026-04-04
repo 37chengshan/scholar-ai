@@ -10,6 +10,7 @@ from typing import Optional
 from app.core.notes_generator import NotesGenerator
 from app.core.database import postgres_db
 from app.utils.logger import logger
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 notes_generator = NotesGenerator()
@@ -55,11 +56,11 @@ async def generate_notes(request: GenerateNotesRequest):
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail="Paper not found")
+            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
 
         imrad_data = row["imrad_json"]
         if not imrad_data:
-            raise HTTPException(status_code=400, detail="Paper not yet parsed")
+            raise HTTPException(status_code=400, detail=Errors.validation("Paper not yet parsed"))
 
         # Parse imrad_json if it's a string
         if isinstance(imrad_data, str):
@@ -108,7 +109,7 @@ async def generate_notes(request: GenerateNotesRequest):
         raise
     except Exception as e:
         logger.error(f"Failed to generate notes: {e}", paper_id=request.paper_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.post("/regenerate", response_model=NotesResponse)
@@ -133,11 +134,11 @@ async def regenerate_notes(request: RegenerateNotesRequest):
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail="Paper not found")
+            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
 
         imrad_data = row["imrad_json"]
         if not imrad_data:
-            raise HTTPException(status_code=400, detail="Paper not yet parsed")
+            raise HTTPException(status_code=400, detail=Errors.validation("Paper not yet parsed"))
 
         # Parse imrad_json if it's a string
         if isinstance(imrad_data, str):
@@ -188,7 +189,7 @@ async def regenerate_notes(request: RegenerateNotesRequest):
         raise
     except Exception as e:
         logger.error(f"Failed to regenerate notes: {e}", paper_id=request.paper_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.get("/{paper_id}")
@@ -210,7 +211,7 @@ async def get_notes(paper_id: str):
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail="Paper not found")
+            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
 
         return {
             "paper_id": paper_id,
@@ -224,7 +225,7 @@ async def get_notes(paper_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to get notes: {e}", paper_id=paper_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.get("/{paper_id}/export")
@@ -248,10 +249,10 @@ async def export_notes(paper_id: str):
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail="Paper not found")
+            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
 
         if not row["reading_notes"]:
-            raise HTTPException(status_code=404, detail="Notes not yet generated")
+            raise HTTPException(status_code=404, detail=Errors.not_found("Notes not yet generated"))
 
         # Prepare metadata for export
         paper_metadata = {
@@ -279,4 +280,4 @@ async def export_notes(paper_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to export notes: {e}", paper_id=paper_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))

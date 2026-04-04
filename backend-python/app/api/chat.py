@@ -47,6 +47,7 @@ from app.utils.session_manager import session_manager
 from app.utils.sse_manager import sse_manager
 from app.utils.logger import logger
 from app.core.auth import CurrentUserId
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -424,7 +425,7 @@ async def confirm_action(
         if not confirmation_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired confirmation_id"
+                detail=Errors.validation("Invalid or expired confirmation_id")
             )
         
         # Parse confirmation data
@@ -435,7 +436,7 @@ async def confirm_action(
         if data.get("user_id") != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Confirmation belongs to different user"
+                detail=Errors.forbidden("Confirmation belongs to different user")
             )
 
         if not request.approved:
@@ -470,7 +471,7 @@ async def confirm_action(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process confirmation: {str(e)}"
+            detail=Errors.internal(f"Failed to process confirmation: {str(e)}")
         )
 
 
@@ -509,14 +510,14 @@ async def get_session_messages(
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {session_id} not found"
+                detail=Errors.not_found(f"Session {session_id} not found")
             )
 
         # Verify ownership
         if session.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this session"
+                detail=Errors.forbidden("You don't have permission to access this session")
             )
 
         # Retrieve messages from PostgreSQL chat_messages table
@@ -553,5 +554,5 @@ async def get_session_messages(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get messages: {str(e)}"
+            detail=Errors.internal(f"Failed to get messages: {str(e)}")
         )

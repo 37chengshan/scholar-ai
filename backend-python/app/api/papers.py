@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from app.core.database import postgres_db, neo4j_db, redis_db
 from app.utils.logger import logger
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -102,7 +103,7 @@ async def create_paper(paper: PaperCreate):
 
     except Exception as e:
         logger.error(f"❌ 创建论文失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.get("/{paper_id}", response_model=PaperResponse)
@@ -121,7 +122,7 @@ async def get_paper(paper_id: str):
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail="论文不存在")
+            raise HTTPException(status_code=404, detail=Errors.not_found("论文不存在"))
 
         # 2. 从 Neo4j 获取引用关系
         citations = await neo4j_db.get_paper_citations(paper_id)
@@ -139,7 +140,7 @@ async def get_paper(paper_id: str):
         raise
     except Exception as e:
         logger.error(f"❌ 获取论文失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.get("/hot", response_model=List[PaperResponse])
@@ -185,7 +186,7 @@ async def get_hot_papers():
 
     except Exception as e:
         logger.error(f"❌ 获取热门论文失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.post("/citations")
@@ -227,7 +228,7 @@ async def create_citation(citation: CitationCreate):
 
     except Exception as e:
         logger.error(f"❌ 创建引用关系失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.get("/{paper_id}/related")
@@ -273,4 +274,4 @@ async def get_related_papers(paper_id: str):
 
     except Exception as e:
         logger.error(f"❌ 获取相关论文失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))

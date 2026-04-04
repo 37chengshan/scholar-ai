@@ -24,6 +24,7 @@ from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.page_clustering import cluster_pages
 from app.utils.logger import logger
 from app.core.auth import CurrentUserId
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -585,7 +586,7 @@ async def search_library(
         logger.error("Library search failed", error=str(e), query=q[:50])
         raise HTTPException(
             status_code=500,
-            detail=f"Search failed: {str(e)}"
+            detail=Errors.internal(f"Search failed: {str(e)}")
         )
 
 
@@ -819,7 +820,7 @@ async def multimodal_search(
         logger.error("Multimodal search failed", error=str(e), query=request.query[:50])
         raise HTTPException(
             status_code=500,
-            detail=f"Multimodal search failed: {str(e)}"
+            detail=Errors.internal(f"Multimodal search failed: {str(e)}")
         )
 
 

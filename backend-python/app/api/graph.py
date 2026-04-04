@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app.core.neo4j_service import Neo4jService
 from app.core.pagerank_service import PageRankService
 from app.utils.logger import logger
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -138,7 +139,7 @@ async def get_graph_nodes(
             }
     except Exception as e:
         logger.error("Failed to get graph nodes", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Graph query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=Errors.internal(f"Graph query failed: {str(e)}"))
     finally:
         await neo4j.close()
 
@@ -165,7 +166,7 @@ async def get_node_neighbors(
             center_record = await center_result.single()
 
             if not center_record:
-                raise HTTPException(status_code=404, detail="Node not found")
+                raise HTTPException(status_code=404, detail=Errors.not_found("Node not found"))
 
             # Query neighbors with variable hops
             path_query = f"""
@@ -241,7 +242,7 @@ async def get_node_neighbors(
         raise
     except Exception as e:
         logger.error("Failed to get node neighbors", node_id=node_id, error=str(e))
-        raise HTTPException(status_code=500, detail=f"Neighbor query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=Errors.internal(f"Neighbor query failed: {str(e)}"))
     finally:
         await neo4j.close()
 
@@ -256,7 +257,7 @@ async def get_subgraph(
     Returns subgraph containing specified papers and their connections.
     """
     if not paper_ids:
-        raise HTTPException(status_code=400, detail="paper_ids parameter is required")
+        raise HTTPException(status_code=400, detail=Errors.validation("paper_ids parameter is required"))
 
     paper_id_list = [pid.strip() for pid in paper_ids.split(",")]
 
@@ -337,7 +338,7 @@ async def get_subgraph(
         raise
     except Exception as e:
         logger.error("Failed to get subgraph", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Subgraph query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=Errors.internal(f"Subgraph query failed: {str(e)}"))
     finally:
         await neo4j.close()
 
@@ -377,6 +378,6 @@ async def get_pagerank_top(
         }
     except Exception as e:
         logger.error("Failed to get PageRank", error=str(e))
-        raise HTTPException(status_code=500, detail=f"PageRank query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=Errors.internal(f"PageRank query failed: {str(e)}"))
     finally:
         await pagerank.close()

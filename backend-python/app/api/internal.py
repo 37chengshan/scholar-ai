@@ -14,6 +14,7 @@ from app.core.notes_generator import NotesGenerator
 from app.core.database import postgres_db
 from app.utils.logger import logger
 from app.workers.pdf_download_worker import download_external_pdf
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -220,11 +221,11 @@ async def internal_regenerate_notes(
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail="Paper not found")
+            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
 
         imrad_data = row["imrad_json"]
         if not imrad_data:
-            raise HTTPException(status_code=400, detail="Paper not yet parsed")
+            raise HTTPException(status_code=400, detail=Errors.validation("Paper not yet parsed"))
 
         # Parse imrad_json if it's a string
         if isinstance(imrad_data, str):
@@ -266,7 +267,7 @@ async def internal_regenerate_notes(
             f"Failed to regenerate notes: {e}",
             extra={"paper_id": request.paperId}
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.post("/process-external")
@@ -337,4 +338,4 @@ async def internal_process_external(
                 "source": request.source
             }
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))

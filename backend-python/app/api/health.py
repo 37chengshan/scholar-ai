@@ -1,6 +1,7 @@
 """健康检查路由"""
 
 from fastapi import APIRouter, Request, status
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 

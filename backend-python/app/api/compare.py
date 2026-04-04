@@ -8,11 +8,12 @@ from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel, Field, validator
 from fastapi import APIRouter, HTTPException, Depends
-import litellm
 
 from app.utils.logger import logger
 from app.core.database import get_db_connection
 from app.core.auth import get_current_service
+from app.utils.zhipu_client import get_llm_client
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -137,7 +138,7 @@ async def fetch_papers_for_comparison(
         if missing_ids:
             raise HTTPException(
                 status_code=404,
-                detail=f"Papers not found or not accessible: {list(missing_ids)}"
+                detail=Errors.not_found(f"Papers not found or not accessible: {list(missing_ids)}")
             )
 
         # Fetch chunks for each paper
@@ -222,18 +223,18 @@ For each dimension, extract the most relevant information. If information is not
 """
 
     try:
-        response = await litellm.acompletion(
-            model=os.getenv("LITELLM_MODEL", "gpt-4o-mini"),
+        llm_client = get_llm_client()
+        
+        response = await llm_client.chat_completion(
             messages=[
                 {"role": "system", "content": "You are a research paper analysis assistant. Extract and compare information accurately."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
-            max_tokens=4000,
-            response_format={"type": "json_object"}
+            max_tokens=4000
         )
 
-        content = response["choices"][0]["message"]["content"]
+        content = response.choices[0].message.content
         result = json.loads(content)
 
         return result
@@ -242,7 +243,7 @@ For each dimension, extract the most relevant information. If information is not
         logger.error(f"LLM comparison failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate comparison: {str(e)}"
+            detail=Errors.internal(f"Failed to generate comparison: {str(e)}")
         )
 
 
@@ -325,18 +326,18 @@ Include ALL papers in the response, even if version is unclear (use "unknown" or
 """
 
     try:
-        response = await litellm.acompletion(
-            model=os.getenv("LITELLM_MODEL", "gpt-4o-mini"),
+        llm_client = get_llm_client()
+        
+        response = await llm_client.chat_completion(
             messages=[
                 {"role": "system", "content": "You are a research analysis expert. Extract version information accurately from paper titles and abstracts."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
-            max_tokens=3000,
-            response_format={"type": "json_object"}
+            max_tokens=3000
         )
 
-        content = response["choices"][0]["message"]["content"]
+        content = response.choices[0].message.content
         result = json.loads(content)
 
         # Handle both array and object-wrapped-array responses
@@ -355,7 +356,7 @@ Include ALL papers in the response, even if version is unclear (use "unknown" or
         logger.error(f"LLM version extraction failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to extract version information: {str(e)}"
+            detail=Errors.internal(f"Failed to extract version information: {str(e)}")
         )
 
 
@@ -555,7 +556,7 @@ async def detect_evolution_timeline(
         if missing_ids:
             raise HTTPException(
                 status_code=404,
-                detail=f"Papers not found or not accessible: {list(missing_ids)}"
+                detail=Errors.not_found(f"Papers not found or not accessible: {list(missing_ids)}")
             )
 
         papers = [dict(p) for p in papers_result]

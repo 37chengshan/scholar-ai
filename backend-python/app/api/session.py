@@ -21,6 +21,7 @@ from app.models.session import (
 from app.utils.session_manager import session_manager
 from app.utils.logger import logger
 from app.core.auth import CurrentUserId
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -63,7 +64,7 @@ async def create_session(
         logger.error(f"Failed to create session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create session: {str(e)}"
+            detail=Errors.internal(f"Failed to create session: {str(e)}")
         )
 
 
@@ -93,7 +94,7 @@ async def list_sessions(
         if limit < 1 or limit > 100:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Limit must be between 1 and 100"
+                detail=Errors.validation("Limit must be between 1 and 100")
             )
 
         sessions = await session_manager.list_user_sessions(
@@ -114,7 +115,7 @@ async def list_sessions(
         logger.error(f"Failed to list sessions: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list sessions: {str(e)}"
+            detail=Errors.internal(f"Failed to list sessions: {str(e)}")
         )
 
 
@@ -147,14 +148,14 @@ async def get_session(
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {session_id} not found"
+                detail=Errors.not_found(f"Session {session_id} not found")
             )
 
         # Verify ownership
         if session.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this session"
+                detail=Errors.forbidden("You don't have permission to access this session")
             )
 
         return session
@@ -165,7 +166,7 @@ async def get_session(
         logger.error(f"Failed to get session {session_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get session: {str(e)}"
+            detail=Errors.internal(f"Failed to get session: {str(e)}")
         )
 
 
@@ -200,13 +201,13 @@ async def update_session(
         if not existing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {session_id} not found"
+                detail=Errors.not_found(f"Session {session_id} not found")
             )
 
         if existing.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to update this session"
+                detail=Errors.forbidden("You don't have permission to update this session")
             )
 
         # Update session
@@ -221,7 +222,7 @@ async def update_session(
         logger.error(f"Failed to update session {session_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update session: {str(e)}"
+            detail=Errors.internal(f"Failed to update session: {str(e)}")
         )
 
 
@@ -254,13 +255,13 @@ async def delete_session(
         if not existing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {session_id} not found"
+                detail=Errors.not_found(f"Session {session_id} not found")
             )
 
         if existing.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to delete this session"
+                detail=Errors.forbidden("You don't have permission to delete this session")
             )
 
         # Delete session
@@ -269,7 +270,7 @@ async def delete_session(
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete session"
+                detail=Errors.internal("Failed to delete session")
             )
 
         logger.info(f"Deleted session {session_id} via API")
@@ -281,5 +282,5 @@ async def delete_session(
         logger.error(f"Failed to delete session {session_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete session: {str(e)}"
+            detail=Errors.internal(f"Failed to delete session: {str(e)}")
         )

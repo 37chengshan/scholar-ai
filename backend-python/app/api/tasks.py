@@ -13,6 +13,7 @@ from app.tasks.pdf_tasks import (
     process_pdf_batch_task,
 )
 from app.utils.logger import logger
+from app.utils.problem_detail import Errors
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
@@ -32,7 +33,7 @@ async def retry_single_paper(paper_id: str):
         return {"success": True, "paper_id": paper_id}
     except Exception as e:
         logger.error(f"Failed to trigger retry for paper {paper_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.post("/retry-batch/{batch_id}")
@@ -50,7 +51,7 @@ async def retry_batch(batch_id: str):
         return {"success": True, "batch_id": batch_id}
     except Exception as e:
         logger.error(f"Failed to trigger batch retry for batch {batch_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.post("/process-batch/{batch_id}")
@@ -68,4 +69,4 @@ async def trigger_batch_processing(batch_id: str):
         return {"success": True, "batch_id": batch_id, "status": "processing"}
     except Exception as e:
         logger.error(f"Failed to trigger batch processing for batch {batch_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))

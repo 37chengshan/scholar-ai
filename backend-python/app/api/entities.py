@@ -15,6 +15,7 @@ from app.core.entity_extractor import EntityExtractor
 from app.core.neo4j_service import Neo4jService
 from app.utils.logger import logger
 from app.workers.entity_worker import process_entity_extraction
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 
@@ -91,7 +92,7 @@ async def extract_entities(request: EntityExtractionRequest):
         logger.error("Entity extraction API failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Extraction failed: {str(e)}"
+            detail=Errors.internal(f"Extraction failed: {str(e)}")
         )
 
 
@@ -127,7 +128,7 @@ async def build_paper_graph(
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Graph building failed: {result.get('error', 'Unknown error')}"
+                detail=Errors.internal(f"Graph building failed: {result.get('error', 'Unknown error')}")
             )
 
     except HTTPException:
@@ -136,7 +137,7 @@ async def build_paper_graph(
         logger.error("Build graph API failed", paper_id=paper_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Graph building failed: {str(e)}"
+            detail=Errors.internal(f"Graph building failed: {str(e)}")
         )
 
 
@@ -159,7 +160,7 @@ async def get_entity_status(paper_id: str):
             if not paper_record:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Paper {paper_id} not found"
+                    detail=Errors.not_found(f"Paper {paper_id} not found")
                 )
 
             # Count entities for this paper
@@ -192,7 +193,7 @@ async def get_entity_status(paper_id: str):
         logger.error("Get entity status failed", paper_id=paper_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Status query failed: {str(e)}"
+            detail=Errors.internal(f"Status query failed: {str(e)}")
         )
     finally:
         await neo4j.close()

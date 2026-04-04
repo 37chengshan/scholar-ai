@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any
 
 from app.core.semantic_scholar_service import get_semantic_scholar_service
 from app.core.redis_client import get_redis_client
+from app.utils.problem_detail import Errors
 
 router = APIRouter()
 

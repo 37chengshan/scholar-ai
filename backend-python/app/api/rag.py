@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.utils.logger import logger
+from app.utils.problem_detail import Errors
 from app.utils.cache import (
     get_cached_response,
     set_cached_response,
@@ -208,7 +209,7 @@ async def rag_query(
         logger.error(f"RAG query error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"查询失败: {str(e)}"
+            detail=Errors.internal(f"查询失败: {str(e)}")
         )
 
 
@@ -341,7 +342,7 @@ async def create_conversation_session(
         logger.error(f"Create session error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"创建会话失败: {str(e)}"
+            detail=Errors.internal(f"创建会话失败: {str(e)}")
         )
 
 
@@ -359,7 +360,7 @@ async def get_conversation(session_id: str):
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"会话不存在: {session_id}"
+                detail=Errors.not_found(f"会话不存在: {session_id}")
             )
 
         return ConversationSessionResponse(
@@ -377,7 +378,7 @@ async def get_conversation(session_id: str):
         logger.error(f"Get session error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取会话失败: {str(e)}"
+            detail=Errors.internal(f"获取会话失败: {str(e)}")
         )
 
 
@@ -395,7 +396,7 @@ async def delete_conversation(session_id: str):
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"会话不存在: {session_id}"
+                detail=Errors.not_found(f"会话不存在: {session_id}")
             )
 
         logger.info(f"Deleted conversation session: {session_id}")
@@ -406,7 +407,7 @@ async def delete_conversation(session_id: str):
         logger.error(f"Delete session error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除会话失败: {str(e)}"
+            detail=Errors.internal(f"删除会话失败: {str(e)}")
         )
 
 
@@ -465,7 +466,7 @@ async def agentic_search(
         logger.error(f"Agentic search error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Agentic search failed: {str(e)}"
+            detail=Errors.internal(f"Agentic search failed: {str(e)}")
         )
 
 
