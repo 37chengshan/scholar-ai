@@ -22,6 +22,7 @@ from PIL import Image
 from unittest.mock import Mock
 
 from app.core.reranker.base import BaseRerankerService
+from app.core.config import settings
 from app.utils.logger import logger
 
 
@@ -51,7 +52,8 @@ class Qwen3VLRerankerService(BaseRerankerService):
         results = service.rerank(query, docs)
     """
 
-    MODEL_PATH = "./Qwen3-VL-Reranker-2B"  # Local model path per D-R03
+    # Use config path instead of hardcoded
+    MODEL_PATH = getattr(settings, "QWEN3VL_RERANKER_MODEL_PATH", "./Qwen3-VL-Reranker-2B")
 
     def __init__(
         self,

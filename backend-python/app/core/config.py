@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     EMBEDDING_QUANTIZATION: str = "int4"  # Quantization type: "int4" or "fp16"
     EMBEDDING_DIMENSION: int = 2048  # Qwen3-VL output dimension
     
+    # Reranker Configuration (per D-R05)
+    RERANKER_MODEL: str = "bge-reranker"  # Model type: "bge-reranker" or "qwen3-vl-reranker"
+    RERANKER_QUANTIZATION: str = "fp16"  # Quantization: "fp16" or "int8"
+    
+    # Local Model Paths
+    QWEN3VL_EMBEDDING_MODEL_PATH: str = "./Qwen/Qwen3-VL-Embedding-2B"
+    QWEN3VL_RERANKER_MODEL_PATH: str = "./Qwen3-VL-Reranker-2B"
+    
     # Legacy embedding config (to be removed after migration)
     # EMBEDDING_MODEL: str = "text-embedding-3-small"  # Old OpenAI embedding
     
