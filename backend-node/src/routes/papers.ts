@@ -95,8 +95,14 @@ router.get('/', requirePermission('papers', 'read'), async (req: AuthRequest, re
     // 获取当前用户ID
     const userId = req.user?.sub;
 
-    // 查询数据库获取论文列表，包含处理任务状态
-    const where = userId ? { userId } : {};
+    // Parse starred filter
+    const starredParam = req.query.starred as string | undefined;
+    const starredFilter = starredParam === 'true' ? true : starredParam === 'false' ? false : undefined;
+
+    // Build where clause
+    const where: { userId?: string; starred?: boolean } = {};
+    if (userId) where.userId = userId;
+    if (starredFilter !== undefined) where.starred = starredFilter;
 
     const [papers, total] = await Promise.all([
       prisma.paper.findMany({
@@ -881,6 +887,89 @@ router.get(
       });
     } catch (error) {
       logger.error('Failed to serve PDF:', error);
+      next(error);
+    }
+  }
+);
+
+// PATCH /api/papers/:id/starred - Toggle starred status
+router.patch(
+  '/:id/starred',
+  requirePermission('papers', 'update'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            type: '/errors/unauthorized',
+            title: 'Unauthorized',
+            status: 401,
+            detail: 'User not authenticated',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const { id } = req.params;
+      const { starred } = req.body;
+
+      // Validate starred field
+      if (typeof starred !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'starred field must be a boolean',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Verify paper exists and belongs to user
+      const paper = await prisma.paper.findFirst({
+        where: { id, userId },
+      });
+
+      if (!paper) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            type: '/errors/not-found',
+            title: 'Not Found',
+            status: 404,
+            detail: 'Paper not found',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Update starred status
+      const updated = await prisma.paper.update({
+        where: { id },
+        data: { starred },
+        select: {
+          id: true,
+          title: true,
+          starred: true,
+          updatedAt: true,
+        },
+      });
+
+      logger.info(`Paper ${id} starred status updated to ${starred}`, { userId });
+
+      res.json({
+        success: true,
+        data: updated,
+      });
+    } catch (error) {
+      logger.error('Failed to update starred status:', error);
       next(error);
     }
   }
