@@ -1,15 +1,33 @@
+import { useState, useEffect } from "react";
 import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag } from "lucide-react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
-import { getMockPapers } from "../../mocks/papers";
+import { papersApi } from "@/services";
+import { usePapersStore } from "@/stores";
 
 export function Library() {
   const { language } = useLanguage();
   const isZh = language === "zh";
+  const { papers, setPapers } = usePapersStore();
+  const [loading, setLoading] = useState(true);
 
-  // Get mock papers based on language
-  const MOCK_PAPERS = getMockPapers(isZh);
+  // Load papers from API
+  useEffect(() => {
+    async function loadPapers() {
+      try {
+        setLoading(true);
+        const response = await papersApi.list();
+        setPapers(response.papers || []);
+      } catch (error) {
+        console.error('Failed to load papers:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPapers();
+  }, [setPapers]);
 
   const t = {
     index: isZh ? "索引" : "Index",
@@ -119,54 +137,62 @@ export function Library() {
         </div>
 
         <div className="flex-1 overflow-y-auto bg-muted/10 p-5">
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="grid grid-cols-1 xl:grid-cols-2 gap-5"
-          >
-            {MOCK_PAPERS.map((paper) => (
-              <div 
-                key={paper.id} 
-                className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all duration-300 relative overflow-hidden"
-              >
-                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500" />
-                
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[8px] font-bold uppercase tracking-widest bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm">{paper.venue}</span>
-                    <span className="text-[9px] font-mono text-muted-foreground">{paper.year}</span>
-                  </div>
-                  <Star className={`w-3.5 h-3.5 transition-colors cursor-pointer ${paper.read ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"}`} />
-                </div>
-                
-                <div className="flex flex-col gap-1.5">
-                  <h3 className="font-serif font-black text-xl leading-tight group-hover:text-primary transition-colors tracking-tight line-clamp-2">
-                    {paper.title}
-                  </h3>
-                  <p className="font-sans text-[11px] font-medium text-foreground/80 line-clamp-1 truncate">{paper.authors}</p>
-                </div>
-                
-                <div className="flex gap-4 mt-2">
-                  <div className="w-14 h-20 bg-muted border border-border/50 rounded-sm flex-shrink-0 relative overflow-hidden group-hover:shadow-sm">
-                    <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1707256786130-6d028236813f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhY2FkZW1pYyUyMHBhcGVyJTIwY292ZXJ8ZW58MXx8fHwxNzc1MTk4MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080')] bg-cover opacity-20 grayscale group-hover:grayscale-0 group-hover:opacity-50 transition-all duration-700" />
-                  </div>
-                  <p className="font-serif text-xs text-foreground/70 leading-[1.6] line-clamp-4 italic border-l-2 border-primary/20 pl-3 flex-1 h-fit">
-                    {paper.abstract}
-                  </p>
-                </div>
-                
-                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className="text-[9px] font-bold uppercase tracking-widest bg-foreground text-background px-3 py-1.5 rounded-sm hover:bg-primary transition-colors shadow-sm">
-                    {t.openReader}
-                  </button>
-                  <button className="text-[9px] font-bold uppercase tracking-widest border border-foreground/20 text-foreground px-3 py-1.5 rounded-sm hover:bg-muted transition-colors">
-                    {t.details}
-                  </button>
-                </div>
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                {isZh ? "加载中..." : "Loading..."}
               </div>
-            ))}
-          </motion.div>
+            </div>
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="grid grid-cols-1 xl:grid-cols-2 gap-5"
+            >
+              {papers.map((paper) => (
+                <div 
+                  key={paper.id} 
+                  className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all duration-300 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500" />
+                  
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[8px] font-bold uppercase tracking-widest bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm">{paper.venue || '—'}</span>
+                      <span className="text-[9px] font-mono text-muted-foreground">{paper.year || '—'}</span>
+                    </div>
+                    <Star className={`w-3.5 h-3.5 transition-colors cursor-pointer ${paper.read ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"}`} />
+                  </div>
+                  
+                  <div className="flex flex-col gap-1.5">
+                    <h3 className="font-serif font-black text-xl leading-tight group-hover:text-primary transition-colors tracking-tight line-clamp-2">
+                      {paper.title}
+                    </h3>
+                    <p className="font-sans text-[11px] font-medium text-foreground/80 line-clamp-1 truncate">{paper.authors?.join(', ') || '—'}</p>
+                  </div>
+                  
+                  <div className="flex gap-4 mt-2">
+                    <div className="w-14 h-20 bg-muted border border-border/50 rounded-sm flex-shrink-0 relative overflow-hidden group-hover:shadow-sm">
+                      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1707256786130-6d028236813f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhY2FkZW1pYyUyMHBhcGVyJTIwY292ZXJ8ZW58MXx8fHwxNzc1MTk4MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080')] bg-cover opacity-20 grayscale group-hover:grayscale-0 group-hover:opacity-50 transition-all duration-700" />
+                    </div>
+                    <p className="font-serif text-xs text-foreground/70 leading-[1.6] line-clamp-4 italic border-l-2 border-primary/20 pl-3 flex-1 h-fit">
+                      {paper.abstract || '—'}
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border/30 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button className="text-[9px] font-bold uppercase tracking-widest bg-foreground text-background px-3 py-1.5 rounded-sm hover:bg-primary transition-colors shadow-sm">
+                      {t.openReader}
+                    </button>
+                    <button className="text-[9px] font-bold uppercase tracking-widest border border-foreground/20 text-foreground px-3 py-1.5 rounded-sm hover:bg-muted transition-colors">
+                      {t.details}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          )}
         </div>
       </div>
 

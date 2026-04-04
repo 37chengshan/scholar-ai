@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
+import { chatApi } from "@/services";
 
 export function Chat() {
   const [input, setInput] = useState("");

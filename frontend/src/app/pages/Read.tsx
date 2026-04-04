@@ -1,11 +1,36 @@
 import { Download, Save, Maximize2, Zap, Bold, Italic, Underline, List, Link } from "lucide-react";
 import { motion } from "motion/react";
 import { clsx } from "clsx";
+import { useState, useEffect } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
+import { papersApi } from "@/services";
+import { useParams } from "react-router-dom";
 
 export function Read() {
   const { language } = useLanguage();
   const isZh = language === "zh";
+  const { id } = useParams<{ id: string }>();
+  const [paper, setPaper] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Load paper data
+  useEffect(() => {
+    async function loadPaper() {
+      if (!id) return;
+      
+      try {
+        setLoading(true);
+        const data = await papersApi.get(id);
+        setPaper(data);
+      } catch (error) {
+        console.error('Failed to load paper:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPaper();
+  }, [id]);
 
   const t = {
     analysis: isZh ? "AI 分析" : "Analysis",

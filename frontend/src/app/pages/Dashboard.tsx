@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -6,16 +7,39 @@ import { motion } from 'motion/react';
 import { ArrowUpRight, Activity, Database, GitCommit, Search, RefreshCw, Eye, BookOpen, MessageSquare, Clock, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Badge } from '../components/ui/badge';
-import { getAreaChartData, getPieChartData, PIE_COLORS, getKPIStats } from '../../mocks/dashboard';
+import { usersApi } from '@/services';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function Dashboard() {
   const { language } = useLanguage();
+  const { user } = useAuth();
   const isZh = language === "zh";
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any>(null);
 
-  // Get mock data based on language
-  const data = getAreaChartData(isZh);
-  const pieData = getPieChartData(isZh);
-  const kpiStats = getKPIStats(isZh);
+  // Load dashboard statistics
+  useEffect(() => {
+    async function loadStats() {
+      if (!user?.id) return;
+      
+      try {
+        setLoading(true);
+        const data = await usersApi.getStats(user.id);
+        setStats(data);
+      } catch (error) {
+        console.error('Failed to load dashboard stats:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadStats();
+  }, [user?.id]);
+
+  // Placeholder chart data (Phase 15 will implement real analytics)
+  const data = [];
+  const pieData = [];
+  const PIE_COLORS = ['#d35400', '#e67e22', '#f39c12', '#f1c40f'];
 
   const t = {
     sysStatus: isZh ? "系统状态" : "System Status",
@@ -49,7 +73,7 @@ export function Dashboard() {
       {/* Development Indicator */}
       <div className="flex justify-end">
         <Badge variant="secondary" className="text-xs">
-          {isZh ? "数据开发中" : "Data Under Development"}
+          {loading ? (isZh ? "加载中..." : "Loading...") : (isZh ? "数据开发中" : "Data Under Development")}
         </Badge>
       </div>
 
@@ -89,11 +113,11 @@ export function Dashboard() {
         className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
       >
         {[
-          { label: t.totalPapers, value: "1,248", desc: t.localIndex, icon: Database, trend: "+12%" },
-          { label: t.entitiesExt, value: "89.3K", desc: t.kg, icon: GitCommit, trend: "+4.2%" },
-          { label: t.llmGens, value: "4.2M", desc: t.tokensProc, icon: Activity, trend: "+24%" },
-          { label: t.deepReads, value: "156", desc: t.analyzedDocs, icon: Eye, trend: "+8%" },
-          { label: t.globalQueries, value: "2,401", desc: t.extSearches, icon: Search, trend: "+1.5%" },
+          { label: t.totalPapers, value: stats?.paperCount || "—", desc: t.localIndex, icon: Database, trend: stats?.weeklyTrend ? `+${stats.weeklyTrend}%` : "—" },
+          { label: t.entitiesExt, value: stats?.entityCount || "—", desc: t.kg, icon: GitCommit, trend: "+4.2%" },
+          { label: t.llmGens, value: stats?.tokenCount ? `${(stats.tokenCount / 1000).toFixed(1)}M` : "—", desc: t.tokensProc, icon: Activity, trend: "+24%" },
+          { label: t.deepReads, value: stats?.queryCount || "—", desc: t.analyzedDocs, icon: Eye, trend: "+8%" },
+          { label: t.globalQueries, value: stats?.queryCount || "—", desc: t.extSearches, icon: Search, trend: "+1.5%" },
         ].map((kpi, i) => (
           <div key={i} className="group flex flex-col gap-2.5 bg-card border border-border/50 p-4 shadow-sm hover:border-primary/50 transition-colors relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/0 via-primary/0 to-primary/0 group-hover:from-primary/20 group-hover:via-primary group-hover:to-primary/20 transition-all duration-500" />

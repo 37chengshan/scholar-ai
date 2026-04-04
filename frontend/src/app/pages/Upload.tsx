@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
+import { uploadApi } from "@/services";
 
 export function Upload() {
   const [activeTab, setActiveTab] = useState("local");

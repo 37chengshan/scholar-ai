@@ -1,8 +1,9 @@
+import { useState, useEffect } from "react";
 import { Camera, Key, Lock, Save, User, RefreshCw, TerminalSquare, Cpu, Box, HardDrive, Wifi, Activity, Shield, Globe } from "lucide-react";
 import { motion } from "motion/react";
 import { clsx } from "clsx";
-import { useState } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
+import { usersApi } from "@/services";
 
 const LOGS = [
   { time: "10:42:01", level: "INFO", message: "User session authenticated." },
@@ -15,8 +16,27 @@ const LOGS = [
 export function Settings() {
   const [activeSection, setActiveSection] = useState("profile");
   const { language, setLanguage } = useLanguage();
+  const [settings, setSettings] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   const isZh = language === "zh";
+
+  // Load user settings
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        setLoading(true);
+        const data = await usersApi.getSettings();
+        setSettings(data);
+      } catch (error) {
+        console.error('Failed to load settings:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadSettings();
+  }, []);
 
   const t = {
     system: isZh ? "系统" : "System",
