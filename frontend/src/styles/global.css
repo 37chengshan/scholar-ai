@@ -1,5 +1,15 @@
 /* Global styles for ScholarAI application */
 
+/* Root CSS variables for theming and global settings */
+:root {
+  --base-font-size: 16px;
+}
+
+/* Apply global font size variable to body */
+body {
+  font-size: var(--base-font-size);
+}
+
 /* Smooth scroll behavior for the entire application */
 html {
   scroll-behavior: smooth;
