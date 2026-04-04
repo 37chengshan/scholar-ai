@@ -26,7 +26,7 @@ Requirements:
 
 from typing import Any, Dict, List, Optional
 
-from app.core.bge_m3_service import get_bge_m3_service
+from app.core.qwen3vl_service import get_qwen3vl_service
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker_service import get_reranker_service
 from app.core.modality_fusion import detect_intent as detect_modality_intent, weighted_rrf_fusion, WEIGHT_PRESETS
@@ -43,14 +43,14 @@ class MultimodalSearchService:
     intent-based weighting and optional reranking.
 
     Attributes:
-        bge_service: BGE-M3 embedding service
+        qwen3vl_service: Qwen3VL multimodal embedding service (2048-dim)
         milvus: Milvus vector search service
         reranker: BGE-Reranker-large service
     """
 
     def __init__(self):
         """Initialize MultimodalSearchService."""
-        self.bge_service = get_bge_m3_service()
+        self.qwen3vl_service = get_qwen3vl_service()
         self.milvus = get_milvus_service()
         self.reranker = get_reranker_service()
 
@@ -142,8 +142,8 @@ class MultimodalSearchService:
         if metadata_filters:
             logger.info(f"Metadata filters: {metadata_filters}")
 
-        # Step 5: Encode expanded query with BGE-M3
-        query_embedding = self.bge_service.encode_text(expanded_query)
+        # Step 5: Encode expanded query with Qwen3VL (2048-dim)
+        query_embedding = await self.qwen3vl_service.encode_text(expanded_query)
 
         # Step 3: Search Milvus across modalities
         content_types = content_types or ["text", "image", "table"]
