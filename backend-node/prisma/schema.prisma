@@ -92,6 +92,10 @@ model Paper {
   uploadProgress Int?        @map("upload_progress") // 0-100
   uploadedAt     DateTime?   @map("uploaded_at")
 
+  // Indexes for common query patterns (per D-10)
+  @@index([status])
+  @@index([userId, status])
+
   @@map("papers")
 }
 
