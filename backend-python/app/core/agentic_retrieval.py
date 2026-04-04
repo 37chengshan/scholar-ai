@@ -24,7 +24,7 @@ from app.core.query_decomposer import (
     ConvergenceChecker,
     QueryType,
 )
-from app.core.rag_service import PGVectorStore
+from app.core.multimodal_search_service import get_multimodal_search_service
 
 
 class AgenticRetrievalOrchestrator:
@@ -34,7 +34,7 @@ class AgenticRetrievalOrchestrator:
         max_rounds: Maximum retrieval rounds (default: 3)
         decomposer: QueryDecomposer instance
         convergence_checker: ConvergenceChecker instance
-        pg_store: Optional PGVectorStore for search
+        search_service: MultimodalSearchService for Milvus-based search
     """
 
     def __init__(
@@ -42,7 +42,6 @@ class AgenticRetrievalOrchestrator:
         max_rounds: int = 3,
         decomposer: Optional[QueryDecomposer] = None,
         convergence_checker: Optional[ConvergenceChecker] = None,
-        pg_store: Optional[PGVectorStore] = None,
     ):
         """Initialize agentic retrieval orchestrator.
 
@@ -50,19 +49,18 @@ class AgenticRetrievalOrchestrator:
             max_rounds: Maximum retrieval rounds
             decomposer: QueryDecomposer instance
             convergence_checker: ConvergenceChecker instance
-            pg_store: Optional PGVectorStore for database search
         """
         self.max_rounds = max(1, min(max_rounds, 5))  # Clamp between 1-5
         self.decomposer = decomposer or QueryDecomposer()
         self.convergence_checker = convergence_checker or ConvergenceChecker()
-        self.pg_store = pg_store
+        self.search_service = get_multimodal_search_service()
 
     async def retrieve(
         self,
         query: str,
         query_type: Optional[QueryType] = None,
         paper_ids: Optional[List[str]] = None,
-        connection: Optional[Any] = None,
+        user_id: str = "placeholder-user-id",
         top_k_per_subquestion: int = 5,
     ) -> Dict[str, Any]:
         """Execute agentic retrieval with multi-round support.
@@ -71,7 +69,7 @@ class AgenticRetrievalOrchestrator:
             query: Original user query
             query_type: Query type (auto-detected if None)
             paper_ids: List of paper IDs to search
-            connection: Database connection (required if pg_store not set)
+            user_id: User ID for Milvus filtering (per D-35)
             top_k_per_subquestion: Number of chunks per sub-question
 
         Returns:
@@ -116,7 +114,7 @@ class AgenticRetrievalOrchestrator:
             round_results = await self._execute_subquestions_parallel(
                 sub_questions=sub_questions,
                 paper_ids=paper_ids or [],
-                connection=connection,
+                user_id=user_id,
                 top_k=top_k_per_subquestion,
             )
 
@@ -200,33 +198,38 @@ class AgenticRetrievalOrchestrator:
         self,
         sub_questions: List[Dict[str, Any]],
         paper_ids: List[str],
-        connection: Optional[Any],
+        user_id: str = "placeholder-user-id",
         top_k: int = 5,
     ) -> List[Dict[str, Any]]:
-        """Execute sub-questions in parallel using asyncio.gather.
+        """Execute sub-questions in parallel using asyncio.gather with Milvus.
 
         Args:
             sub_questions: List of sub-question dictionaries
             paper_ids: Paper IDs to search
-            connection: Database connection
+            user_id: User ID for Milvus filtering (per D-35)
             top_k: Number of chunks per sub-question
 
         Returns:
             List of result dictionaries
         """
         async def search_single(sub_q: Dict[str, Any]) -> Dict[str, Any]:
-            """Search for a single sub-question."""
+            """Search for a single sub-question using MultimodalSearchService."""
             try:
                 question = sub_q.get("question", "")
                 target_papers = sub_q.get("target_papers") or paper_ids
 
-                # Use PGVectorStore for search
-                store = self.pg_store or PGVectorStore(connection)
-                chunks = await store.search(
+                # Use MultimodalSearchService for Milvus search (per D-35)
+                result = await self.search_service.search(
                     query=question,
                     paper_ids=target_papers,
-                    limit=top_k,
+                    user_id=user_id,
+                    top_k=top_k,
+                    use_reranker=True,
+                    content_types=["text"],  # Text-only for sub-questions
                 )
+                
+                # Extract chunks from results
+                chunks = result.get("results", [])
 
                 # Generate a simple summary
                 summary = self._generate_summary(chunks, question)
@@ -236,6 +239,7 @@ class AgenticRetrievalOrchestrator:
                     "chunks": chunks,
                     "summary": summary,
                     "rationale": sub_q.get("rationale", ""),
+                    "intent": result.get("intent"),
                     "success": True,
                 }
 
@@ -352,8 +356,10 @@ class AgenticRetrievalOrchestrator:
 
         # Call LLM for synthesis
         try:
-            import litellm
-
+            from app.utils.zhipu_client import get_llm_client
+            
+            llm_client = get_llm_client()
+            
             prompt = f"""Synthesize the following retrieval results into a coherent answer.
 
 Original query: {query}
@@ -369,17 +375,16 @@ Provide a concise synthesis that:
 3. Highlights key findings
 4. Notes any gaps or uncertainties"""
 
-            response = await litellm.acompletion(
-                model="gpt-4o-mini",
+            response = await llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": "You are a research synthesis assistant."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=800,
+                max_tokens=800
             )
 
-            return response["choices"][0]["message"]["content"]
+            return response.choices[0].message.content
 
         except Exception as e:
             logger.error("Synthesis failed", error=str(e))
@@ -434,8 +439,10 @@ Provide a concise synthesis that:
 
         # Call LLM for final synthesis
         try:
-            import litellm
-
+            from app.utils.zhipu_client import get_llm_client
+            
+            llm_client = get_llm_client()
+            
             if query_type == "evolution":
                 synthesis_instruction = """Provide a timeline-style synthesis showing:
 1. The progression/development across versions
@@ -464,17 +471,16 @@ Retrieved information across {len(all_results)} rounds:
 
 Format your response with clear sections and bullet points where appropriate."""
 
-            response = await litellm.acompletion(
-                model="gpt-4o",  # Use stronger model for final synthesis
+            response = await llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": "You are an expert research synthesis assistant."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=1500,
+                max_tokens=1500
             )
 
-            return response["choices"][0]["message"]["content"]
+            return response.choices[0].message.content
 
         except Exception as e:
             logger.error("Final synthesis failed", error=str(e))
@@ -612,16 +618,16 @@ async def agentic_retrieve(
     query: str,
     query_type: Optional[QueryType] = None,
     paper_ids: Optional[List[str]] = None,
-    connection: Optional[Any] = None,
+    user_id: str = "placeholder-user-id",
     max_rounds: int = 3,
 ) -> Dict[str, Any]:
-    """Execute agentic retrieval with minimal setup.
+    """Execute agentic retrieval with minimal setup using Milvus.
 
     Args:
         query: User query
         query_type: Query type (auto-detected if None)
         paper_ids: List of paper UUIDs to search
-        connection: Database connection
+        user_id: User ID for Milvus filtering (per D-35)
         max_rounds: Maximum retrieval rounds
 
     Returns:
@@ -632,5 +638,5 @@ async def agentic_retrieve(
         query=query,
         query_type=query_type,
         paper_ids=paper_ids,
-        connection=connection,
+        user_id=user_id,
     )

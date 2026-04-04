@@ -434,13 +434,12 @@ async def agentic_search(request: AgenticSearchRequest):
             max_rounds=request.max_rounds,
         )
 
-        # Execute agentic retrieval
-        # Note: In production, you'd pass a database connection here
+        # Execute agentic retrieval using Milvus (per D-35)
         result = await orchestrator.retrieve(
             query=request.query,
             query_type=request.query_type,
             paper_ids=request.paper_ids or [],
-            connection=None,  # Will create PGVectorStore with connection
+            user_id="placeholder-user-id",  # TODO: Get from auth
             top_k_per_subquestion=request.top_k,
         )
 
