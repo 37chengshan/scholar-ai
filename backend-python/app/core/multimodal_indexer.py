@@ -19,9 +19,7 @@ from PIL import Image
 
 from app.core.image_extractor import ImageExtractor
 from app.core.table_extractor import TableExtractor
-from app.core.image_caption_service import get_image_caption_service
-from app.core.table_description_service import get_table_description_service
-from app.core.bge_m3_service import get_bge_m3_service
+from app.core.qwen3vl_service import get_qwen3vl_service
 from app.core.milvus_service import get_milvus_service
 from app.core.storage import ObjectStorage
 from app.utils.logger import logger
@@ -141,17 +139,27 @@ class MultimodalIndexer:
     S3 storage, and Milvus indexing for academic papers.
     """
 
-    EMBEDDING_DIM = 1024
+    EMBEDDING_DIM = 2048  # Changed from 1024 (BGE-M3) to 2048 (Qwen3-VL)
 
     def __init__(self):
         """Initialize the multimodal indexer."""
         self.image_extractor = ImageExtractor()
         self.table_extractor = TableExtractor()
-        self.caption_service = get_image_caption_service()
-        self.description_service = get_table_description_service()
-        self.bge_m3 = get_bge_m3_service()
+        self.qwen3vl_service = get_qwen3vl_service()
         self.milvus = get_milvus_service()
         self.storage = ObjectStorage()
+        self.collection_name = "paper_contents_v2"  # Use v2 collection for 2048-dim embeddings
+        
+        # Initialize Milvus connection (critical for PDF worker)
+        try:
+            self.milvus.connect()
+            self.milvus.create_collections()
+            logger.info("Milvus connection initialized in MultimodalIndexer")
+        except Exception as e:
+            logger.warning(
+                "Failed to initialize Milvus connection, multimodal indexing may fail",
+                error=str(e)
+            )
 
     async def index_paper(
         self,
@@ -293,14 +301,17 @@ class MultimodalIndexer:
                     "error": str(e)
                 })
 
-        # Insert into Milvus
+        # Insert into Milvus paper_contents_v2
         if milvus_entries:
             try:
-                self.milvus.insert_contents(milvus_entries)
+                collection = self.milvus.get_collection(self.collection_name)
+                collection.insert(milvus_entries)
+                collection.flush()
                 logger.info(
-                    "Inserted images to Milvus",
+                    "Inserted images to Milvus paper_contents_v2",
                     paper_id=paper_id,
-                    count=len(milvus_entries)
+                    count=len(milvus_entries),
+                    collection=self.collection_name
                 )
             except Exception as e:
                 logger.error(
@@ -335,43 +346,41 @@ class MultimodalIndexer:
         Returns:
             Dictionary ready for Milvus insertion, or None on failure
         """
-        # Generate caption
+        # Single-stage: Direct pixel encoding per D-01 (no caption service)
         try:
-            caption = await self.caption_service.generate_caption(
-                image_data.image,
-                max_length=100
-            )
-        except Exception as e:
-            logger.warning(
-                "Caption generation failed, using fallback",
-                page=image_data.page_num,
-                error=str(e)
-            )
-            caption = "Figure showing research data"
-
-        # Create enhanced embedding with reference context (per D-04)
-        try:
-            if paper_markdown:
-                embedding, content_data = await create_enhanced_multimodal_embedding(
-                    figure_type="image",
-                    figure_label=str(idx + 1),
-                    caption=caption,
-                    markdown=paper_markdown,
-                    bge_m3_service=self.bge_m3,
-                    vlm_description=None  # Can add VLM description later
-                )
-            else:
-                # Fallback to simple embedding if markdown not available
-                embedding = self.bge_m3.encode_text(caption)
-                content_data = caption
+            embedding = self.qwen3vl_service.encode_image(image_data.image)
         except Exception as e:
             logger.error(
-                "Failed to create enhanced embedding",
+                "Failed to encode image with Qwen3VL",
                 page=image_data.page_num,
                 error=str(e)
             )
             embedding = [0.0] * self.EMBEDDING_DIM
-            content_data = caption
+
+        # Extract caption from markdown if available (optional)
+        figure_label = image_data.bbox if hasattr(image_data, 'bbox') else ""
+        caption_text = ""  # Will be extracted from markdown if exists
+        
+        # Try to extract caption from markdown if available
+        if paper_markdown:
+            try:
+                # Extract reference contexts for figures per D-04
+                reference_contexts = extract_figure_references(
+                    paper_markdown,
+                    str(idx + 1),
+                    "figure"
+                )
+                context_text = " ".join(reference_contexts)[:500]
+                if context_text:
+                    caption_text = context_text
+            except Exception as e:
+                logger.warning(
+                    "Failed to extract figure reference context",
+                    page=image_data.page_num,
+                    error=str(e)
+                )
+
+        content_data = caption_text if caption_text else f"Figure {idx + 1}"
 
         # Upload image to S3
         storage_key = f"images/{user_id}/{paper_id}/p{image_data.page_num}_{idx}.png"
@@ -469,14 +478,17 @@ class MultimodalIndexer:
                     "error": str(e)
                 })
 
-        # Insert into Milvus
+        # Insert into Milvus paper_contents_v2
         if milvus_entries:
             try:
-                self.milvus.insert_contents(milvus_entries)
+                collection = self.milvus.get_collection(self.collection_name)
+                collection.insert(milvus_entries)
+                collection.flush()
                 logger.info(
-                    "Inserted tables to Milvus",
+                    "Inserted tables to Milvus paper_contents_v2",
                     paper_id=paper_id,
-                    count=len(milvus_entries)
+                    count=len(milvus_entries),
+                    collection=self.collection_name
                 )
             except Exception as e:
                 logger.error(
@@ -510,54 +522,46 @@ class MultimodalIndexer:
             Dictionary ready for Milvus insertion, or None on failure
         """
         # Extract caption from markdown
-        caption = self.table_extractor._extract_caption(table_data.markdown)
-
-        # Generate description
-        description = None
+        caption = self.table_extractor._extract_caption(table_data.markdown) if hasattr(table_data, 'markdown') else ""
+        
+        # Single-stage: Table serialization encoding per D-02 (no description service)
         try:
-            description = await self.description_service.generate_description(
-                caption=caption,
-                headers=table_data.headers,
-                sample_rows=table_data.rows[:3]
+            embedding = self.qwen3vl_service.encode_table(
+                caption=caption or "",
+                headers=table_data.headers if hasattr(table_data, 'headers') else [],
+                rows=table_data.rows[:3] if hasattr(table_data, 'rows') else []
             )
-        except Exception as e:
-            logger.warning(
-                "Description generation failed, using caption",
-                page=table_data.page_num,
-                error=str(e)
-            )
-
-        # Use caption as fallback
-        content_data = description if description else caption
-        if not content_data:
-            content_data = f"Table with {len(table_data.headers)} columns"
-
-        # Create enhanced embedding with reference context (per D-04)
-        try:
-            if paper_markdown:
-                # Extract table number from markdown or use index
-                table_label = self._extract_table_label(table_data.markdown)
-                embedding, enhanced_content = await create_enhanced_multimodal_embedding(
-                    figure_type="table",
-                    figure_label=table_label,
-                    caption=caption if caption else content_data,
-                    markdown=paper_markdown,
-                    bge_m3_service=self.bge_m3,
-                    vlm_description=description
-                )
-                content_data = enhanced_content
-            else:
-                # Fallback to simple embedding
-                embedding = self.bge_m3.encode_text(content_data)
         except Exception as e:
             logger.error(
-                "Failed to create enhanced embedding",
+                "Failed to encode table with Qwen3VL",
                 page=table_data.page_num,
                 error=str(e)
             )
             embedding = [0.0] * self.EMBEDDING_DIM
 
-        # Prepare Milvus entry
+        # Use caption as content_data
+        content_data = caption if caption else f"Table with {len(table_data.headers) if hasattr(table_data, 'headers') else 0} columns"
+        
+        # Add reference context if markdown available
+        if paper_markdown:
+            try:
+                table_label = self._extract_table_label(table_data.markdown) if hasattr(table_data, 'markdown') else "1"
+                reference_contexts = extract_figure_references(
+                    paper_markdown,
+                    table_label,
+                    "table"
+                )
+                context_text = " ".join(reference_contexts)[:500]
+                if context_text:
+                    content_data = f"{content_data}\nContext: {context_text}"
+            except Exception as e:
+                logger.warning(
+                    "Failed to extract table reference context",
+                    page=table_data.page_num,
+                    error=str(e)
+                )
+
+        # Prepare Milvus entry for paper_contents_v2
         entry = {
             "paper_id": paper_id,
             "user_id": user_id,
@@ -565,10 +569,10 @@ class MultimodalIndexer:
             "content_type": "table",
             "content_data": content_data,
             "raw_data": {
-                "headers": table_data.headers,
-                "row_count": len(table_data.rows),
+                "headers": table_data.headers if hasattr(table_data, 'headers') else [],
+                "rows": table_data.rows[:3] if hasattr(table_data, 'rows') else [],
             },
-            "embedding": embedding,
+            "embedding": embedding,  # 2048-dim Qwen3-VL
         }
 
         return entry
