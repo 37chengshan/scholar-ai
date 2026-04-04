@@ -24,7 +24,7 @@ from app.core.database import init_databases, close_databases
 from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker.factory import get_reranker_service  # Updated to use factory
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.embedding.factory import get_embedding_service  # Updated to use factory
 from fastapi.exceptions import RequestValidationError
 from app.middleware.error_handler import (
     validation_exception_handler,
@@ -72,22 +72,23 @@ async def lifespan(app: FastAPI):
         # Don't fail startup - ReRanker is optional for basic functionality
         app.state.reranker_service = None
 
-    # Initialize Qwen3VL
+    # Initialize Embedding Service (via factory)
     try:
-        logger.info("Initializing Qwen3-VL...")
-        qwen3vl_service = get_qwen3vl_service()
-        qwen3vl_service.load_model()
-        app.state.qwen3vl_service = qwen3vl_service
+        logger.info("Initializing Embedding Service...")
+        embedding_service = get_embedding_service()
+        embedding_service.load_model()
+        app.state.embedding_service = embedding_service
+        model_info = embedding_service.get_model_info()
         logger.info(
-            "Qwen3-VL model loaded",
-            model=qwen3vl_service.MODEL_PATH,
-            quantization=qwen3vl_service.quantization,
-            dimension=qwen3vl_service.EMBEDDING_DIM
+            "Embedding model loaded",
+            model=model_info.get("name", "unknown"),
+            type=model_info.get("type", "unknown"),
+            dimension=model_info.get("dimension", "unknown")
         )
     except Exception as e:
-        logger.error("Failed to initialize Qwen3VL", error=str(e))
-        # Don't fail startup - Qwen3VL is optional for basic functionality
-        app.state.qwen3vl_service = None
+        logger.error("Failed to initialize Embedding Service", error=str(e))
+        # Don't fail startup - Embedding is optional for basic functionality
+        app.state.embedding_service = None
 
     yield
 
