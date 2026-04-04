@@ -25,6 +25,11 @@ from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker_service import get_reranker_service
 from app.core.bge_m3_service import get_bge_m3_service
+from fastapi.exceptions import RequestValidationError
+from app.middleware.error_handler import (
+    validation_exception_handler,
+    generic_exception_handler
+)
 
 
 @asynccontextmanager
@@ -100,6 +105,12 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Register exception handlers
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+# Don't add generic handler in development - let FastAPI show tracebacks
+# In production, uncomment:
+# app.add_exception_handler(Exception, generic_exception_handler)
 
 # CORS配置
 app.add_middleware(
