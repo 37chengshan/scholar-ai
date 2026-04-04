@@ -11,23 +11,19 @@
  */
 
 import { useState } from "react";
-import { Camera, Key, Lock, Save, User, RefreshCw, TerminalSquare, Cpu, Box, HardDrive, Wifi, Activity, Shield, Globe } from "lucide-react";
+import { Camera, Key, Lock, Save, User, RefreshCw, TerminalSquare, Cpu, Box, HardDrive, Wifi, Activity, Shield, Globe, Monitor } from "lucide-react";
 import { motion } from "motion/react";
 import { clsx } from "clsx";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useSettingsStore } from "../stores/settingsStore";
 import { ProfileForm } from "../components/ProfileForm";
 import { APIKeyManager } from "../components/APIKeyManager";
-
-const LOGS = [
-  { time: "10:42:01", level: "INFO", message: "User session authenticated." },
-  { time: "10:42:03", level: "WARN", message: "OpenAI API rate limit approaching (85%)." },
-  { time: "10:45:12", level: "INFO", message: "Ingestion batch B-842 completed." },
-  { time: "10:46:00", level: "ERROR", message: "Failed to parse 1706.03762.pdf (Timeout)." },
-  { time: "10:50:33", level: "INFO", message: "Settings configuration saved." },
-];
+import { FontSizeSelector } from "../components/FontSizeSelector";
+import { SystemDiagnostics } from "../components/SystemDiagnostics";
 
 export function Settings() {
   const [activeSection, setActiveSection] = useState("profile");
+  const { fontSize, setFontSize } = useSettingsStore();
   const { language, setLanguage } = useLanguage();
 
   const isZh = language === "zh";
@@ -41,6 +37,7 @@ export function Settings() {
     computeNodes: isZh ? "计算节点" : "Compute Nodes",
     dataStorage: isZh ? "数据存储" : "Data Storage",
     localization: isZh ? "语言设置" : "Localization",
+    display: isZh ? "显示设置" : "Display",
     configVer: isZh ? "配置 v2.4.1" : "Configuration v2.4.1",
     commit: isZh ? "提交更改" : "Commit",
     langModels: isZh ? "语言模型" : "Language Models",
@@ -108,10 +105,12 @@ export function Settings() {
               {[
                 { id: "profile", icon: User, label: t.profileData },
                 { id: "localization", icon: Globe, label: t.localization },
+                { id: "display", icon: Monitor, label: t.display },
                 { id: "security", icon: Lock, label: t.security },
                 { id: "api", icon: Key, label: t.apiIntegration },
                 { id: "compute", icon: Cpu, label: t.computeNodes },
                 { id: "storage", icon: HardDrive, label: t.dataStorage },
+                { id: "diagnostics", icon: Activity, label: t.diagnostics },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -142,7 +141,7 @@ export function Settings() {
             </h2>
             <span className="text-[9px] font-mono tracking-[0.2em] text-muted-foreground uppercase">{t.configVer}</span>
           </div>
-          {activeSection !== "api" && activeSection !== "localization" && activeSection !== "security" && activeSection !== "profile" && (
+          {activeSection !== "api" && activeSection !== "localization" && activeSection !== "security" && activeSection !== "profile" && activeSection !== "display" && activeSection !== "diagnostics" && (
             <button className="text-[9px] font-bold uppercase tracking-[0.2em] bg-primary text-primary-foreground px-4 py-1.5 rounded-sm hover:bg-secondary transition-colors shadow-sm flex items-center gap-1.5">
               <Save className="w-3 h-3" /> {t.commit}
             </button>
@@ -229,6 +228,34 @@ export function Settings() {
             </motion.div>
           )}
 
+          {/* Display Section */}
+          {activeSection === "display" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex flex-col gap-8 max-w-2xl"
+            >
+              <div className="bg-card border border-border/50 rounded-sm shadow-sm flex flex-col">
+                <div className="p-5 border-b border-border/50 flex justify-between items-center bg-muted/20">
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 bg-background border border-border/50 flex items-center justify-center rounded-sm">
+                      <Monitor className="w-3.5 h-3.5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-sans text-[11px] font-bold uppercase tracking-[0.2em]">Display Settings</h3>
+                      <p className="text-[9px] font-mono text-muted-foreground mt-0.5">Customize your viewing experience</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <FontSizeSelector value={fontSize} onChange={setFontSize} />
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* API Keys Section */}
           {activeSection === "api" && (
             <motion.div
@@ -238,6 +265,18 @@ export function Settings() {
               className="flex flex-col gap-8"
             >
               <APIKeyManager />
+            </motion.div>
+          )}
+
+          {/* Diagnostics Section */}
+          {activeSection === "diagnostics" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex flex-col gap-8"
+            >
+              <SystemDiagnostics />
             </motion.div>
           )}
 
@@ -284,7 +323,7 @@ export function Settings() {
             </motion.div>
           )}
 
-          {activeSection !== "api" && activeSection !== "security" && activeSection !== "localization" && activeSection !== "profile" && (
+          {activeSection !== "api" && activeSection !== "security" && activeSection !== "localization" && activeSection !== "profile" && activeSection !== "display" && activeSection !== "diagnostics" && (
             <div className="flex-1 flex items-center justify-center">
               <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest text-center whitespace-pre-line">
                 <Activity className="w-4 h-4 mx-auto mb-2 text-primary/50" />
@@ -339,18 +378,7 @@ export function Settings() {
             <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-[#6a8759] mb-3 pb-2 border-b border-[#3c3f41]">{t.sysStream}</h3>
 
             <div className="flex-1 overflow-y-auto flex flex-col gap-2 font-mono text-[9px] leading-[1.4] tracking-wide">
-              {LOGS.map((log, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <span className="text-[#5c6370] shrink-0">[{log.time}]</span>
-                  <span className={clsx(
-                    "shrink-0",
-                    log.level === "INFO" ? "text-[#629755]" :
-                    log.level === "WARN" ? "text-[#cc7832]" :
-                    log.level === "ERROR" ? "text-[#cc2828]" : ""
-                  )}>{log.level}</span>
-                  <span className="break-all">{log.message}</span>
-                </div>
-              ))}
+              {/* System logs will be streamed from SSE */}
               <div className="flex gap-2 items-start mt-1">
                 <span className="text-[#5c6370]">[{new Date().toLocaleTimeString('en-US', { hour12: false })}]</span>
                 <span className="text-[#cc7832] w-2 h-3 bg-[#cc7832] animate-pulse shrink-0" />
