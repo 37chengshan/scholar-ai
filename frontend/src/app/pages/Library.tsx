@@ -13,18 +13,7 @@ import {
   PaginationNext,
 } from "@/components/ui/pagination";
 import { ListSkeleton } from "../components/Skeleton";
-
-/**
- * Empty State Component
- */
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-      <FileText className="w-12 h-12 mb-4 opacity-50" />
-      <p className="text-sm font-medium">{message}</p>
-    </div>
-  );
-}
+import { NoPapersState } from "../components/EmptyState";
 
 export function Library() {
   const { language } = useLanguage();
@@ -168,9 +157,17 @@ export function Library() {
           {loading ? (
             <ListSkeleton count={6} />
           ) : error ? (
-            <EmptyState message={error} />
+            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+              <FileText className="w-12 h-12 mb-4 opacity-50" />
+              <p className="text-sm font-medium">{error}</p>
+            </div>
+          ) : papers.length === 0 && !debouncedSearch ? (
+            <NoPapersState onUpload={() => window.location.href = '/upload'} />
           ) : papers.length === 0 ? (
-            <EmptyState message={debouncedSearch ? (isZh ? "未找到匹配的论文" : "No papers match your search") : t.noPapers} />
+            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+              <FileText className="w-12 h-12 mb-4 opacity-50" />
+              <p className="text-sm font-medium">{isZh ? "未找到匹配的论文" : "No papers match your search"}</p>
+            </div>
           ) : (
             <>
               <motion.div

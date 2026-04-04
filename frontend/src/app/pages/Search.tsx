@@ -20,6 +20,7 @@ import { useSearch } from "@/hooks/useSearch";
 import { SearchResultCard } from "@/components/SearchResultCard";
 import * as papersApi from "@/services/papersApi";
 import toast from "react-hot-toast";
+import { NoSearchResultsState } from "../components/EmptyState";
 
 export function Search() {
   const [activeSource, setActiveSource] = useState("all");
@@ -249,11 +250,7 @@ export function Search() {
 
               {/* No Results */}
               {results.internal.length === 0 && results.external.length === 0 && (
-                <div className="flex items-center justify-center h-64">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    {t.noResults}
-                  </div>
-                </div>
+                <NoSearchResultsState query={query} />
               )}
             </motion.div>
           )}
