@@ -404,13 +404,38 @@ class PDFProcessor:
                 chunk_count=len(chunks)
             )
 
-            # Store chunks in Milvus with embeddings (Gap 1: contextual embeddings)
-            chunk_ids = await self.embedding_service.store_chunks(
-                paper_id=paper_id,
-                user_id=task["user_id"],
-                chunks=chunks,
-                whole_document=whole_document  # Pass whole document for contextual embedding
-            )
+            # Store chunks in Milvus with embeddings (using Qwen3VL 2048-dim)
+            chunk_ids = []
+            chunks_data = []
+            
+            for chunk in chunks:
+                chunk_text = chunk.get("text", "")
+                if not chunk_text:
+                    continue
+                    
+                # Generate embedding using Qwen3VL (2048-dim)
+                try:
+                    embedding = self.embedding_service.encode_text(chunk_text)
+                    chunks_data.append({
+                        "paper_id": paper_id,
+                        "user_id": task["user_id"],
+                        "content_type": "text",
+                        "page_num": chunk.get("page_start", 0),
+                        "section": chunk.get("section", ""),
+                        "text": chunk_text,
+                        "content_data": chunk_text[:8000],
+                        "embedding": embedding,
+                    })
+                except Exception as e:
+                    logger.error(
+                        "Failed to generate embedding for chunk",
+                        task_id=task_id,
+                        error=str(e)
+                    )
+            
+            # Insert all chunks to Milvus
+            if chunks_data:
+                chunk_ids = self.milvus_service.insert_contents(chunks_data)
 
             logger.info(
                 "Chunks stored in PostgreSQL",
