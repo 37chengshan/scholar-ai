@@ -29,13 +29,13 @@ export function EmptyState({ icon = '📭', title, description, action }: EmptyS
 }
 
 // Preset empty states
-export function NoPapersState({ onUpload }: { onUpload: () => void }) {
+export function NoPapersState({ onUpload, isZh = false }: { onUpload: () => void; isZh?: boolean }) {
   return (
     <EmptyState
       icon="📄"
-      title="No papers yet"
-      description="Upload your first paper to get started with AI-powered reading and analysis."
-      action={{ label: 'Upload Paper', onClick: onUpload }}
+      title={isZh ? "暂无论文" : "No papers yet"}
+      description={isZh ? "上传您的第一篇论文，开始使用 AI 驱动的阅读和分析功能。" : "Upload your first paper to get started with AI-powered reading and analysis."}
+      action={{ label: isZh ? '上传第一篇论文' : 'Upload Paper', onClick: onUpload }}
     />
   );
 }

@@ -1,9 +1,13 @@
-import { useState, useEffect } from "react";
-import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router";
+import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
-import { usePapers } from "@/hooks/usePapers";
+import { usePapers } from "../../hooks/usePapers";
+import { useProjects } from "../../hooks/useProjects";
+import * as papersApi from "../../services/papersApi";
+import { toast } from "sonner";
 import {
   Pagination,
   PaginationContent,
@@ -11,13 +15,14 @@ import {
   PaginationLink,
   PaginationPrevious,
   PaginationNext,
-} from "@/components/ui/pagination";
+} from "../components/ui/pagination";
 import { ListSkeleton } from "../components/Skeleton";
 import { NoPapersState } from "../components/EmptyState";
 
 export function Library() {
   const { language } = useLanguage();
   const isZh = language === "zh";
+  const navigate = useNavigate();
 
   // Search state with debounce
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,10 +37,72 @@ export function Library() {
   }, [searchQuery]);
 
   // Use the usePapers hook
-  const { papers, total, page, totalPages, loading, error, setPage } = usePapers({
+  const { papers, total, page, totalPages, loading, error, setPage, refetch, updatePaperLocal } = usePapers({
     limit: 20,
     search: debouncedSearch || undefined,
   });
+
+  // Calculate starred count from papers
+  const starredCount = papers.filter(p => p.starred).length;
+  
+  // Calculate recent count (papers with reading progress)
+  const recentCount = papers.filter(p => p.progress && p.progress > 0).length;
+
+  // Toggle star handler with optimistic update
+  const handleToggleStar = useCallback(async (paperId: string, currentStarred: boolean) => {
+    const newStarred = !currentStarred;
+    
+    // Optimistic update - immediately update local state
+    updatePaperLocal(paperId, { starred: newStarred });
+    
+    try {
+      // Call API
+      await papersApi.toggleStar(paperId, newStarred);
+      
+      // Show success toast
+      toast.success(
+        isZh 
+          ? (newStarred ? "已添加到收藏" : "已取消收藏")
+          : (newStarred ? "Added to starred" : "Removed from starred")
+      );
+    } catch (error: any) {
+      // Revert on error
+      updatePaperLocal(paperId, { starred: currentStarred });
+      toast.error(isZh ? "操作失败" : "Failed to update starred status");
+      console.error('Failed to toggle star:', error);
+    }
+  }, [isZh, updatePaperLocal]);
+
+  // Projects hook
+  const { projects, loading: projectsLoading, createProject, deleteProject } = useProjects();
+  
+  // Selected project filter
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  
+  // Create project dialog state
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [creatingProject, setCreatingProject] = useState(false);
+
+  // Handle create project
+  const handleCreateProject = useCallback(async () => {
+    if (!newProjectName.trim()) {
+      toast.error(isZh ? "请输入项目名称" : "Please enter project name");
+      return;
+    }
+    
+    try {
+      setCreatingProject(true);
+      await createProject(newProjectName.trim());
+      setShowCreateProject(false);
+      setNewProjectName("");
+      toast.success(isZh ? "项目创建成功" : "Project created");
+    } catch (error: any) {
+      toast.error(isZh ? "创建失败" : "Failed to create project");
+    } finally {
+      setCreatingProject(false);
+    }
+  }, [newProjectName, createProject, isZh]);
 
   const t = {
     index: isZh ? "索引" : "Index",
@@ -62,7 +129,6 @@ export function Library() {
     tags: isZh ? "标签" : "Tags",
     noPapers: isZh ? "暂无论文" : "No papers found",
     noPapersDesc: isZh ? "上传您的第一篇论文开始使用" : "Upload your first paper to get started",
-    projNames: isZh ? ["LLM 架构", "对齐技术", "智能体框架", "视觉模型", "RAG 管道"] : ["LLM Architectures", "Alignment Techniques", "Agentic Frameworks", "Vision Models", "RAG Pipelines"],
     tagNames: isZh ? ["Transformer", "大语言模型", "视觉", "对齐", "RLHF", "智能体"] : ["Transformers", "LLM", "Vision", "Alignment", "RLHF", "Agents"],
     previous: isZh ? "上一页" : "Previous",
     next: isZh ? "下一页" : "Next",
@@ -73,12 +139,6 @@ export function Library() {
 
   return (
     <div className="h-full flex font-sans bg-background text-foreground relative selection:bg-primary selection:text-primary-foreground">
-      {/* Development Indicator */}
-      <div className="absolute top-2 right-2 z-50">
-        <Badge variant="secondary" className="text-xs">
-          {isZh ? "数据开发中" : "Data Under Development"}
-        </Badge>
-      </div>
       {/* Column 1: Collections (Left - Compact) */}
       <motion.div
         initial={{ opacity: 0, x: -20 }}
@@ -98,7 +158,7 @@ export function Library() {
               <button className="flex items-center gap-2.5 px-2 py-2 rounded-sm hover:bg-muted transition-colors text-foreground/80 hover:text-primary group">
                 <Clock className="w-3.5 h-3.5 text-primary/70 group-hover:text-primary" />
                 <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">{t.recent}</span>
-                <span className="text-[9px] font-mono text-muted-foreground group-hover:text-primary">12</span>
+                <span className="text-[9px] font-mono text-muted-foreground group-hover:text-primary">{recentCount}</span>
               </button>
               <button className="flex items-center gap-2.5 px-2 py-2 rounded-sm bg-primary text-primary-foreground transition-colors group shadow-sm shadow-primary/20">
                 <FileText className="w-3.5 h-3.5 text-primary-foreground/90" />
@@ -108,7 +168,7 @@ export function Library() {
               <button className="flex items-center gap-2.5 px-2 py-2 rounded-sm hover:bg-muted transition-colors text-foreground/80 hover:text-primary group">
                 <Star className="w-3.5 h-3.5 text-primary/70 group-hover:text-primary" />
                 <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">{t.starred}</span>
-                <span className="text-[9px] font-mono text-muted-foreground group-hover:text-primary">84</span>
+                <span className="text-[9px] font-mono text-muted-foreground group-hover:text-primary">{starredCount}</span>
               </button>
             </div>
           </div>
@@ -116,16 +176,80 @@ export function Library() {
           <div>
             <div className="text-[9px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-3 px-1 border-b border-border/50 pb-1.5 flex justify-between items-center">
               <span>{t.projects}</span>
-              <span className="text-primary cursor-pointer hover:underline underline-offset-2">{t.new}</span>
+              <span 
+                onClick={() => setShowCreateProject(true)}
+                className="text-primary cursor-pointer hover:underline underline-offset-2"
+              >
+                {t.new}
+              </span>
             </div>
             <div className="flex flex-col gap-0.5">
-              {t.projNames.map((project) => (
-                <button key={project} className="flex items-center gap-2.5 px-2 py-1.5 rounded-sm hover:bg-muted transition-colors text-foreground/70 hover:text-primary group">
-                  <Folder className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left truncate">{project}</span>
-                </button>
-              ))}
+              {projectsLoading ? (
+                <div className="px-2 py-2 text-[9px] text-muted-foreground">
+                  {isZh ? "加载中..." : "Loading..."}
+                </div>
+              ) : projects.length === 0 ? (
+                <div className="px-2 py-2 text-[9px] text-muted-foreground">
+                  {isZh ? "暂无项目" : "No projects"}
+                </div>
+              ) : (
+                projects.map((project) => (
+                  <button 
+                    key={project.id} 
+                    onClick={() => setSelectedProjectId(selectedProjectId === project.id ? null : project.id)}
+                    className={`flex items-center gap-2.5 px-2 py-1.5 rounded-sm transition-colors group ${
+                      selectedProjectId === project.id 
+                        ? "bg-primary/10 text-primary" 
+                        : "hover:bg-muted text-foreground/70 hover:text-primary"
+                    }`}
+                  >
+                    <Folder className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left truncate">{project.name}</span>
+                    <span className="text-[9px] font-mono text-muted-foreground group-hover:text-primary">{project.paperCount}</span>
+                  </button>
+                ))
+              )}
             </div>
+            
+            {/* Create Project Dialog */}
+            {showCreateProject && (
+              <div className="mt-3 p-3 bg-card border border-border/50 rounded-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest">
+                    {isZh ? "新建项目" : "New Project"}
+                  </span>
+                  <X 
+                    className="w-3 h-3 text-muted-foreground cursor-pointer hover:text-primary"
+                    onClick={() => {
+                      setShowCreateProject(false);
+                      setNewProjectName("");
+                    }}
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder={isZh ? "项目名称" : "Project name"}
+                  className="w-full bg-muted/50 border border-border/50 rounded-sm px-2 py-1 text-xs mb-2"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateProject();
+                    if (e.key === 'Escape') {
+                      setShowCreateProject(false);
+                      setNewProjectName("");
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleCreateProject}
+                  disabled={creatingProject || !newProjectName.trim()}
+                  className="w-full bg-primary text-primary-foreground text-[9px] font-bold uppercase tracking-widest py-1.5 rounded-sm hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {creatingProject ? (isZh ? "创建中..." : "Creating...") : (isZh ? "创建" : "Create")}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </motion.div>
@@ -162,7 +286,7 @@ export function Library() {
               <p className="text-sm font-medium">{error}</p>
             </div>
           ) : papers.length === 0 && !debouncedSearch ? (
-            <NoPapersState onUpload={() => window.location.href = '/upload'} />
+            <NoPapersState onUpload={() => navigate('/upload')} isZh={isZh} />
           ) : papers.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
               <FileText className="w-12 h-12 mb-4 opacity-50" />
@@ -183,17 +307,21 @@ export function Library() {
                   >
                     <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500" />
 
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[8px] font-bold uppercase tracking-widest bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm">{paper.venue || '—'}</span>
-                        <span className="text-[9px] font-mono text-muted-foreground">{paper.year || '—'}</span>
-                      </div>
-                      <Star
-                        className={`w-3.5 h-3.5 transition-colors cursor-pointer ${
-                          paper.status === 'completed' ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"
-                        }`}
-                      />
-                    </div>
+<div className="flex justify-between items-start">
+                       <div className="flex items-center gap-2">
+                         <span className="text-[8px] font-bold uppercase tracking-widest bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm">{paper.venue || '—'}</span>
+                         <span className="text-[9px] font-mono text-muted-foreground">{paper.year || '—'}</span>
+                       </div>
+                       <Star
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           handleToggleStar(paper.id, paper.starred || false);
+                         }}
+                         className={`w-3.5 h-3.5 transition-colors cursor-pointer ${
+                           paper.starred ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"
+                         }`}
+                       />
+                     </div>
 
                     <div className="flex flex-col gap-1.5">
                       <h3 className="font-serif font-black text-xl leading-tight group-hover:text-primary transition-colors tracking-tight line-clamp-2">
