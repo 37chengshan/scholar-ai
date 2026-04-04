@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     MILVUS_COLLECTION_IMAGES: str = "paper_images"
     MILVUS_COLLECTION_TABLES: str = "paper_tables"
     MILVUS_COLLECTION_CONTENTS: str = "paper_contents"  # Unified 1024-dim BGE-M3 collection
+    MILVUS_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"  # Unified 2048-dim Qwen3-VL collection
     MILVUS_POOL_SIZE: int = 10
     MILVUS_TIMEOUT: int = 10
 
