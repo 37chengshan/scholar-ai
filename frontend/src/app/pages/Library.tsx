@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
-import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight, Plus, X, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
@@ -83,6 +83,14 @@ export function Library() {
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
+  
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    paperId: string;
+    paper: any;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Handle create project
   const handleCreateProject = useCallback(async () => {
@@ -103,6 +111,48 @@ export function Library() {
       setCreatingProject(false);
     }
   }, [newProjectName, createProject, isZh]);
+  
+  // Context menu handlers
+  const handleContextMenu = useCallback((e: React.MouseEvent, paper: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      paperId: paper.id,
+      paper,
+      x: e.clientX,
+      y: e.clientY,
+    });
+  }, []);
+  
+  const handleContextMenuAction = useCallback(async (action: string, paperId: string) => {
+    setContextMenu(null);
+    
+    switch (action) {
+      case 'open':
+        navigate(`/read/${paperId}`);
+        break;
+      case 'delete':
+        try {
+          await papersApi.remove(paperId);
+          toast.success(isZh ? "论文已删除" : "Paper deleted");
+          refetch();
+        } catch (error: any) {
+          toast.error(isZh ? "删除失败" : "Failed to delete paper");
+        }
+        break;
+      case 'star':
+        // Star toggle is already handled by handleToggleStar
+        const paper = papers.find(p => p.id === paperId);
+        if (paper) {
+          handleToggleStar(paperId, paper.starred || false);
+        }
+        break;
+    }
+  }, [navigate, isZh, refetch, papers, handleToggleStar]);
+  
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
 
   const t = {
     index: isZh ? "索引" : "Index",
@@ -249,9 +299,46 @@ export function Library() {
                   {creatingProject ? (isZh ? "创建中..." : "Creating...") : (isZh ? "创建" : "Create")}
                 </button>
               </div>
+)}
+            
+            {/* Context Menu */}
+            {contextMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={closeContextMenu}
+                />
+                <div
+                  className="fixed z-50 bg-card border border-border/50 rounded-sm shadow-lg py-1 min-w-[120px]"
+                  style={{ left: contextMenu.x, top: contextMenu.y }}
+                >
+                  <button
+                    onClick={() => handleContextMenuAction('open', contextMenu.paperId)}
+                    className="w-full px-3 py-1.5 text-left text-xs font-bold uppercase tracking-widest hover:bg-muted transition-colors flex items-center gap-2"
+                  >
+                    <FileText className="w-3 h-3" />
+                    {isZh ? "打开" : "Open"}
+                  </button>
+                  <button
+                    onClick={() => handleContextMenuAction('star', contextMenu.paperId)}
+                    className="w-full px-3 py-1.5 text-left text-xs font-bold uppercase tracking-widest hover:bg-muted transition-colors flex items-center gap-2"
+                  >
+                    <Star className="w-3 h-3" />
+                    {isZh ? "星标" : "Star"}
+                  </button>
+                  <button
+                    onClick={() => handleContextMenuAction('delete', contextMenu.paperId)}
+                    className="w-full px-3 py-1.5 text-left text-xs font-bold uppercase tracking-widest hover:bg-muted transition-colors flex items-center gap-2 text-destructive"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    {isZh ? "删除" : "Delete"}
+                  </button>
+                </div>
+              </>
             )}
-          </div>
+          </>
         </div>
+      </div>
       </motion.div>
 
       {/* Column 2: Papers Grid (Middle - Dense) */}
@@ -303,7 +390,9 @@ export function Library() {
                 {papers.map((paper) => (
                   <div
                     key={paper.id}
-                    className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all duration-300 relative overflow-hidden"
+                    onClick={() => navigate(`/read/${paper.id}`)}
+                    onContextMenu={(e) => handleContextMenu(e, paper)}
+                    className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all duration-300 relative overflow-hidden cursor-pointer"
                   >
                     <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500" />
 
