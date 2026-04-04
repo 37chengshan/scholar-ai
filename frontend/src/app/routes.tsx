@@ -1,15 +1,19 @@
 import { createBrowserRouter, Navigate } from "react-router";
+import { lazy, Suspense } from "react";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
 import { Layout } from "./components/Layout";
-import { Dashboard } from "./pages/Dashboard";
-import { Library } from "./pages/Library";
-import { Search } from "./pages/Search";
-import { Read } from "./pages/Read";
-import { Chat } from "./pages/Chat";
-import { Upload } from "./pages/Upload";
-import { Settings } from "./pages/Settings";
+import { LoadingFallback } from "./components/LoadingFallback";
 import { useAuth } from "@/contexts/AuthContext";
+
+// Lazy load pages (Landing and Login are critical, keep as regular imports)
+const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
+const Library = lazy(() => import("./pages/Library").then(m => ({ default: m.Library })));
+const Search = lazy(() => import("./pages/Search").then(m => ({ default: m.Search })));
+const Read = lazy(() => import("./pages/Read").then(m => ({ default: m.Read })));
+const Chat = lazy(() => import("./pages/Chat").then(m => ({ default: m.Chat })));
+const Upload = lazy(() => import("./pages/Upload").then(m => ({ default: m.Upload })));
+const Settings = lazy(() => import("./pages/Settings").then(m => ({ default: m.Settings })));
 
 // Auth guard component for protected routes
 // Uses AuthContext (Cookie-based auth) instead of localStorage
@@ -18,14 +22,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   // Show loading state while checking auth
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          <span className="text-muted-foreground text-sm">Loading...</span>
-        </div>
-      </div>
-    );
+    return <LoadingFallback />;
   }
 
   // Redirect to login if not authenticated
@@ -34,6 +31,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+// Suspense wrapper for lazy-loaded components
+function LazyRoute({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      {children}
+    </Suspense>
+  );
 }
 
 export const router = createBrowserRouter([
@@ -51,31 +57,31 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "dashboard",
-        element: <ProtectedRoute><Dashboard /></ProtectedRoute>,
+        element: <LazyRoute><ProtectedRoute><Dashboard /></ProtectedRoute></LazyRoute>,
       },
       {
         path: "library",
-        element: <ProtectedRoute><Library /></ProtectedRoute>,
+        element: <LazyRoute><ProtectedRoute><Library /></ProtectedRoute></LazyRoute>,
       },
       {
         path: "search",
-        element: <ProtectedRoute><Search /></ProtectedRoute>,
+        element: <LazyRoute><ProtectedRoute><Search /></ProtectedRoute></LazyRoute>,
       },
       {
         path: "read",
-        element: <ProtectedRoute><Read /></ProtectedRoute>,
+        element: <LazyRoute><ProtectedRoute><Read /></ProtectedRoute></LazyRoute>,
       },
       {
         path: "chat",
-        element: <ProtectedRoute><Chat /></ProtectedRoute>,
+        element: <LazyRoute><ProtectedRoute><Chat /></ProtectedRoute></LazyRoute>,
       },
       {
         path: "upload",
-        element: <ProtectedRoute><Upload /></ProtectedRoute>,
+        element: <LazyRoute><ProtectedRoute><Upload /></ProtectedRoute></LazyRoute>,
       },
       {
         path: "settings",
-        element: <ProtectedRoute><Settings /></ProtectedRoute>,
+        element: <LazyRoute><ProtectedRoute><Settings /></ProtectedRoute></LazyRoute>,
       },
     ],
   },
