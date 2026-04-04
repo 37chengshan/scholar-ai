@@ -60,7 +60,14 @@ class Settings(BaseSettings):
 
     # LLM配置
     DEFAULT_MODEL: str = "gpt-4o-mini"
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    
+    # Embedding Model Configuration (Qwen3-VL)
+    EMBEDDING_MODEL: str = "qwen3-vl-2b"  # Model identifier
+    EMBEDDING_QUANTIZATION: str = "int4"  # Quantization type: "int4" or "fp16"
+    EMBEDDING_DIMENSION: int = 2048  # Qwen3-VL output dimension
+    
+    # Legacy embedding config (to be removed after migration)
+    # EMBEDDING_MODEL: str = "text-embedding-3-small"  # Old OpenAI embedding
     
     # GLM-4.5-Air Configuration (for Agent Runner)
     LLM_MODEL: str = "glm-4.5-air"  # ZhipuAI model name (no prefix)
