@@ -23,7 +23,7 @@ from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
 from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
-from app.core.reranker_service import get_reranker_service
+from app.core.reranker.factory import get_reranker_service  # Updated to use factory
 from app.core.qwen3vl_service import get_qwen3vl_service
 from fastapi.exceptions import RequestValidationError
 from app.middleware.error_handler import (
@@ -65,7 +65,8 @@ async def lifespan(app: FastAPI):
         reranker_service = get_reranker_service()
         reranker_service.load_model()
         app.state.reranker_service = reranker_service
-        logger.info("ReRanker model loaded", model=reranker_service.MODEL_NAME)
+        model_info = reranker_service.get_model_info()
+        logger.info("ReRanker model loaded", model=model_info.get("name", "unknown"))
     except Exception as e:
         logger.error("Failed to initialize ReRanker", error=str(e))
         # Don't fail startup - ReRanker is optional for basic functionality
