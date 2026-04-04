@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 import { useState, useEffect } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
-import { mockLogin } from "../../mocks/auth";
+import { useAuth } from "@/contexts/AuthContext";
 
 const SYSTEM_LOGS_EN = [
   "[SYS] Initializing Node 04 environment...",
@@ -27,6 +27,7 @@ const SYSTEM_LOGS_ZH = [
 export function Login() {
   const navigate = useNavigate();
   const { language } = useLanguage();
+  const { login } = useAuth();
   const [logs, setLogs] = useState<string[]>([]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -87,14 +88,16 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      const result = await mockLogin(email, password);
-      if (result.success) {
-        navigate("/dashboard");
-      } else {
-        setError(result.error || (isZh ? "登录失败" : "Login failed"));
-      }
-    } catch (err) {
-      setError(isZh ? "登录失败" : "Login failed");
+      await login(email, password);
+      // Login successful - AuthContext has updated state
+      navigate("/dashboard");
+    } catch (err: any) {
+      // Error from Axios interceptor or API
+      // Backend returns RFC 7807 ProblemDetail format
+      const errorMessage = err.response?.data?.error?.detail
+        || err.message
+        || (isZh ? "登录失败" : "Login failed");
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
