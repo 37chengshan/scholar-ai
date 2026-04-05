@@ -124,9 +124,10 @@ class PDFCoordinator:
                 await self._update_status(ctx, PipelineStage.FAILED.value, error=str(e))
                 raise PipelineError(f"Parsing stage failed: {e}")
 
-            # Stage 3: Parallel extraction (to be implemented in Plan 02)
+            # Stage 3: Parallel extraction
             ctx.current_stage = PipelineStage.EXTRACTION
-            # TODO: await self.extraction_pipeline.extract(ctx)
+            ctx = await self.extraction_pipeline.extract(ctx)
+            logger.info(f"Completed parallel extraction for task {ctx.task_id}")
 
             # Stage 4: Storage (to be implemented in Plan 03)
             ctx.current_stage = PipelineStage.STORAGE
