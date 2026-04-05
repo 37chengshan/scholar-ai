@@ -18,7 +18,7 @@ from typing import Optional
 import asyncpg
 
 from app.workers.pipeline_context import PipelineContext, PipelineStage
-from app.workers.extraction_pipeline import PipelineError
+from app.workers.extraction_pipeline import ExtractionPipeline, PipelineError
 from app.core.storage import ObjectStorage
 from app.core.docling_service import DoclingParser
 from app.core.qwen3vl_service import get_qwen3vl_service
@@ -48,6 +48,7 @@ class PDFCoordinator:
         """
         self.storage = ObjectStorage()
         self.parser = DoclingParser()
+        self.extraction_pipeline = ExtractionPipeline(max_workers=4)  # Per D-07
         self.embedding_service = get_qwen3vl_service()
         self.neo4j_service = Neo4jService()
         self.notes_generator = NotesGenerator()
