@@ -95,6 +95,11 @@ def calculate_chunk_quality(chunk: dict) -> float:
 
 class MilvusService:
     """Milvus connection wrapper with connection pooling."""
+    
+    # Per D-27: 50-vector batches for reliability
+    MILVUS_BATCH_SIZE = 50
+    # Per D-29: Max 3 retries with exponential backoff
+    MAX_RETRIES = 3
 
     def __init__(
         self,
@@ -784,6 +789,107 @@ FieldSchema(
             avg_quality=sum(e["quality_score"] for e in entities) / len(entities) if entities else 0
         )
         return ids.primary_keys
+
+    def insert_contents_batched(
+        self,
+        data: List[Dict[str, Any]],
+        batch_size: int = 50,
+        max_retries: int = 3
+    ) -> List[int]:
+        """Insert content embeddings in small batches with retry logic.
+        
+        Per D-27: 50-vector batches for reliability.
+        Per D-28: Avoid single large insert that loses all data on failure.
+        Per D-29: Exponential backoff retry (1s, 2s, 4s).
+        
+        Args:
+            data: List of content items with embeddings
+            batch_size: Vectors per batch (default 50 per D-27)
+            max_retries: Max retry attempts per batch (default 3 per D-29)
+            
+        Returns:
+            List of inserted IDs (may be partial if some batches failed)
+        """
+        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+        all_ids = []
+        
+        # Process in batches
+        total_batches = (len(data) + batch_size - 1) // batch_size
+        
+        for i in range(0, len(data), batch_size):
+            batch = data[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            
+            retries = 0
+            while retries < max_retries:
+                try:
+                    # Prepare entities with quality scoring
+                    entities = []
+                    for item in batch:
+                        quality_score = calculate_chunk_quality(item)
+                        
+                        entities.append({
+                            "paper_id": item["paper_id"],
+                            "user_id": item["user_id"],
+                            "content_type": item.get("content_type", "text"),
+                            "page_num": item.get("page_num", 0),
+                            "section": item.get("section", ""),
+                            "quality_score": quality_score,
+                            "word_count": len(item.get("text", "").split()),
+                            "has_equations": bool(item.get("has_equations", False)),
+                            "has_figures": bool(item.get("has_figures", False)),
+                            "extraction_version": 2,
+                            "content_data": item.get("content_data", item.get("text", ""))[:8000],
+                            "raw_data": item.get("raw_data", {}),
+                            "embedding": item["embedding"],
+                        })
+                    
+                    ids = collection.insert(entities)
+                    all_ids.extend(ids.primary_keys)
+                    
+                    logger.debug(
+                        "Milvus batch inserted",
+                        batch=f"{batch_num}/{total_batches}",
+                        count=len(entities)
+                    )
+                    break
+                    
+                except Exception as e:
+                    retries += 1
+                    delay = 2 ** retries  # 2s, 4s, 8s (exponential backoff per D-29)
+                    
+                    logger.warning(
+                        "Milvus batch insert failed, retrying",
+                        batch=f"{batch_num}/{total_batches}",
+                        attempt=retries,
+                        max_retries=max_retries,
+                        delay=delay,
+                        error=str(e)
+                    )
+                    
+                    if retries >= max_retries:
+                        logger.error(
+                            "Milvus batch insert failed after max retries",
+                            batch=f"{batch_num}/{total_batches}",
+                            error=str(e)
+                        )
+                        # Record failure but continue with other batches
+                        # Per D-28: Don't fail entire operation on one batch
+                    else:
+                        time.sleep(delay)
+        
+        # Flush all inserted data
+        if all_ids:
+            collection.flush()
+        
+        logger.info(
+            "Milvus batch insert complete",
+            total_items=len(data),
+            inserted=len(all_ids),
+            batches=total_batches
+        )
+        
+        return all_ids
 
     def search_contents(
         self,
