@@ -39,6 +39,7 @@ from app.core.image_extractor import ImageExtractor
 from app.core.table_extractor import TableExtractor
 from app.core.multimodal_indexer import MultimodalIndexer, get_multimodal_indexer
 from app.core.semantic_scholar_service import get_semantic_scholar_service
+from app.workers.pdf_coordinator import PDFCoordinator, get_pdf_coordinator
 from app.utils.logger import logger
 
 
@@ -72,21 +73,28 @@ def fuzzy_match_title(target: str, candidates: List[Dict], threshold: float = 0.
 
 
 class PDFProcessor:
-    """PDF task processor with retry logic."""
+    """PDF task processor with retry logic.
+    
+    This class now acts as a backward-compatible adapter for the
+    parallel PDFCoordinator pipeline. All actual processing is
+    delegated to PDFCoordinator.
+    
+    Per D-01: Refactored from serial to parallel architecture.
+    """
 
     MAX_RETRIES = 3
 
     def __init__(self):
-        self.storage = ObjectStorage()
-        self.parser = DoclingParser()
-        self.embedding_service = get_qwen3vl_service()
-        self.neo4j_service = Neo4jService()
-        self.notes_generator = NotesGenerator()
-        self.milvus_service = get_milvus_service()
-        self.image_extractor = ImageExtractor()
-        self.table_extractor = TableExtractor()
-        self.multimodal_indexer: Optional[MultimodalIndexer] = None
+        # Initialize coordinator for parallel processing
+        self._coordinator: Optional[PDFCoordinator] = None
         self.db_pool: Optional[asyncpg.Pool] = None
+    
+    @property
+    def coordinator(self) -> PDFCoordinator:
+        """Lazy-load coordinator singleton."""
+        if self._coordinator is None:
+            self._coordinator = get_pdf_coordinator()
+        return self._coordinator
 
     async def init_db(self):
         """Initialize database connection pool."""
@@ -205,360 +213,21 @@ class PDFProcessor:
     async def process_pdf_task(self, task_id: str) -> bool:
         """
         Process a single PDF task through all stages.
-
+        
+        This method now delegates to PDFCoordinator for parallel processing.
+        Maintains backward compatibility with existing code that calls this method.
+        
         Args:
             task_id: UUID of the processing task
-
+            
         Returns:
             True if successful, False otherwise
         """
-        await self.init_db()
-
-        logger.info("Starting PDF processing", task_id=task_id)
-
-        async with self.db_pool.acquire() as conn:
-            task = await conn.fetchrow(
-                """SELECT pt.*, p.user_id, p.id as paper_id, p.storage_key
-                   FROM processing_tasks pt
-                   JOIN papers p ON pt.paper_id = p.id
-                   WHERE pt.id = $1""",
-                task_id,
-            )
-
-        if not task:
-            logger.error("Task not found", task_id=task_id)
-            return False
-
-        paper_id = task["paper_id"]
-        storage_key = task["storage_key"]
-        local_path = None
-
-        try:
-            # Stage 1: Download from object storage
-            await self._update_status(task_id, "processing_ocr")
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                await self.storage.download_file(storage_key, tmp.name)
-                local_path = tmp.name
-                file_size = os.path.getsize(tmp.name)
-                logger.info(
-                    "Downloaded PDF",
-                    task_id=task_id,
-                    size_bytes=file_size,
-                )
-
-            # Stage 2: OCR + Parsing
-            await self._update_status(task_id, "parsing")
-            parsed = await self.parser.parse_pdf(local_path)
-            logger.info(
-                "Parsed PDF",
-                task_id=task_id,
-                pages=parsed["page_count"],
-                items=len(parsed["items"]),
-            )
-            
-            # Extract metadata early for enrichment check
-            metadata = extract_metadata(parsed["items"])
-
-            # Stage 3: Store parsed content in papers table
-            async with self.db_pool.acquire() as conn:
-                await conn.execute(
-                    """UPDATE papers
-                       SET content = $1, page_count = $2, status = 'processing'
-                       WHERE id = $3""",
-                    parsed["markdown"],
-                    parsed["page_count"],
-                    paper_id,
-                )
-
-            # Per D-07: Metadata enrichment after parsing
-            # Enrich if title or authors are missing
-            title = metadata.get("title")
-            authors = metadata.get("authors", [])
-            
-            async with self.db_pool.acquire() as conn:
-                await self.enrich_metadata_if_needed(conn, paper_id, title, authors)
-
-            # Stage 4: Enhanced IMRaD extraction with LLM assistance per D-05
-            await self._update_status(task_id, "extracting_imrad")
-            
-            # Use enhanced extraction for +85% non-standard paper recognition
-            imrad = await extract_imrad_enhanced(
-                items=parsed["items"],
-                markdown=parsed["markdown"],
-                paper_metadata=metadata
-            )
-            
-            # Debug: Check if metadata is None
-            if metadata is None:
-                logger.error("Metadata is None", task_id=task_id)
-                metadata = {
-                    "title": None,
-                    "authors": [],
-                    "abstract": None,
-                    "keywords": [],
-                    "doi": None,
-                }
-            
-            logger.info(
-                "IMRaD extraction complete",
-                task_id=task_id,
-                confidence=imrad.get("_confidence_score", 0) if imrad else 0,
-                estimated=imrad.get("_estimated", False) if imrad else False,
-            )
-
-            # Store IMRaD structure and update metadata in papers table
-            async with self.db_pool.acquire() as conn:
-                await conn.execute(
-                    """UPDATE papers
-                       SET imrad_json = $1,
-                           title = COALESCE(NULLIF(title, ''), $2),
-                           authors = COALESCE(NULLIF(authors, '{}'), $3),
-                           abstract = COALESCE(NULLIF(abstract, ''), $4),
-                           doi = COALESCE(NULLIF(doi, ''), $5),
-                           keywords = COALESCE(NULLIF(keywords, '{}'), $6)
-                       WHERE id = $7""",
-                    json.dumps(imrad),
-                    metadata.get("title"),
-                    metadata.get("authors", []),
-                    metadata.get("abstract"),
-                    metadata.get("doi"),
-                    metadata.get("keywords", []),
-                    paper_id,
-                )
-
-            # Stage 5: Generate Reading Notes
-            await self._update_status(task_id, "generating_notes")
-
-            # Prepare paper metadata for notes generation
-            paper_metadata = {
-                "title": metadata.get("title", "Unknown"),
-                "authors": metadata.get("authors", []),
-                "year": metadata.get("year", ""),
-                "venue": metadata.get("venue", ""),
-            }
-
-            try:
-                notes = await self.notes_generator.generate_notes(
-                    paper_metadata=paper_metadata,
-                    imrad_structure=imrad
-                )
-                logger.info(
-                    "Generated reading notes",
-                    task_id=task_id,
-                    paper_id=paper_id,
-                    notes_length=len(notes) if notes else 0,
-                )
-            except Exception as e:
-                logger.error(
-                    "Failed to generate notes, continuing without notes",
-                    task_id=task_id,
-                    error=str(e),
-                )
-                notes = None
-
-            # Update paper with reading notes
-            async with self.db_pool.acquire() as conn:
-                await conn.execute(
-                    """UPDATE papers
-                       SET reading_notes = $1,
-                           notes_version = notes_version + 1
-                       WHERE id = $2""",
-                    notes,
-                    paper_id,
-                )
-
-            # Stage 6: Chunking + Embeddings + Vector Storage
-            await self._update_status(task_id, "storing_vectors")
-            logger.info("Starting chunking and embedding", task_id=task_id)
-
-            # Extract whole document markdown for contextual embeddings (Gap 1)
-            whole_document = parsed.get("markdown", "")
-
-            # Chunking strategy: Semantic splitting with LlamaIndex (per D-03)
-            # Parameters: buffer_size=1, breakpoint_percentile_threshold=95
-            # Overlap: 100 tokens for context continuity
-            chunks = self.parser.chunk_by_semantic(
-                parsed["items"],
-                paper_id=paper_id,
-                imrad_structure=imrad if imrad else None
-            )
-
-            # Assign section to each chunk based on page overlap with IMRaD
-            for chunk in chunks:
-                page = chunk.get("page_start")
-                if page and imrad:
-                    for section_name, section_data in imrad.items():
-                        # Skip metadata fields
-                        if section_name.startswith("_"):
-                            continue
-                        if isinstance(section_data, dict):
-                            start = section_data.get("page_start", 0)
-                            end = section_data.get("page_end", 999)
-                            if start and end and start <= page <= end:
-                                chunk["section"] = section_name
-                                break
-
-            logger.info(
-                "Chunks created",
-                task_id=task_id,
-                chunk_count=len(chunks)
-            )
-
-            # Store chunks in Milvus with embeddings (using Qwen3VL 2048-dim)
-            chunk_ids = []
-            chunks_data = []
-            
-            for chunk in chunks:
-                chunk_text = chunk.get("text", "")
-                if not chunk_text:
-                    continue
-                    
-                # Generate embedding using Qwen3VL (2048-dim)
-                try:
-                    embedding = self.embedding_service.encode_text(chunk_text)
-                    chunks_data.append({
-                        "paper_id": paper_id,
-                        "user_id": task["user_id"],
-                        "content_type": "text",
-                        "page_num": chunk.get("page_start", 0),
-                        "section": chunk.get("section", ""),
-                        "text": chunk_text,
-                        "content_data": chunk_text[:8000],
-                        "embedding": embedding,
-                    })
-                except Exception as e:
-                    logger.error(
-                        "Failed to generate embedding for chunk",
-                        task_id=task_id,
-                        error=str(e)
-                    )
-            
-            # Insert all chunks to Milvus
-            if chunks_data:
-                chunk_ids = self.milvus_service.insert_contents(chunks_data)
-
-            logger.info(
-                "Chunks stored in PostgreSQL",
-                task_id=task_id,
-                chunk_ids=len(chunk_ids)
-            )
-
-            # Store chunks in Neo4j for graph relationships
-            chunks_with_ids = [
-                {**chunk, "id": cid}
-                for chunk, cid in zip(chunks, chunk_ids)
-            ]
-            await self.neo4j_service.create_chunk_nodes(paper_id, chunks_with_ids)
-
-            # Create section nodes in Neo4j
-            section_data_for_neo4j = {
-                k: v for k, v in imrad.items()
-                if not k.startswith("_") and isinstance(v, dict)
-            }
-            await self.neo4j_service.create_section_nodes(paper_id, section_data_for_neo4j)
-
-            # Create paper node in Neo4j (if not exists)
-            # Get paper metadata from database
-            async with self.db_pool.acquire() as conn:
-                paper_row = await conn.fetchrow(
-                    "SELECT title, authors, year FROM papers WHERE id = $1",
-                    paper_id
-                )
-                if paper_row:
-                    authors = paper_row["authors"] if paper_row["authors"] else []
-                    if isinstance(authors, str):
-                        authors = [a.strip() for a in authors.split(",")]
-                    await self.neo4j_service.create_paper_node(
-                        paper_id=paper_id,
-                        title=paper_row["title"] or "Untitled",
-                        authors=authors,
-                        year=paper_row["year"]
-                    )
-
-            logger.info(
-                "Graph storage complete",
-                task_id=task_id,
-                chunks_in_neo4j=len(chunks_with_ids)
-            )
-
-            # Stage 7: Multimodal Indexing (Images and Tables)
-            await self._update_status(task_id, "indexing_multimodal")
-            logger.info("Starting multimodal indexing", task_id=task_id)
-
-            try:
-                # Initialize multimodal indexer if needed
-                if not self.multimodal_indexer:
-                    self.multimodal_indexer = get_multimodal_indexer()
-
-                # Index all multimodal content
-                index_results = await self.multimodal_indexer.index_paper(
-                    paper_id=paper_id,
-                    user_id=task["user_id"],
-                    pdf_path=local_path,
-                    parsed_items=parsed["items"],
-                    paper_markdown=parsed.get("markdown")  # Pass markdown for D-04 context
-                )
-
-                # Store partial failures if any
-                if index_results.get("partial_failures"):
-                    await self._store_partial_failures(
-                        task_id,
-                        index_results["partial_failures"]
-                    )
-
-                logger.info(
-                    "Multimodal indexing complete",
-                    task_id=task_id,
-                    images_indexed=index_results["images_indexed"],
-                    tables_indexed=index_results["tables_indexed"],
-                    failures=len(index_results.get("partial_failures", []))
-                )
-
-            except Exception as e:
-                # Log error but don't fail the PDF processing (tiered failure per D-29)
-                logger.error(
-                    "Multimodal indexing failed",
-                    task_id=task_id,
-                    error=str(e)
-                )
-                await self._store_partial_failures(task_id, [{
-                    "type": "indexing",
-                    "error": str(e)
-                }])
-
-            # Mark complete
-            await self._update_status(task_id, "completed")
-            logger.info(
-                "PDF processing complete",
-                task_id=task_id,
-                paper_id=paper_id,
-                chunks_stored=len(chunks),
-                notes_generated=notes is not None,
-            )
-
-            return True
-
-        except Exception as e:
-            logger.error(
-                "PDF processing failed",
-                task_id=task_id,
-                error=str(e),
-            )
-            await self._update_status(task_id, "failed", error=str(e))
-            return False
-
-        finally:
-            # Cleanup temp file
-            if local_path:
-                try:
-                    Path(local_path).unlink(missing_ok=True)
-                    logger.debug("Cleaned up temp file", path=local_path)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to cleanup temp file",
-                        path=local_path,
-                        error=str(e),
-                    )
+        # Ensure coordinator has DB pool
+        await self.coordinator.init_db()
+        
+        # Delegate to parallel pipeline coordinator
+        return await self.coordinator.process(task_id)
 
     async def _update_status(
         self, task_id: str, status: str, error: Optional[str] = None
@@ -620,52 +289,17 @@ class PDFProcessor:
     async def retry_task(self, task_id: str) -> bool:
         """
         Retry a failed task if attempts remaining.
-
+        
+        Delegates to coordinator for retry logic.
+        
         Args:
             task_id: Task UUID to retry
-
+            
         Returns:
             True if retry initiated, False if max retries exceeded
         """
-        await self.init_db()
-
-        async with self.db_pool.acquire() as conn:
-            task = await conn.fetchrow(
-                """SELECT attempts, status
-                   FROM processing_tasks
-                   WHERE id = $1""",
-                task_id,
-            )
-
-            if not task:
-                logger.error("Task not found for retry", task_id=task_id)
-                return False
-
-            if task["attempts"] >= self.MAX_RETRIES:
-                logger.error(
-                    "Max retries exceeded",
-                    task_id=task_id,
-                    attempts=task["attempts"],
-                )
-                return False
-
-            # Increment attempts and reset to pending
-            await conn.execute(
-                """UPDATE processing_tasks
-                   SET status = 'pending',
-                       attempts = attempts + 1,
-                       error_message = NULL,
-                       updated_at = NOW()
-                   WHERE id = $1""",
-                task_id,
-            )
-
-        logger.info(
-            "Task queued for retry",
-            task_id=task_id,
-            attempt=task["attempts"] + 1,
-        )
-        return True
+        await self.coordinator.init_db()
+        return await self.coordinator.retry_task(task_id)
 
 
 # Worker loop for standalone execution
