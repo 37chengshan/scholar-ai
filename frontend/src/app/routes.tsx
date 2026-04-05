@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
 import { ForgotPassword } from "./pages/ForgotPassword";
+import { Register } from "./pages/Register";
 import { ResetPassword } from "./pages/ResetPassword";
 import { Layout } from "./components/Layout";
 import { LoadingFallback } from "./components/LoadingFallback";
