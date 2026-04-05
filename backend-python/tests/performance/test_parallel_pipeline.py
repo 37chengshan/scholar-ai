@@ -29,7 +29,7 @@ from app.workers.pipeline_context import PipelineContext
 from tests.fixtures.test_pdfs import get_test_pdf_10_pages, get_test_pdf_5_pages
 
 
-class PerformanceBenchmark:
+class TestPerformanceBenchmark:
     """Performance benchmark suite for PDF pipeline."""
 
     @pytest.fixture
