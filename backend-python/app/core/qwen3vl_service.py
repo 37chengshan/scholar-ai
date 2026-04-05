@@ -21,6 +21,7 @@ import torch
 from PIL import Image
 from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
 
+from app.core.config import settings
 from app.utils.logger import logger
 
 
@@ -370,7 +371,11 @@ def get_qwen3vl_service() -> Qwen3VLMultimodalEmbedding:
     """Get or create Qwen3VLMultimodalEmbedding singleton."""
     global _qwen3vl_service
     if _qwen3vl_service is None:
-        _qwen3vl_service = Qwen3VLMultimodalEmbedding()
+        # Per D-16, D-19: Use EMBEDDING_DEVICE from config
+        _qwen3vl_service = Qwen3VLMultimodalEmbedding(
+            quantization=settings.EMBEDDING_QUANTIZATION,
+            device=settings.EMBEDDING_DEVICE
+        )
     return _qwen3vl_service
 
 
