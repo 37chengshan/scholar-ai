@@ -206,7 +206,7 @@ class ImageExtractor:
 
         # Direct image encoding via Qwen3VL (no caption generation needed)
         try:
-            embedding = await qwen3vl_service.encode_image(image_data.image)
+            embedding = qwen3vl_service.encode_image(image_data.image)
             logger.debug("Generated image embedding", dim=len(embedding))
             # Note: content_data is empty since we directly encode the image
             caption = ""  # Placeholder - actual image content is in embedding

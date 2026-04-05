@@ -91,8 +91,8 @@ class SemanticCache:
         if not query or not paper_ids:
             return None
 
-        # Generate embedding for incoming query (async)
-        query_embedding = await self.embedding_service.encode_text(query)
+        # Generate embedding for incoming query
+        query_embedding = self.embedding_service.encode_text(query)
 
         # Build key pattern for matching paper_ids
         paper_key = ':'.join(sorted(paper_ids))
@@ -183,8 +183,8 @@ class SemanticCache:
             logger.warning("Cannot cache empty query")
             return False
 
-        # Generate embedding for query (async)
-        query_embedding = await self.embedding_service.encode_text(query)
+        # Generate embedding for query
+        query_embedding = self.embedding_service.encode_text(query)
 
         # Build cache key
         paper_key = ':'.join(sorted(paper_ids)) if paper_ids else "all"

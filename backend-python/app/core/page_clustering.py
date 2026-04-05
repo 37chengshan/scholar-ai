@@ -80,7 +80,7 @@ async def cluster_pages(
     page_texts = [" ".join(page_content[p]) for p in pages]
 
     try:
-        embeddings = await qwen3vl_service.encode_text(page_texts)
+        embeddings = qwen3vl_service.encode_text(page_texts)
     except Exception as e:
         logger.error(
             "Failed to encode pages for clustering",

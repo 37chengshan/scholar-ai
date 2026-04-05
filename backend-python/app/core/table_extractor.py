@@ -223,7 +223,7 @@ class TableExtractor:
 
         # Direct table encoding via Qwen3VL
         try:
-            embedding = await qwen3vl_service.encode_table(
+            embedding = qwen3vl_service.encode_table(
                 caption=caption,
                 headers=table_data.headers,
                 rows=table_data.rows[:3]  # First 3 rows per D-02

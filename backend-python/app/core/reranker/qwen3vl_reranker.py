@@ -16,7 +16,8 @@ Design decisions (per D-R03):
 """
 
 from typing import List, Dict, Any, Union, Optional
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from pathlib import Path
+from transformers import AutoModel, AutoTokenizer
 import torch
 from PIL import Image
 from unittest.mock import Mock
@@ -52,8 +53,11 @@ class Qwen3VLRerankerService(BaseRerankerService):
         results = service.rerank(query, docs)
     """
 
-    # Use config path instead of hardcoded
-    MODEL_PATH = getattr(settings, "QWEN3VL_RERANKER_MODEL_PATH", "./Qwen3-VL-Reranker-2B")
+    # Model path relative to project root (not backend-python)
+    # Project root is: /Users/cc/scholar-ai-deploy/schlar ai
+    # Reranker file is in core/reranker/, so needs 6 parents to reach project root
+    MODEL_PATH = str(Path(__file__).parent.parent.parent.parent.parent.parent / "Qwen3-VL-Reranker-2B")
+    MODEL_NAME = "Qwen3-VL-Reranker-2B"  # For health check and logging
 
     def __init__(
         self,
@@ -68,7 +72,7 @@ class Qwen3VLRerankerService(BaseRerankerService):
         """
         self.quantization = quantization
         self.device = self._detect_device(device)
-        self.model: Optional[AutoModelForCausalLM] = None
+        self.model: Optional[AutoModel] = None
         self.processor: Optional[AutoTokenizer] = None
         self._initialized = False
 
@@ -119,8 +123,8 @@ class Qwen3VLRerankerService(BaseRerankerService):
             # Set torch dtype based on quantization
             torch_dtype = torch.float16 if self.quantization == "fp16" else torch.float32
 
-            # Load model from local path
-            self.model = AutoModelForCausalLM.from_pretrained(
+            # Load model from local path (same architecture as embedding model)
+            self.model = AutoModel.from_pretrained(
                 self.MODEL_PATH,
                 torch_dtype=torch_dtype,
                 device_map=self.device,

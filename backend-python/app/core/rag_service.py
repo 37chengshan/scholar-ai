@@ -136,7 +136,7 @@ class RAGService:
         qwen3vl_service = get_qwen3vl_service()
 
         # Generate query embedding (2048-dim Qwen3VL)
-        query_embedding = await qwen3vl_service.encode_text(question)
+        query_embedding = qwen3vl_service.encode_text(question)
         # Ensure we have a single embedding (not a list of embeddings)
         if isinstance(query_embedding[0], list):
             query_embedding = query_embedding[0]  # type: ignore
@@ -313,7 +313,7 @@ async def retrieve_with_reranking(
     reranker_service = get_reranker_service()
 
     # Step 1: Generate query embedding (2048-dim Qwen3VL)
-    query_embedding = await qwen3vl_service.encode_text(query)
+    query_embedding = qwen3vl_service.encode_text(query)
     # Ensure we have a single embedding (not a list of embeddings)
     if isinstance(query_embedding[0], list):
         query_embedding = query_embedding[0]  # type: ignore

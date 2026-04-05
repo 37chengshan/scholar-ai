@@ -6,8 +6,9 @@
 import os
 import tempfile
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
@@ -21,7 +22,10 @@ router = APIRouter()
 
 
 @router.post("/pdf", status_code=status.HTTP_200_OK)
-async def parse_pdf(file: UploadFile = File(...)):
+async def parse_pdf(
+    file: UploadFile = File(...),
+    arxiv_id: Optional[str] = Form(None)
+):
     """
     解析PDF文件
 
@@ -53,10 +57,10 @@ async def parse_pdf(file: UploadFile = File(...)):
         # Parse with Docling
         parser = DoclingParser()
         result = await parser.parse_pdf(temp_path)
-
+        
         # Extract IMRaD structure using dedicated extractor
         imrad = extract_imrad_structure(result["items"])
-        metadata = extract_metadata(result["items"])
+        metadata = extract_metadata(result["items"], arxiv_id=arxiv_id)
 
         return {
             "status": "success",

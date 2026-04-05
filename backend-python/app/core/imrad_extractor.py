@@ -302,13 +302,14 @@ def _create_empty_result() -> Dict[str, Any]:
     }
 
 
-def extract_metadata(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+def extract_metadata(items: List[Dict[str, Any]], arxiv_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Extract paper metadata (title, authors, abstract) from first page.
     Uses heuristics based on position and formatting.
 
     Args:
         items: List of parsed document items
+        arxiv_id: Optional arXiv ID (e.g., "2604.01226")
 
     Returns:
         Dict with title, authors, abstract, keywords, doi
@@ -323,6 +324,24 @@ def extract_metadata(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         "venue": None,
     }
 
+    # Extract year from arXiv ID first (most reliable)
+    # arXiv ID format: YYMM.NNNNN or YYMM.NNNNNvN (e.g., 2604.01226v1 = 2026年4月)
+    if arxiv_id:
+        try:
+            # Remove version suffix if present (v1, v2, etc.)
+            arxiv_id_clean = re.sub(r'v\d+$', '', arxiv_id)
+            # Extract first 2 digits (year)
+            year_part = arxiv_id_clean[:2]
+            year = 2000 + int(year_part) if int(year_part) < 50 else 1900 + int(year_part)
+            metadata["year"] = year
+            logger.info(
+                "Extracted year from arXiv ID",
+                arxiv_id=arxiv_id,
+                year=year
+            )
+        except (ValueError, IndexError):
+            pass
+
     # Get first page items only
     first_page_items = [
         i for i in items
@@ -332,8 +351,139 @@ def extract_metadata(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not first_page_items:
         return metadata
     
-    # TODO: Implement actual metadata extraction logic
-    # For now, return default metadata structure
+    # Sort by vertical position (top to bottom)
+    first_page_items.sort(key=lambda x: x.get("bbox", {}).get("t", 0), reverse=True)
+    
+    # Extract title (usually the largest text at the top)
+    # Title is typically on the first few items and has larger font
+    # Use the first non-empty text item as title (it's usually at the very top)
+    for item in first_page_items[:3]:  # Check first 3 items
+        text = item.get("text", "").strip()
+        if text and len(text) > 10:  # Minimum title length
+            # Check if it looks like a title (not an author or affiliation line)
+            # Titles typically don't contain commas separating names or email addresses
+            if not re.search(r'@|alibaba|university|institute', text, re.IGNORECASE):
+                metadata["title"] = text
+                break
+    
+    # If still no title, use font size heuristic
+    if not metadata["title"]:
+        title_candidates = []
+        for idx, item in enumerate(first_page_items[:5]):  # Check first 5 items
+            text = item.get("text", "").strip()
+            if text and len(text) > 10:  # Minimum title length
+                bbox = item.get("bbox", {})
+                height = bbox.get("t", 0) - bbox.get("b", 0)
+                title_candidates.append({
+                    "text": text,
+                    "height": height,
+                    "index": idx
+                })
+        
+        # Select title: prefer larger font (height)
+        if title_candidates:
+            title_candidates.sort(key=lambda x: x["height"], reverse=True)
+            metadata["title"] = title_candidates[0]["text"]
+    
+    # Extract authors (usually after title, before affiliations)
+    # Authors typically contain multiple names separated by commas or numbers
+    author_items = []
+    for idx, item in enumerate(first_page_items[1:10]):  # Check items 2-10
+        text = item.get("text", "").strip()
+        if not text:
+            continue
+        
+        # Check if this looks like author names
+        # Authors often have: "Name1, Name2, Name3" or "Name1 1, Name2 2"
+        if re.search(r'\d{1,2}\s*,|\s+and\s+|,\s*[A-Z]', text):
+            # Check it's not an affiliation (which usually has "University", "Institute", etc.)
+            if not re.search(r'(University|Institute|College|Department|Lab|Laboratory)', text, re.IGNORECASE):
+                author_items.append(text)
+    
+    if author_items:
+        # Combine and clean author names
+        authors_text = author_items[0]
+        # Remove superscript numbers
+        authors_text = re.sub(r'\s*\d+\s*', ' ', authors_text)
+        # Split by comma or "and"
+        authors = re.split(r',\s*|\s+and\s+', authors_text)
+        metadata["authors"] = [a.strip() for a in authors if a.strip() and len(a.strip()) > 2]
+    
+    # Extract abstract
+    abstract_start = None
+    abstract_text = []
+    
+    for idx, item in enumerate(first_page_items):
+        text = item.get("text", "").strip()
+        if not text:
+            continue
+        
+        # Detect abstract header
+        if re.match(r'^(abstract|摘要)\s*$', text, re.IGNORECASE):
+            abstract_start = idx + 1
+            continue
+        
+        # Collect abstract text
+        if abstract_start and idx >= abstract_start:
+            # Stop at next section header
+            if re.match(r'^(1\.|introduction|keywords|关键词)', text, re.IGNORECASE):
+                break
+            abstract_text.append(text)
+    
+    if abstract_text:
+        metadata["abstract"] = " ".join(abstract_text)
+    
+    # Extract keywords
+    keywords_text = None
+    for item in first_page_items:
+        text = item.get("text", "").strip()
+        # Look for keywords section
+        if re.match(r'^(keywords|关键词|key words)', text, re.IGNORECASE):
+            # Extract keywords after the label
+            keywords_match = re.search(r'(?:keywords|关键词|key words)[:\s]+(.+)', text, re.IGNORECASE)
+            if keywords_match:
+                keywords_text = keywords_match.group(1)
+            break
+    
+    if keywords_text:
+        # Split by comma, semicolon, or period
+        keywords = re.split(r'[,;，；]\s*', keywords_text)
+        metadata["keywords"] = [k.strip() for k in keywords if k.strip()]
+    
+    # Extract DOI
+    for item in first_page_items:
+        text = item.get("text", "").strip()
+        doi_match = re.search(r'(?:doi:?\s*)?(10\.\d{4,}/[^\s]+)', text, re.IGNORECASE)
+        if doi_match:
+            metadata["doi"] = doi_match.group(1)
+            break
+    
+    # Extract year from arXiv ID or text (fallback)
+    # Note: year already extracted from arXiv ID if provided
+    if not metadata["year"]:
+        # Try to find arXiv date in text (e.g., "12 Mar 2026")
+        for item in first_page_items[:15]:
+            text = item.get("text", "").strip()
+            # Look for arXiv submission date pattern
+            date_match = re.search(r'(\d{1,2}\s+[A-Za-z]{3}\s+(\d{4}))', text)
+            if date_match:
+                metadata["year"] = int(date_match.group(2))
+                break
+            
+            # Fallback: look for 4-digit year
+            if not metadata["year"]:
+                year_match = re.search(r'\b(19|20)\d{2}\b', text)
+                if year_match:
+                    metadata["year"] = int(year_match.group(0))
+                    break
+    
+    logger.info(
+        "Extracted metadata from first page",
+        title=metadata["title"][:50] if metadata["title"] else None,
+        authors_count=len(metadata["authors"]),
+        has_abstract=metadata["abstract"] is not None
+    )
+    
     return metadata
 
 

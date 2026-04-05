@@ -143,7 +143,7 @@ class MultimodalSearchService:
             logger.info(f"Metadata filters: {metadata_filters}")
 
         # Step 5: Encode expanded query with Qwen3VL (2048-dim)
-        query_embedding = await self.qwen3vl_service.encode_text(expanded_query)
+        query_embedding = self.qwen3vl_service.encode_text(expanded_query)
 
         # Step 3: Search Milvus across modalities
         content_types = content_types or ["text", "image", "table"]

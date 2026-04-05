@@ -22,7 +22,7 @@ from docling_core.types.doc import TextItem, TableItem, PictureItem
 # Semantic chunking imports (per D-03)
 from llama_index.core.node_parser import SemanticSplitterNodeParser
 from llama_index.core import Document
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from app.core.embedding.llama_index_adapter import Qwen3VLLlamaIndexEmbedding
 
 from app.utils.logger import logger
 
@@ -279,13 +279,10 @@ class DoclingParser:
         if not texts:
             return []
 
-        # Create embedding model (use Qwen3VL)
-        from app.core.qwen3vl_service import get_qwen3vl_service
-        
-        # Note: Semantic splitting still uses HuggingFace embedding for LlamaIndex compatibility
-        # The actual Milvus embeddings will use Qwen3VL 2048-dim
-        embed_model = HuggingFaceEmbedding(
-            model_name="BAAI/bge-m3"  # LlamaIndex internal use only
+        # Use Qwen3VL 2048-dim embeddings for semantic splitting
+        embed_model = Qwen3VLLlamaIndexEmbedding(
+            quantization="int4",
+            device="auto"
         )
 
         # Create semantic splitter with LOCKED parameters (per D-03)
