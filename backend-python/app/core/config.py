@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "qwen3-vl-2b"  # Model identifier
     EMBEDDING_QUANTIZATION: str = "int4"  # Quantization type: "int4" or "fp16"
     EMBEDDING_DIMENSION: int = 2048  # Qwen3-VL output dimension
+    EMBEDDING_DEVICE: str = "auto"  # Device: "auto" | "cpu" | "cuda" | "mps" (per D-19)
     
     # Reranker Configuration (per D-R05)
     RERANKER_MODEL: str = "bge-reranker"  # Model type: "bge-reranker" or "qwen3-vl-reranker"
