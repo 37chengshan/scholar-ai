@@ -11,12 +11,14 @@ Per D-01: Complete refactor from serial to parallel architecture.
 
 import asyncio
 import os
+import tempfile
 from datetime import datetime
 from typing import Optional
 
 import asyncpg
 
 from app.workers.pipeline_context import PipelineContext, PipelineStage
+from app.workers.extraction_pipeline import PipelineError
 from app.core.storage import ObjectStorage
 from app.core.docling_service import DoclingParser
 from app.core.qwen3vl_service import get_qwen3vl_service
@@ -95,13 +97,31 @@ class PDFCoordinator:
         ctx = await self._init_context(task_id)
 
         try:
-            # Stage 1: Download (to be implemented in Plan 02)
+            # Stage 1: Download
             ctx.current_stage = PipelineStage.DOWNLOAD
-            # TODO: await self.download_manager.download(ctx)
+            try:
+                # Create temp file for PDF download
+                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                    await self.storage.download_file(ctx.storage_key, tmp.name)
+                    ctx.local_path = tmp.name
+                logger.info(f"Downloaded PDF to {ctx.local_path} for task {ctx.task_id}")
+            except Exception as e:
+                ctx.errors.append(f"Download failed: {str(e)}")
+                await self._update_status(ctx, PipelineStage.FAILED.value, error=str(e))
+                raise PipelineError(f"Download stage failed: {e}")
 
-            # Stage 2: Parsing (to be implemented in Plan 02)
+            # Stage 2: Parsing
             ctx.current_stage = PipelineStage.PARSING
-            # TODO: await self.parsing_manager.parse(ctx)
+            try:
+                ctx.parse_result = await self.parser.parse_pdf(ctx.local_path)
+                logger.info(
+                    f"Parsed PDF for task {ctx.task_id}: "
+                    f"{len(ctx.parse_result.get('pages', []))} pages"
+                )
+            except Exception as e:
+                ctx.errors.append(f"Parsing failed: {str(e)}")
+                await self._update_status(ctx, PipelineStage.FAILED.value, error=str(e))
+                raise PipelineError(f"Parsing stage failed: {e}")
 
             # Stage 3: Parallel extraction (to be implemented in Plan 02)
             ctx.current_stage = PipelineStage.EXTRACTION
