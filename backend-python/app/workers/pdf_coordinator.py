@@ -19,6 +19,7 @@ import asyncpg
 
 from app.workers.pipeline_context import PipelineContext, PipelineStage
 from app.workers.extraction_pipeline import ExtractionPipeline, PipelineError
+from app.workers.storage_manager import StorageManager
 from app.core.storage import ObjectStorage
 from app.core.docling_service import DoclingParser
 from app.core.qwen3vl_service import get_qwen3vl_service
@@ -56,7 +57,25 @@ class PDFCoordinator:
         self.image_extractor = ImageExtractor()
         self.table_extractor = TableExtractor()
         self.multimodal_indexer = None  # Lazy init
-        self.db_pool: Optional[asyncpg.Pool] = None
+        self._db_pool: Optional[asyncpg.Pool] = None
+        self._storage_manager: Optional[StorageManager] = None  # Lazy init
+
+    @property
+    def db_pool(self) -> asyncpg.Pool:
+        """Lazy-initialized database pool property."""
+        if self._db_pool is None:
+            raise RuntimeError("db_pool not initialized. Call init_db() first.")
+        return self._db_pool
+
+    @property
+    def storage_manager(self) -> StorageManager:
+        """Lazy-initialized storage manager property.
+        
+        Per VERIFICATION gap closure: StorageManager is instantiated with db_pool.
+        """
+        if self._storage_manager is None:
+            self._storage_manager = StorageManager(self.db_pool)
+        return self._storage_manager
 
     async def init_db(self) -> None:
         """Initialize database connection pool.
@@ -64,12 +83,12 @@ class PDFCoordinator:
         Uses asyncpg pool with min_size=1, max_size=10.
         Lazy initialization on first use.
         """
-        if not self.db_pool:
+        if not self._db_pool:
             db_url = os.getenv(
                 "DATABASE_URL",
                 "postgresql://scholarai:scholarai123@localhost:5432/scholarai"
             )
-            self.db_pool = await asyncpg.create_pool(
+            self._db_pool = await asyncpg.create_pool(
                 db_url,
                 min_size=1,
                 max_size=10
