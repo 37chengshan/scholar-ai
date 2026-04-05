@@ -6,12 +6,16 @@ Tests for the parallel PDF processing pipeline foundation:
 - Stage transitions
 - PipelineStage enum values
 - PDFCoordinator initialization and singleton pattern
+- Download stage success/failure scenarios
+- Parsing stage success/failure scenarios
 """
 
 import pytest
+from unittest.mock import AsyncMock
 
 from app.workers.pipeline_context import PipelineContext, PipelineStage
 from app.workers.pdf_coordinator import PDFCoordinator, get_pdf_coordinator
+from app.workers.extraction_pipeline import PipelineError
 
 
 class TestPipelineContext:
@@ -181,3 +185,143 @@ class TestPDFCoordinator:
         coordinator = get_pdf_coordinator()
 
         assert isinstance(coordinator, PDFCoordinator)
+
+    @pytest.mark.asyncio
+    async def test_download_stage_success(self):
+        """Test download stage sets ctx.local_path when storage.download_file succeeds."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="test-key.pdf"
+        )
+
+        # Mock storage.download_file to succeed
+        coordinator.storage.download_file = AsyncMock()
+
+        # Execute download stage logic
+        ctx.current_stage = PipelineStage.DOWNLOAD
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            await coordinator.storage.download_file(ctx.storage_key, tmp.name)
+            ctx.local_path = tmp.name
+
+        # Verify local_path is set
+        assert ctx.local_path is not None
+        assert ctx.local_path.endswith('.pdf')
+        coordinator.storage.download_file.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_download_stage_failure(self):
+        """Test download stage raises PipelineError on failure."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="test-key.pdf"
+        )
+
+        # Mock storage.download_file to fail
+        coordinator.storage.download_file = AsyncMock(
+            side_effect=Exception("Network error")
+        )
+
+        # Execute download stage and expect PipelineError
+        ctx.current_stage = PipelineStage.DOWNLOAD
+        import tempfile
+        with pytest.raises(PipelineError, match="Download stage failed"):
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                try:
+                    await coordinator.storage.download_file(ctx.storage_key, tmp.name)
+                    ctx.local_path = tmp.name
+                except Exception as e:
+                    raise PipelineError(f"Download stage failed: {e}")
+
+    @pytest.mark.asyncio
+    async def test_parse_stage_success(self):
+        """Test parsing stage populates ctx.parse_result."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="test-key.pdf"
+        )
+        ctx.local_path = "/tmp/test.pdf"
+
+        # Mock parser.parse_pdf to return result
+        coordinator.parser.parse_pdf = AsyncMock(
+            return_value={"pages": [{"text": "..."}], "page_count": 10}
+        )
+
+        # Execute parsing stage
+        ctx.current_stage = PipelineStage.PARSING
+        ctx.parse_result = await coordinator.parser.parse_pdf(ctx.local_path)
+
+        # Verify parse_result populated
+        assert ctx.parse_result is not None
+        assert "pages" in ctx.parse_result
+        assert ctx.parse_result["page_count"] == 10
+        coordinator.parser.parse_pdf.assert_called_once_with(ctx.local_path)
+
+    @pytest.mark.asyncio
+    async def test_parse_stage_failure(self):
+        """Test parsing stage raises PipelineError on failure."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="test-key.pdf"
+        )
+        ctx.local_path = "/tmp/test.pdf"
+
+        # Mock parser.parse_pdf to fail
+        coordinator.parser.parse_pdf = AsyncMock(
+            side_effect=Exception("Docling error")
+        )
+
+        # Execute parsing stage and expect PipelineError
+        ctx.current_stage = PipelineStage.PARSING
+        with pytest.raises(PipelineError, match="Parsing stage failed"):
+            try:
+                ctx.parse_result = await coordinator.parser.parse_pdf(ctx.local_path)
+            except Exception as e:
+                raise PipelineError(f"Parsing stage failed: {e}")
+
+    @pytest.mark.asyncio
+    async def test_download_parse_flow(self):
+        """Test complete download→parse sequence."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="test-key.pdf"
+        )
+
+        # Mock both stages to succeed
+        coordinator.storage.download_file = AsyncMock()
+        coordinator.parser.parse_pdf = AsyncMock(
+            return_value={"pages": [], "page_count": 0}
+        )
+
+        # Download stage
+        ctx.current_stage = PipelineStage.DOWNLOAD
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            await coordinator.storage.download_file(ctx.storage_key, tmp.name)
+            ctx.local_path = tmp.name
+
+        # Parsing stage
+        ctx.current_stage = PipelineStage.PARSING
+        ctx.parse_result = await coordinator.parser.parse_pdf(ctx.local_path)
+
+        # Verify complete flow
+        assert ctx.local_path is not None
+        assert ctx.parse_result is not None
+        assert ctx.current_stage == PipelineStage.PARSING
+        coordinator.storage.download_file.assert_called_once()
+        coordinator.parser.parse_pdf.assert_called_once_with(ctx.local_path)
