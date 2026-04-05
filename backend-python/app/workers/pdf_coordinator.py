@@ -148,9 +148,10 @@ class PDFCoordinator:
             ctx = await self.extraction_pipeline.extract(ctx)
             logger.info(f"Completed parallel extraction for task {ctx.task_id}")
 
-            # Stage 4: Storage (to be implemented in Plan 03)
+            # Stage 4: Storage
             ctx.current_stage = PipelineStage.STORAGE
-            # TODO: await self.storage_manager.store(ctx)
+            ctx = await self.storage_manager.store(ctx)
+            logger.info(f"Completed storage for task {ctx.task_id}")
 
             ctx.current_stage = PipelineStage.COMPLETED
             await self._update_status(ctx, "completed")
