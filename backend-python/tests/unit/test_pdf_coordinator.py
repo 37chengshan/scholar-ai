@@ -325,3 +325,103 @@ class TestPDFCoordinator:
         assert ctx.current_stage == PipelineStage.PARSING
         coordinator.storage.download_file.assert_called_once()
         coordinator.parser.parse_pdf.assert_called_once_with(ctx.local_path)
+
+    def test_extraction_pipeline_instantiation(self):
+        """Test ExtractionPipeline instantiated in coordinator."""
+        coordinator = PDFCoordinator()
+        assert coordinator.extraction_pipeline is not None
+        assert coordinator.extraction_pipeline.executor is not None
+        assert coordinator.extraction_pipeline.executor._max_workers == 4
+
+    @pytest.mark.asyncio
+    async def test_extraction_stage_calls_pipeline(self):
+        """Test extraction stage calls extraction_pipeline.extract()."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key"
+        )
+        ctx.parse_result = {"pages": [{"text": "..."}], "items": [], "markdown": ""}
+
+        # Mock extraction_pipeline.extract
+        coordinator.extraction_pipeline.extract = AsyncMock(return_value=ctx)
+
+        ctx.current_stage = PipelineStage.EXTRACTION
+        result_ctx = await coordinator.extraction_pipeline.extract(ctx)
+
+        assert result_ctx is not None
+        coordinator.extraction_pipeline.extract.assert_called_once_with(ctx)
+
+    @pytest.mark.asyncio
+    async def test_extraction_populates_imrad(self):
+        """Test extraction stage populates ctx.imrad."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key"
+        )
+        ctx.parse_result = {"pages": [], "items": [], "markdown": ""}
+
+        mock_ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key"
+        )
+        mock_ctx.imrad = {"introduction": "...", "methods": "..."}
+        coordinator.extraction_pipeline.extract = AsyncMock(return_value=mock_ctx)
+
+        result_ctx = await coordinator.extraction_pipeline.extract(ctx)
+
+        assert result_ctx.imrad is not None
+        assert "introduction" in result_ctx.imrad
+
+    @pytest.mark.asyncio
+    async def test_extraction_populates_metadata(self):
+        """Test extraction stage populates ctx.metadata."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key"
+        )
+        ctx.parse_result = {"pages": [], "items": [], "markdown": ""}
+
+        mock_ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key"
+        )
+        mock_ctx.metadata = {"title": "Test Paper", "authors": ["Author"]}
+        coordinator.extraction_pipeline.extract = AsyncMock(return_value=mock_ctx)
+
+        result_ctx = await coordinator.extraction_pipeline.extract(ctx)
+
+        assert result_ctx.metadata is not None
+        assert "title" in result_ctx.metadata
+
+    @pytest.mark.asyncio
+    async def test_extraction_critical_failure_blocks(self):
+        """Test extraction raises PipelineError when critical stage fails."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key"
+        )
+        ctx.parse_result = {"pages": [], "items": [], "markdown": ""}
+
+        # Mock extraction to raise PipelineError (critical failure)
+        coordinator.extraction_pipeline.extract = AsyncMock(
+            side_effect=PipelineError("IMRaD extraction failed")
+        )
+
+        with pytest.raises(PipelineError, match="IMRaD extraction failed"):
+            await coordinator.extraction_pipeline.extract(ctx)
