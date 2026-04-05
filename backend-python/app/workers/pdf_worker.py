@@ -290,16 +290,51 @@ class PDFProcessor:
         """
         Retry a failed task if attempts remaining.
         
-        Delegates to coordinator for retry logic.
-        
         Args:
             task_id: Task UUID to retry
             
         Returns:
             True if retry initiated, False if max retries exceeded
         """
-        await self.coordinator.init_db()
-        return await self.coordinator.retry_task(task_id)
+        await self.init_db()
+
+        async with self.db_pool.acquire() as conn:
+            task = await conn.fetchrow(
+                """SELECT attempts, status
+                   FROM processing_tasks
+                   WHERE id = $1""",
+                task_id,
+            )
+
+            if not task:
+                logger.error("Task not found for retry", task_id=task_id)
+                return False
+
+            if task["attempts"] >= self.MAX_RETRIES:
+                logger.error(
+                    "Max retries exceeded",
+                    task_id=task_id,
+                    attempts=task["attempts"],
+                )
+                return False
+
+            # Increment attempts and reset to pending
+            await conn.execute(
+                """UPDATE processing_tasks
+                   SET status = 'pending',
+                       attempts = attempts + 1,
+                       error_message = NULL,
+                       updated_at = NOW()
+                   WHERE id = $1""",
+                task_id,
+            )
+
+        logger.info(
+            "Task queued for retry",
+            task_id=task_id,
+            attempt=task["attempts"] + 1,
+        )
+        return True
 
 
 # Worker loop for standalone execution
