@@ -277,10 +277,10 @@ class AgentRunner:
                             "state": self.current_state.value
                         }
                 
-                # TOOL_EXECUTION: Execute tool
+                # TOOL_EXECUTION: Execute tool with multi-layer error recovery
                 self.current_state = AgentState.TOOL_EXECUTION
                 
-                tool_result = await self._execute_tool(
+                tool_result = await self._execute_with_fallback(
                     tool_name,
                     tool_parameters,
                     context
