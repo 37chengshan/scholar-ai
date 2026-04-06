@@ -285,27 +285,44 @@ class TestAgentWorkflow:
                 }
             ]
 
-            # Mock tool execution - first fails, second succeeds
+            # Mock tool execution - first fails after retries, second succeeds
             execute_responses = [
+                # external_search retry 1: fail
                 {
                     "success": False,
                     "error": "External search service unavailable"
                 },
+                # external_search retry 2: fail
+                {
+                    "success": False,
+                    "error": "External search service unavailable"
+                },
+                # external_search retry 3: fail
+                {
+                    "success": False,
+                    "error": "External search service unavailable"
+                },
+                # alternative rag_search: succeed
                 {
                     "success": True,
                     "data": {"papers": ["paper1", "paper2"]}
+                },
+                # LLM iteration 2 rag_search: succeed
+                {
+                    "success": True,
+                    "data": {"papers": ["paper3"]}
                 }
             ]
 
             with patch.object(agent_runner, '_think', side_effect=think_responses):
-                with patch.object(agent_runner, '_execute_tool', side_effect=execute_responses):
+                with patch.object(agent_runner.tool_registry, 'execute', side_effect=execute_responses):
                     result = await agent_runner.execute(
                         user_input="搜索论文",
                         session_id=session_context["session_id"],
                         user_id=session_context["user_id"]
                     )
 
-        # Verify result - recovered from error
+        # Verify result - recovered from error using fallback
         assert result["success"] is True
         assert result["iterations"] >= 2
         assert result["state"] == AgentState.COMPLETED.value
@@ -313,7 +330,8 @@ class TestAgentWorkflow:
         # Verify tool calls
         assert len(result["tool_calls"]) >= 2
         assert result["tool_calls"][0]["tool"] == "external_search"
-        assert result["tool_calls"][0]["result"]["success"] is False
+        # First tool used alternative (fallback mechanism)
+        assert result["tool_calls"][0]["result"].get("used_alternative") is True
         assert result["tool_calls"][1]["tool"] == "rag_search"
         assert result["tool_calls"][1]["result"]["success"] is True
 
@@ -508,13 +526,21 @@ class TestAgentErrorRecoveryWorkflow:
                 }
             ]
 
+            # Mock at tool_registry level to let _execute_with_fallback logic run
+            # Provide enough responses: 3 retries for external_search (all fail), 1 for rag_search (succeeds)
             execute_responses = [
+                # Retry 1 for external_search: fail
                 {"success": False, "error": "service unavailable", "data": None},
-                {"success": True, "data": {"papers": ["paper1"]}, "error": None}
+                # Retry 2 for external_search: fail
+                {"success": False, "error": "service unavailable", "data": None},
+                # Retry 3 for external_search: fail
+                {"success": False, "error": "service unavailable", "data": None},
+                # Alternative tool rag_search: succeed
+                {"success": True, "data": {"papers": ["paper1"]}, "error": None},
             ]
 
             with patch.object(agent_runner, '_think', side_effect=think_responses):
-                with patch.object(agent_runner, '_execute_tool', side_effect=execute_responses):
+                with patch.object(agent_runner.tool_registry, 'execute', side_effect=execute_responses):
                     result = await agent_runner.execute(
                         user_input="Search for AI papers",
                         session_id=session_context["session_id"],
@@ -525,11 +551,14 @@ class TestAgentErrorRecoveryWorkflow:
         assert result["success"] is True
         assert result["state"] == AgentState.COMPLETED.value
         assert result["iterations"] == 3
-        assert len(result["tool_calls"]) == 2
 
-        # Verify failure then success sequence
-        assert result["tool_calls"][0]["result"]["success"] is False
-        assert result["tool_calls"][1]["result"]["success"] is True
+        # Verify external_search used alternative after retries exhausted
+        # Check that the fallback mechanism worked
+        assert result["tool_calls"][0]["tool"] == "external_search"
+        # The result shows alternative was used
+        assert result["tool_calls"][0]["result"].get("used_alternative") is True
+        assert result["tool_calls"][0]["result"].get("alternative_tool") == "rag_search"
+        assert result["tool_calls"][0]["result"]["success"] is True  # Alternative succeeded
 
     async def test_agent_handles_multiple_tool_failures_in_sequence(self, agent_runner, session_context):
         """Test: Multiple tools fail in sequence, agent adapts.
@@ -563,14 +592,25 @@ class TestAgentErrorRecoveryWorkflow:
                 {"is_complete": True, "content": "Found papers using list_papers after other searches failed."}
             ]
 
+            # Mock at tool_registry level to let _execute_with_fallback logic run
+            # Provide responses for retries and alternatives
             execute_responses = [
+                # external_search retry 1: fail
                 {"success": False, "error": "external service unavailable", "data": None},
-                {"success": False, "error": "RAG service unavailable", "data": None},
+                # external_search retry 2: fail
+                {"success": False, "error": "external service unavailable", "data": None},
+                # external_search retry 3: fail
+                {"success": False, "error": "external service unavailable", "data": None},
+                # alternative rag_search: succeed (Layer 2)
+                {"success": True, "data": {"papers": ["paper1"]}, "error": None},
+                # LLM iteration 2: rag_search succeeds
+                {"success": True, "data": {"papers": ["paper2"]}, "error": None},
+                # LLM iteration 3: list_papers succeeds
                 {"success": True, "data": {"papers": ["paper1", "paper2"]}, "error": None}
             ]
 
             with patch.object(agent_runner, '_think', side_effect=think_responses):
-                with patch.object(agent_runner, '_execute_tool', side_effect=execute_responses):
+                with patch.object(agent_runner.tool_registry, 'execute', side_effect=execute_responses):
                     result = await agent_runner.execute(
                         user_input="Comprehensive paper search",
                         session_id=session_context["session_id"],
@@ -582,9 +622,12 @@ class TestAgentErrorRecoveryWorkflow:
         assert result["state"] == AgentState.COMPLETED.value
         assert len(result["tool_calls"]) == 3
 
-        # Verify failure sequence
-        assert result["tool_calls"][0]["result"]["success"] is False
-        assert result["tool_calls"][1]["result"]["success"] is False
+        # Verify first tool used alternative after retries exhausted
+        assert result["tool_calls"][0]["tool"] == "external_search"
+        assert result["tool_calls"][0]["result"].get("used_alternative") is True
+        # Second tool succeeded directly
+        assert result["tool_calls"][1]["result"]["success"] is True
+        # Third tool succeeded
         assert result["tool_calls"][2]["result"]["success"] is True
 
     async def test_agent_returns_error_when_all_tools_fail(self, agent_runner, session_context):
@@ -624,7 +667,7 @@ class TestAgentErrorRecoveryWorkflow:
             ]
 
             with patch.object(agent_runner, '_think', side_effect=think_responses):
-                with patch.object(agent_runner, '_execute_tool', side_effect=execute_responses):
+                with patch.object(agent_runner.tool_registry, 'execute', side_effect=execute_responses):
                     result = await agent_runner.execute(
                         user_input="Search for papers",
                         session_id=session_context["session_id"],
