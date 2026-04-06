@@ -3,6 +3,7 @@ Pytest fixtures and configuration for backend-python tests.
 """
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import AsyncGenerator, Generator, Dict, Any
@@ -17,6 +18,22 @@ from httpx import AsyncClient
 # Set test environment before importing app
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_PUBLIC_KEY", "test-public-key")
+
+# Set correct Qwen model path (absolute path from project root)
+# The model is at /Users/cc/scholar-ai-deploy/schlar ai/Qwen/Qwen3-VL-Embedding-2B
+# From backend-python, we need to go up 2 levels to reach project root
+project_root = Path(__file__).parent.parent.parent.parent  # Go up from tests/ -> backend-python/ -> scholar-ai/ -> project root
+qwen_model_path = project_root / "Qwen" / "Qwen3-VL-Embedding-2B"
+if qwen_model_path.exists():
+    os.environ.setdefault("QWEN3VL_EMBEDDING_MODEL_PATH", str(qwen_model_path))
+    os.environ.setdefault("QWEN3VL_RERANKER_MODEL_PATH", str(project_root / "Qwen" / "Qwen3-VL-Reranker-2B"))
+
+# Mock qwen_vl_utils module to avoid import errors during tests
+# This module is required by Qwen model scripts but not needed for most tests
+if 'qwen_vl_utils' not in sys.modules:
+    sys.modules['qwen_vl_utils'] = MagicMock()
+    sys.modules['qwen_vl_utils.vision_process'] = MagicMock()
+    sys.modules['qwen_vl_utils.vision_process'].process_vision_info = MagicMock(return_value=None)
 
 
 @pytest.fixture(scope="session")
