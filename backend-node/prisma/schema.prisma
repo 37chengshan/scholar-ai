@@ -9,53 +9,21 @@ datasource db {
 
 model annotations {
   id          String   @id
-  paper_id    String
-  user_id     String
+  paperId     String
+  userId      String
   type        String
   page_number Int
   position    Json
   content     String?
   color       String   @default("#FFEB3B")
-  created_at  DateTime @default(now())
-  updated_at  DateTime
-  papers      papers   @relation(fields: [paper_id], references: [id], onDelete: Cascade)
-  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  papers      papers   @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  users       users    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([paper_id])
-  @@index([paper_id, page_number])
-  @@index([user_id])
-}
-
-model api_keys {
-  id           String    @id
-  user_id      String
-  name         String
-  key_hash     String
-  prefix       String
-  last_used_at DateTime?
-  created_at   DateTime  @default(now())
-  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@index([user_id])
-}
-
-model chat_messages {
-  id           String   @id
-  session_id   String
-  role         String
-  content      String
-  tool_calls   Json?
-  tool_call_id String?
-  metadata     Json?
-  sources      Json?
-  tokens_used  Int?
-  duration_ms  Int?
-  created_at   DateTime @default(now())
-  sessions     sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
-
-  @@index([created_at])
-  @@index([role])
-  @@index([session_id])
+  @@index([paperId])
+  @@index([paperId, page_number])
+  @@index([userId])
 }
 
 model configs {
@@ -63,7 +31,7 @@ model configs {
   key         String   @unique
   value       Json
   description String?
-  updated_at  DateTime
+  updatedAt   DateTime
 }
 
 model knowledge_maps {
@@ -71,240 +39,199 @@ model knowledge_maps {
   name        String
   description String?
   domain      String?
-  node_count  Int      @default(0)
-  edge_count  Int      @default(0)
-  created_at  DateTime @default(now())
-  updated_at  DateTime
-  user_id     String
-  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-}
-
-model notes {
-  id         String   @id
-  user_id    String
-  title      String
-  content    String
-  tags       String[]
-  paper_ids  String[]
-  created_at DateTime @default(now())
-  updated_at DateTime
-  users      users    @relation(fields: [user_id], references: [id])
-}
-
-model paper_batches {
-  id             String   @id
-  user_id        String
-  total_files    Int
-  uploaded_count Int      @default(0)
-  status         String   @default("uploading")
-  created_at     DateTime @default(now())
-  papers         papers[]
-
-  @@index([status])
-  @@index([user_id])
+  nodeCount   Int      @default(0)
+  edgeCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  userId      String
+  users       users    @relation("UserKnowledgeMaps", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model paper_chunks {
-  id         String   @id
-  content    String
-  section    String?
-  page_start Int?
-  page_end   Int?
-  is_table   Boolean  @default(false)
-  is_figure  Boolean  @default(false)
-  is_formula Boolean  @default(false)
-  created_at DateTime @default(now())
-  paper_id   String
-  papers     papers   @relation(fields: [paper_id], references: [id], onDelete: Cascade)
+  id        String   @id
+  content   String
+  section   String?
+  pageStart Int?
+  pageEnd   Int?
+  isTable   Boolean  @default(false)
+  isFigure  Boolean  @default(false)
+  isFormula Boolean  @default(false)
+  createdAt DateTime @default(now())
+  paperId   String
+  papers    papers   @relation("PaperChunks", fields: [paperId], references: [id], onDelete: Cascade)
 
-  @@index([paper_id])
+  @@index([paperId])
 }
 
 model papers {
-  id               String             @id
-  title            String
-  authors          String[]
-  year             Int?
-  abstract         String?
-  doi              String?
-  arxiv_id         String?
-  pdf_url          String?
-  pdf_path         String?
-  content          String?
-  imrad_json       Json?
-  status           String             @default("pending")
-  file_size        Int?
-  page_count       Int?
-  keywords         String[]
-  venue            String?
-  citations        Int?
-  created_at       DateTime           @default(now())
-  updated_at       DateTime
-  user_id          String
-  storage_key      String?
-  reading_notes    String?
-  notes_version    Int                @default(0)
-  batch_id         String?
-  upload_progress  Int?
-  upload_status    String?
-  uploaded_at      DateTime?
-  starred          Boolean            @default(false)
-  project_id       String?
-  annotations      annotations[]
-  paper_chunks     paper_chunks[]
-  paper_batches    paper_batches?     @relation(fields: [batch_id], references: [id])
-  projects         projects?          @relation(fields: [project_id], references: [id])
-  users            users              @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  processing_tasks processing_tasks?
-  reading_progress reading_progress[]
-  queries          queries[]          @relation("QueryPapers")
+  id              String             @id
+  title           String
+  authors         String[]
+  year            Int?
+  abstract        String?
+  doi             String?
+  arxivId         String?
+  pdfUrl          String?
+  pdfPath         String?
+  content         String?
+  imradJson       Json?
+  status          String             @default("pending")
+  fileSize        Int?
+  pageCount       Int?
+  keywords        String[]
+  venue           String?
+  citations       Int?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime
+  userId          String
+  storageKey      String?            @map("storage_key")
+  readingNotes    String?            @map("reading_notes")
+  notesVersion    Int                @default(0) @map("notes_version")
+  starred         Boolean            @default(false)
+  projectId       String?
+  annotations     annotations[]
+  paperChunks     paper_chunks[]     @relation("PaperChunks")
+  projects        projects?          @relation(fields: [projectId], references: [id])
+  users           users              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  processingTasks processing_tasks?  @relation("PaperProcessingTasks")
+  readingProgress reading_progress[] @relation("PaperReadingProgress")
+  queries         queries[]          @relation("QueryPapers")
 
+  @@index([userId])
   @@index([starred])
-  @@index([user_id, starred])
+  @@index([userId, starred])
 }
 
 model permissions {
-  id       String @id
-  role_id  String
+  id       String  @id
   resource String
   action   String
-  roles    roles  @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  roles    roles[] @relation("PermissionToRole")
 
   @@unique([resource, action])
 }
 
 model processing_tasks {
-  id               String    @id
-  paper_id         String    @unique
-  status           String    @default("pending")
-  storage_key      String
-  error_message    String?
-  partial_failures Json?
-  attempts         Int       @default(0)
-  created_at       DateTime  @default(now())
-  updated_at       DateTime
-  completed_at     DateTime?
-  error_stage      String?
-  error_time       DateTime?
-  retry_count      Int       @default(0)
-  papers           papers    @relation(fields: [paper_id], references: [id], onDelete: Cascade)
+  id           String    @id
+  paperId      String    @unique @map("paper_id")
+  status       String    @default("pending")
+  storageKey   String    @map("storage_key")
+  errorMessage String?   @map("error_message")
+  attempts     Int       @default(0)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @map("updated_at")
+  completedAt  DateTime? @map("completed_at")
+  papers       papers    @relation("PaperProcessingTasks", fields: [paperId], references: [id], onDelete: Cascade)
 
-  @@index([paper_id])
+  @@index([paperId])
   @@index([status])
 }
 
 model projects {
-  id         String   @id
-  user_id    String
-  name       String
-  color      String   @default("#3B82F6")
-  created_at DateTime @default(now())
-  updated_at DateTime
-  papers     papers[]
-  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id        String   @id
+  userId    String
+  name      String
+  color     String   @default("#3B82F6")
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  papers    papers[]
+  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([user_id])
+  @@index([userId])
 }
 
 model queries {
-  id          String   @id
-  question    String
-  answer      String?
-  sources     Json?
-  query_type  String   @default("single")
-  status      String   @default("pending")
-  duration_ms Int?
-  created_at  DateTime @default(now())
-  user_id     String
-  paper_ids   String[]
-  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  papers      papers[] @relation("QueryPapers")
+  id         String   @id
+  question   String
+  answer     String?
+  sources    Json?
+  queryType  String   @default("single")
+  status     String   @default("pending")
+  durationMs Int?
+  createdAt  DateTime @default(now())
+  userId     String
+  paperIds   String[]
+  users      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  papers     papers[] @relation("QueryPapers")
 
-  @@index([created_at])
-  @@index([user_id])
+  @@index([createdAt])
+  @@index([userId])
 }
 
 model reading_progress {
-  id           String   @id
-  paper_id     String
-  user_id      String
-  current_page Int      @default(1)
-  total_pages  Int?
-  last_read_at DateTime @default(now())
-  papers       papers   @relation(fields: [paper_id], references: [id], onDelete: Cascade)
-  users        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id          String   @id
+  paperId     String
+  userId      String
+  currentPage Int      @default(1) @map("current_page")
+  totalPages  Int?     @map("total_pages")
+  lastReadAt  DateTime @default(now()) @map("last_read_at")
+  papers      papers   @relation("PaperReadingProgress", fields: [paperId], references: [id], onDelete: Cascade)
+  users       users    @relation("UserReadingProgress", fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([paper_id, user_id])
-  @@index([last_read_at])
-  @@index([user_id])
+  @@unique([paperId, userId])
+  @@index([lastReadAt])
+  @@index([userId])
 }
 
 model refresh_tokens {
-  id         String   @id
-  user_id    String
-  token_hash String   @unique
-  expires_at DateTime
-  created_at DateTime @default(now())
-  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id        String   @id
+  tokenHash String   @unique @map("token")
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  users     users    @relation("UserRefreshTokens", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model roles {
   id          String        @id
   name        String        @unique
   description String?
-  permissions permissions[]
   user_roles  user_roles[]
-}
-
-model sessions {
-  id               String          @id
-  user_id          String
-  title            String?
-  status           String          @default("active")
-  metadata         Json?
-  message_count    Int             @default(0)
-  tool_call_count  Int             @default(0)
-  created_at       DateTime        @default(now())
-  updated_at       DateTime
-  last_activity_at DateTime        @default(now())
-  expires_at       DateTime?
-  chat_messages    chat_messages[]
-  users            users           @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@index([expires_at])
-  @@index([status])
-  @@index([user_id])
+  permissions permissions[] @relation("PermissionToRole")
 }
 
 model user_roles {
-  id      String @id
-  user_id String
-  role_id String
-  roles   roles  @relation(fields: [role_id], references: [id], onDelete: Cascade)
-  users   users  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id     String @id
+  userId String
+  roleId String
+  roles  roles  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  users  users  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([user_id, role_id])
+  @@unique([userId, roleId])
+}
+
+model notes {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  content   String   @db.Text
+  tags      String[]
+  paperIds  String[] @map("paper_ids")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("notes")
 }
 
 model users {
-  id               String             @id
-  email            String             @unique
-  name             String
-  password_hash    String
-  email_verified   Boolean            @default(false)
-  avatar           String?
-  settings         Json?
-  created_at       DateTime           @default(now())
-  updated_at       DateTime
-  annotations      annotations[]
-  api_keys         api_keys[]
-  knowledge_maps   knowledge_maps[]
-  notes            notes[]
-  papers           papers[]
-  projects         projects[]
-  queries          queries[]
-  reading_progress reading_progress[]
-  refresh_tokens   refresh_tokens[]
-  sessions         sessions[]
-  user_roles       user_roles[]
+  id              String             @id
+  email           String             @unique
+  name            String
+  passwordHash    String             @map("password_hash")
+  emailVerified   Boolean            @default(false) @map("email_verified")
+  avatar          String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime
+  annotations     annotations[]
+  knowledgeMaps   knowledge_maps[]   @relation("UserKnowledgeMaps")
+  notes           notes[]
+  papers          papers[]
+  projects        projects[]
+  queries         queries[]
+  readingProgress reading_progress[] @relation("UserReadingProgress")
+  refreshTokens   refresh_tokens[]   @relation("UserRefreshTokens")
+  userRoles       user_roles[]       @relation("UserRoles")
 }
