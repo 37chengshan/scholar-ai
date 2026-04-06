@@ -557,3 +557,210 @@ class TestAgentRunnerStateTransitions:
         # Verify state transitions
         assert initial_state == AgentState.IDLE
         assert final_state == AgentState.COMPLETED
+
+
+class TestSystemPrompt:
+    """Test system prompt enhancement with reasoning framework per D-11."""
+    
+    def test_system_prompt_includes_reasoning_steps(self, agent_runner):
+        """System prompt should include explicit reasoning framework (Analyze → Select → Plan → Verify)."""
+        mock_context = Context(
+            objective="Find papers about AI",
+            important_messages=[],
+            environment={"user_id": "user123", "session_id": "session123"}
+        )
+        
+        prompt = agent_runner._build_system_prompt(mock_context)
+        
+        # Verify reasoning framework is present
+        assert "ANALYZE" in prompt or "analyze" in prompt.lower()
+        assert "SELECT" in prompt or "select" in prompt.lower()
+        assert "PLAN" in prompt or "plan" in prompt.lower()
+        assert "VERIFY" in prompt or "verify" in prompt.lower()
+    
+    def test_system_prompt_guides_tool_selection(self, agent_runner):
+        """System prompt should guide tool selection decisions."""
+        mock_context = Context(
+            objective="Search for papers",
+            important_messages=[],
+            environment={"user_id": "user123", "session_id": "session123"}
+        )
+        
+        prompt = agent_runner._build_system_prompt(mock_context)
+        
+        # Verify tool selection guidance is present
+        assert "tool" in prompt.lower()
+        # Should mention deciding which tools to use
+        assert "decide" in prompt.lower() or "select" in prompt.lower() or "choose" in prompt.lower()
+    
+    def test_system_prompt_includes_error_handling_guidance(self, agent_runner):
+        """System prompt should include error handling strategy guidance."""
+        mock_context = Context(
+            objective="Test objective",
+            important_messages=[],
+            environment={"user_id": "user123", "session_id": "session123"}
+        )
+        
+        prompt = agent_runner._build_system_prompt(mock_context)
+        
+        # Verify error handling guidance is present
+        assert "error" in prompt.lower() or "fail" in prompt.lower()
+        # Should mention retry or alternative strategies
+        assert "retry" in prompt.lower() or "alternative" in prompt.lower() or "recover" in prompt.lower()
+
+
+class TestErrorRecovery:
+    """Test multi-layer error recovery per D-12."""
+    
+    def test_is_retryable_error_detects_transient_errors(self, agent_runner):
+        """Agent should detect transient errors that can be retried."""
+        # Network timeout is retryable
+        assert agent_runner._is_retryable_error("timeout while connecting to server")
+        assert agent_runner._is_retryable_error("network error: connection refused")
+        assert agent_runner._is_retryable_error("service unavailable")
+        
+        # Non-retryable errors should return False
+        assert not agent_runner._is_retryable_error("paper not found")
+        assert not agent_runner._is_retryable_error("permission denied")
+        assert not agent_runner._is_retryable_error("invalid parameter")
+        assert not agent_runner._is_retryable_error("required field missing")
+    
+    def test_get_alternative_tool_returns_fallback(self, agent_runner):
+        """Agent should get alternative tool for failed tools."""
+        # external_search -> rag_search fallback
+        alternative = agent_runner._get_alternative_tool("external_search")
+        assert alternative == "rag_search"
+        
+        # rag_search -> external_search fallback (bidirectional)
+        alternative = agent_runner._get_alternative_tool("rag_search")
+        assert alternative == "external_search"
+        
+        # Tools without alternatives should return None
+        alternative = agent_runner._get_alternative_tool("unknown_tool")
+        assert alternative is None
+    
+    @pytest.mark.asyncio
+    async def test_execute_with_fallback_retry_on_transient_error(self, agent_runner):
+        """Agent should retry on transient errors before trying alternative."""
+        mock_context = Context(
+            objective="Test",
+            important_messages=[],
+            environment={"user_id": "user123", "session_id": "session123"}
+        )
+        
+        # Mock tool registry execute to fail with transient error then succeed
+        call_count = [0]  # Use list to allow modification in nested function
+        async def mock_execute(tool_name, params, **kwargs):
+            call_count[0] += 1
+            if call_count[0] < 3:
+                return {"success": False, "error": "timeout", "data": None}
+            return {"success": True, "data": {"result": "success"}, "error": None}
+        
+        with patch.object(agent_runner.tool_registry, 'execute', side_effect=mock_execute):
+            result = await agent_runner._execute_with_fallback(
+                tool_name="external_search",
+                params={"query": "AI"},
+                context=mock_context
+            )
+        
+        # Should succeed after retry
+        assert result["success"] == True
+        assert call_count[0] >= 3  # At least 3 attempts (initial + 2 retries)
+    
+    @pytest.mark.asyncio
+    async def test_execute_with_fallback_alternative_tool_on_permanent_failure(self, agent_runner):
+        """Agent should try alternative tool when retries exhausted."""
+        mock_context = Context(
+            objective="Test",
+            important_messages=[],
+            environment={"user_id": "user123", "session_id": "session123"}
+        )
+        
+        # Mock external_search to always fail, rag_search to succeed
+        async def mock_execute(tool_name, params, **kwargs):
+            if tool_name == "external_search":
+                return {"success": False, "error": "service permanently unavailable", "data": None}
+            elif tool_name == "rag_search":
+                return {"success": True, "data": {"papers": ["paper1"]}, "error": None}
+            return {"success": False, "error": "unknown tool", "data": None}
+        
+        with patch.object(agent_runner.tool_registry, 'execute', side_effect=mock_execute):
+            result = await agent_runner._execute_with_fallback(
+                tool_name="external_search",
+                params={"query": "AI"},
+                context=mock_context
+            )
+        
+        # Should succeed using alternative tool
+        assert result["success"] == True
+        assert result["used_alternative"] == True
+    
+    @pytest.mark.asyncio
+    async def test_execute_with_fallback_needs_user_decision_when_all_fail(self, agent_runner):
+        """Agent should return needs_user_decision when all recovery options exhausted."""
+        mock_context = Context(
+            objective="Test",
+            important_messages=[],
+            environment={"user_id": "user123", "session_id": "session123"}
+        )
+        
+        # Mock both tools to fail
+        async def mock_execute(tool_name, params, **kwargs):
+            return {"success": False, "error": "service unavailable", "data": None}
+        
+        with patch.object(agent_runner.tool_registry, 'execute', side_effect=mock_execute):
+            result = await agent_runner._execute_with_fallback(
+                tool_name="external_search",
+                params={"query": "AI"},
+                context=mock_context
+            )
+        
+        # Should indicate user decision needed
+        assert result["success"] == False
+        assert result.get("needs_user_decision") == True
+        assert "error" in result
+        assert "suggestion" in result or "alternatives" in result
+    
+    @pytest.mark.asyncio
+    async def test_retry_with_exponential_backoff(self, agent_runner):
+        """Agent should retry with exponential backoff (1s, 2s, 4s)."""
+        import asyncio
+        import time
+        
+        mock_context = Context(
+            objective="Test",
+            important_messages=[],
+            environment={"user_id": "user123", "session_id": "session123"}
+        )
+        
+        call_times = []
+        async def mock_execute(tool_name, params, **kwargs):
+            call_times.append(time.time())
+            return {"success": False, "error": "timeout", "data": None}
+        
+        # Only test first few retries (not full exhaustion)
+        with patch.object(agent_runner.tool_registry, 'execute', side_effect=mock_execute):
+            start_time = time.time()
+            
+            # We need to capture the retry delays
+            # For testing, we'll patch asyncio.sleep to track delays
+            sleep_delays = []
+            async def mock_sleep(delay):
+                sleep_delays.append(delay)
+                # Don't actually sleep in tests
+                return
+            
+            with patch('asyncio.sleep', side_effect=mock_sleep):
+                result = await agent_runner._execute_with_fallback(
+                    tool_name="external_search",
+                    params={"query": "AI"},
+                    context=mock_context,
+                    max_retries=3
+                )
+        
+        # Verify exponential backoff pattern (1s, 2s, 4s)
+        assert len(sleep_delays) >= 2
+        # First retry delay should be ~1s
+        assert sleep_delays[0] == 1
+        # Second retry delay should be ~2s (doubled)
+        assert sleep_delays[1] == 2

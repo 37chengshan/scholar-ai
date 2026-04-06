@@ -3,12 +3,18 @@
 Implements D-05 from Agent-Native architecture:
 ReAct (Reasoning + Acting) pattern for multi-step agent execution.
 
+Implements D-11 from Phase 22:
+Enhanced system prompt with reasoning framework.
+
+Implements D-12 from Phase 22:
+Multi-layer error recovery (retry → alternative → user decision).
+
 Agent Execution Flow:
 1. Build context from session
 2. THINKING: Call LLM to determine next action
 3. TOOL_SELECTION: Extract tool call from LLM response
 4. Check permission via Safety Layer
-5. TOOL_EXECUTION: Execute tool with parameters
+5. TOOL_EXECUTION: Execute tool with parameters (with error recovery)
 6. Update context and loop until complete
 7. Return final answer
 
@@ -20,6 +26,7 @@ Usage:
 from enum import Enum
 from typing import Any, Dict, List, Optional
 import json
+import asyncio
 
 from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
@@ -28,6 +35,17 @@ from app.core.config import settings
 from app.utils.logger import logger
 from app.utils.zhipu_client import get_llm_client
 from app.utils.token_tracker import TokenTracker
+
+
+# Error recovery constants per D-12
+RETRYABLE_ERRORS = ["timeout", "network", "unavailable", "connection", "temporarily"]
+NON_RETRYABLE_ERRORS = ["not found", "permission denied", "invalid", "required", "does not exist", "unauthorized"]
+
+# Alternative tool mappings for fallback per D-12
+ALTERNATIVE_TOOLS = {
+    "external_search": "rag_search",  # External search failed -> try RAG search
+    "rag_search": "external_search",  # RAG search failed -> try external search
+}
 
 
 class AgentState(Enum):
@@ -510,6 +528,160 @@ class AgentRunner:
                 "error": str(e)
             }
     
+    def _is_retryable_error(self, error: str) -> bool:
+        """Check if error is transient and can be retried.
+        
+        Per D-12: Non-retryable errors are "not found", "permission denied",
+        "invalid", "required". Retryable errors are "timeout", "network", "unavailable".
+        
+        Args:
+            error: Error message string
+            
+        Returns:
+            True if error is retryable, False otherwise
+        """
+        error_lower = error.lower()
+        
+        # Check for non-retryable errors first (these should NOT be retried)
+        for non_retryable in NON_RETRYABLE_ERRORS:
+            if non_retryable in error_lower:
+                return False
+        
+        # Check for retryable errors
+        for retryable in RETRYABLE_ERRORS:
+            if retryable in error_lower:
+                return True
+        
+        # Default: not retryable
+        return False
+    
+    def _get_alternative_tool(self, failed_tool: str) -> Optional[str]:
+        """Get alternative tool for fallback when primary fails.
+        
+        Per D-12: Provides fallback tools for search operations.
+        
+        Args:
+            failed_tool: Name of the tool that failed
+            
+        Returns:
+            Alternative tool name, or None if no alternative exists
+        """
+        return ALTERNATIVE_TOOLS.get(failed_tool)
+    
+    async def _execute_with_fallback(
+        self,
+        tool_name: str,
+        params: Dict[str, Any],
+        context: Context,
+        max_retries: int = 3
+    ) -> Dict[str, Any]:
+        """Execute tool with multi-layer error recovery.
+        
+        Per D-12: Three-layer recovery mechanism:
+        1. Auto-retry (3 times with exponential backoff: 1s, 2s, 4s)
+        2. Alternative tool (external_search → rag_search fallback)
+        3. User decision (explain error, suggest solutions)
+        
+        Args:
+            tool_name: Primary tool to execute
+            params: Tool parameters
+            context: Execution context
+            max_retries: Maximum retry attempts (default: 3)
+            
+        Returns:
+            Tool result with:
+                - success: Whether execution succeeded
+                - data: Tool output (if success)
+                - error: Error message (if failed)
+                - used_alternative: True if alternative tool was used
+                - needs_user_decision: True if all recovery options exhausted
+        """
+        # Layer 1: Retry with exponential backoff
+        backoff_delays = [1, 2, 4]  # 1s, 2s, 4s per D-12
+        result = {"success": False, "error": "No execution attempted", "data": None}
+        
+        for attempt in range(max_retries):
+            logger.info(
+                "Tool execution attempt",
+                tool=tool_name,
+                attempt=attempt + 1,
+                max_retries=max_retries
+            )
+            
+            result = await self._execute_tool(tool_name, params, context)
+            
+            if result.get("success"):
+                return result
+            
+            error = result.get("error", "")
+            
+            # Check if error is retryable
+            if not self._is_retryable_error(error):
+                # Non-retryable error, skip retry layer
+                logger.warning(
+                    "Non-retryable error encountered",
+                    tool=tool_name,
+                    error=error
+                )
+                break
+            
+            # Wait before next retry (exponential backoff)
+            if attempt < len(backoff_delays):
+                delay = backoff_delays[attempt]
+                logger.info(
+                    "Retrying after delay",
+                    tool=tool_name,
+                    delay_seconds=delay,
+                    next_attempt=attempt + 2
+                )
+                await asyncio.sleep(delay)
+        
+        # Layer 2: Try alternative tool
+        alternative_tool = self._get_alternative_tool(tool_name)
+        
+        if alternative_tool:
+            logger.info(
+                "Trying alternative tool",
+                primary_tool=tool_name,
+                alternative_tool=alternative_tool
+            )
+            
+            alternative_result = await self._execute_tool(
+                alternative_tool,
+                params,
+                context
+            )
+            
+            if alternative_result.get("success"):
+                return {
+                    "success": True,
+                    "data": alternative_result.get("data"),
+                    "error": None,
+                    "used_alternative": True,
+                    "alternative_tool": alternative_tool
+                }
+        
+        # Layer 3: User decision needed
+        logger.warning(
+            "All recovery options exhausted, needs user decision",
+            tool=tool_name,
+            error=result.get("error", "Unknown error")
+        )
+        
+        suggestion = f"The tool '{tool_name}' failed after {max_retries} attempts."
+        if alternative_tool:
+            suggestion += f" Alternative tool '{alternative_tool}' also failed."
+        suggestion += " Please check your request or try a different approach."
+        
+        return {
+            "success": False,
+            "error": result.get("error", "Tool execution failed"),
+            "data": None,
+            "needs_user_decision": True,
+            "suggestion": suggestion,
+            "alternatives": ["Try a different query", "Check if service is available"]
+        }
+    
     async def resume_with_tool(
         self,
         session_id: str,
@@ -557,7 +729,12 @@ class AgentRunner:
         }
     
     def _build_system_prompt(self, context: Context) -> str:
-        """Build system prompt for agent.
+        """Build system prompt for agent with reasoning framework per D-11.
+        
+        Per D-11: Enhanced system prompt includes:
+        1. Explicit reasoning framework (Analyze → Select → Plan → Verify)
+        2. Error handling strategy guidance
+        3. Clear tool categorization
         
         Args:
             context: Execution context
@@ -571,36 +748,71 @@ class AgentRunner:
 
 User's objective: {objective}
 
-You have access to the following tools:
+## REASONING FRAMEWORK (Per D-11)
+
+Before each action, follow these reasoning steps:
+
+1. ANALYZE INTENT: What does the user want to accomplish?
+   - Understand the goal behind the request
+   - Identify key information needed
+
+2. SELECT TOOLS: Which tools can help achieve this goal?
+   - Consider tool capabilities and limitations
+   - Choose the most appropriate tool for the task
+
+3. PLAN EXECUTION: What order should tools be called?
+   - Determine sequence of operations
+   - Consider dependencies between tools
+
+4. VERIFY RESULTS: How to confirm the task is complete?
+   - Check if results match user expectations
+   - Validate output quality and completeness
+
+## AVAILABLE TOOLS
+
+**Query Tools (Level 1: Auto-execute, no confirmation needed):**
 - external_search: Search external databases (arXiv, Semantic Scholar, CrossRef)
 - rag_search: Query user's paper library using RAG
 - list_papers: List papers with filters
 - read_paper: Read paper details
 - list_notes: List user's notes
 - read_note: Read note content
+- extract_references: Extract reference list from papers
+
+**Write Tools (Level 2: Log audit, no confirmation needed):**
 - create_note: Create a new note
 - update_note: Update an existing note
+- merge_documents: Merge content from multiple sources
+
+**Dangerous Tools (Level 3: Requires user confirmation):**
 - upload_paper: Upload a new paper (requires confirmation)
 - delete_paper: Delete a paper (requires confirmation)
-- extract_references: Extract reference list from papers
-- merge_documents: Merge content from multiple sources
 - execute_command: Execute system command (requires confirmation)
 
-Your execution strategy:
-1. Understand the user's objective
-2. Plan which tools to use
-3. Execute tools step by step
-4. Verify results after each tool
-5. Synthesize final answer when objective is achieved
+## ERROR HANDLING STRATEGY (Per D-12)
 
-Guidelines:
+When a tool fails, apply multi-layer recovery:
+
+1. **Retry**: Transient errors (timeout, network) are automatically retried 3 times
+2. **Alternative**: If retry fails, try alternative tools (e.g., external_search → rag_search)
+3. **User Decision**: If all recovery fails, explain the error and suggest solutions
+
+Guidelines for error recovery:
+- Do NOT retry on "not found", "permission denied", or "invalid" errors
+- Always retry on "timeout", "network", or "unavailable" errors
+- When selecting alternatives, consider tool capabilities
+
+## EXECUTION GUIDELINES
+
 - Be concise and efficient
 - Use minimal tool calls to achieve the objective
-- If a tool fails, try alternative approaches
+- Apply reasoning framework before each action
+- If a tool fails, apply error recovery strategy
 - Provide clear explanations for your actions
 - When the objective is complete, provide a final answer
 
-Current environment:
+## CURRENT ENVIRONMENT
+
 - User ID: {context.environment.get('user_id', 'unknown')}
 - Session ID: {context.environment.get('session_id', 'unknown')}
 """
