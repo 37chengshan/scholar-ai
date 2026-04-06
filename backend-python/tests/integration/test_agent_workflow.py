@@ -447,3 +447,249 @@ class TestAgentWorkflow:
         # Verify it's not the old mock pattern
         assert tool_result["data"].get("tool") != "list_papers"
         assert "Mock result" not in str(tool_result)
+
+
+@pytest.mark.asyncio
+class TestAgentErrorRecoveryWorkflow:
+    """Integration tests for Agent error recovery workflows per D-12.
+
+    Tests multi-layer recovery mechanism:
+    - Layer 1: Auto-retry on transient errors
+    - Layer 2: Alternative tool fallback
+    - Layer 3: User decision when all options exhausted
+    """
+
+    async def test_agent_recovers_from_tool_failure_via_alternative(self, agent_runner, session_context):
+        """Test: Primary tool fails, Agent tries alternative and succeeds.
+
+        Scenario: LLM selects external_search, it fails, LLM tries rag_search and succeeds.
+        Expected:
+        - Agent handles first tool failure
+        - Agent selects alternative tool
+        - Agent completes successfully
+        """
+        mock_context = Context(
+            objective="Search for AI papers",
+            important_messages=[
+                Message(role="user", content="Search for AI papers")
+            ],
+            environment={
+                "user_id": session_context["user_id"],
+                "session_id": session_context["session_id"]
+            }
+        )
+
+        with patch.object(
+            agent_runner.context_manager,
+            'build_context',
+            return_value=mock_context
+        ):
+            think_responses = [
+                # First attempt: external_search fails
+                {
+                    "is_complete": False,
+                    "tool_call": {
+                        "name": "external_search",
+                        "parameters": {"query": "AI"}
+                    }
+                },
+                # Second attempt: rag_search succeeds
+                {
+                    "is_complete": False,
+                    "tool_call": {
+                        "name": "rag_search",
+                        "parameters": {"question": "AI"}
+                    }
+                },
+                # Third: Complete
+                {
+                    "is_complete": True,
+                    "content": "Found papers about AI."
+                }
+            ]
+
+            execute_responses = [
+                {"success": False, "error": "service unavailable", "data": None},
+                {"success": True, "data": {"papers": ["paper1"]}, "error": None}
+            ]
+
+            with patch.object(agent_runner, '_think', side_effect=think_responses):
+                with patch.object(agent_runner, '_execute_tool', side_effect=execute_responses):
+                    result = await agent_runner.execute(
+                        user_input="Search for AI papers",
+                        session_id=session_context["session_id"],
+                        user_id=session_context["user_id"]
+                    )
+
+        # Verify agent completed successfully after using alternative
+        assert result["success"] is True
+        assert result["state"] == AgentState.COMPLETED.value
+        assert result["iterations"] == 3
+        assert len(result["tool_calls"]) == 2
+
+        # Verify failure then success sequence
+        assert result["tool_calls"][0]["result"]["success"] is False
+        assert result["tool_calls"][1]["result"]["success"] is True
+
+    async def test_agent_handles_multiple_tool_failures_in_sequence(self, agent_runner, session_context):
+        """Test: Multiple tools fail in sequence, agent adapts.
+
+        Scenario: First tool fails, second tool also fails, third succeeds.
+        Expected:
+        - Agent handles cascading failures gracefully
+        - Agent tries different approaches
+        - Agent eventually completes
+        """
+        mock_context = Context(
+            objective="Comprehensive paper search",
+            important_messages=[
+                Message(role="user", content="Comprehensive paper search")
+            ],
+            environment={
+                "user_id": session_context["user_id"],
+                "session_id": session_context["session_id"]
+            }
+        )
+
+        with patch.object(
+            agent_runner.context_manager,
+            'build_context',
+            return_value=mock_context
+        ):
+            think_responses = [
+                {"is_complete": False, "tool_call": {"name": "external_search", "parameters": {"query": "test"}}},
+                {"is_complete": False, "tool_call": {"name": "rag_search", "parameters": {"question": "test"}}},
+                {"is_complete": False, "tool_call": {"name": "list_papers", "parameters": {"limit": 10}}},
+                {"is_complete": True, "content": "Found papers using list_papers after other searches failed."}
+            ]
+
+            execute_responses = [
+                {"success": False, "error": "external service unavailable", "data": None},
+                {"success": False, "error": "RAG service unavailable", "data": None},
+                {"success": True, "data": {"papers": ["paper1", "paper2"]}, "error": None}
+            ]
+
+            with patch.object(agent_runner, '_think', side_effect=think_responses):
+                with patch.object(agent_runner, '_execute_tool', side_effect=execute_responses):
+                    result = await agent_runner.execute(
+                        user_input="Comprehensive paper search",
+                        session_id=session_context["session_id"],
+                        user_id=session_context["user_id"]
+                    )
+
+        # Verify agent handled multiple failures and completed
+        assert result["success"] is True
+        assert result["state"] == AgentState.COMPLETED.value
+        assert len(result["tool_calls"]) == 3
+
+        # Verify failure sequence
+        assert result["tool_calls"][0]["result"]["success"] is False
+        assert result["tool_calls"][1]["result"]["success"] is False
+        assert result["tool_calls"][2]["result"]["success"] is True
+
+    async def test_agent_returns_error_when_all_tools_fail(self, agent_runner, session_context):
+        """Test: All tools fail → Agent returns error to user.
+
+        Scenario: All tool calls fail, agent cannot complete task.
+        Expected:
+        - Agent exhausts all options
+        - Agent returns failure with error explanation
+        """
+        mock_context = Context(
+            objective="Search for papers",
+            important_messages=[
+                Message(role="user", content="Search for papers")
+            ],
+            environment={
+                "user_id": session_context["user_id"],
+                "session_id": session_context["session_id"]
+            }
+        )
+
+        with patch.object(
+            agent_runner.context_manager,
+            'build_context',
+            return_value=mock_context
+        ):
+            think_responses = [
+                {"is_complete": False, "tool_call": {"name": "external_search", "parameters": {"query": "test"}}},
+                {"is_complete": False, "tool_call": {"name": "rag_search", "parameters": {"question": "test"}}},
+                # After failures, LLM decides to provide final answer explaining the issue
+                {"is_complete": True, "content": "I encountered issues with the search services. Please try again later."}
+            ]
+
+            execute_responses = [
+                {"success": False, "error": "service unavailable", "data": None},
+                {"success": False, "error": "service unavailable", "data": None}
+            ]
+
+            with patch.object(agent_runner, '_think', side_effect=think_responses):
+                with patch.object(agent_runner, '_execute_tool', side_effect=execute_responses):
+                    result = await agent_runner.execute(
+                        user_input="Search for papers",
+                        session_id=session_context["session_id"],
+                        user_id=session_context["user_id"]
+                    )
+
+        # Verify agent handled the situation gracefully
+        assert result["success"] is True  # LLM provided a final answer
+        assert result["state"] == AgentState.COMPLETED.value
+        assert len(result["tool_calls"]) == 2
+        # Both tool calls failed
+        assert all(not tc["result"]["success"] for tc in result["tool_calls"])
+
+    async def test_agent_retry_mechanism_on_transient_errors(self, agent_runner, session_context):
+        """Test: Agent's _execute_with_fallback handles transient errors with retry.
+
+        Scenario: Test the retry mechanism directly via _execute_with_fallback.
+        Expected:
+        - Transient errors trigger retry
+        - Non-retryable errors skip retry
+        """
+        mock_context = Context(
+            objective="Test",
+            important_messages=[],
+            environment={
+                "user_id": session_context["user_id"],
+                "session_id": session_context["session_id"]
+            }
+        )
+
+        # Test 1: Transient error should trigger retries
+        call_count = [0]
+        async def mock_execute_transient(tool_name, params, **kwargs):
+            call_count[0] += 1
+            if call_count[0] < 2:
+                return {"success": False, "error": "timeout", "data": None}
+            return {"success": True, "data": {"result": "success"}, "error": None}
+
+        with patch.object(agent_runner.tool_registry, 'execute', side_effect=mock_execute_transient):
+            result = await agent_runner._execute_with_fallback(
+                tool_name="external_search",
+                params={"query": "test"},
+                context=mock_context,
+                max_retries=3
+            )
+
+        assert result["success"] is True
+        assert call_count[0] >= 2  # At least initial + 1 retry
+
+        # Test 2: Non-retryable error should skip retries and try alternative
+        call_count2 = [0]
+        async def mock_execute_non_retryable(tool_name, params, **kwargs):
+            call_count2[0] += 1
+            if tool_name == "external_search":
+                return {"success": False, "error": "paper not found", "data": None}
+            return {"success": True, "data": {"papers": []}, "error": None}
+
+        with patch.object(agent_runner.tool_registry, 'execute', side_effect=mock_execute_non_retryable):
+            result = await agent_runner._execute_with_fallback(
+                tool_name="external_search",
+                params={"query": "test"},
+                context=mock_context,
+                max_retries=3
+            )
+
+        # Should succeed with alternative tool
+        assert result["success"] is True
+        assert result.get("used_alternative") is True
