@@ -16,6 +16,26 @@ from app.core.database import get_db_connection
 from app.utils.logger import logger
 
 
+def _serialize_datetime(value: Any) -> str:
+    """
+    Safely serialize datetime to ISO string.
+    
+    Handles both datetime objects and string representations.
+    Per D-07: Check type, return string directly if already string.
+    
+    Args:
+        value: datetime object or string
+        
+    Returns:
+        ISO formatted string
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
 async def execute_create_note(
     params: Dict[str, Any],
     **kwargs
@@ -99,9 +119,9 @@ async def execute_create_note(
             
             # Convert datetime to ISO string for JSON serialization
             if note_data and "created_at" in note_data:
-                note_data["created_at"] = note_data["created_at"].isoformat()
+                note_data["created_at"] = _serialize_datetime(note_data["created_at"])
             if note_data and "updated_at" in note_data:
-                note_data["updated_at"] = note_data["updated_at"].isoformat()
+                note_data["updated_at"] = _serialize_datetime(note_data["updated_at"])
         
         logger.info("Note created", note_id=note_id, user_id=user_id)
         
@@ -225,9 +245,9 @@ async def execute_update_note(
             
             # Convert datetime to ISO string for JSON serialization
             if note_data and "created_at" in note_data:
-                note_data["created_at"] = note_data["created_at"].isoformat()
+                note_data["created_at"] = _serialize_datetime(note_data["created_at"])
             if note_data and "updated_at" in note_data:
-                note_data["updated_at"] = note_data["updated_at"].isoformat()
+                note_data["updated_at"] = _serialize_datetime(note_data["updated_at"])
         
         logger.info("Note updated", note_id=note_id, user_id=user_id)
         

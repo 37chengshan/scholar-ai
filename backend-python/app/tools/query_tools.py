@@ -12,12 +12,33 @@ Each tool returns: {success: bool, data: any, error: str?}
 """
 
 import asyncio
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.api.search import search_arxiv, search_semantic_scholar
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.database import get_db_connection
 from app.utils.logger import logger
+
+
+def _serialize_datetime(value: Any) -> str:
+    """
+    Safely serialize datetime to ISO string.
+    
+    Handles both datetime objects and string representations.
+    Per D-07: Check type, return string directly if already string.
+    
+    Args:
+        value: datetime object or string
+        
+    Returns:
+        ISO formatted string
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
 
 
 async def execute_external_search(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
@@ -213,7 +234,7 @@ async def execute_list_papers(
             # Convert datetime to ISO string for JSON serialization
             for paper in papers:
                 if "created_at" in paper:
-                    paper["created_at"] = paper["created_at"].isoformat()
+                    paper["created_at"] = _serialize_datetime(paper["created_at"])
         
         logger.info("List papers completed", user_id=user_id, count=len(papers))
         
@@ -345,9 +366,9 @@ async def execute_list_notes(
             # Convert datetime fields to ISO strings
             for note in notes:
                 if "created_at" in note:
-                    note["created_at"] = note["created_at"].isoformat()
+                    note["created_at"] = _serialize_datetime(note["created_at"])
                 if "updated_at" in note:
-                    note["updated_at"] = note["updated_at"].isoformat()
+                    note["updated_at"] = _serialize_datetime(note["updated_at"])
         
         logger.info("List notes completed", user_id=user_id, count=len(notes))
         
@@ -408,9 +429,9 @@ async def execute_read_note(
             
             # Convert datetime to ISO string for JSON serialization
             if note_data and "created_at" in note_data:
-                note_data["created_at"] = note_data["created_at"].isoformat()
+                note_data["created_at"] = _serialize_datetime(note_data["created_at"])
             if note_data and "updated_at" in note_data:
-                note_data["updated_at"] = note_data["updated_at"].isoformat()
+                note_data["updated_at"] = _serialize_datetime(note_data["updated_at"])
         
         logger.info("Read note completed", note_id=note_id)
         
