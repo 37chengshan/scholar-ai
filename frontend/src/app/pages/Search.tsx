@@ -2,11 +2,14 @@
  * Search Page
  *
  * Unified search across internal library and external sources (arXiv, Semantic Scholar)
+ * Plus author search functionality (Phase 23)
  *
  * Features:
  * - 300ms debounce search (D-11)
  * - Internal papers from user's library
  * - External papers from arXiv and Semantic Scholar
+ * - Author search with hIndex/citation metrics (Phase 23)
+ * - Paper autocomplete suggestions (Phase 23)
  * - Import external papers to library
  * - Real-time search results
  */
@@ -17,9 +20,14 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSearch } from "@/hooks/useSearch";
+import { useAutocomplete } from "@/hooks/useAutocomplete";
 import { SearchResultCard } from "../components/SearchResultCard";
+import { AuthorResultCard } from "../components/AuthorResultCard";
+import { AutocompleteDropdown } from "../components/AutocompleteDropdown";
 import { SearchFilters } from "../components/SearchFilters";
 import * as papersApi from "@/services/papersApi";
+import * as searchApi from "@/services/searchApi";
+import { AuthorSearchResult } from "@/services/searchApi";
 import toast from "react-hot-toast";
 import { NoSearchResultsState } from "../components/EmptyState";
 
@@ -37,6 +45,7 @@ export function Search() {
     sortBy?: 'relevance' | 'date';
   }>({});
 
+  // Main search hook
   const {
     query,
     setQuery,
@@ -44,6 +53,17 @@ export function Search() {
     loading,
     error,
   } = useSearch(300); // D-11: 300ms debounce
+
+  // Autocomplete hook (Phase 23)
+  const {
+    results: autocompleteResults,
+    loading: autocompleteLoading,
+    clear: clearAutocomplete,
+  } = useAutocomplete({ minChars: 3, debounceMs: 300, limit: 5 });
+
+  // Author search state (Phase 23)
+  const [authorResults, setAuthorResults] = useState<AuthorSearchResult[]>([]);
+  const [authorLoading, setAuthorLoading] = useState(false);
 
   const t = {
     sources: isZh ? "检索来源" : "Sources",
@@ -74,11 +94,36 @@ export function Search() {
     startTyping: isZh ? "输入关键词开始搜索" : "Start typing to search",
     importSuccess: isZh ? "论文已添加到您的库中" : "Paper added to your library",
     importError: isZh ? "导入失败" : "Import failed",
+    authors: isZh ? "作者" : "Authors",
+    authorResults: isZh ? "作者搜索结果" : "Author Results",
+  };
+
+  // Author search handler (Phase 23)
+  const handleAuthorSearch = async (searchQuery: string) => {
+    if (searchQuery.length < 3) return;
+    setAuthorLoading(true);
+    try {
+      const response = await searchApi.searchAuthors(searchQuery);
+      setAuthorResults(response.data);
+    } catch (error) {
+      console.error('Author search failed:', error);
+    } finally {
+      setAuthorLoading(false);
+    }
+  };
+
+  // Trigger author search when query changes and author tab is active
+  const handleSourceChange = (sourceId: string) => {
+    setActiveSource(sourceId);
+    if (sourceId === "authors" && query.length >= 3) {
+      handleAuthorSearch(query);
+    }
   };
 
   const SOURCES = [
     { id: "arxiv", name: "arXiv.org", status: t.statusConn, statusType: "Connected", results: results?.external.filter(r => r.source === 'arxiv').length || 0 },
     { id: "s2", name: "Semantic Scholar", status: t.statusConn, statusType: "Connected", results: results?.external.filter(r => r.source === 's2').length || 0 },
+    { id: "authors", name: t.authors, status: t.statusConn, statusType: "Connected", results: authorResults.length },
   ];
 
   const handleAddToLibrary = async (result: any) => {
@@ -145,7 +190,7 @@ export function Search() {
               {SOURCES.map((source) => (
                 <button
                   key={source.id}
-                  onClick={() => setActiveSource(source.id)}
+                  onClick={() => handleSourceChange(source.id)}
                   className={clsx(
                     "flex items-center gap-2.5 px-2 py-2 rounded-sm transition-colors group w-full",
                     activeSource === source.id ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "hover:bg-muted text-foreground/80 hover:text-primary"
@@ -175,18 +220,30 @@ export function Search() {
       <div className="flex-1 flex flex-col h-full bg-background min-w-[500px]">
         <div className="px-5 py-4 border-b border-border/50 bg-background/90 backdrop-blur-md sticky top-0 z-10 flex flex-col gap-3 shadow-sm">
           <div className="flex justify-between items-center gap-4">
-            <div className="flex-1 max-w-2xl flex items-center gap-3 bg-card border border-primary/30 p-1 rounded-full focus-within:border-primary transition-colors shadow-sm group">
-              <SearchIcon className="w-4 h-4 text-primary ml-3" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="flex-1 bg-transparent border-none text-sm font-serif font-bold tracking-wide focus:outline-none focus:ring-0 placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
-                placeholder={t.placeholder}
+            <div className="relative flex-1 max-w-2xl">
+              <div className="flex items-center gap-3 bg-card border border-primary/30 p-1 rounded-full focus-within:border-primary transition-colors shadow-sm group">
+                <SearchIcon className="w-4 h-4 text-primary ml-3" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="flex-1 bg-transparent border-none text-sm font-serif font-bold tracking-wide focus:outline-none focus:ring-0 placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
+                  placeholder={t.placeholder}
+                />
+                <button className="bg-primary text-primary-foreground px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-secondary transition-colors h-full shadow-sm shadow-primary/20">
+                  {t.query}
+                </button>
+              </div>
+              {/* Autocomplete Dropdown (Phase 23) */}
+              <AutocompleteDropdown
+                results={autocompleteResults}
+                loading={autocompleteLoading}
+                visible={query.length >= 3 && activeSource !== "authors"}
+                onSelect={(paper) => {
+                  console.log('Selected paper:', paper);
+                  clearAutocomplete();
+                }}
               />
-              <button className="bg-primary text-primary-foreground px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-secondary transition-colors h-full shadow-sm shadow-primary/20">
-                {t.query}
-              </button>
             </div>
             {results && (
               <div className="text-[9px] font-mono tracking-[0.2em] text-muted-foreground flex-shrink-0">
@@ -226,8 +283,34 @@ export function Search() {
               transition={{ duration: 0.5 }}
               className="space-y-8"
             >
+              {/* Author Results (Phase 23) */}
+              {activeSource === "authors" && (
+                <div>
+                  <h2 className="font-semibold mb-4 text-lg">{t.authorResults} ({authorResults.length})</h2>
+                  {authorLoading ? (
+                    <div className="flex items-center justify-center h-32">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        {t.searching}
+                      </div>
+                    </div>
+                  ) : authorResults.length > 0 ? (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                      {authorResults.map((author) => (
+                        <AuthorResultCard
+                          key={author.authorId}
+                          author={author}
+                          onClick={(a) => console.log('Selected author:', a)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <NoSearchResultsState query={query} />
+                  )}
+                </div>
+              )}
+
               {/* Internal Results */}
-              {results.internal.length > 0 && (
+              {activeSource !== "authors" && results.internal.length > 0 && (
                 <div>
                   <h2 className="font-semibold mb-4 text-lg">{t.yourLibrary} ({results.internal.length})</h2>
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -243,7 +326,7 @@ export function Search() {
               )}
 
               {/* External Results */}
-              {results.external.length > 0 && (
+              {activeSource !== "authors" && results.external.length > 0 && (
                 <div>
                   <h2 className="font-semibold mb-4 text-lg">{t.externalSources} ({results.external.length})</h2>
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -259,7 +342,7 @@ export function Search() {
               )}
 
               {/* No Results */}
-              {results.internal.length === 0 && results.external.length === 0 && (
+              {activeSource !== "authors" && results.internal.length === 0 && results.external.length === 0 && (
                 <NoSearchResultsState query={query} />
               )}
             </motion.div>

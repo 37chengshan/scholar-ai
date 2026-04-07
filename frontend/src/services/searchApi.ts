@@ -4,11 +4,131 @@
  * Search API calls:
  * - unified(): Unified search (internal + external sources)
  * - external(): Search external sources (arXiv, Semantic Scholar)
+ * - autocomplete(): Paper title autocomplete (Phase 23)
+ * - searchAuthors(): Search authors by name (Phase 23)
+ * - getAuthorPapers(): Get papers by author ID (Phase 23)
  *
  * All endpoints require authentication.
  */
 
 import apiClient from '@/utils/apiClient';
+
+// ============================================================
+// Types for Phase 23: Autocomplete and Author Search
+// ============================================================
+
+export interface AutocompletePaper {
+  paperId: string;
+  title: string;
+  year?: number;
+  authors?: Array<{
+    authorId: string;
+    name: string;
+  }>;
+}
+
+export interface AuthorSearchResult {
+  authorId: string;
+  name: string;
+  hIndex?: number;
+  citationCount?: number;
+  paperCount?: number;
+}
+
+export interface AuthorPaper {
+  paperId: string;
+  title: string;
+  year?: number;
+  citationCount?: number;
+}
+
+// ============================================================
+// Phase 23: Autocomplete and Author Search APIs
+// ============================================================
+
+/**
+ * Get paper autocomplete suggestions
+ *
+ * GET /api/search/autocomplete
+ * Per D-03: Default limit 5
+ * Per D-04: Results cached by backend (1h TTL)
+ *
+ * @param query - Search query string
+ * @param limit - Maximum results (default: 5)
+ * @returns List of autocomplete suggestions
+ */
+export async function autocomplete(
+  query: string,
+  limit: number = 5
+): Promise<AutocompletePaper[]> {
+  const response = await apiClient.get<{
+    success: boolean;
+    data: AutocompletePaper[];
+  }>('/api/search/autocomplete', {
+    params: { query, limit },
+  });
+
+  return response.data.data || [];
+}
+
+/**
+ * Search authors by name
+ *
+ * GET /api/search/author
+ * Per D-05: Called from Author tab
+ * Per D-06: Returns hIndex, citationCount, paperCount
+ * Per D-12: Results cached by backend (24h TTL)
+ *
+ * @param query - Author name query
+ * @param limit - Maximum results (default: 10)
+ * @param offset - Pagination offset (default: 0)
+ * @returns Author search results
+ */
+export async function searchAuthors(
+  query: string,
+  limit: number = 10,
+  offset: number = 0
+): Promise<{ data: AuthorSearchResult[]; total?: number }> {
+  const response = await apiClient.get<{
+    success: boolean;
+    data: { data: AuthorSearchResult[]; total?: number };
+  }>('/api/search/author', {
+    params: { query, limit, offset },
+  });
+
+  return response.data.data || { data: [] };
+}
+
+/**
+ * Get papers by author ID
+ *
+ * GET /api/search/author/:authorId/papers
+ * Per D-07: Pagination 10 per page
+ * Per D-12: Results cached by backend (7d TTL)
+ *
+ * @param authorId - Semantic Scholar author ID
+ * @param limit - Maximum results (default: 10)
+ * @param offset - Pagination offset (default: 0)
+ * @returns Author's papers with pagination
+ */
+export async function getAuthorPapers(
+  authorId: string,
+  limit: number = 10,
+  offset: number = 0
+): Promise<{ data: AuthorPaper[]; next?: number }> {
+  const response = await apiClient.get<{
+    success: boolean;
+    data: { data: AuthorPaper[]; next?: number };
+  }>(`/api/search/author/${authorId}/papers`, {
+    params: { limit, offset },
+  });
+
+  return response.data.data || { data: [] };
+}
+
+// ============================================================
+// Existing Search APIs
+// ============================================================
 
 /**
  * Unified search across internal library and external sources
