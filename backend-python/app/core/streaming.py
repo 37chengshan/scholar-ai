@@ -337,10 +337,9 @@ async def stream_rag_response(
     top_k: int = 5
 ) -> StreamingResponse:
     """
-    High-level function to stream RAG response.
-
-    This is a placeholder implementation that will be integrated with
-    PaperQA2 or similar RAG system in production.
+    High-level function to stream RAG response with real LLM generation.
+    
+    Retrieves relevant chunks from Milvus, then streams LLM answer.
 
     Args:
         query: User's question
@@ -352,21 +351,93 @@ async def stream_rag_response(
     Returns:
         FastAPI StreamingResponse
     """
-    handler = StreamingRAGHandler(query, paper_ids, conversation_id, query_type)
-
-    # TODO: Replace with actual RAG implementation
-    # For now, return a mock response
-    mock_answer = (
-        f"Based on the papers provided, I can tell you that '{query}' "
-        f"relates to research involving {len(paper_ids)} paper(s). "
-        f"This is a placeholder response that will be replaced with "
-        f"actual RAG results once PaperQA2 integration is complete."
+    from app.core.multimodal_search_service import get_multimodal_search_service
+    from app.utils.zhipu_client import ZhipuLLMClient
+    import asyncio
+    
+    # Retrieve relevant chunks
+    service = get_multimodal_search_service()
+    result = await service.search(
+        query=query,
+        paper_ids=paper_ids,
+        user_id="stream",  # Placeholder for streaming
+        top_k=top_k,
+        use_reranker=True
     )
+    
+    # Build context from top chunks
+    context_chunks = result.get("results", [])[:5]
+    context_text = "\n\n---\n\n".join([
+        f"[{i+1}] {chunk.get('content_data', '')}" 
+        for i, chunk in enumerate(context_chunks)
+    ])
+    
+    # Create LLM client
+    llm_client = ZhipuLLMClient()
+    
+    # Generate streaming response
+    async def generate_stream():
+        try:
+            system_prompt = """You are a helpful research assistant. Answer the user's question based on the provided context from academic papers.
 
-    token_gen = mock_token_generator(mock_answer, chunk_size=8, delay_ms=30)
+Instructions:
+1. Provide a clear, accurate answer based on the context
+2. Cite relevant parts using [1], [2], etc.
+3. If the context doesn't contain enough information, say so
+4. Keep the answer concise but comprehensive
+5. Use markdown formatting for better readability"""
 
+            user_message = f"""Context from papers:
+{context_text}
+
+Question: {query}
+
+Please provide a comprehensive answer based on the context above."""
+
+            # Stream from ZhipuAI
+            stream_response = llm_client.client.chat.completions.create(
+                model=llm_client.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                max_tokens=1024,
+                temperature=0.7,
+                stream=True
+            )
+            
+            # Yield tokens as they arrive
+            for chunk in stream_response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    token = chunk.choices[0].delta.content
+                    event = StreamToken(content=token)
+                    yield format_sse_event(event.model_dump())
+            
+            # Send citations
+            citations = []
+            for i, chunk in enumerate(context_chunks[:5], 1):
+                citations.append({
+                    "citation_number": i,
+                    "paper_id": chunk.get("paper_id"),
+                    "content_preview": chunk.get("content_data", "")[:200],
+                    "score": chunk.get("score", 0.0)
+                })
+            
+            if citations:
+                citation_event = StreamCitations(content=citations)
+                yield format_sse_event(citation_event.model_dump())
+            
+            # Send done marker
+            yield format_sse_done()
+            
+        except Exception as e:
+            logger.error(f"Streaming error: {e}")
+            error_event = StreamError(content=str(e))
+            yield format_sse_event(error_event.model_dump())
+            yield format_sse_done()
+    
     return StreamingResponse(
-        handler.stream_answer(token_gen),
+        generate_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

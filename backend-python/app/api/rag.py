@@ -150,12 +150,47 @@ async def rag_query(
             use_reranker=True,
         )
 
-        # Format response with query understanding fields
-        # Build answer from results (simplified for now, full LLM integration pending)
-        answer = (
-            f"Based on {result['total_count']} relevant chunks from your papers:\n\n"
-            f"(Full LLM synthesis pending)"
+        # Build answer using LLM with retrieved context
+        context_chunks = result.get("results", [])[:5]  # Top 5 chunks
+        context_text = "\n\n---\n\n".join([
+            f"[{i+1}] {chunk.get('content_data', '')}" 
+            for i, chunk in enumerate(context_chunks)
+        ])
+        
+        # Use ZhipuAI to generate answer
+        from app.utils.zhipu_client import ZhipuLLMClient
+        llm_client = ZhipuLLMClient()
+        
+        system_prompt = """You are a helpful research assistant. Answer the user's question based on the provided context from academic papers.
+        
+Instructions:
+1. Provide a clear, accurate answer based on the context
+2. Cite relevant parts using [1], [2], etc.
+3. If the context doesn't contain enough information, say so
+4. Keep the answer concise but comprehensive
+5. Use markdown formatting for better readability"""
+
+        user_message = f"""Context from papers:
+{context_text}
+
+Question: {request.question}
+
+Please provide a comprehensive answer based on the context above."""
+
+        llm_response = await llm_client.chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=1024,
+            temperature=0.7
         )
+        
+        # Extract answer from ZhipuAI response
+        if hasattr(llm_response, 'choices') and llm_response.choices:
+            answer = llm_response.choices[0].message.content
+        else:
+            answer = "Unable to generate answer"
 
         # Format sources from results
         sources = []

@@ -54,8 +54,12 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "/app/papers"
 
     # RAG配置
-    CHUNK_SIZE: int = 500
-    CHUNK_OVERLAP: int = 100
+    CHUNK_SIZE: int = 500  # Target chunk size (words) - per D-03
+    CHUNK_OVERLAP: int = 100  # Overlap between chunks (words) - prevents boundary loss
+    CHUNK_MIN_SIZE: int = 100  # Minimum chunk size to keep separate
+    CHUNK_MAX_SIZE: int = 600  # Hard limit for chunk size
+    CHUNK_ADAPTIVE_ENABLED: bool = True  # Enable IMRaD-adaptive chunk sizing
+    CHUNK_QUALITY_THRESHOLD: float = 0.7  # Minimum quality score (0-1)
     TOP_K_RETRIEVAL: int = 10
 
     # LLM配置
