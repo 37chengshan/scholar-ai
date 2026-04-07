@@ -140,6 +140,130 @@ router.get('/semantic-scholar', authenticate, async (req: AuthRequest, res, next
   }
 });
 
+// GET /api/search/autocomplete - Paper title autocomplete
+router.get('/autocomplete', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { query, limit = 5 } = req.query;
+
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          type: '/errors/validation-error',
+          title: 'Validation Error',
+          status: 400,
+          detail: 'Query parameter is required',
+          requestId: uuidv4(),
+          timestamp: new Date().toISOString(),
+        }
+      });
+    }
+
+    // Call Python AI service for autocomplete
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const response = await fetch(
+      `${aiServiceUrl}/semantic-scholar/autocomplete?query=${encodeURIComponent(query as string)}&limit=${limit}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`AI service returned ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    res.json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    logger.error('Autocomplete failed:', error);
+    next(error);
+  }
+});
+
+// GET /api/search/author - Search authors by name
+router.get('/author', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { query, limit = 10, offset = 0 } = req.query;
+
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          type: '/errors/validation-error',
+          title: 'Validation Error',
+          status: 400,
+          detail: 'Query parameter is required',
+          requestId: uuidv4(),
+          timestamp: new Date().toISOString(),
+        }
+      });
+    }
+
+    // Call Python AI service for author search
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const response = await fetch(
+      `${aiServiceUrl}/semantic-scholar/author/search?query=${encodeURIComponent(query as string)}&limit=${limit}&offset=${offset}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`AI service returned ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    res.json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    logger.error('Author search failed:', error);
+    next(error);
+  }
+});
+
+// GET /api/search/author/:authorId/papers - Get papers by author ID
+router.get('/author/:authorId/papers', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { authorId } = req.params;
+    const { limit = 10, offset = 0 } = req.query;
+
+    if (!authorId) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          type: '/errors/validation-error',
+          title: 'Validation Error',
+          status: 400,
+          detail: 'Author ID is required',
+          requestId: uuidv4(),
+          timestamp: new Date().toISOString(),
+        }
+      });
+    }
+
+    // Call Python AI service for author papers
+    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const response = await fetch(
+      `${aiServiceUrl}/semantic-scholar/author/${authorId}/papers?limit=${limit}&offset=${offset}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`AI service returned ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    res.json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    logger.error('Author papers fetch failed:', error);
+    next(error);
+  }
+});
+
 // GET /api/search/unified - Unified search (arXiv + Semantic Scholar)
 router.get('/unified', authenticate, async (req: AuthRequest, res, next) => {
   try {
