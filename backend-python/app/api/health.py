@@ -36,19 +36,20 @@ async def health_check(request: Request):
             'status': 'not_loaded',
         }
     
-    try:
-        from app.core.bge_embedding_service import BGEM3EmbeddingService
-        bge_service = BGEM3EmbeddingService()
-        services_status['bge_m3'] = {
-            'status': 'available',
-            'model': bge_service.MODEL_NAME,
-            'device': bge_service.device,
-            'lazy_loaded': bge_service._model is None,
+    if hasattr(request.app.state, 'embedding_service') and request.app.state.embedding_service:
+        embedding = request.app.state.embedding_service
+        model_info = embedding.get_model_info()
+        services_status['embedding'] = {
+            'status': 'loaded',
+            'model': model_info.get('name', 'unknown'),
+            'type': model_info.get('type', 'unknown'),
+            'dimension': model_info.get('dimension', 'unknown'),
+            'device': getattr(embedding, 'device', 'unknown'),
+            'initialized': embedding.is_loaded(),
         }
-    except Exception as e:
-        services_status['bge_m3'] = {
-            'status': 'error',
-            'error': str(e),
+    else:
+        services_status['embedding'] = {
+            'status': 'not_loaded',
         }
     
     all_loaded = all(

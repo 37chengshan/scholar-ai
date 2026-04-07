@@ -52,18 +52,20 @@ export const INTERNAL_TOKEN_EXPIRY_MS = parseDuration(
 );
 
 // Cookie settings
+// Note: sameSite: 'strict' causes issues in Firefox/Safari/Mobile browsers
+// Using 'lax' allows cookies from navigation while still preventing CSRF
 export const COOKIE_SETTINGS = {
   accessToken: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict' as const,
+    sameSite: 'lax' as const,
     path: '/',
     maxAge: ACCESS_TOKEN_EXPIRY_MS,
   },
   refreshToken: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict' as const,
+    sameSite: 'lax' as const,
     path: '/api/auth/refresh',
     maxAge: REFRESH_TOKEN_EXPIRY_MS,
   },
