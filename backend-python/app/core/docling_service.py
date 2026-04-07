@@ -361,7 +361,7 @@ class DoclingParser:
             overlap=chunk_overlap
         )
         
-        quality_report = self._evaluate_chunk_quality(merged, chunk_size)
+        quality_report = self._evaluate_chunk_quality(merged, chunk_size, max_size=chunk_size + 100)
         
         logger.info(
             "Semantic chunking complete",
@@ -524,7 +524,8 @@ class DoclingParser:
     def _evaluate_chunk_quality(
         self,
         chunks: List[Dict[str, Any]],
-        target_size: int = 400
+        target_size: int = 400,
+        max_size: int = 600
     ) -> ChunkQualityReport:
         """Evaluate chunk splitting quality.
 
@@ -537,6 +538,7 @@ class DoclingParser:
         Args:
             chunks: List of merged chunks
             target_size: Target chunk size
+            max_size: Maximum chunk size for boundary quality check
 
         Returns:
             ChunkQualityReport with quality score
