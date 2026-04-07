@@ -550,7 +550,7 @@ class MilvusService:
             FieldSchema(name="has_equations", dtype=DataType.BOOL),
             FieldSchema(name="has_figures", dtype=DataType.BOOL),
             FieldSchema(name="extraction_version", dtype=DataType.INT64),
-            FieldSchema(name="content_data", dtype=DataType.VARCHAR, max_length=8000),
+            FieldSchema(name="content_data", dtype=DataType.VARCHAR, max_length=32000),  # Increased from 8000 to 32000
             FieldSchema(name="raw_data", dtype=DataType.JSON),
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim),
         ]

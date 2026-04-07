@@ -320,15 +320,26 @@ class DoclingParser:
     def _merge_small_chunks(
         self,
         chunks: List[Dict[str, Any]],
-        target_size: int = 200,
-        min_size: int = 50
+        target_size: int = 400,
+        min_size: int = 100,
+        max_size: int = 600
     ) -> List[Dict[str, Any]]:
-        """Merge small chunks to reach target size while preserving context.
+        """Merge small chunks with fixed size strategy and overlap.
+        
+        RAG best practice (Pinecone/LlamaIndex):
+        - target_size: 400 words (~512 tokens) - balanced precision and context
+        - min_size: 100 words - minimum chunk to keep separate
+        - max_size: 600 words - hard limit to prevent oversized chunks
+        - Results in chunks of 300-500 words typically
         
         Args:
             chunks: List of initial chunks
-            target_size: Target word count per chunk
-            min_size: Minimum chunk size to keep separate
+            target_size: Target word count per chunk (default 400)
+            min_size: Minimum chunk size to keep separate (default 100)
+            max_size: Maximum chunk size - hard limit (default 600)
+        
+        Returns:
+            List of merged chunks with controlled sizes
         """
         if not chunks:
             return []
@@ -344,18 +355,31 @@ class DoclingParser:
                 current_chunk["word_count"] = word_count
             else:
                 current_words = current_chunk["word_count"]
+                new_total = current_words + word_count
                 
-                if current_words < target_size or word_count < min_size:
+                # Merge conditions:
+                # 1. Current chunk < target_size AND new chunk < min_size
+                # 2. AND total won't exceed max_size
+                should_merge = (
+                    current_words < target_size and 
+                    word_count < min_size and
+                    new_total <= max_size
+                )
+                
+                if should_merge:
+                    # Merge chunks
                     current_chunk["text"] += "\n\n" + chunk["text"]
                     current_chunk["word_count"] += word_count
                     current_chunk["page_end"] = chunk["page_end"]
                     if chunk.get("section"):
                         current_chunk["section"] = chunk["section"]
                 else:
+                    # Save current chunk and start new one
                     merged.append(current_chunk)
                     current_chunk = chunk.copy()
                     current_chunk["word_count"] = word_count
         
+        # Don't forget the last chunk
         if current_chunk:
             merged.append(current_chunk)
         
