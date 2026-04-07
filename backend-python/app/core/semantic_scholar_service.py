@@ -257,6 +257,156 @@ class SemanticScholarService:
 
         return data
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
+    async def autocomplete_papers(
+        self,
+        query: str,
+        limit: int = 5,
+        redis_client: Optional[Any] = None
+    ) -> List[Dict[str, Any]]:
+        """Paper autocomplete for search box.
+
+        Per D-01: Trigger at >=3 chars (frontend responsibility)
+        Per D-03: Limit to 5 results
+        Per D-04: Cache for 1 hour (3600s)
+
+        Args:
+            query: Search query string
+            limit: Max results (default 5)
+            redis_client: Optional Redis client for caching
+
+        Returns:
+            List of paper dicts with paperId, title, authors, year
+        """
+        # Default fields for autocomplete (minimal for speed)
+        fields = "paperId,title,year,authors"
+
+        # Cache key per D-11
+        cache_key = f"s2:autocomplete:{query}:{limit}"
+        if redis_client:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                logger.info("S2 autocomplete cache hit", query=query[:30])
+                return json.loads(cached)
+
+        # API call
+        url = f"{self.api_url}/paper/autocomplete"
+        params = {"query": query, "limit": limit}
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url, params=params, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+            result = data.get("data", [])
+
+        # Cache for 1 hour per D-04
+        if redis_client:
+            await redis_client.setex(cache_key, 3600, json.dumps(result))
+            logger.info("S2 autocomplete cached", query=query[:30])
+
+        return result
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
+    async def search_authors(
+        self,
+        query: str,
+        fields: Optional[str] = None,
+        limit: int = 10,
+        offset: int = 0,
+        redis_client: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """Search authors by name.
+
+        Per D-05: Called from Author tab in frontend
+        Per D-06: Return hIndex, citationCount, paperCount
+        Per D-12: Cache for 24 hours
+
+        Args:
+            query: Author name query
+            fields: Comma-separated fields (default: authorId,name,hIndex,citationCount,paperCount)
+            limit: Max results (default 10)
+            offset: Pagination offset
+            redis_client: Optional Redis client
+
+        Returns:
+            Dict with 'data' list of authors
+        """
+        if not fields:
+            fields = "authorId,name,hIndex,citationCount,paperCount"
+
+        # Cache key per D-13
+        cache_key = f"s2:author:search:{query}:{fields}:{limit}:{offset}"
+        if redis_client:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                logger.info("S2 author search cache hit", query=query[:30])
+                return json.loads(cached)
+
+        url = f"{self.api_url}/author/search"
+        params = {"query": query, "fields": fields, "limit": limit, "offset": offset}
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url, params=params, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+
+        # Cache for 24 hours per D-12
+        if redis_client:
+            await redis_client.setex(cache_key, 86400, json.dumps(data))
+            logger.info("S2 author search cached", query=query[:30])
+
+        return data
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
+    async def get_author_papers(
+        self,
+        author_id: str,
+        fields: Optional[str] = None,
+        limit: int = 10,
+        offset: int = 0,
+        redis_client: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """Get papers by author ID.
+
+        Per D-07: Pagination 10 per page
+        Per D-12: Cache for 7 days (author papers change slowly)
+
+        Args:
+            author_id: Semantic Scholar author ID
+            fields: Comma-separated fields (default: paperId,title,year,citationCount)
+            limit: Max results (default 10 per D-07)
+            offset: Pagination offset
+            redis_client: Optional Redis client
+
+        Returns:
+            Dict with 'data' list of papers and optional 'next' offset
+        """
+        if not fields:
+            fields = "paperId,title,year,citationCount"
+
+        # Cache key per D-13
+        cache_key = f"s2:author:{author_id}:papers:{fields}:{limit}:{offset}"
+        if redis_client:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                logger.info("S2 author papers cache hit", author_id=author_id)
+                return json.loads(cached)
+
+        url = f"{self.api_url}/author/{author_id}/papers"
+        params = {"fields": fields, "limit": limit, "offset": offset}
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url, params=params, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+
+        # Cache for 7 days per D-12
+        if redis_client:
+            await redis_client.setex(cache_key, 604800, json.dumps(data))
+            logger.info("S2 author papers cached", author_id=author_id)
+
+        return data
+
 
 # Singleton pattern (match existing services)
 _s2_service: Optional[SemanticScholarService] = None

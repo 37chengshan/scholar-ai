@@ -352,3 +352,247 @@ class TestSingleton:
         
         assert service1 is service2
         assert isinstance(service1, SemanticScholarService)
+
+
+class TestAutocompletePapers:
+    """Tests for autocomplete_papers method (Phase 23)."""
+
+    @pytest.mark.asyncio
+    async def test_autocomplete_papers(self, s2_service, mock_redis):
+        """Test autocomplete_papers returns list of papers."""
+        query = "attention"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {"paperId": "id1", "title": "Attention Is All You Need", "year": 2017},
+                {"paperId": "id2", "title": "Attention Mechanisms in NLP", "year": 2019}
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            result = await s2_service.autocomplete_papers(query, redis_client=mock_redis)
+
+            assert isinstance(result, list)
+            assert len(result) == 2
+            assert result[0]["paperId"] == "id1"
+
+    @pytest.mark.asyncio
+    async def test_autocomplete_papers_cache_hit(self, s2_service):
+        """Test autocomplete returns cached data when available."""
+        query = "transformer"
+        cached_data = [{"paperId": "cached-id", "title": "Cached Paper"}]
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
+
+        result = await s2_service.autocomplete_papers(query, redis_client=mock_redis)
+
+        assert result == cached_data
+        mock_redis.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_autocomplete_papers_default_limit_5(self, s2_service):
+        """Test autocomplete default limit is 5 per D-03."""
+        query = "machine learning"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": []}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            await s2_service.autocomplete_papers(query)
+
+            call_args = mock_client.return_value.get.call_args
+            assert call_args[1]["params"]["limit"] == 5
+
+    @pytest.mark.asyncio
+    async def test_autocomplete_papers_cache_ttl_1h(self, s2_service):
+        """Test autocomplete cache TTL is 3600s (1 hour) per D-04."""
+        query = "deep learning"
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": [{"paperId": "id1"}]}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            await s2_service.autocomplete_papers(query, redis_client=mock_redis)
+
+            # Check TTL is 3600 (1 hour)
+            ttl = mock_redis.setex.call_args[0][1]
+            assert ttl == 3600
+
+
+class TestSearchAuthors:
+    """Tests for search_authors method (Phase 23)."""
+
+    @pytest.mark.asyncio
+    async def test_search_authors(self, s2_service, mock_redis):
+        """Test search_authors returns author list with hIndex."""
+        query = "Geoffrey Hinton"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {"authorId": "id1", "name": "Geoffrey Hinton", "hIndex": 89, "citationCount": 35526, "paperCount": 300}
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            result = await s2_service.search_authors(query, redis_client=mock_redis)
+
+            assert isinstance(result, dict)
+            assert "data" in result
+            assert result["data"][0]["hIndex"] == 89
+
+    @pytest.mark.asyncio
+    async def test_search_authors_cache_hit(self, s2_service):
+        """Test author search returns cached data."""
+        query = "Yann LeCun"
+        cached_data = {"data": [{"authorId": "cached-id", "name": "Yann LeCun"}]}
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
+
+        result = await s2_service.search_authors(query, redis_client=mock_redis)
+
+        assert result == cached_data
+        mock_redis.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_search_authors_default_fields(self, s2_service):
+        """Test author search default fields include hIndex, citationCount, paperCount per D-06."""
+        query = "Yoshua Bengio"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": []}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            await s2_service.search_authors(query)
+
+            call_args = mock_client.return_value.get.call_args
+            fields = call_args[1]["params"]["fields"]
+            assert "hIndex" in fields
+            assert "citationCount" in fields
+            assert "paperCount" in fields
+
+    @pytest.mark.asyncio
+    async def test_search_authors_cache_ttl_24h(self, s2_service):
+        """Test author search cache TTL is 86400s (24 hours) per D-12."""
+        query = "Andrew Ng"
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": []}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            await s2_service.search_authors(query, redis_client=mock_redis)
+
+            ttl = mock_redis.setex.call_args[0][1]
+            assert ttl == 86400
+
+
+class TestGetAuthorPapers:
+    """Tests for get_author_papers method (Phase 23)."""
+
+    @pytest.mark.asyncio
+    async def test_get_author_papers(self, s2_service, mock_redis):
+        """Test get_author_papers returns paginated paper list."""
+        author_id = "1692545"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {"paperId": "paper1", "title": "Deep Learning", "year": 2015, "citationCount": 10000},
+                {"paperId": "paper2", "title": "Paper 2", "year": 2018, "citationCount": 500}
+            ],
+            "next": 10
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            result = await s2_service.get_author_papers(author_id, redis_client=mock_redis)
+
+            assert isinstance(result, dict)
+            assert "data" in result
+            assert len(result["data"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_author_papers_pagination(self, s2_service, mock_redis):
+        """Test author papers pagination with limit and offset."""
+        author_id = "1692545"
+        limit = 10
+        offset = 20
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": [], "next": 30}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            await s2_service.get_author_papers(author_id, limit=limit, offset=offset, redis_client=mock_redis)
+
+            call_args = mock_client.return_value.get.call_args
+            assert call_args[1]["params"]["limit"] == limit
+            assert call_args[1]["params"]["offset"] == offset
+
+    @pytest.mark.asyncio
+    async def test_get_author_papers_cache_hit(self, s2_service):
+        """Test author papers returns cached data."""
+        author_id = "1692545"
+        cached_data = {"data": [{"paperId": "cached-paper"}]}
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
+
+        result = await s2_service.get_author_papers(author_id, redis_client=mock_redis)
+
+        assert result == cached_data
+        mock_redis.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_author_papers_cache_ttl_7d(self, s2_service):
+        """Test author papers cache TTL is 604800s (7 days) per D-12."""
+        author_id = "1692545"
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": []}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(httpx.AsyncClient, '__aenter__') as mock_client:
+            mock_client.return_value.get = AsyncMock(return_value=mock_response)
+
+            await s2_service.get_author_papers(author_id, redis_client=mock_redis)
+
+            ttl = mock_redis.setex.call_args[0][1]
+            assert ttl == 604800

@@ -70,3 +70,52 @@ async def get_references(
     redis = await get_redis_client()
 
     return await service.get_references(paper_id, fields, limit, redis)
+
+
+@router.get("/autocomplete")
+async def autocomplete_papers(
+    query: str = Query(..., min_length=1),
+    limit: int = Query(5, ge=1, le=20)
+) -> List[Dict[str, Any]]:
+    """Paper autocomplete for search box.
+
+    Per D-01: Frontend triggers at >=3 chars
+    Per D-03: Default limit 5
+    """
+    service = get_semantic_scholar_service()
+    redis = await get_redis_client()
+
+    return await service.autocomplete_papers(query, limit, redis)
+
+
+@router.get("/author/search")
+async def search_authors(
+    query: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+) -> Dict[str, Any]:
+    """Search authors by name.
+
+    Per D-05: Called from Author tab
+    Per D-06: Returns hIndex, citationCount, paperCount
+    """
+    service = get_semantic_scholar_service()
+    redis = await get_redis_client()
+
+    return await service.search_authors(query, None, limit, offset, redis)
+
+
+@router.get("/author/{author_id}/papers")
+async def get_author_papers(
+    author_id: str,
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+) -> Dict[str, Any]:
+    """Get papers by author ID.
+
+    Per D-07: Pagination 10 per page
+    """
+    service = get_semantic_scholar_service()
+    redis = await get_redis_client()
+
+    return await service.get_author_papers(author_id, None, limit, offset, redis)
