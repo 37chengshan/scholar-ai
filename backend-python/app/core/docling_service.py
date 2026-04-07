@@ -13,7 +13,7 @@ Note: Models should be downloaded to ~/.cache/docling/models
 import gc
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
@@ -256,77 +256,110 @@ class DoclingParser:
 
     def chunk_by_semantic(
         self,
-        items: List[dict],
+        items: List[Dict[str, Any]],
         paper_id: str,
-        imrad_structure: Optional[dict] = None
-    ) -> List[dict]:
-        """Create chunks using semantic splitting per D-03.
+        imrad_structure: Optional[Dict] = None
+    ) -> List[Dict[str, Any]]:
+        """Chunk text with semantic awareness and page tracking.
 
         Args:
-            items: List of parsed items from Docling
-            paper_id: Paper ID
-            imrad_structure: Optional IMRaD structure
+            items: Parsed items from Docling
+            paper_id: Paper UUID
+            imrad_structure: IMRaD section info (optional)
 
         Returns:
-            List of semantic chunks with overlap
+            List of chunks with page tracking and section info
         """
-        # Extract text items
-        texts = []
-        for item in items:
-            if item.get("type") == "text" and item.get("text"):
-                texts.append(item["text"])
-
-        if not texts:
-            return []
-
-        # Use Qwen3VL 2048-dim embeddings for semantic splitting
-        embed_model = Qwen3VLLlamaIndexEmbedding(
-            quantization="int4",
-            device="auto"
-        )
-
-        # Create semantic splitter with LOCKED parameters (per D-03)
-        splitter = SemanticSplitterNodeParser(
-            buffer_size=1,  # LOCKED per D-03
-            breakpoint_percentile_threshold=95,  # LOCKED per D-03
-            embed_model=embed_model
-        )
-
-        # Create LlamaIndex documents
-        documents = [Document(text=t) for t in texts]
-
-        # Perform semantic splitting
-        nodes = splitter.get_nodes_from_documents(documents)
-
-        # Convert to our chunk format with overlap
         chunks = []
-        for i, node in enumerate(nodes):
-            chunk = {
-                "text": node.text,
-                "page_start": None,  # Will be assigned by PDF worker
-                "page_end": None,
-                "section": None,
-                "overlap": 100 if i > 0 else 0,  # 100 tokens overlap per D-03
-                "media": []
-            }
-
-            # Assign section from IMRaD if available
-            if imrad_structure:
-                chunk["section"] = self._assign_section(
-                    node.text,
-                    imrad_structure
-                )
-
-            chunks.append(chunk)
-
+        
+        for item in items:
+            if item.get("type") != "text" or not item.get("text"):
+                continue
+            
+            text = item["text"]
+            page = item.get("page", 0)
+            
+            if len(text) < 50:
+                continue
+            
+            section = self._assign_section(text, imrad_structure) if imrad_structure else ""
+            
+            chunks.append({
+                "text": text,
+                "page_start": page,
+                "page_end": page,
+                "section": section,
+                "media": [],
+                "has_equations": self._has_equations(text),
+                "has_figures": "figure" in text.lower() or "table" in text.lower(),
+            })
+        
+        merged = self._merge_small_chunks(chunks, target_size=200, min_size=50)
+        
         logger.info(
             "Semantic chunking complete",
-            input_texts=len(texts),
-            output_chunks=len(chunks),
+            input_items=len(items),
+            initial_chunks=len(chunks),
+            merged_chunks=len(merged),
             paper_id=paper_id,
         )
-
-        return chunks
+        
+        return merged
+    
+    def _has_equations(self, text: str) -> bool:
+        """Detect if text contains equations."""
+        import re
+        equation_patterns = [
+            r'\$[^$]+\$',  # LaTeX inline math
+            r'\$\$[^$]+\$\$',  # LaTeX display math
+            r'\\[a-zA-Z]+\{',  # LaTeX commands
+            r'[=+\-*/^]',  # Math operators
+        ]
+        return any(re.search(p, text) for p in equation_patterns)
+    
+    def _merge_small_chunks(
+        self,
+        chunks: List[Dict[str, Any]],
+        target_size: int = 200,
+        min_size: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Merge small chunks to reach target size while preserving context.
+        
+        Args:
+            chunks: List of initial chunks
+            target_size: Target word count per chunk
+            min_size: Minimum chunk size to keep separate
+        """
+        if not chunks:
+            return []
+        
+        merged = []
+        current_chunk = None
+        
+        for chunk in chunks:
+            word_count = len(chunk["text"].split())
+            
+            if current_chunk is None:
+                current_chunk = chunk.copy()
+                current_chunk["word_count"] = word_count
+            else:
+                current_words = current_chunk["word_count"]
+                
+                if current_words < target_size or word_count < min_size:
+                    current_chunk["text"] += "\n\n" + chunk["text"]
+                    current_chunk["word_count"] += word_count
+                    current_chunk["page_end"] = chunk["page_end"]
+                    if chunk.get("section"):
+                        current_chunk["section"] = chunk["section"]
+                else:
+                    merged.append(current_chunk)
+                    current_chunk = chunk.copy()
+                    current_chunk["word_count"] = word_count
+        
+        if current_chunk:
+            merged.append(current_chunk)
+        
+        return merged
 
     def _assign_section(self, text: str, imrad_structure: dict) -> Optional[str]:
         """Assign section based on IMRaD structure.

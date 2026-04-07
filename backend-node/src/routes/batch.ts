@@ -121,11 +121,11 @@ router.post(
 
       // Create batch record
       const batchId = uuidv4();
-      const batch = await prisma.paperBatch.create({
+      const batch = await prisma.paper_batches.create({
         data: {
           id: batchId,
-          userId,
-          totalFiles: files.length,
+          userId: userId,
+          total_files: files.length,
           status: 'uploading',
         },
       });
@@ -143,20 +143,21 @@ router.post(
           );
 
           // Create paper record with batch association
-          await prisma.paper.create({
+          await prisma.papers.create({
             data: {
               id: paperId,
-              userId,
-              batchId,
+              userId: userId,
+              batch_id: batchId,
               title: file.title || file.filename.replace(/\.pdf$/i, ''),
               authors: [],
-              storageKey,
-              uploadStatus: 'pending',
-              uploadProgress: 0,
+              storageKey: storageKey,
+              upload_status: 'pending',
+              upload_progress: 0,
               status: 'pending',
               fileSize: file.fileSize,
               doi: file.doi || null,
               keywords: [],
+              updatedAt: new Date(),
             },
           });
 
@@ -206,8 +207,8 @@ router.get(
       const { batchId } = req.params;
 
       // Query batch
-      const batch = await prisma.paperBatch.findFirst({
-        where: { id: batchId, userId },
+      const batch = await prisma.paper_batches.findFirst({
+        where: { id: batchId, userId: userId },
       });
 
       if (!batch) {
@@ -289,8 +290,8 @@ router.get(
       const { batchId } = req.params;
 
       // Query batch basic info
-      const batch = await prisma.paperBatch.findFirst({
-        where: { id: batchId, userId },
+      const batch = await prisma.paper_batches.findFirst({
+        where: { id: batchId, userId: userId },
       });
 
       if (!batch) {
@@ -308,16 +309,16 @@ router.get(
       }
 
       // Query all papers with processing tasks
-      const papers = await prisma.paper.findMany({
-        where: { batchId },
+      const papers = await prisma.papers.findMany({
+        where: { batch_id: batchId },
         include: {
-          processingTask: {
+          processing_tasks: {
             select: {
               status: true,
               errorMessage: true,
-              errorStage: true,
-              errorTime: true,
-              retryCount: true,
+              error_stage: true,
+              error_time: true,
+              retry_count: true,
               updatedAt: true,
             },
           },
@@ -326,21 +327,21 @@ router.get(
       });
 
       // Calculate aggregated statistics
-      const uploadedCount = papers.filter(p => p.uploadStatus === 'completed').length;
+      const uploadedCount = papers.filter(p => p.upload_status === 'completed').length;
       const processingCount = papers.filter(
-        p => p.processingTask && !['completed', 'failed', 'pending'].includes(p.processingTask.status)
+        p => p.processing_tasks && !['completed', 'failed', 'pending'].includes(p.processing_tasks.status)
       ).length;
       const completedCount = papers.filter(p => p.status === 'completed').length;
       const failedCount = papers.filter(p => p.status === 'failed').length;
 
       // Overall progress: upload (20%) + processing (80%)
-      const uploadProgress = Math.round((uploadedCount / batch.totalFiles) * 20);
-      const processingProgress = Math.round((completedCount / batch.totalFiles) * 80);
+      const uploadProgress = Math.round((uploadedCount / batch.total_files) * 20);
+      const processingProgress = Math.round((completedCount / batch.total_files) * 80);
       const overallProgress = uploadProgress + processingProgress;
 
       // Format per-file progress
       const formattedPapers = papers.map(paper => {
-        const processingStatus = paper.processingTask?.status || paper.status || 'pending';
+        const processingStatus = paper.processing_tasks?.status || paper.status || 'pending';
         const processingProgress = getProgressPercent(processingStatus);
         const processingStage = getProcessingStage(processingStatus);
 
@@ -349,8 +350,8 @@ router.get(
           filename: paper.title || 'Untitled',
 
           // Upload phase
-          uploadStatus: paper.uploadStatus || 'pending',
-          uploadProgress: paper.uploadProgress || 0,
+          upload_status: paper.upload_status || 'pending',
+          upload_progress: paper.upload_progress || 0,
 
           // Processing phase
           processingStatus,
@@ -358,35 +359,35 @@ router.get(
           processingStage,
 
           // Error info
-          errorMessage: paper.processingTask?.errorMessage || null,
-          errorStage: paper.processingTask?.errorStage || null,
-          retryCount: paper.processingTask?.retryCount || 0,
+          errorMessage: paper.processing_tasks?.errorMessage || null,
+          error_stage: paper.processing_tasks?.error_stage || null,
+          retry_count: paper.processing_tasks?.retry_count || 0,
 
           // Timestamps
-          uploadedAt: paper.uploadedAt,
-          processingStartedAt: paper.processingTask?.updatedAt || null,
+          uploaded_at: paper.uploaded_at,
+          processing_started_at: paper.processing_tasks?.updatedAt || null,
           completedAt: paper.status === 'completed' ? paper.updatedAt : null,
         };
       });
 
       // Estimated times (simplified - could be enhanced with historical data)
       const avgProcessingTime = 300; // 5 minutes per paper
-      const estimatedUploadTime = Math.max(0, (batch.totalFiles - uploadedCount) * 30);
+      const estimatedUploadTime = Math.max(0, (batch.total_files - uploadedCount) * 30);
       const estimatedProcessingTime = Math.max(
         0,
-        (batch.totalFiles - completedCount - failedCount) * avgProcessingTime
+        (batch.total_files - completedCount - failedCount) * avgProcessingTime
       );
 
       res.json({
         success: true,
         data: {
           batchId,
-          totalFiles: batch.totalFiles,
+          total_files: batch.total_files,
           status: batch.status,
 
           // Upload phase
           uploadedCount,
-          uploadProgress: Math.round((uploadedCount / batch.totalFiles) * 100),
+          uploadProgress: Math.round((uploadedCount / batch.total_files) * 100),
 
           // Processing phase
           processingCount,
@@ -426,14 +427,14 @@ router.post(
       const paperId = req.params.id;
 
       // Verify paper exists and is failed
-      const paper = await prisma.paper.findFirst({
+      const paper = await prisma.papers.findFirst({
         where: {
           id: paperId,
-          userId,
+          userId: userId,
           status: 'failed',
         },
         include: {
-          processingTask: true,
+          processing_tasks: true,
         },
       });
 
@@ -452,20 +453,20 @@ router.post(
       }
 
       // Increment retry count
-      if (paper.processingTask) {
-        await prisma.processingTask.update({
-          where: { id: paper.processingTask.id },
+      if (paper.processing_tasks) {
+        await prisma.processing_tasks.update({
+          where: { id: paper.processing_tasks.id },
           data: {
-            retryCount: { increment: 1 },
+            retry_count: { increment: 1 },
             errorMessage: null,
-            errorStage: null,
+            error_stage: null,
             status: 'pending',
           },
         });
       }
 
       // Reset paper status
-      await prisma.paper.update({
+      await prisma.papers.update({
         where: { id: paperId },
         data: { status: 'pending' },
       });
@@ -504,8 +505,8 @@ router.post(
       const { batchId } = req.params;
 
       // Verify batch exists
-      const batch = await prisma.paperBatch.findFirst({
-        where: { id: batchId, userId },
+      const batch = await prisma.paper_batches.findFirst({
+        where: { id: batchId, userId: userId },
       });
 
       if (!batch) {
@@ -523,10 +524,10 @@ router.post(
       }
 
       // Count failed papers
-      const failedCount = await prisma.paper.count({
+      const failedCount = await prisma.papers.count({
         where: {
-          batchId,
-          userId,
+          batch_id: batchId,
+          userId: userId,
           status: 'failed',
         },
       });
@@ -540,29 +541,29 @@ router.post(
       }
 
       // Reset failed papers to pending
-      await prisma.paper.updateMany({
+      await prisma.papers.updateMany({
         where: {
-          batchId,
-          userId,
+          batch_id: batchId,
+          userId: userId,
           status: 'failed',
         },
         data: { status: 'pending' },
       });
 
       // Reset processing tasks
-      await prisma.processingTask.updateMany({
+      await prisma.processing_tasks.updateMany({
         where: {
-          paper: {
-            batchId,
-            userId,
+          papers: {
+            batch_id: batchId,
+            userId: userId,
           },
           status: 'failed',
         },
         data: {
           status: 'pending',
           errorMessage: null,
-          errorStage: null,
-          retryCount: { increment: 1 },
+          error_stage: null,
+          retry_count: { increment: 1 },
         },
       });
 

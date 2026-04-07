@@ -70,7 +70,7 @@ router.post(
       res.status(200).json({
         success: true,
         data: {
-          storageKey,
+          storageKey: storageKey,
           size: fileBuffer.length,
           message: 'File uploaded successfully',
         },
@@ -105,13 +105,13 @@ router.get('/', requirePermission('papers', 'read'), async (req: AuthRequest, re
     if (starredFilter !== undefined) where.starred = starredFilter;
 
     const [papers, total] = await Promise.all([
-      prisma.paper.findMany({
+      prisma.papers.findMany({
         where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
-          processingTask: {
+          processingTasks: {
             select: {
               status: true,
               errorMessage: true,
@@ -120,24 +120,24 @@ router.get('/', requirePermission('papers', 'read'), async (req: AuthRequest, re
           },
         },
       }),
-      prisma.paper.count({ where }),
+      prisma.papers.count({ where }),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
     // 计算处理进度
     const papersWithProgress = papers.map(paper => {
-      const processingStatus = paper.processingTask?.status as TaskStatus || paper.status;
+      const processingStatus = paper.processingTasks?.status as TaskStatus || paper.status;
       const progress = getProgressPercent(processingStatus);
 
       return {
         ...paper,
         processingStatus,
         progress,
-        processingError: paper.processingTask?.errorMessage || null,
-        lastUpdated: paper.processingTask?.updatedAt || paper.updatedAt,
+        processingError: paper.processingTasks?.errorMessage || null,
+        lastUpdated: paper.processingTasks?.updatedAt || paper.updatedAt,
         // Remove the nested processingTask from response
-        processingTask: undefined,
+        processingTasks: undefined,
       };
     });
 
@@ -213,14 +213,17 @@ router.post(
       const storageKey = generateStorageKey(userId, filename);
 
       // Create paper record in database
-      const paper = await prisma.paper.create({
+      const paperId = uuidv4();
+      const paper = await prisma.papers.create({
         data: {
-          title: filename.replace(/\.pdf$/i, ''), // Use filename as initial title
+          id: paperId,
+          title: filename.replace(/\.pdf$/i, ''),
           authors: [],
           status: 'pending',
-          userId,
-          storageKey,
+          userId: userId,
+          storageKey: storageKey,
           keywords: [],
+          updatedAt: new Date(),
         },
       });
 
@@ -235,7 +238,7 @@ router.post(
           paperId: paper.id,
           uploadUrl: url,
           expiresIn,
-          storageKey,
+          storageKey: storageKey,
           message: 'Please upload file to the provided URL, then call /api/papers/webhook to confirm',
         },
       });
@@ -266,7 +269,7 @@ router.post(
         });
       }
 
-      const { paperId, storageKey } = req.body;
+      const { paperId: paperId, storageKey } = req.body;
 
       // Validate required fields
       if (!paperId || !storageKey) {
@@ -284,8 +287,8 @@ router.post(
       }
 
       // Verify paper exists and belongs to user
-      const paper = await prisma.paper.findFirst({
-        where: { id: paperId, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id: paperId, userId: userId },
       });
 
       if (!paper) {
@@ -319,8 +322,8 @@ router.post(
       }
 
       // Check if task already exists
-      const existingTask = await prisma.processingTask.findUnique({
-        where: { paperId },
+      const existingTask = await prisma.processingTasks.findUnique({
+        where: { paperId: paperId },
       });
 
       if (existingTask) {
@@ -339,20 +342,22 @@ router.post(
 
       // Create processing task and update paper status atomically
       const [task] = await prisma.$transaction([
-        prisma.processingTask.create({
+        prisma.processingTasks.create({
           data: {
-            paperId,
+            id: uuidv4(),
+            paperId: paperId,
             status: 'pending',
-            storageKey,
+            storageKey: storageKey,
+            updatedAt: new Date(),
           },
         }),
-        prisma.paper.update({
+        prisma.papers.update({
           where: { id: paperId },
           data: {
             status: 'processing',
-            uploadStatus: 'completed',
-            uploadProgress: 100,
-            uploadedAt: new Date(),
+            upload_status: 'completed',
+            upload_progress: 100,
+            uploaded_at: new Date(),
           },
         }),
       ]);
@@ -360,33 +365,33 @@ router.post(
       logger.info(`Created processing task ${task.id} for paper ${paperId}`);
 
       // Batch tracking logic (per D-02: auto-start when all files uploaded)
-      if (paper.batchId) {
+      if (paper.batch_id) {
         // Increment batch uploaded count
-        await prisma.paperBatch.update({
-          where: { id: paper.batchId },
-          data: { uploadedCount: { increment: 1 } },
+        await prisma.paper_batches.update({
+          where: { id: paper.batch_id },
+          data: { uploaded_count: { increment: 1 } },
         });
 
         // Check if all files uploaded
-        const batch = await prisma.paperBatch.findUnique({
-          where: { id: paper.batchId },
-          select: { uploadedCount: true, totalFiles: true },
+        const batch = await prisma.paper_batches.findUnique({
+          where: { id: paper.batch_id },
+          select: { uploaded_count: true, total_files: true },
         });
 
-        if (batch && batch.uploadedCount === batch.totalFiles) {
+        if (batch && batch.uploaded_count === batch.total_files) {
           logger.info('All files uploaded for batch, triggering processing', {
-            batchId: paper.batchId,
+            batch_id: paper.batch_id,
           });
 
           // Update batch status
-          await prisma.paperBatch.update({
-            where: { id: paper.batchId },
+          await prisma.paper_batches.update({
+            where: { id: paper.batch_id },
             data: { status: 'processing' },
           });
 
           // Trigger Celery batch processing task
           try {
-            await triggerBatchProcessing(paper.batchId);
+            await triggerBatchProcessing(paper.batch_id);
           } catch (error) {
             logger.error('Failed to trigger batch processing:', error);
             // Don't fail the webhook if batch trigger fails
@@ -398,7 +403,7 @@ router.post(
         success: true,
         data: {
           taskId: task.id,
-          paperId,
+          paperId: paperId,
           status: task.status,
           progress: 0,
           message: 'Upload confirmed. Processing task created.',
@@ -434,10 +439,10 @@ router.get(
       const { id: paperId } = req.params;
 
       // Verify paper exists and belongs to user
-      const paper = await prisma.paper.findFirst({
-        where: { id: paperId, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id: paperId, userId: userId },
         include: {
-          processingTask: {
+          processingTasks: {
             select: {
               status: true,
               errorMessage: true,
@@ -475,7 +480,7 @@ router.get(
       };
 
       // Use processing task status if available, otherwise paper status
-      const effectiveStatus = paper.processingTask?.status || paper.status;
+      const effectiveStatus = paper.processingTasks?.status || paper.status;
       const progress = statusProgress[effectiveStatus] ?? getProgressPercent(effectiveStatus as TaskStatus);
 
       res.json({
@@ -485,9 +490,9 @@ router.get(
           title: paper.title,
           status: effectiveStatus,
           progress,
-          errorMessage: paper.processingTask?.errorMessage || null,
-          updatedAt: paper.processingTask?.updatedAt || paper.updatedAt,
-          completedAt: paper.processingTask?.completedAt || null,
+          errorMessage: paper.processingTasks?.errorMessage || null,
+          updatedAt: paper.processingTasks?.updatedAt || paper.updatedAt,
+          completedAt: paper.processingTasks?.completedAt || null,
         },
       });
     } catch (error) {
@@ -519,10 +524,10 @@ router.get(
 
       const { id } = req.params;
 
-      const paper = await prisma.paper.findFirst({
-        where: { id, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id, userId: userId },
         include: {
-          processingTask: {
+          processingTasks: {
             select: {
               status: true,
               errorMessage: true,
@@ -549,7 +554,7 @@ router.get(
       }
 
       // Calculate processing status and progress
-      const processingStatus = paper.processingTask?.status as TaskStatus || paper.status;
+      const processingStatus = paper.processingTasks?.status as TaskStatus || paper.status;
       const progress = getProgressPercent(processingStatus);
 
       res.json({
@@ -573,9 +578,9 @@ router.get(
           citations: paper.citations,
           createdAt: paper.createdAt,
           updatedAt: paper.updatedAt,
-          processingError: paper.processingTask?.errorMessage || null,
-          processingStartedAt: paper.processingTask?.createdAt || null,
-          processingCompletedAt: paper.processingTask?.completedAt || null,
+          processingError: paper.processingTasks?.errorMessage || null,
+          processingStartedAt: paper.processingTasks?.createdAt || null,
+          processingCompletedAt: paper.processingTasks?.completedAt || null,
         },
       });
     } catch (error) {
@@ -607,13 +612,13 @@ router.get(
 
       const { id } = req.params;
 
-      const paper = await prisma.paper.findFirst({
-        where: { id, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id, userId: userId },
         select: {
           id: true,
           readingNotes: true,
           status: true,
-          imradJson: true,
+          imrad_json: true,
         },
       });
 
@@ -636,7 +641,7 @@ router.get(
         data: {
           paperId: paper.id,
           summary: paper.readingNotes,
-          imrad: paper.imradJson,
+          imrad: paper.imrad_json,
           status: paper.status,
           hasNotes: !!paper.readingNotes,
         },
@@ -672,8 +677,8 @@ router.post(
       const { modificationRequest } = req.body;
 
       // Verify paper exists and belongs to user
-      const paper = await prisma.paper.findFirst({
-        where: { id, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id, userId: userId },
       });
 
       if (!paper) {
@@ -747,8 +752,8 @@ router.get(
       const { id } = req.params;
 
       // Verify paper exists and belongs to user
-      const paper = await prisma.paper.findFirst({
-        where: { id, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id, userId: userId },
         select: {
           id: true,
           title: true,
@@ -839,8 +844,8 @@ router.get(
       const { id } = req.params;
 
       // Verify paper exists and belongs to user
-      const paper = await prisma.paper.findFirst({
-        where: { id, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id, userId: userId },
         select: {
           id: true,
           storageKey: true,
@@ -932,8 +937,8 @@ router.patch(
       }
 
       // Verify paper exists and belongs to user
-      const paper = await prisma.paper.findFirst({
-        where: { id, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id, userId: userId },
       });
 
       if (!paper) {
@@ -951,7 +956,7 @@ router.patch(
       }
 
       // Update starred status
-      const updated = await prisma.paper.update({
+      const updated = await prisma.papers.update({
         where: { id },
         data: { starred },
         select: {
@@ -1005,8 +1010,8 @@ router.delete(
       }
 
       // Verify paper exists and belongs to user
-      const paper = await prisma.paper.findFirst({
-        where: { id, userId },
+      const paper = await prisma.papers.findFirst({
+        where: { id, userId: userId },
       });
 
       if (!paper) {
@@ -1024,7 +1029,7 @@ router.delete(
       }
 
       // Delete paper (cascade will handle related records)
-      await prisma.paper.delete({
+      await prisma.papers.delete({
         where: { id },
       });
 

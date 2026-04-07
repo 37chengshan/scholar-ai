@@ -71,7 +71,7 @@ const resetPassword = async (args: ResetPasswordArgs): Promise<void> => {
 
   try {
     // Find user by email
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { email },
     });
 
@@ -105,14 +105,14 @@ const resetPassword = async (args: ResetPasswordArgs): Promise<void> => {
     const passwordHash = await hashPassword(newPassword);
 
     // Update user's password
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: user.id },
-      data: { passwordHash },
+      data: { password_hash: passwordHash },
     });
 
     // Delete all existing refresh tokens for this user
-    await prisma.refreshToken.deleteMany({
-      where: { userId: user.id },
+    await prisma.refresh_tokens.deleteMany({
+      where: { user_id: user.id },
     });
 
     logger.info({

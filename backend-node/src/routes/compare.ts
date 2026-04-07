@@ -14,7 +14,7 @@ router.post(
   requirePermission('papers', 'read'),
   async (req: AuthRequest, res, next) => {
     try {
-      const { paper_ids, dimensions, include_abstract } = req.body;
+      const { paperIds, dimensions, include_abstract } = req.body;
       const userId = req.user?.sub;
 
       if (!userId) {
@@ -31,15 +31,15 @@ router.post(
         });
       }
 
-      // Validate paper_ids
-      if (!Array.isArray(paper_ids) || paper_ids.length < 2 || paper_ids.length > 10) {
+      // Validate paperIds
+      if (!Array.isArray(paperIds) || paperIds.length < 2 || paperIds.length > 10) {
         return res.status(400).json({
           success: false,
           error: {
             type: '/errors/validation-error',
             title: 'Validation Error',
             status: 400,
-            detail: 'paper_ids must be an array with 2-10 items',
+            detail: 'paperIds must be an array with 2-10 items',
             requestId: uuidv4(),
             timestamp: new Date().toISOString(),
           },
@@ -55,7 +55,7 @@ router.post(
           'Authorization': req.headers.authorization || '',
         },
         body: JSON.stringify({
-          paper_ids,
+          paperIds,
           dimensions: dimensions || ['method', 'results', 'dataset', 'metrics'],
           include_abstract: include_abstract !== false,
         }),
@@ -67,7 +67,7 @@ router.post(
       }
 
       const data = await response.json() as {
-        paper_ids: string[];
+        paperIds: string[];
         dimensions: string[];
         markdown_table: string;
         structured_data: any[];
@@ -77,7 +77,7 @@ router.post(
       res.json({
         success: true,
         data: {
-          paper_ids: data.paper_ids,
+          paperIds: data.paperIds,
           dimensions: data.dimensions,
           markdown_table: data.markdown_table,
           structured_data: data.structured_data,
@@ -98,7 +98,7 @@ router.post(
   requirePermission('papers', 'read'),
   async (req: AuthRequest, res, next) => {
     try {
-      const { paper_ids, method_name } = req.body;
+      const { paperIds, method_name } = req.body;
       const userId = req.user?.sub;
 
       if (!userId) {
@@ -116,14 +116,14 @@ router.post(
       }
 
       // Validate request
-      if (!Array.isArray(paper_ids) || paper_ids.length < 2 || paper_ids.length > 20) {
+      if (!Array.isArray(paperIds) || paperIds.length < 2 || paperIds.length > 20) {
         return res.status(400).json({
           success: false,
           error: {
             type: '/errors/validation-error',
             title: 'Validation Error',
             status: 400,
-            detail: 'paper_ids must be an array with 2-20 items',
+            detail: 'paperIds must be an array with 2-20 items',
             requestId: uuidv4(),
             timestamp: new Date().toISOString(),
           },
@@ -153,7 +153,7 @@ router.post(
           'Authorization': req.headers.authorization || '',
         },
         body: JSON.stringify({
-          paper_ids,
+          paperIds,
           method_name,
         }),
       });
@@ -165,11 +165,11 @@ router.post(
 
       const data = await response.json() as {
         method: string;
-        paper_count: number;
+        paperCount: number;
         timeline: Array<{
           year: number;
           version: string;
-          paper_id: string;
+          paperId: string;
           paper_title: string;
           key_changes: string;
         }>;
@@ -180,7 +180,7 @@ router.post(
         success: true,
         data: {
           method: data.method,
-          paper_count: data.paper_count,
+          paperCount: data.paperCount,
           timeline: data.timeline,
           summary: data.summary,
         }

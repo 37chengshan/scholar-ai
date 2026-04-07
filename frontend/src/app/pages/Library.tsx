@@ -43,6 +43,13 @@ export function Library() {
     search: debouncedSearch || undefined,
   });
 
+  // Filter state for LibraryFilters (must be defined before use)
+  const [libraryFilters, setLibraryFilters] = useState<{
+    starred?: boolean;
+    author?: string;
+    projectId?: string;
+  }>({});
+
   // Apply LibraryFilters to papers
   const filteredPapers = papers.filter(paper => {
     if (libraryFilters.starred && !paper.starred) return false;
@@ -103,13 +110,6 @@ export function Library() {
     x: number;
     y: number;
   } | null>(null);
-
-  // Filter state for LibraryFilters
-  const [libraryFilters, setLibraryFilters] = useState<{
-    starred?: boolean;
-    author?: string;
-    projectId?: string;
-  }>({});
 
   // Handle create project
   const handleCreateProject = useCallback(async () => {

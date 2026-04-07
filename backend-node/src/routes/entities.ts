@@ -41,13 +41,13 @@ router.post('/extract', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 /**
- * POST /api/entities/{paper_id}/build
+ * POST /api/entities/{paperId}/build
  * Proxy to Python AI service for building knowledge graph
  */
-router.post('/:paper_id/build', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:paperId/build', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { paper_id } = req.params;
-    const response = await fetch(`${AI_SERVICE_URL}/entities/${paper_id}/build`, {
+    const { paperId } = req.params;
+    const response = await fetch(`${AI_SERVICE_URL}/entities/${paperId}/build`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -64,13 +64,13 @@ router.post('/:paper_id/build', authenticate, async (req: AuthRequest, res, next
 });
 
 /**
- * GET /api/entities/{paper_id}/status
+ * GET /api/entities/{paperId}/status
  * Proxy to Python AI service for entity status
  */
-router.get('/:paper_id/status', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/:paperId/status', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { paper_id } = req.params;
-    const response = await fetch(`${AI_SERVICE_URL}/entities/${paper_id}/status`);
+    const { paperId } = req.params;
+    const response = await fetch(`${AI_SERVICE_URL}/entities/${paperId}/status`);
 
     const data = await response.json();
     res.status(response.status).json(data);

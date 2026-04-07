@@ -47,7 +47,13 @@ class StorageManager:
         self.neo4j = neo4j_service or Neo4jService()
         self.notes_generator = notes_generator or NotesGenerator()
         self.parser = DoclingParser()
-        self.embedding_service = get_qwen3vl_service()
+        
+        # Get or create Qwen3VL service and ensure model is loaded
+        self.qwen3vl_service = get_qwen3vl_service()
+        if not self.qwen3vl_service.is_loaded():
+            logger.info("Loading Qwen3VL model in storage manager...")
+            self.qwen3vl_service.load_model()
+            logger.info("Qwen3VL model loaded in storage manager")
 
     async def store(self, ctx: PipelineContext) -> PipelineContext:
         """Store all extraction results in batch.
@@ -99,15 +105,15 @@ class StorageManager:
         await conn.execute(
             """UPDATE papers
                SET content = $1,
-                   page_count = $2,
+                   "pageCount" = $2,
                    status = 'processing',
-                   imrad_json = $3,
+                   "imradJson" = $3,
                    title = COALESCE(NULLIF(title, ''), $4),
                    authors = COALESCE(NULLIF(authors, '{}'), $5),
                    abstract = COALESCE(NULLIF(abstract, ''), $6),
                    doi = COALESCE(NULLIF(doi, ''), $7),
                    keywords = COALESCE(NULLIF(keywords, '{}'), $8),
-                   updated_at = NOW()
+                   "updatedAt" = NOW()
                WHERE id = $9""",
             ctx.parse_result.get("markdown", ""),
             ctx.parse_result.get("page_count", 0),
@@ -150,7 +156,7 @@ class StorageManager:
                     """UPDATE papers
                        SET reading_notes = $1,
                            notes_version = notes_version + 1,
-                           updated_at = NOW()
+                           "updatedAt" = NOW()
                        WHERE id = $2""",
                     notes,
                     ctx.paper_id
@@ -186,6 +192,7 @@ class StorageManager:
         )
         
         # Assign sections based on IMRaD
+        chunk_texts = []
         for chunk in chunks:
             page = chunk.get("page_start")
             if page and ctx.imrad:
@@ -199,16 +206,67 @@ class StorageManager:
                             chunk["section"] = section_name
                             break
             
-            # Generate embedding for chunk
             chunk_text = chunk.get("text", "")
-            try:
-                embedding = self.embedding_service.encode_text(chunk_text)
-            except Exception as e:
-                logger.warning(
-                    "Failed to generate chunk embedding",
-                    error=str(e)
+            if not chunk_text or not chunk_text.strip():
+                chunk_text = "NULL"
+            chunk_texts.append(chunk_text)
+        
+        # Batch generate embeddings (much faster than one-by-one)
+        logger.info(
+            "Generating embeddings in batch",
+            task_id=ctx.task_id,
+            chunk_count=len(chunk_texts)
+        )
+        
+# CRITICAL: Ensure model is loaded on GPU before encoding
+        if not self.qwen3vl_service.is_loaded():
+            logger.warning("Model not loaded, loading now...")
+            self.qwen3vl_service.load_model()
+        
+        # Verify GPU usage
+        logger.info(
+            f"Embedding model status - Loaded: {self.qwen3vl_service.is_loaded()}, Device: {self.qwen3vl_service.get_device()}"
+        )
+        
+        # Generate embeddings in smaller batches to avoid GPU memory overflow
+        # MPS on Mac has limited GPU memory allocation
+        BATCH_SIZE = 8
+        embeddings = []
+        
+        try:
+            for i in range(0, len(chunk_texts), BATCH_SIZE):
+                batch = chunk_texts[i:i + BATCH_SIZE]
+                batch_embeddings = self.qwen3vl_service.encode_text(batch)
+                embeddings.extend(batch_embeddings)
+                
+                logger.debug(
+                    f"Generated batch {i // BATCH_SIZE + 1}/{(len(chunk_texts) + BATCH_SIZE - 1) // BATCH_SIZE}",
+                    task_id=ctx.task_id,
+                    batch_size=len(batch)
                 )
-                embedding = [0.0] * self.EMBEDDING_DIM
+                
+                # Clear GPU cache after each batch
+                import torch
+                if torch.backends.mps.is_available():
+                    torch.mps.empty_cache()
+            
+            logger.info(
+                "Embeddings generated",
+                task_id=ctx.task_id,
+                count=len(embeddings)
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to generate batch embeddings",
+                task_id=ctx.task_id,
+                error=str(e)
+            )
+            embeddings = [[0.0] * self.EMBEDDING_DIM] * len(chunk_texts)
+        
+        # Add chunks with embeddings
+        for i, chunk in enumerate(chunks):
+            chunk_text = chunk_texts[i]
+            embedding = embeddings[i]
             
             all_contents.append({
                 "paper_id": ctx.paper_id,

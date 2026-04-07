@@ -14,7 +14,7 @@ const router = Router();
 router.get('/storage', async (req, res, next) => {
   try {
     // Get paper count and file storage estimation
-    const papers = await prisma.paper.count();
+    const papers = await prisma.papers.count();
     const avgFileSize = 2 * 1024 * 1024; // 2MB average per paper
     const estimatedFileStorage = papers * avgFileSize;
 

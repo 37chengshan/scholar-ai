@@ -19,8 +19,11 @@ module.exports = {
     }],
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(node-fetch|data-uri-to-buffer|fetch-blob|formdata-polyfill)/)',
+    'node_modules/(?!(node-fetch|data-uri-to-buffer|fetch-blob|formdata-polyfill|@aws-sdk)/)',
   ],
+  moduleNameMapper: {
+    '^node-fetch$': '<rootDir>/node_modules/node-fetch/lib/index.js',
+  },
   moduleFileExtensions: ['ts', 'js', 'json'],
   collectCoverageFrom: [
     'src/**/*.ts',

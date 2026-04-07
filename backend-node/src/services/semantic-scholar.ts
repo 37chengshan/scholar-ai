@@ -25,7 +25,7 @@ export class SemanticScholarService {
       throw new Error(`Semantic Scholar batch failed: ${response.status}`);
     }
 
-    return response.json();
+    return response.json() as Promise<any[]>;
   }
 
   /**
@@ -45,7 +45,7 @@ export class SemanticScholarService {
       throw new Error(`Get citations failed: ${response.status}`);
     }
 
-    return response.json();
+    return response.json() as Promise<any[]>;
   }
 
   /**
@@ -65,7 +65,7 @@ export class SemanticScholarService {
       throw new Error(`Get references failed: ${response.status}`);
     }
 
-    return response.json();
+    return response.json() as Promise<any[]>;
   }
 
   /**
@@ -83,7 +83,7 @@ export class SemanticScholarService {
       throw new Error(`Get paper details failed: ${response.status}`);
     }
 
-    return response.json();
+    return response.json() as Promise<any[]>;
   }
 }
 

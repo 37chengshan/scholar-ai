@@ -90,10 +90,10 @@ router.get('/pagerank', authenticate, async (req: AuthRequest, res, next) => {
  */
 router.get('/subgraph', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { paper_ids, depth = '1' } = req.query;
+    const { paperIds, depth = '1' } = req.query;
 
     const params = new URLSearchParams();
-    if (paper_ids) params.append('paper_ids', paper_ids as string);
+    if (paperIds) params.append('paperIds', paperIds as string);
     if (depth) params.append('depth', depth as string);
 
     const response = await fetch(`${AI_SERVICE_URL}/api/graph/subgraph?${params.toString()}`);

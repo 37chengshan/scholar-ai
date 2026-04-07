@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     
     # Local Model Paths
     QWEN3VL_EMBEDDING_MODEL_PATH: str = "./Qwen/Qwen3-VL-Embedding-2B"
-    QWEN3VL_RERANKER_MODEL_PATH: str = "./Qwen3-VL-Reranker-2B"
+    QWEN3VL_RERANKER_MODEL_PATH: str = "./Qwen/Qwen3-VL-Reranker-2B"
     
     # Legacy embedding config (to be removed after migration)
     # EMBEDDING_MODEL: str = "text-embedding-3-small"  # Old OpenAI embedding

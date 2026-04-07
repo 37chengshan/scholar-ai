@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import { requirePermission } from '../middleware/rbac';
@@ -46,12 +47,13 @@ router.post('/', requirePermission('queries', 'create'), async (req: AuthRequest
     logger.info('Creating query', { userId, question: question.substring(0, 50), paperCount: paperIds.length });
 
     // 1. Create Query record
-    const query = await prisma.query.create({
+    const query = await prisma.queries.create({
       data: {
+        id: uuidv4(),
         question,
         queryType,
-        userId,
-        paperIds,
+        userId: userId,
+        paperIds: paperIds,
         status: 'processing',
       },
     });
@@ -63,13 +65,14 @@ router.post('/', requirePermission('queries', 'create'), async (req: AuthRequest
       paper_ids: paperIds,
       query_type: queryType,
       conversation_id: conversationId,
+      userId: userId, // Pass userId for authentication
     };
 
     const ragResponse = await aiService.ragQuery(ragRequest);
 
     // 3. Update Query record with response
     const durationMs = Date.now() - startTime;
-    await prisma.query.update({
+    await prisma.queries.update({
       where: { id: query.id },
       data: {
         answer: ragResponse.answer,
@@ -135,7 +138,7 @@ router.get('/', requirePermission('queries', 'read'), async (req: AuthRequest, r
 
     // Fetch queries and total count
     const [queries, total] = await Promise.all([
-      prisma.query.findMany({
+      prisma.queries.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
@@ -151,7 +154,7 @@ router.get('/', requirePermission('queries', 'read'), async (req: AuthRequest, r
           // Don't include full answer/sources in list
         },
       }),
-      prisma.query.count({ where }),
+      prisma.queries.count({ where }),
     ]);
 
     res.json({
@@ -186,8 +189,8 @@ router.get('/:id', requirePermission('queries', 'read'), async (req: AuthRequest
       throw Errors.unauthorized('User not authenticated');
     }
 
-    const query = await prisma.query.findFirst({
-      where: { id, userId },
+    const query = await prisma.queries.findFirst({
+      where: { id, userId: userId },
     });
 
     if (!query) {
@@ -216,15 +219,15 @@ router.delete('/:id', requirePermission('queries', 'delete'), async (req: AuthRe
       throw Errors.unauthorized('User not authenticated');
     }
 
-    const query = await prisma.query.findFirst({
-      where: { id, userId },
+    const query = await prisma.queries.findFirst({
+      where: { id, userId: userId },
     });
 
     if (!query) {
       throw Errors.notFound('Query not found');
     }
 
-    await prisma.query.delete({
+    await prisma.queries.delete({
       where: { id },
     });
 

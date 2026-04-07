@@ -45,7 +45,7 @@ router.get('/', async (req: AuthRequest, res, next) => {
 
     res.json({
       success: true,
-      data: {
+      data: { id: uuidv4(), updatedAt: new Date(),
         query: q,
         source,
         results: data.results || [],
@@ -180,7 +180,7 @@ router.get('/unified', authenticate, async (req: AuthRequest, res, next) => {
 
     res.json({
       success: true,
-      data: {
+      data: { id: uuidv4(), updatedAt: new Date(),
         query: query,
         results: data.results || [],
         total: data.results?.length || 0,
@@ -204,7 +204,7 @@ router.get('/suggest', async (req: AuthRequest, res, next) => {
     // TODO: 实现搜索建议
     res.json({
       success: true,
-      data: {
+      data: { id: uuidv4(), updatedAt: new Date(),
         query: q,
         suggestions: []
       }
@@ -255,7 +255,7 @@ router.post(
 
       // Check for duplicate by arXiv ID (if source is arxiv)
       if (source === 'arxiv' && externalId) {
-        const existingPaper = await prisma.paper.findFirst({
+        const existingPaper = await prisma.papers.findFirst({
           where: {
             arxivId: externalId,
             userId: userId,
@@ -279,7 +279,7 @@ router.post(
       }
 
       // Also check by title similarity (optional enhancement)
-      const existingByTitle = await prisma.paper.findFirst({
+      const existingByTitle = await prisma.papers.findFirst({
         where: {
           title: {
             equals: title,
@@ -305,15 +305,15 @@ router.post(
       }
 
       // Create paper record
-      const paper = await prisma.paper.create({
-        data: {
+      const paper = await prisma.papers.create({
+        data: { id: uuidv4(), updatedAt: new Date(),
           title,
           authors: authors || [],
           year: year || null,
           abstract: abstract || null,
           pdfUrl: pdfUrl || null,
           status: 'pending',
-          userId,
+          userId: userId,
           // Set arxivId or other external IDs based on source
           ...(source === 'arxiv' ? { arxivId: externalId } : {}),
         }
@@ -354,7 +354,7 @@ router.post(
 
       res.status(201).json({
         success: true,
-        data: {
+        data: { id: uuidv4(), updatedAt: new Date(),
           paperId: paper.id,
           status: paper.status,
           downloadTriggered,

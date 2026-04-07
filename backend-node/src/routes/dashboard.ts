@@ -39,20 +39,24 @@ router.get('/stats', async (req: AuthRequest, res, next) => {
       projectsCount,
       tokensResult,
     ] = await Promise.all([
-      prisma.paper.count({ where: { userId } }),
-      prisma.paper.count({ where: { userId, starred: true } }),
-      prisma.paper.count({ where: { userId, status: 'processing' } }),
-      prisma.paper.count({ where: { userId, status: 'completed' } }),
-      prisma.query.count({ where: { userId } }),
-      prisma.session.count({ where: { userId } }),
-      prisma.project.count({ where: { userId } }),
-      prisma.chatMessage.aggregate({
-        where: { session: { userId } },
-        _sum: { tokensUsed: true },
-      }),
+      prisma.papers.count({ where: { userId: userId } }),
+      prisma.papers.count({ where: { userId: userId, starred: true } }),
+      prisma.papers.count({ where: { userId: userId, status: 'processing' } }),
+      prisma.papers.count({ where: { userId: userId, status: 'completed' } }),
+      prisma.queries.count({ where: { userId: userId } }),
+      // TODO: Sessions are stored in Python backend, not in Prisma
+      // prisma.sessions.count({ where: { userId: userId } }),
+      Promise.resolve(0), // sessionsCount placeholder
+      prisma.projects.count({ where: { userId: userId } }),
+      // TODO: chat_messages table not in Prisma schema yet
+      // prisma.chat_messages.aggregate({
+      //   where: { sessions: { userId: userId } },
+      //   _sum: { tokens_used: true },
+      // }),
+      Promise.resolve({ _sum: { tokens_used: 0 } }), // tokensResult placeholder
     ]);
 
-    const llmTokens = tokensResult._sum.tokensUsed || 0;
+    const llmTokens = tokensResult._sum.tokens_used || 0;
 
     res.json({
       success: true,
@@ -95,18 +99,18 @@ router.get('/trends', async (req: AuthRequest, res, next) => {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     // Get papers created in the time range
-    const papers = await prisma.paper.findMany({
+    const papers = await prisma.papers.findMany({
       where: {
-        userId,
+        userId: userId,
         createdAt: { gte: since },
       },
       select: { createdAt: true },
     });
 
     // Get queries in the time range
-    const queries = await prisma.query.findMany({
+    const queries = await prisma.queries.findMany({
       where: {
-        userId,
+        userId: userId,
         createdAt: { gte: since },
       },
       select: { createdAt: true },
@@ -164,12 +168,12 @@ router.get('/recent-papers', async (req: AuthRequest, res, next) => {
     const limit = Math.min(10, parseInt(req.query.limit as string, 10) || 5);
 
     // Get recent papers by reading progress
-    const recentProgress = await prisma.readingProgress.findMany({
-      where: { userId },
+    const recentProgress = await prisma.reading_progress.findMany({
+      where: { userId: userId },
       orderBy: { lastReadAt: 'desc' },
       take: limit,
       include: {
-        paper: {
+        papers: {
           select: {
             id: true,
             title: true,
@@ -184,10 +188,10 @@ router.get('/recent-papers', async (req: AuthRequest, res, next) => {
     });
 
     const recentPapers = recentProgress.map(rp => ({
-      ...rp.paper,
+      ...rp.papers,
       currentPage: rp.currentPage,
       lastReadAt: rp.lastReadAt,
-      progress: rp.totalPages ? Math.round((rp.currentPage / rp.totalPages) * 100) : 0,
+      progress: rp.papers.pageCount ? Math.round((rp.currentPage / rp.papers.pageCount) * 100) : 0,
     }));
 
     res.json({
@@ -218,10 +222,10 @@ router.get('/reading-stats', async (req: AuthRequest, res, next) => {
     }
 
     // Get all reading progress
-    const allProgress = await prisma.readingProgress.findMany({
-      where: { userId },
+    const allProgress = await prisma.reading_progress.findMany({
+      where: { userId: userId },
       include: {
-        paper: {
+        papers: {
           select: { pageCount: true },
         },
       },
@@ -231,14 +235,14 @@ router.get('/reading-stats', async (req: AuthRequest, res, next) => {
     const totalPapersWithProgress = allProgress.length;
     const totalPagesRead = allProgress.reduce((sum, rp) => sum + rp.currentPage, 0);
     const completedPapers = allProgress.filter(
-      rp => rp.paper.pageCount && rp.currentPage >= rp.paper.pageCount
+      rp => rp.papers.pageCount && rp.currentPage >= rp.papers.pageCount
     ).length;
 
     // Average progress
     const avgProgress = allProgress.length > 0
       ? allProgress.reduce((sum, rp) => {
-          const progress = rp.paper.pageCount
-            ? Math.min(100, Math.round((rp.currentPage / rp.paper.pageCount) * 100))
+          const progress = rp.papers.pageCount
+            ? Math.min(100, Math.round((rp.currentPage / rp.papers.pageCount) * 100))
             : 0;
           return sum + progress;
         }, 0) / allProgress.length

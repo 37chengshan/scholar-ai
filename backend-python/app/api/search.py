@@ -404,7 +404,7 @@ async def search_semantic_scholar(
     logger.info("Semantic Scholar search cache miss", query=query, limit=limit)
 
     api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
-    headers = {"X-API-KEY": api_key} if api_key else {}
+    headers = {"x-api-key": api_key} if api_key else {}
 
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
     params = {

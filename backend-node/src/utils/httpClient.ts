@@ -84,8 +84,8 @@ export class HttpClient {
     );
   }
 
-  async post<T>(url: string, data?: unknown): Promise<T> {
-    const response = await this.client.post<T>(url, data);
+  async post<T>(url: string, data?: unknown, config?: Record<string, unknown>): Promise<T> {
+    const response = await this.client.post<T>(url, data, config);
     return response.data;
   }
 

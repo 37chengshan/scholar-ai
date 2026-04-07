@@ -32,8 +32,8 @@ router.get('/:paperId', requirePermission('papers', 'read'), async (req: AuthReq
     const { paperId } = req.params;
 
     // Verify paper exists and belongs to user
-    const paper = await prisma.paper.findFirst({
-      where: { id: paperId, userId },
+    const paper = await prisma.papers.findFirst({
+      where: { id: paperId, userId: userId },
     });
 
     if (!paper) {
@@ -51,9 +51,9 @@ router.get('/:paperId', requirePermission('papers', 'read'), async (req: AuthReq
     }
 
     // Get reading progress
-    const progress = await prisma.readingProgress.findUnique({
+    const progress = await prisma.reading_progress.findUnique({
       where: {
-        paperId_userId: { paperId, userId },
+        paperId_userId: { paperId: paperId, userId: userId },
       },
     });
 
@@ -61,7 +61,7 @@ router.get('/:paperId', requirePermission('papers', 'read'), async (req: AuthReq
       success: true,
       data: progress || {
         paperId,
-        userId,
+        userId: userId,
         currentPage: 1,
         totalPages: paper.pageCount || null,
         lastReadAt: null,
@@ -109,8 +109,8 @@ router.post('/:paperId', requirePermission('papers', 'read'), async (req: AuthRe
     }
 
     // Verify paper exists and belongs to user
-    const paper = await prisma.paper.findFirst({
-      where: { id: paperId, userId },
+    const paper = await prisma.papers.findFirst({
+      where: { id: paperId, userId: userId },
     });
 
     if (!paper) {
@@ -128,9 +128,9 @@ router.post('/:paperId', requirePermission('papers', 'read'), async (req: AuthRe
     }
 
     // Upsert reading progress
-    const progress = await prisma.readingProgress.upsert({
+    const progress = await prisma.reading_progress.upsert({
       where: {
-        paperId_userId: { paperId, userId },
+        paperId_userId: { paperId: paperId, userId: userId },
       },
       update: {
         currentPage,
@@ -138,8 +138,9 @@ router.post('/:paperId', requirePermission('papers', 'read'), async (req: AuthRe
         lastReadAt: new Date(),
       },
       create: {
-        paperId,
-        userId,
+        id: uuidv4(),
+        paperId: paperId,
+        userId: userId,
         currentPage,
         totalPages: totalPages || paper.pageCount || null,
       },
@@ -175,11 +176,11 @@ router.get('/', requirePermission('papers', 'read'), async (req: AuthRequest, re
     }
 
     // Get all reading progress for user with paper details
-    const progressList = await prisma.readingProgress.findMany({
-      where: { userId },
+    const progressList = await prisma.reading_progress.findMany({
+      where: { userId: userId },
       orderBy: { lastReadAt: 'desc' },
       include: {
-        paper: {
+        papers: {
           select: {
             id: true,
             title: true,

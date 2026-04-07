@@ -120,7 +120,7 @@ describe('Authentication E2E Tests', () => {
       expect(response.body.data.user.roles).toContain('user');
 
       // Check cookies are set
-      const cookies = response.headers['set-cookie'];
+      const cookies = response.headers['set-cookie'] as unknown as string[];
       expect(cookies).toBeDefined();
       expect(cookies.some((c: string) => c.includes('accessToken'))).toBe(true);
       expect(cookies.some((c: string) => c.includes('refreshToken'))).toBe(true);
@@ -233,7 +233,7 @@ describe('Authentication E2E Tests', () => {
       expect(response.body.data.message).toContain('Logged out');
 
       // Check cookies are cleared
-      const cookies = response.headers['set-cookie'];
+      const cookies = response.headers['set-cookie'] as unknown as string[];
       if (cookies) {
         expect(cookies.some((c: string) => c.includes('accessToken='))).toBe(true);
       }
@@ -276,7 +276,7 @@ describe('Authentication E2E Tests', () => {
       expect(response.body.data.message).toContain('refreshed');
 
       // Check new cookies are set
-      const cookies = response.headers['set-cookie'];
+      const cookies = response.headers['set-cookie'] as unknown as string[];
       expect(cookies).toBeDefined();
       expect(cookies.some((c: string) => c.includes('accessToken'))).toBe(true);
     });

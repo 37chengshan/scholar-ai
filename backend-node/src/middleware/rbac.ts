@@ -35,17 +35,17 @@ export const requireRole = (roleName: string) => {
       }
 
       // Check if user has the required role
-      const userRoles = await prisma.userRole.findMany({
+      const userRoles = await prisma.user_roles.findMany({
         where: { userId: req.user.sub },
-        include: { role: true },
+        include: { roles: true },
       });
 
-      const hasRole = userRoles.some((ur) => ur.role.name === roleName);
+      const hasRole = userRoles.some((ur) => ur.roles.name === roleName);
 
       if (!hasRole) {
         logger.warn({
           message: 'Role access denied',
-          userId: req.user.sub,
+          user_id: req.user.sub,
           requiredRole: roleName,
           path: req.path,
         });
@@ -121,12 +121,12 @@ export const requirePermission = (resource: string, action: string) => {
       }
 
       // Admin role bypass - admin has all permissions
-      const userRoles = await prisma.userRole.findMany({
+      const userRoles = await prisma.user_roles.findMany({
         where: { userId: req.user.sub },
-        include: { role: true },
+        include: { roles: true },
       });
 
-      const isAdmin = userRoles.some((ur) => ur.role.name === 'admin');
+      const isAdmin = userRoles.some((ur) => ur.roles.name === 'admin');
 
       if (isAdmin) {
         next();
@@ -135,7 +135,7 @@ export const requirePermission = (resource: string, action: string) => {
 
       // Check if user has the required permission
       // Query: Find any role that has this permission AND has the user assigned
-      const rolesWithPermission = await prisma.role.findMany({
+      const rolesWithPermission = await prisma.roles.findMany({
         where: {
           permissions: {
             some: {
@@ -143,7 +143,7 @@ export const requirePermission = (resource: string, action: string) => {
               action,
             },
           },
-          userRoles: {
+          user_roles: {
             some: {
               userId: req.user.sub,
             },
@@ -154,7 +154,7 @@ export const requirePermission = (resource: string, action: string) => {
       if (rolesWithPermission.length === 0) {
         logger.warn({
           message: 'Permission denied',
-          userId: req.user.sub,
+          user_id: req.user.sub,
           resource,
           action,
           path: req.path,
@@ -208,12 +208,12 @@ export const getUserPermissions = async (
   userId: string
 ): Promise<string[]> => {
   // Query: Find all permissions associated with roles that the user has
-  const permissions = await prisma.permission.findMany({
+  const permissions = await prisma.permissions.findMany({
     where: {
-      role: {
-        userRoles: {
+      roles: {
+        user_roles: {
           some: {
-            userId,
+            user_id: userId,
           },
         },
       },
@@ -228,10 +228,10 @@ export const getUserPermissions = async (
  * Returns array of role names
  */
 export const getUserRoles = async (userId: string): Promise<string[]> => {
-  const userRoles = await prisma.userRole.findMany({
-    where: { userId },
-    include: { role: true },
+  const userRoles = await prisma.user_roles.findMany({
+    where: { userId: userId },
+    include: { roles: true },
   });
 
-  return userRoles.map((ur) => ur.role.name);
+  return userRoles.map((ur) => ur.roles.name);
 };

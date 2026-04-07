@@ -7,9 +7,11 @@ import { hashPassword, verifyPassword } from '../utils/crypto';
 import {
   generateAccessToken,
   generateRefreshToken,
+  verifyAccessToken,
   verifyRefreshToken,
 } from '../utils/jwt';
 import { AuthRequest, ErrorTypes } from '../types/auth';
+import { Errors } from '../middleware/errorHandler';
 import { COOKIE_SETTINGS } from '../config/auth';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
@@ -61,7 +63,7 @@ router.post('/register', async (req, res, next) => {
     const { email, password, name } = result.data;
 
     // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { email },
     });
 
@@ -83,49 +85,70 @@ router.post('/register', async (req, res, next) => {
 
     // Hash password
     const passwordHash = await hashPassword(password);
+    
+    const userId = uuidv4();
 
-    // Create user with default 'user' role
-    const user = await prisma.user.create({
+    // Create user first
+    const user = await prisma.users.create({
       data: {
+        id: userId,
         email,
         name,
-        passwordHash,
-        emailVerified: true, // Phase 1: auto-verify
-        userRoles: {
-          create: {
-            role: {
-              connect: {
-                name: 'user',
-              },
-            },
-          },
-        },
+        passwordHash: passwordHash,
+        emailVerified: true,
+        updatedAt: new Date(),
       },
+    });
+
+    // Assign 'user' role - must query the actual role ID
+    const userRole = await prisma.roles.findUnique({
+      where: { name: 'user' },
+    });
+
+    if (!userRole) {
+      throw Errors.internal('Default user role not found. Please run database seed.');
+    }
+
+    await prisma.user_roles.create({
+      data: {
+        id: uuidv4(),
+        userId: userId,
+        role_id: userRole.id,
+      },
+    });
+
+    // Fetch user with roles
+const userWithRoles = await prisma.users.findUnique({
+      where: { id: user.id },
       include: {
         userRoles: {
           include: {
-            role: true,
+            roles: true,
           },
         },
       },
     });
 
+    if (!userWithRoles) {
+      throw Errors.internal('Failed to fetch created user');
+    }
+
     logger.info({
       message: 'User registered',
-      userId: user.id,
-      email: user.email,
+      userId: userWithRoles.id,
+      email: userWithRoles.email,
     });
 
     // Return user without password
     res.status(201).json({
       success: true,
       data: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        emailVerified: user.emailVerified,
-        roles: user.userRoles.map((ur) => ur.role.name),
-        createdAt: user.createdAt,
+        id: userWithRoles.id,
+        email: userWithRoles.email,
+        name: userWithRoles.name,
+        emailVerified: userWithRoles.emailVerified,
+        roles: userWithRoles.userRoles.map((ur) => ur.roles.name),
+        createdAt: userWithRoles.createdAt,
       },
       meta: {
         requestId: uuidv4(),
@@ -165,12 +188,12 @@ router.post('/login', async (req, res, next) => {
     const { email, password } = result.data;
 
     // Find user by email
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { email },
       include: {
         userRoles: {
           include: {
-            role: true,
+            roles: true,
           },
         },
       },
@@ -211,7 +234,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     // Get user roles
-    const roles = user.userRoles.map((ur) => ur.role.name);
+    const roles = user.userRoles.map((ur) => ur.roles.name);
 
     // Generate tokens
     const accessToken = generateAccessToken({
@@ -232,10 +255,11 @@ router.post('/login', async (req, res, next) => {
     );
 
     // Store refresh token in database for persistence
-    await prisma.refreshToken.create({
+    await prisma.refresh_tokens.create({
       data: {
-        tokenHash: refreshToken,
+        id: refreshJti,
         userId: user.id,
+        tokenHash: refreshToken,
         expiresAt: new Date(Date.now() + COOKIE_SETTINGS.refreshToken.maxAge),
       },
     });
@@ -258,7 +282,7 @@ router.post('/login', async (req, res, next) => {
           id: user.id,
           email: user.email,
           name: user.name,
-          emailVerified: user.emailVerified,
+emailVerified: user.emailVerified,
           roles,
         },
       },
@@ -311,7 +335,7 @@ router.post('/logout', async (req: AuthRequest, res, next) => {
       try {
         const { jti, sub: userId } = verifyRefreshToken(refreshToken);
         await redisClient.del(`refresh:${userId}:${jti}`);
-        await prisma.refreshToken.deleteMany({
+        await prisma.refresh_tokens.deleteMany({
           where: { tokenHash: refreshToken },
         });
       } catch {
@@ -405,12 +429,12 @@ router.post('/refresh', async (req, res, next) => {
     }
 
     // Get user with roles
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: payload.sub },
       include: {
         userRoles: {
           include: {
-            role: true,
+            roles: true,
           },
         },
       },
@@ -432,7 +456,7 @@ router.post('/refresh', async (req, res, next) => {
       return;
     }
 
-    const roles = user.userRoles.map((ur) => ur.role.name);
+    const roles = user.userRoles.map((ur) => ur.roles.name);
 
     // Generate new access token
     const newAccessToken = generateAccessToken({
@@ -457,11 +481,12 @@ router.post('/refresh', async (req, res, next) => {
     );
 
     // Update refresh token in database
-    await prisma.refreshToken.deleteMany({
+    await prisma.refresh_tokens.deleteMany({
       where: { tokenHash: refreshToken },
     });
-    await prisma.refreshToken.create({
+    await prisma.refresh_tokens.create({
       data: {
+        id: uuidv4(),
         tokenHash: newRefreshToken,
         userId: user.id,
         expiresAt: new Date(Date.now() + COOKIE_SETTINGS.refreshToken.maxAge),
@@ -513,12 +538,12 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
     }
 
     // Get user from database
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: req.user.sub },
       include: {
         userRoles: {
           include: {
-            role: true,
+            roles: true,
           },
         },
       },
@@ -548,7 +573,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
         name: user.name,
         emailVerified: user.emailVerified,
         avatar: user.avatar,
-        roles: user.userRoles.map((ur) => ur.role.name),
+        roles: user.userRoles.map((ur) => ur.roles.name),
         createdAt: user.createdAt,
       },
       meta: {
@@ -586,7 +611,7 @@ router.post('/forgot-password', async (req, res, next) => {
     }
 
     // Find user by email
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { email },
     });
 
@@ -603,6 +628,8 @@ router.post('/forgot-password', async (req, res, next) => {
     const resetToken = generateAccessToken({
       sub: user.id,
       email: user.email,
+      roles: [],
+      jti: uuidv4(),
       type: 'password_reset',
     });
 
@@ -667,13 +694,15 @@ router.post('/reset-password', async (req, res, next) => {
       return;
     }
 
-    // Verify token
-    const decoded = verifyRefreshToken(token);
-    if (!decoded || decoded.type !== 'password_reset') {
+    // Verify token using verifyAccessToken (since reset token is generated with generateAccessToken)
+    let decoded;
+    try {
+      decoded = verifyAccessToken(token);
+    } catch {
       res.status(401).json({
         success: false,
         error: {
-          type: ErrorTypes.AUTHENTICATION_ERROR,
+          type: ErrorTypes.UNAUTHORIZED,
           title: 'Unauthorized',
           status: 401,
           detail: 'Invalid or expired reset token',
@@ -691,7 +720,7 @@ router.post('/reset-password', async (req, res, next) => {
       res.status(401).json({
         success: false,
         error: {
-          type: ErrorTypes.AUTHENTICATION_ERROR,
+          type: ErrorTypes.UNAUTHORIZED,
           title: 'Unauthorized',
           status: 401,
           detail: 'Invalid or expired reset token',
@@ -707,9 +736,9 @@ router.post('/reset-password', async (req, res, next) => {
     const passwordHash = await hashPassword(password);
 
     // Update user password
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: decoded.sub },
-      data: { passwordHash },
+      data: { passwordHash: passwordHash },
     });
 
     // Delete reset token from Redis

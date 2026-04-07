@@ -151,8 +151,7 @@ class MultimodalSearchService:
 
         for content_type in content_types:
             try:
-                # Fetch more results for RRF fusion (D-05: top_k=20)
-                results = self.milvus.search_contents(
+                results = self.milvus.search_contents_v2(
                     embedding=query_embedding,
                     user_id=user_id,
                     content_type=content_type,

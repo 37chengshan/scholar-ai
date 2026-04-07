@@ -14,15 +14,15 @@ export type TaskStatus =
 // Task status response
 export interface TaskStatusResponse {
   taskId: string;
-  paperId: string;
+  paper_id: string;
   status: TaskStatus;
   progress: number;
-  storageKey: string;
-  errorMessage: string | null;
+  storage_key: string;
+  error_message: string | null;
   attempts: number;
-  createdAt: Date;
-  updatedAt: Date;
-  completedAt: Date | null;
+  created_at: Date;
+  updated_at: Date;
+  completed_at: Date | null;
 }
 
 // Progress mapping for each status
@@ -40,34 +40,34 @@ const STATUS_PROGRESS: Record<TaskStatus, number> = {
  * Create a new processing task for a paper
  */
 export async function createTask(
-  paperId: string,
-  storageKey: string
+  paper_id: string,
+  storage_key: string
 ): Promise<TaskStatusResponse> {
   try {
-    const task = await prisma.processingTask.create({
-      data: {
-        paperId,
-        storageKey,
+    const task = await prisma.processing_tasks.create({
+      data: { id: crypto.randomUUID(), updated_at: new Date(),
+        paper_id,
+        storage_key,
         status: 'pending',
       },
     });
 
-    logger.info(`Created processing task ${task.id} for paper ${paperId}`);
+    logger.info(`Created processing task ${task.id} for paper ${paper_id}`);
 
     return {
       taskId: task.id,
-      paperId: task.paperId,
+      paper_id: task.paper_id,
       status: task.status as TaskStatus,
       progress: STATUS_PROGRESS.pending,
-      storageKey: task.storageKey,
-      errorMessage: task.errorMessage,
+      storage_key: task.storage_key,
+      error_message: task.error_message,
       attempts: task.attempts,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      completedAt: task.completedAt,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      completed_at: task.completed_at,
     };
   } catch (error) {
-    logger.error(`Failed to create task for paper ${paperId}:`, error);
+    logger.error(`Failed to create task for paper ${paper_id}:`, error);
     throw new Error('Failed to create processing task');
   }
 }
@@ -78,24 +78,24 @@ export async function createTask(
 export async function updateTaskStatus(
   taskId: string,
   status: TaskStatus,
-  errorMessage?: string
+  error_message?: string
 ): Promise<TaskStatusResponse> {
   try {
     const updateData: {
       status: string;
-      errorMessage?: string | null;
-      completedAt?: Date | null;
+      error_message?: string | null;
+      completed_at?: Date | null;
     } = {
       status,
-      errorMessage: errorMessage || null,
+      error_message: error_message || null,
     };
 
     // Set completedAt when task reaches terminal state
     if (status === 'completed' || status === 'failed') {
-      updateData.completedAt = new Date();
+      updateData.completed_at = new Date();
     }
 
-    const task = await prisma.processingTask.update({
+    const task = await prisma.processing_tasks.update({
       where: { id: taskId },
       data: updateData,
     });
@@ -104,15 +104,15 @@ export async function updateTaskStatus(
 
     return {
       taskId: task.id,
-      paperId: task.paperId,
+      paper_id: task.paper_id,
       status: task.status as TaskStatus,
       progress: getProgressPercent(task.status as TaskStatus),
-      storageKey: task.storageKey,
-      errorMessage: task.errorMessage,
+      storage_key: task.storage_key,
+      error_message: task.error_message,
       attempts: task.attempts,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      completedAt: task.completedAt,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      completed_at: task.completed_at,
     };
   } catch (error) {
     logger.error(`Failed to update task ${taskId}:`, error);
@@ -123,10 +123,10 @@ export async function updateTaskStatus(
 /**
  * Get task status by paper ID (for polling)
  */
-export async function getTaskStatus(paperId: string): Promise<TaskStatusResponse | null> {
+export async function getTaskStatus(paper_id: string): Promise<TaskStatusResponse | null> {
   try {
-    const task = await prisma.processingTask.findUnique({
-      where: { paperId },
+    const task = await prisma.processing_tasks.findUnique({
+      where: { paper_id: paper_id },
     });
 
     if (!task) {
@@ -135,18 +135,18 @@ export async function getTaskStatus(paperId: string): Promise<TaskStatusResponse
 
     return {
       taskId: task.id,
-      paperId: task.paperId,
+      paper_id: task.paper_id,
       status: task.status as TaskStatus,
       progress: getProgressPercent(task.status as TaskStatus),
-      storageKey: task.storageKey,
-      errorMessage: task.errorMessage,
+      storage_key: task.storage_key,
+      error_message: task.error_message,
       attempts: task.attempts,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      completedAt: task.completedAt,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      completed_at: task.completed_at,
     };
   } catch (error) {
-    logger.error(`Failed to get task status for paper ${paperId}:`, error);
+    logger.error(`Failed to get task status for paper ${paper_id}:`, error);
     throw new Error('Failed to get task status');
   }
 }
@@ -156,7 +156,7 @@ export async function getTaskStatus(paperId: string): Promise<TaskStatusResponse
  */
 export async function getTaskById(taskId: string): Promise<TaskStatusResponse | null> {
   try {
-    const task = await prisma.processingTask.findUnique({
+    const task = await prisma.processing_tasks.findUnique({
       where: { id: taskId },
     });
 
@@ -166,15 +166,15 @@ export async function getTaskById(taskId: string): Promise<TaskStatusResponse | 
 
     return {
       taskId: task.id,
-      paperId: task.paperId,
+      paper_id: task.paper_id,
       status: task.status as TaskStatus,
       progress: getProgressPercent(task.status as TaskStatus),
-      storageKey: task.storageKey,
-      errorMessage: task.errorMessage,
+      storage_key: task.storage_key,
+      error_message: task.error_message,
       attempts: task.attempts,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      completedAt: task.completedAt,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      completed_at: task.completed_at,
     };
   } catch (error) {
     logger.error(`Failed to get task ${taskId}:`, error);
@@ -194,23 +194,23 @@ export function getProgressPercent(status: TaskStatus): number {
  */
 export async function getPendingTasks(limit: number = 10): Promise<TaskStatusResponse[]> {
   try {
-    const tasks = await prisma.processingTask.findMany({
+    const tasks = await prisma.processing_tasks.findMany({
       where: { status: 'pending' },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { created_at: 'asc' },
       take: limit,
     });
 
     return tasks.map(task => ({
       taskId: task.id,
-      paperId: task.paperId,
+      paper_id: task.paper_id,
       status: task.status as TaskStatus,
       progress: STATUS_PROGRESS.pending,
-      storageKey: task.storageKey,
-      errorMessage: task.errorMessage,
+      storage_key: task.storage_key,
+      error_message: task.error_message,
       attempts: task.attempts,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      completedAt: task.completedAt,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      completed_at: task.completed_at,
     }));
   } catch (error) {
     logger.error('Failed to get pending tasks:', error);
@@ -226,23 +226,23 @@ export async function getTasksByStatus(
   limit: number = 100
 ): Promise<TaskStatusResponse[]> {
   try {
-    const tasks = await prisma.processingTask.findMany({
+    const tasks = await prisma.processing_tasks.findMany({
       where: { status },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { created_at: 'asc' },
       take: limit,
     });
 
     return tasks.map(task => ({
       taskId: task.id,
-      paperId: task.paperId,
+      paper_id: task.paper_id,
       status: task.status as TaskStatus,
       progress: getProgressPercent(task.status as TaskStatus),
-      storageKey: task.storageKey,
-      errorMessage: task.errorMessage,
+      storage_key: task.storage_key,
+      error_message: task.error_message,
       attempts: task.attempts,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      completedAt: task.completedAt,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      completed_at: task.completed_at,
     }));
   } catch (error) {
     logger.error(`Failed to get tasks with status ${status}:`, error);

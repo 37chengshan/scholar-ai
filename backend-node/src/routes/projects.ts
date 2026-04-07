@@ -29,8 +29,8 @@ router.get('/', requirePermission('papers', 'read'), async (req: AuthRequest, re
       });
     }
 
-    const projects = await prisma.project.findMany({
-      where: { userId },
+    const projects = await prisma.projects.findMany({
+      where: { userId: userId },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
@@ -91,9 +91,9 @@ router.post('/', requirePermission('papers', 'create'), async (req: AuthRequest,
     const colorRegex = /^#[0-9A-Fa-f]{6}$/;
     const projectColor = color && colorRegex.test(color) ? color : '#3B82F6';
 
-    const project = await prisma.project.create({
-      data: {
-        userId,
+    const project = await prisma.projects.create({
+      data: { id: uuidv4(), updatedAt: new Date(),
+        userId: userId,
         name: name.trim(),
         color: projectColor,
       },
@@ -147,8 +147,8 @@ router.patch('/:id', requirePermission('papers', 'update'), async (req: AuthRequ
     }
 
     // Verify project exists and belongs to user
-    const existing = await prisma.project.findFirst({
-      where: { id, userId },
+    const existing = await prisma.projects.findFirst({
+      where: { id, userId: userId },
     });
 
     if (!existing) {
@@ -171,7 +171,7 @@ router.patch('/:id', requirePermission('papers', 'update'), async (req: AuthRequ
     if (name) updates.name = name.trim();
     if (color && colorRegex.test(color)) updates.color = color;
 
-    const updated = await prisma.project.update({
+    const updated = await prisma.projects.update({
       where: { id },
       data: updates,
     });
@@ -208,8 +208,8 @@ router.delete('/:id', requirePermission('papers', 'delete'), async (req: AuthReq
     const { id } = req.params;
 
     // Verify project exists and belongs to user
-    const project = await prisma.project.findFirst({
-      where: { id, userId },
+    const project = await prisma.projects.findFirst({
+      where: { id, userId: userId },
     });
 
     if (!project) {
@@ -227,7 +227,7 @@ router.delete('/:id', requirePermission('papers', 'delete'), async (req: AuthReq
     }
 
     // Delete project (papers will have projectId set to null via SetNull)
-    await prisma.project.delete({
+    await prisma.projects.delete({
       where: { id },
     });
 
@@ -264,8 +264,8 @@ router.patch('/paper/:paperId', requirePermission('papers', 'update'), async (re
     const { projectId } = req.body;
 
     // Verify paper exists and belongs to user
-    const paper = await prisma.paper.findFirst({
-      where: { id: paperId, userId },
+    const paper = await prisma.papers.findFirst({
+      where: { id: paperId, userId: userId },
     });
 
     if (!paper) {
@@ -284,8 +284,8 @@ router.patch('/paper/:paperId', requirePermission('papers', 'update'), async (re
 
     // If projectId is provided, verify it exists and belongs to user
     if (projectId) {
-      const project = await prisma.project.findFirst({
-        where: { id: projectId, userId },
+      const project = await prisma.projects.findFirst({
+        where: { id: projectId, userId: userId },
       });
 
       if (!project) {
@@ -304,7 +304,7 @@ router.patch('/paper/:paperId', requirePermission('papers', 'update'), async (re
     }
 
     // Update paper's project
-    const updated = await prisma.paper.update({
+    const updated = await prisma.papers.update({
       where: { id: paperId },
       data: { projectId: projectId || null },
       select: {

@@ -20,6 +20,7 @@ export interface RAGQueryRequest {
   query_type?: 'single' | 'cross_paper' | 'evolution';
   top_k?: number;
   conversation_id?: string;
+  userId?: string; // Add userId for authentication
 }
 
 export interface RAGQueryResponse {
@@ -75,7 +76,7 @@ class AIService {
    * The Python service has semantic cache (Plan 02), so similar queries
    * will return cached responses without LLM calls.
    */
-  async ragQuery(request: RAGQueryRequest): Promise<RAGQueryResponse> {
+async ragQuery(request: RAGQueryRequest): Promise<RAGQueryResponse> {
     const requestId = uuidv4();
     
     try {
@@ -83,8 +84,13 @@ class AIService {
         request_id: requestId,
         question: request.question.substring(0, 50),
         paper_count: request.paper_ids?.length || 0,
-        query_type: request.query_type,
       });
+
+      // Add X-User-ID header for authentication
+      const headers: Record<string, string> = {};
+      if (request.userId) {
+        headers['X-User-ID'] = request.userId;
+      }
 
       const response = await this.client.post<RAGQueryResponse>('/rag/query', {
         question: request.question,
@@ -92,7 +98,7 @@ class AIService {
         query_type: request.query_type || 'single',
         top_k: request.top_k || 10,
         conversation_id: request.conversation_id,
-      });
+      }, { headers });
 
       logger.info('RAG query response', {
         request_id: requestId,

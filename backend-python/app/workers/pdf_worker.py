@@ -181,17 +181,15 @@ class PDFProcessor:
                 SET title = COALESCE($2, title),
                     year = COALESCE($3, year),
                     abstract = COALESCE($4, abstract),
-                    s2_paper_id = $5,
-                    citation_count = $6,
-                    venue = $7,
-                    updated_at = NOW()
+                    citations = $5,
+                    venue = $6,
+                    "updatedAt" = NOW()
                 WHERE id = $1
                 """,
                 paper_id,
                 enriched_title if enriched_title != title else None,
                 enriched_year,
                 enriched_abstract,
-                paper_id_s2,
                 citation_count,
                 venue
             )
@@ -342,6 +340,24 @@ async def worker_loop():
     """Main worker loop - polls for pending tasks."""
     processor = PDFProcessor()
     await processor.init_db()
+    
+    # Initialize embedding model at startup
+    logger.info("Initializing embedding model...")
+    try:
+        qwen3vl_service = get_qwen3vl_service()
+        qwen3vl_service.load_model()
+        logger.info("Embedding model initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize embedding model", error=str(e))
+    
+    # Initialize Milvus collections at startup
+    logger.info("Initializing Milvus collections...")
+    try:
+        milvus_service = get_milvus_service()
+        milvus_service.initialize_collections()
+        logger.info("Milvus collections initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize Milvus collections", error=str(e))
 
     logger.info("PDF worker started")
 

@@ -4,7 +4,7 @@ import { redisClient } from '../../src/config/redis';
 let prismaInstance: any;
 async function getPrisma() {
   if (!prismaInstance) {
-    const { prisma } = await import('../../src/config/database');
+    const { prisma } = await import('../../src/config/database.js');
     prismaInstance = prisma;
   }
   return prismaInstance;
@@ -17,7 +17,7 @@ export async function cleanupTestData(): Promise<void> {
   try {
     const prisma = await getPrisma();
     // Delete test users (with test- prefix or @example.com domain)
-    await prisma.user.deleteMany({
+    await prisma.users.deleteMany({
       where: {
         OR: [
           { email: { contains: 'test-' } },
@@ -27,9 +27,9 @@ export async function cleanupTestData(): Promise<void> {
     });
 
     // Clean up any remaining test refresh tokens
-    await prisma.refreshToken.deleteMany({
+    await prisma.refresh_tokens.deleteMany({
       where: {
-        expiresAt: { lt: new Date() },
+        expires_at: { lt: new Date() },
       },
     });
   } catch (error) {

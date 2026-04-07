@@ -32,8 +32,8 @@ router.get('/:paperId', requirePermission('papers', 'read'), async (req: AuthReq
     const { paperId } = req.params;
 
     // Verify paper exists and belongs to user
-    const paper = await prisma.paper.findFirst({
-      where: { id: paperId, userId },
+    const paper = await prisma.papers.findFirst({
+      where: { id: paperId, userId: userId },
     });
 
     if (!paper) {
@@ -51,9 +51,9 @@ router.get('/:paperId', requirePermission('papers', 'read'), async (req: AuthReq
     }
 
     // Get all annotations for this paper by the user
-    const annotations = await prisma.annotation.findMany({
-      where: { paperId, userId },
-      orderBy: [{ pageNumber: 'asc' }, { createdAt: 'asc' }],
+    const annotations = await prisma.annotations.findMany({
+      where: { paperId: paperId, userId: userId },
+      orderBy: [{ page_number: 'asc' }, { createdAt: 'asc' }],
     });
 
     res.json({
@@ -132,8 +132,8 @@ router.post('/', requirePermission('papers', 'update'), async (req: AuthRequest,
     }
 
     // Verify paper exists and belongs to user
-    const paper = await prisma.paper.findFirst({
-      where: { id: paperId, userId },
+    const paper = await prisma.papers.findFirst({
+      where: { id: paperId, userId: userId },
     });
 
     if (!paper) {
@@ -154,15 +154,18 @@ router.post('/', requirePermission('papers', 'update'), async (req: AuthRequest,
     const colorRegex = /^#[0-9A-Fa-f]{6}$/;
     const annotationColor = color && colorRegex.test(color) ? color : '#FFEB3B';
 
-    const annotation = await prisma.annotation.create({
+    const annotation = await prisma.annotations.create({
       data: {
-        paperId,
-        userId,
+        id: uuidv4(),
+        paperId: paperId,
+        userId: userId,
         type,
-        pageNumber,
+        page_number: pageNumber,
         position,
         content: content || null,
         color: annotationColor,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       },
     });
 
@@ -199,8 +202,8 @@ router.patch('/:id', requirePermission('papers', 'update'), async (req: AuthRequ
     const { content, color } = req.body;
 
     // Verify annotation exists and belongs to user
-    const annotation = await prisma.annotation.findFirst({
-      where: { id, userId },
+    const annotation = await prisma.annotations.findFirst({
+      where: { id, userId: userId },
     });
 
     if (!annotation) {
@@ -238,7 +241,7 @@ router.patch('/:id', requirePermission('papers', 'update'), async (req: AuthRequ
     if (content !== undefined) updates.content = content || null;
     if (color && colorRegex.test(color)) updates.color = color;
 
-    const updated = await prisma.annotation.update({
+    const updated = await prisma.annotations.update({
       where: { id },
       data: updates,
     });
@@ -275,8 +278,8 @@ router.delete('/:id', requirePermission('papers', 'update'), async (req: AuthReq
     const { id } = req.params;
 
     // Verify annotation exists and belongs to user
-    const annotation = await prisma.annotation.findFirst({
-      where: { id, userId },
+    const annotation = await prisma.annotations.findFirst({
+      where: { id, userId: userId },
     });
 
     if (!annotation) {
@@ -293,7 +296,7 @@ router.delete('/:id', requirePermission('papers', 'update'), async (req: AuthReq
       });
     }
 
-    await prisma.annotation.delete({
+    await prisma.annotations.delete({
       where: { id },
     });
 

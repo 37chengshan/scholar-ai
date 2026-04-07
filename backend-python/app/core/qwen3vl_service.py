@@ -14,15 +14,28 @@ for all content types to enable true cross-modal retrieval in a single vector sp
 Implementation per D-01, D-02, D-11, D-12 from CONTEXT.md.
 """
 
+import sys
 from typing import Dict, List, Optional, Union
 from pathlib import Path
 import torch
 
 from PIL import Image
-from transformers import AutoModel, AutoTokenizer, BitsAndBytesConfig
 
 from app.core.config import settings
 from app.utils.logger import logger
+
+# Add Qwen model scripts path to sys.path
+qwen_scripts_path = Path(settings.QWEN3VL_EMBEDDING_MODEL_PATH) / "scripts"
+if qwen_scripts_path.exists():
+    sys.path.insert(0, str(qwen_scripts_path.parent))
+    from scripts.qwen3_vl_embedding import Qwen3VLEmbedder, Qwen3VLForEmbedding
+else:
+    # Fallback to importing from installed package
+    try:
+        from qwen3_vl_embedding import Qwen3VLEmbedder, Qwen3VLForEmbedding
+    except ImportError:
+        logger.error("Qwen3-VL-Embedding scripts not found, please ensure model is downloaded correctly")
+        raise
 
 
 class Qwen3VLMultimodalEmbedding:
@@ -32,26 +45,22 @@ class Qwen3VLMultimodalEmbedding:
     - 2048-dimensional embeddings
     - Direct pixel processing for images (no text conversion)
     - Table serialization to text format
-    - INT4/FP16 quantization support
+    - FP16 quantization support
     - Device auto-detection
     """
 
-    # Model path relative to project root (not backend-python)
-    # Project root is: /Users/cc/scholar-ai-deploy/schlar ai
-    MODEL_PATH = str(Path(__file__).parent.parent.parent.parent.parent / "Qwen" / "Qwen3-VL-Embedding-2B")
     EMBEDDING_DIM = 2048
 
     def __init__(self, quantization: str = "fp16", device: str = "auto"):
         """Initialize Qwen3-VL embedding service.
 
         Args:
-            quantization: Quantization type - "int4" or "fp16" (default)
+            quantization: Quantization type - "fp16" (default) or "int4"
             device: Device to use - "auto", "cuda", "mps", or "cpu"
         """
         self.quantization = quantization
         self.device = self._detect_device(device)
-        self.model: Optional[AutoModel] = None
-        self.processor: Optional[AutoTokenizer] = None
+        self.embedder: Optional[Qwen3VLEmbedder] = None
         self._initialized = False
 
     def _detect_device(self, device: str) -> str:
@@ -79,7 +88,8 @@ class Qwen3VLMultimodalEmbedding:
         """Load model into memory. Called at app startup.
 
         Uses local model path per D-01.
-        Supports INT4 quantization per D-11.
+        Supports FP16 quantization per D-11.
+        Uses Flash Attention 2 for better acceleration (CUDA only).
         """
         if self._initialized:
             return
@@ -87,53 +97,42 @@ class Qwen3VLMultimodalEmbedding:
         try:
             logger.info(
                 "Loading Qwen3-VL-Embedding model",
-                model_path=self.MODEL_PATH,
+                model_path=settings.QWEN3VL_EMBEDDING_MODEL_PATH,
                 quantization=self.quantization,
                 device=self.device,
             )
 
             # Check if local model exists
-            local_path = Path(self.MODEL_PATH)
+            local_path = Path(settings.QWEN3VL_EMBEDDING_MODEL_PATH)
             if not local_path.exists():
                 logger.warning(
                     "Local model path not found, falling back to HuggingFace download",
-                    path=self.MODEL_PATH,
+                    path=settings.QWEN3VL_EMBEDDING_MODEL_PATH,
                 )
                 model_path = "Qwen/Qwen3-VL-Embedding-2B"
             else:
                 model_path = str(local_path)
                 logger.info("Using local Qwen3-VL-Embedding model", path=model_path)
 
-            # Quantization config per D-11
-            quantization_config = None
-            torch_dtype = torch.float16
+            # Set torch dtype based on quantization
+            torch_dtype = torch.float16 if self.quantization == "fp16" else torch.float32
 
-            if self.quantization == "int4":
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                )
-                logger.info("Using INT4 quantization (NF4)")
-            elif self.quantization == "fp16":
-                torch_dtype = torch.float16
-                logger.info("Using FP16 precision")
-
-            # Load model with device_map="auto" for automatic placement
-            self.model = AutoModel.from_pretrained(
-                model_path,
-                torch_dtype=torch_dtype,
-                device_map=self.device,
-                trust_remote_code=True,
-                quantization_config=quantization_config,
-            )
-
-            # Load processor/tokenizer
-            self.processor = AutoTokenizer.from_pretrained(
-                model_path,
-                trust_remote_code=True,
-            )
+            # Use Flash Attention 2 for better acceleration (CUDA only)
+            # Flash Attention 2 is not supported on MPS/CPU
+            kwargs = {
+                "model_name_or_path": model_path,
+                "torch_dtype": torch_dtype,
+            }
+            
+            if torch.cuda.is_available():
+                try:
+                    kwargs["attn_implementation"] = "flash_attention_2"
+                    logger.info("Using Flash Attention 2 for better acceleration and memory saving")
+                except Exception as e:
+                    logger.warning(f"Flash Attention 2 not available, using default attention: {e}")
+            
+            # Use Qwen3VLEmbedder from official scripts
+            self.embedder = Qwen3VLEmbedder(**kwargs)
 
             self._initialized = True
 
@@ -145,7 +144,7 @@ class Qwen3VLMultimodalEmbedding:
             )
 
         except Exception as e:
-            logger.error("Failed to load Qwen3-VL-Embedding model", error=str(e))
+            logger.error("Failed to load Qwen3-VL-Embedding model", error=str(e), exc_info=True)
             raise
 
     def encode_image(
@@ -172,47 +171,31 @@ class Qwen3VLMultimodalEmbedding:
         else:
             images = image
 
-        embeddings = []
-
+        # Prepare inputs in Qwen3VLEmbedder format
+        # Format: {"image": path_or_pil_image}
+        inputs = []
         for img in images:
-            # Process input: convert path/URL to PIL.Image
             if isinstance(img, str):
-                if img.startswith("http"):
-                    import requests
-                    img = Image.open(requests.get(img, stream=True).raw)
-                else:
-                    img = Image.open(img)
+                # File path or URL
+                inputs.append({"image": img})
+            else:
+                # PIL.Image object
+                inputs.append({"image": img})
 
-            # Ensure RGB format
-            if img.mode != "RGB":
-                img = img.convert("RGB")
+        try:
+            # Get embeddings (already normalized)
+            embeddings = self.embedder.process(inputs, normalize=True)
 
-            # Encode image using model
-            # Note: Qwen3-VL-Embedding processes images directly via pixel values
-            # The processor handles image preprocessing internally
-            inputs = self.processor(
-                images=img,
-                return_tensors="pt",
-            )
+            # Convert to list format
+            embeddings_list = embeddings.cpu().tolist()
 
-            # Move inputs to device
-            if self.device != "cpu":
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-            with torch.no_grad():
-                # Get image features (2048-dim)
-                outputs = self.model(**inputs)
-                embedding = outputs.last_hidden_state.mean(dim=1)  # Pool over sequence
-
-            # Normalize to unit vector (COSINE distance)
-            embedding = torch.nn.functional.normalize(embedding, p=2, dim=1)
-
-            embeddings.append(embedding.cpu().tolist()[0])
-
-        # Return single vector for single input, list for batch
-        if is_single:
-            return embeddings[0]
-        return embeddings
+            # Return single vector for single input, list for batch
+            if is_single:
+                return embeddings_list[0]
+            return embeddings_list
+        except Exception as e:
+            logger.error("Failed to encode images", error=str(e), image_count=len(images))
+            raise
 
     def encode_text(
         self,
@@ -242,51 +225,24 @@ class Qwen3VLMultimodalEmbedding:
                 return [0.0] * self.EMBEDDING_DIM
             return []
 
-        # Filter out empty strings
-        non_empty_texts = [t for t in texts if t and t.strip()]
+        # Prepare inputs in Qwen3VLEmbedder format
+        # Format: {"text": "text content"}
+        # Replace empty strings with "NULL" placeholder
+        inputs = [{"text": t if t and t.strip() else "NULL"} for t in texts]
 
-        if not non_empty_texts:
-            # All texts were empty
+        try:
+            # Get embeddings (already normalized)
+            embeddings = self.embedder.process(inputs, normalize=True)
+
+            # Convert to list format
+            embeddings_list = embeddings.cpu().tolist()
+
             if is_single:
-                return [0.0] * self.EMBEDDING_DIM
-            return [[0.0] * self.EMBEDDING_DIM for _ in texts]
-
-        # Tokenize
-        inputs = self.processor(
-            text=non_empty_texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=8192,
-        )
-
-        # Move to device
-        if self.device != "cpu":
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            # Pool over sequence (mean pooling)
-            embeddings = outputs.last_hidden_state.mean(dim=1)
-
-        # Normalize to unit vectors
-        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
-
-        embeddings_list = embeddings.cpu().tolist()
-
-        # Merge back with empty positions
-        result = []
-        non_empty_idx = 0
-        for t in texts:
-            if not t or not t.strip():
-                result.append([0.0] * self.EMBEDDING_DIM)
-            else:
-                result.append(embeddings_list[non_empty_idx])
-                non_empty_idx += 1
-
-        if is_single:
-            return result[0]
-        return result
+                return embeddings_list[0]
+            return embeddings_list
+        except Exception as e:
+            logger.error("Failed to encode texts", error=str(e), text_count=len(texts))
+            raise
 
     def encode_table(
         self,

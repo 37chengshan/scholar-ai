@@ -34,7 +34,7 @@ router.post('/batch', async (req: AuthRequest, res, next) => {
   try {
     const { ids, fields } = BatchSchema.parse(req.body);
 
-    logger.info('S2 batch request', { userId: req.user?.id, count: ids.length });
+    logger.info('S2 batch request', { userId: req.user?.sub, count: ids.length });
 
     const papers = await semanticScholarService.batchGetPapers(ids, fields);
 
@@ -84,7 +84,7 @@ router.get('/paper/:paperId/citations', async (req: AuthRequest, res, next) => {
     const { paperId } = req.params;
     const { fields, limit } = req.query;
 
-    logger.info('S2 citations request', { userId: req.user?.id, paperId });
+    logger.info('S2 citations request', { userId: req.user?.sub, paperId });
 
     const citations = await semanticScholarService.getCitations(
       paperId,
@@ -114,7 +114,7 @@ router.get('/paper/:paperId/references', async (req: AuthRequest, res, next) => 
     const { paperId } = req.params;
     const { fields, limit } = req.query;
 
-    logger.info('S2 references request', { userId: req.user?.id, paperId });
+    logger.info('S2 references request', { userId: req.user?.sub, paperId });
 
     const references = await semanticScholarService.getReferences(
       paperId,

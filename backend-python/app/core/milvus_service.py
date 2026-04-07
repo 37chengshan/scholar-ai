@@ -360,7 +360,9 @@ class MilvusService:
         return collections
 
     def get_collection(self, name: str) -> Collection:
-        """Get collection by name."""
+        """Get collection by name, ensuring connection is established."""
+        if not self._connected:
+            self.connect()
         return Collection(name, using=self._alias)
 
     def search_images(
@@ -535,96 +537,32 @@ class MilvusService:
             logger.warning(f"Collection {collection_name} does not exist, skip dropping")
 
     def create_collection_v2(self) -> None:
-        """Create paper_contents_v2 collection with 2048-dim embeddings per D-09.
-
-        Schema:
-        - id: INT64 (primary key, auto_id)
-        - paper_id: VARCHAR(36)
-        - user_id: VARCHAR(36)
-        - page_num: INT64
-        - content_type: VARCHAR(20)  # text/image/table
-        - content_data: VARCHAR(8000)
-        - raw_data: JSON
-        - embedding: FLOAT_VECTOR(2048)
-
-        Index: IVF_FLAT with nlist=100, COSINE metric
-        """
+        """Create paper_contents_v2 collection with 2048-dim embeddings per D-09."""
         fields = [
-            FieldSchema(
-                name="id",
-                dtype=DataType.INT64,
-                is_primary=True,
-                auto_id=True,
-                description="Auto-increment ID"
-            ),
-            FieldSchema(
-                name="paper_id",
-                dtype=DataType.VARCHAR,
-                max_length=36,
-                description="Paper UUID"
-            ),
-            FieldSchema(
-                name="user_id",
-                dtype=DataType.VARCHAR,
-                max_length=36,
-                description="User UUID"
-            ),
-            FieldSchema(
-                name="page_num",
-                dtype=DataType.INT64,
-                description="Page number"
-            ),
-            FieldSchema(
-                name="content_type",
-                dtype=DataType.VARCHAR,
-                max_length=20,
-                description="Content type: text/image/table"
-            ),
-            FieldSchema(
-                name="content_data",
-                dtype=DataType.VARCHAR,
-                max_length=8000,
-                description="Content text or description"
-            ),
-            FieldSchema(
-                name="raw_data",
-                dtype=DataType.JSON,
-                description="Raw data: bbox, headers, etc."
-            ),
-FieldSchema(
-                name="embedding",
-                dtype=DataType.FLOAT_VECTOR,
-                dim=self.embedding_dim,
-                description="Embedding vector"
-            ),
+            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+            FieldSchema(name="paper_id", dtype=DataType.VARCHAR, max_length=64),
+            FieldSchema(name="user_id", dtype=DataType.VARCHAR, max_length=64),
+            FieldSchema(name="page_num", dtype=DataType.INT64),
+            FieldSchema(name="content_type", dtype=DataType.VARCHAR, max_length=32),
+            FieldSchema(name="section", dtype=DataType.VARCHAR, max_length=64),
+            FieldSchema(name="quality_score", dtype=DataType.FLOAT),
+            FieldSchema(name="word_count", dtype=DataType.INT64),
+            FieldSchema(name="has_equations", dtype=DataType.BOOL),
+            FieldSchema(name="has_figures", dtype=DataType.BOOL),
+            FieldSchema(name="extraction_version", dtype=DataType.INT64),
+            FieldSchema(name="content_data", dtype=DataType.VARCHAR, max_length=8000),
+            FieldSchema(name="raw_data", dtype=DataType.JSON),
+            FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim),
         ]
-
-        schema = CollectionSchema(
-            fields,
-            "Multimodal content with Qwen3-VL embeddings"
-        )
-
-        collection = Collection(
-            settings.MILVUS_COLLECTION_CONTENTS_V2,
-            schema,
-            using=self._alias
-        )
-
-        # Create IVF_FLAT index per D-09, RESEARCH.md 2.2
-        index_params = {
-            "metric_type": "COSINE",
-            "index_type": "IVF_FLAT",
-            "params": {"nlist": 100}
-        }
-
+        
+        schema = CollectionSchema(fields, "Multimodal content with Qwen3-VL embeddings")
+        collection = Collection(settings.MILVUS_COLLECTION_CONTENTS_V2, schema, using=self._alias)
+        
+        index_params = {"metric_type": "COSINE", "index_type": "IVF_FLAT", "params": {"nlist": 100}}
         collection.create_index("embedding", index_params)
         collection.load()
-
-        logger.info(
-            "Created paper_contents_v2 collection",
-            embedding_dim=self.embedding_dim,
-            index_type="IVF_FLAT"
-        )
+        
+        logger.info("Created paper_contents_v2 collection", embedding_dim=self.embedding_dim)
 
     def create_paper_contents_collection(self) -> Collection:
         """Create unified paper_contents collection with enhanced schema (per D-06).
@@ -825,24 +763,38 @@ FieldSchema(
                 try:
                     # Prepare entities with quality scoring
                     entities = []
-                    for item in batch:
+                    for idx, item in enumerate(batch):
                         quality_score = calculate_chunk_quality(item)
                         
-                        entities.append({
+                        page_num = item.get("page_num", 0)
+                        if page_num is None:
+                            page_num = 0
+                        if isinstance(page_num, list):
+                            page_num = page_num[0] if page_num else 0
+                        
+                        entity = {
                             "paper_id": item["paper_id"],
                             "user_id": item["user_id"],
                             "content_type": item.get("content_type", "text"),
-                            "page_num": item.get("page_num", 0),
+                            "page_num": int(page_num),
                             "section": item.get("section", ""),
-                            "quality_score": quality_score,
-                            "word_count": len(item.get("text", "").split()),
+                            "quality_score": float(quality_score),
+                            "word_count": int(len(item.get("text", "").split())),
                             "has_equations": bool(item.get("has_equations", False)),
                             "has_figures": bool(item.get("has_figures", False)),
                             "extraction_version": 2,
-                            "content_data": item.get("content_data", item.get("text", ""))[:8000],
+                            "content_data": str(item.get("content_data", item.get("text", "")))[:8000],
                             "raw_data": item.get("raw_data", {}),
                             "embedding": item["embedding"],
-                        })
+                        }
+                        entities.append(entity)
+                    
+                    logger.debug(
+                        "Prepared entities for insert",
+                        batch=batch_num,
+                        count=len(entities),
+                        page_nums=[e["page_num"] for e in entities]
+                    )
                     
                     ids = collection.insert(entities)
                     all_ids.extend(ids.primary_keys)
@@ -949,6 +901,68 @@ FieldSchema(
                     "content_type": hit.entity.get("content_type"),
                     "content_data": hit.entity.get("content_data"),
                     "raw_data": hit.entity.get("raw_data"),
+                })
+        return formatted
+
+    def search_contents_v2(
+        self,
+        embedding: List[float],
+        user_id: Optional[str] = None,
+        content_type: Optional[str] = None,
+        top_k: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Search paper_contents_v2 collection with 2048-dim embeddings.
+
+        Args:
+            embedding: 2048-dim query embedding (Qwen3VL)
+            user_id: Optional user filter
+            content_type: Optional content type filter ('image'/'table'/'text')
+            top_k: Number of results
+
+        Returns:
+            List of content items with distance scores
+        """
+        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+
+        search_params = {
+            "metric_type": "COSINE",
+            "params": {"nprobe": 10}
+        }
+
+        conditions = []
+        if user_id:
+            conditions.append(f"user_id == '{user_id}'")
+        if content_type:
+            conditions.append(f"content_type == '{content_type}'")
+
+        expr = " and ".join(conditions) if conditions else None
+
+        results = collection.search(
+            data=[embedding],
+            anns_field="embedding",
+            param=search_params,
+            limit=top_k,
+            expr=expr,
+            output_fields=[
+                "paper_id", "page_num", "content_type", "section",
+                "content_data", "raw_data", "quality_score"
+            ]
+        )
+
+        formatted = []
+        for hits in results:
+            for hit in hits:
+                formatted.append({
+                    "id": hit.id,
+                    "distance": hit.distance,
+                    "score": 1 - hit.distance,
+                    "paper_id": hit.entity.get("paper_id"),
+                    "page_num": hit.entity.get("page_num"),
+                    "content_type": hit.entity.get("content_type"),
+                    "section": hit.entity.get("section"),
+                    "content_data": hit.entity.get("content_data"),
+                    "raw_data": hit.entity.get("raw_data"),
+                    "quality_score": hit.entity.get("quality_score"),
                 })
         return formatted
 

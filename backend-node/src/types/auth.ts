@@ -9,6 +9,7 @@ export interface TokenPayload {
   email: string;
   roles: string[];
   jti: string;      // unique token ID
+  type?: string;    // optional token type (e.g., 'password_reset')
 }
 
 export interface AccessTokenPayload extends TokenPayload {
@@ -100,6 +101,7 @@ export const ErrorTypes = {
   INTERNAL_ERROR: '/errors/internal-error',
   SERVICE_UNAVAILABLE: '/errors/service-unavailable',
   BAD_GATEWAY: '/errors/bad-gateway',
+  AUTHENTICATION_ERROR: '/errors/authentication-error',
 } as const;
 
 export type ErrorType = typeof ErrorTypes[keyof typeof ErrorTypes];

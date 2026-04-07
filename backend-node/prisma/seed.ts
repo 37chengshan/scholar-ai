@@ -1,28 +1,29 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
 // Define roles
 const roles = [
-  { name: 'user', description: 'Standard user with access to own papers and queries' },
-  { name: 'admin', description: 'System administrator with full access' },
+  { id: randomUUID(), name: 'user', description: 'Standard user with access to own papers and queries' },
+  { id: randomUUID(), name: 'admin', description: 'System administrator with full access' },
 ];
 
 // Define permissions in resource:action format
 const permissions = [
   // Papers permissions
-  { resource: 'papers', action: 'create' },
-  { resource: 'papers', action: 'read' },
-  { resource: 'papers', action: 'update' },
-  { resource: 'papers', action: 'delete' },
+  { id: randomUUID(), resource: 'papers', action: 'create' },
+  { id: randomUUID(), resource: 'papers', action: 'read' },
+  { id: randomUUID(), resource: 'papers', action: 'update' },
+  { id: randomUUID(), resource: 'papers', action: 'delete' },
   // Queries permissions
-  { resource: 'queries', action: 'create' },
-  { resource: 'queries', action: 'read' },
+  { id: randomUUID(), resource: 'queries', action: 'create' },
+  { id: randomUUID(), resource: 'queries', action: 'read' },
   // Profile permissions
-  { resource: 'profile', action: 'read' },
-  { resource: 'profile', action: 'update' },
+  { id: randomUUID(), resource: 'profile', action: 'read' },
+  { id: randomUUID(), resource: 'profile', action: 'update' },
   // Admin permission
-  { resource: 'admin', action: 'all' },
+  { id: randomUUID(), resource: 'admin', action: 'all' },
 ];
 
 // Role to permission mapping
@@ -58,7 +59,7 @@ async function seedRoles(): Promise<Map<string, string>> {
   const roleMap = new Map<string, string>();
 
   for (const role of roles) {
-    const upserted = await prisma.role.upsert({
+    const upserted = await prisma.roles.upsert({
       where: { name: role.name },
       update: { description: role.description },
       create: role,
@@ -79,7 +80,7 @@ async function seedPermissions(): Promise<Map<string, string>> {
 
   for (const permission of permissions) {
     const key = `${permission.resource}:${permission.action}`;
-    const upserted = await prisma.permission.upsert({
+    const upserted = await prisma.permissions.upsert({
       where: {
         resource_action: {
           resource: permission.resource,
@@ -117,7 +118,7 @@ async function connectPermissionsToRoles(
       .filter((id): id is string => id !== undefined);
 
     // Update role with permissions
-    await prisma.role.update({
+    await prisma.roles.update({
       where: { id: roleId },
       data: {
         permissions: {

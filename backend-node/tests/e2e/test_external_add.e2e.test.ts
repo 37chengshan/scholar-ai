@@ -19,8 +19,8 @@ describe('External Paper Add E2E Tests', () => {
 
   beforeAll(async () => {
     // 动态导入，确保 setup.ts 先执行
-    const { default: importedApp } = await import('../../src/index');
-    const { prisma: importedPrisma } = await import('../../src/config/database');
+    const { default: importedApp } = await import('../../src/index.js');
+    const { prisma: importedPrisma } = await import('../../src/config/database.js');
     app = importedApp;
     prisma = importedPrisma;
 

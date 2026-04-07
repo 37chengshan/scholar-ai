@@ -7,15 +7,16 @@ async function main() {
   const hashedPassword = await hashPassword('test123456');
   
   try {
-    // First delete existing user
-    await prisma.user.deleteMany({ where: { email: 'test@scholarai.com' } });
+    await prisma.users.deleteMany({ where: { email: 'test@scholarai.com' } });
     
-    const user = await prisma.user.create({
+    const user = await prisma.users.create({
       data: {
+        id: crypto.randomUUID(),
         email: 'test@scholarai.com',
-        passwordHash: hashedPassword,
+        password_hash: hashedPassword,
         name: 'Test User',
-        emailVerified: true,
+        email_verified: true,
+        updated_at: new Date(),
       },
     });
     console.log('Test user created:', user.id);

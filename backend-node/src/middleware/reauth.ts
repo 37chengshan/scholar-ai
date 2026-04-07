@@ -38,18 +38,16 @@ export const requireReauth = async (
     }
 
     // Fetch user's password hash
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
-      select: { passwordHash: true },
+      select: { password_hash: true },
     });
 
     if (!user) {
       throw Errors.notFound('User not found');
     }
 
-    // Verify password using Argon2
-    // Note: verifyPassword(hash, password) - hash first, then password
-    const isValid = await verifyPassword(user.passwordHash, currentPassword);
+    const isValid = await verifyPassword(user.password_hash, currentPassword);
 
     if (!isValid) {
       throw Errors.invalidCredentials('Invalid password');

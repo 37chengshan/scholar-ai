@@ -180,7 +180,7 @@ class PDFCoordinator:
         """
         async with self.db_pool.acquire() as conn:
             task = await conn.fetchrow(
-                """SELECT pt.*, p.user_id, p.id as paper_id, p.storage_key
+                """SELECT pt.*, p."userId", p.id as paper_id, p.storage_key
                    FROM processing_tasks pt
                    JOIN papers p ON pt.paper_id = p.id
                    WHERE pt.id = $1""",
@@ -193,7 +193,7 @@ class PDFCoordinator:
         return PipelineContext(
             task_id=task_id,
             paper_id=task["paper_id"],
-            user_id=task["user_id"],
+            user_id=task["userId"],
             storage_key=task["storage_key"]
         )
 

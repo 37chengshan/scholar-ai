@@ -40,13 +40,13 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
       select: {
         id: true,
         email: true,
         name: true,
-        emailVerified: true,
+        email_verified: true,
         avatar: true,
         createdAt: true,
         updatedAt: true
@@ -88,7 +88,7 @@ router.patch('/me', authenticate, async (req: AuthRequest, res, next) => {
     if (name) updates.name = name;
     if (email) {
       // Check email uniqueness
-      const existingUser = await prisma.user.findUnique({ where: { email } });
+      const existingUser = await prisma.users.findUnique({ where: { email } });
       if (existingUser && existingUser.id !== userId) {
         throw Errors.validation('Email already in use');
       }
@@ -96,7 +96,7 @@ router.patch('/me', authenticate, async (req: AuthRequest, res, next) => {
     }
     if (avatar) updates.avatar = avatar;
 
-    const user = await prisma.user.update({
+    const user = await prisma.users.update({
       where: { id: userId },
       data: updates,
       select: { id: true, name: true, email: true, avatar: true },
@@ -143,7 +143,7 @@ router.post('/me/avatar', authenticate, upload.single('avatar'), async (req: Aut
     );
 
     // Update user avatar URL
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: userId },
       data: { avatar: avatarUrl },
     });
@@ -165,7 +165,7 @@ router.get('/me/settings', authenticate, async (req: AuthRequest, res, next) => 
   try {
     const userId = req.user?.sub;
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
       select: { settings: true },
     });
@@ -212,7 +212,7 @@ router.patch('/me/settings', authenticate, async (req: AuthRequest, res, next) =
     }
 
     // Get current settings or default
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: userId },
       select: { settings: true },
     });
@@ -228,7 +228,7 @@ router.patch('/me/settings', authenticate, async (req: AuthRequest, res, next) =
       ...(theme && { theme }),
     };
 
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: userId },
       data: { settings: updatedSettings },
     });
@@ -269,16 +269,16 @@ router.patch('/me/password', authenticate, requireReauth, async (req: ReauthRequ
     const passwordHash = await hashPassword(newPassword);
 
     // Update user password
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: userId },
-      data: { passwordHash },
+      data: { password_hash: passwordHash },
     });
 
     logger.info('Password changed', { userId });
 
     // Invalidate all refresh tokens (security measure)
-    await prisma.refreshToken.deleteMany({
-      where: { userId },
+    await prisma.refresh_tokens.deleteMany({
+      where: { userId: userId },
     });
 
     res.json({
@@ -310,18 +310,18 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res, next) => {
 
     // 1. Basic counts
     const [paperCount, entityCount, queryCount, sessionCount] = await Promise.all([
-      prisma.paper.count({ where: { userId } }),
-      prisma.paperChunk.count({ where: { paper: { userId } } }),
-      prisma.query.count({ where: { userId } }),
-      prisma.session.count({ where: { userId } }),
+      prisma.papers.count({ where: { userId: userId } }),
+      prisma.paper_chunks.count({ where: { papers: { userId: userId } } }),
+      prisma.queries.count({ where: { userId: userId } }),
+      prisma.sessions.count({ where: { userId: userId } }),
     ]);
 
     // 2. LLM Tokens (aggregate from chat messages)
-    const tokensResult = await prisma.chatMessage.aggregate({
-      where: { session: { userId } },
-      _sum: { tokensUsed: true },
+    const tokensResult = await prisma.chat_messages.aggregate({
+      where: { sessions: { userId: userId } },
+      _sum: { tokens_used: true },
     });
-    const llmTokens = tokensResult._sum.tokensUsed || 0;
+    const llmTokens = tokensResult._sum.tokens_used || 0;
 
     // 3. Weekly trend (last 7 days)
     const sevenDaysAgo = new Date();
@@ -330,17 +330,17 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res, next) => {
     const weeklyTrend = await prisma.$queryRaw<
       Array<{ date: Date; papers: number; queries: number; tokens: number }>
     >`
-      SELECT DATE(created_at) as date,
+      SELECT DATE(createdAt) as date,
              COUNT(*) FILTER (WHERE type = 'paper') as papers,
              COUNT(*) FILTER (WHERE type = 'query') as queries,
              SUM(tokens_used) as tokens
       FROM (
-        SELECT created_at, 'paper' as type, 0 as tokens_used FROM papers WHERE user_id = ${userId}
+        SELECT createdAt, 'paper' as type, 0 as tokens_used FROM papers WHERE userId = ${userId}
         UNION ALL
-        SELECT created_at, 'query' as type, 0 as tokens_used FROM queries WHERE user_id = ${userId}
+        SELECT createdAt, 'query' as type, 0 as tokens_used FROM queries WHERE userId = ${userId}
       ) combined
-      WHERE created_at >= ${sevenDaysAgo}
-      GROUP BY DATE(created_at)
+      WHERE createdAt >= ${sevenDaysAgo}
+      GROUP BY DATE(createdAt)
       ORDER BY date
     `;
 
@@ -350,7 +350,7 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res, next) => {
     >`
       SELECT keyword as name, COUNT(*) as value
       FROM papers, unnest(keywords) as keyword
-      WHERE user_id = ${userId}
+      WHERE userId = ${userId}
       GROUP BY keyword
       ORDER BY COUNT(*) DESC
       LIMIT 4
@@ -392,14 +392,14 @@ router.get('/me/api-keys', authenticate, async (req: AuthRequest, res, next) => 
   try {
     const userId = req.user?.sub;
 
-    const apiKeys = await prisma.apiKey.findMany({
-      where: { userId },
+    const apiKeys = await prisma.api_keys.findMany({
+      where: { userId: userId },
       select: {
         id: true,
         name: true,
         prefix: true,
         createdAt: true,
-        lastUsedAt: true,
+        last_used_at: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -438,11 +438,12 @@ router.post('/me/api-keys', authenticate, async (req: AuthRequest, res, next) =>
     const keyHash = await hashPassword(apiKey);
 
     // Save to database
-    const newKey = await prisma.apiKey.create({
+    const newKey = await prisma.api_keys.create({
       data: {
-        userId,
+        id: crypto.randomUUID(),
+        userId: userId,
         name,
-        keyHash,
+        key_hash: keyHash,
         prefix,
       },
       select: {
@@ -486,8 +487,8 @@ router.delete('/me/api-keys/:keyId', authenticate, requireReauth, async (req: Re
     }
 
     // Verify ownership
-    const apiKey = await prisma.apiKey.findFirst({
-      where: { id: keyId, userId },
+    const apiKey = await prisma.api_keys.findFirst({
+      where: { id: keyId, userId: userId },
     });
 
     if (!apiKey) {
@@ -495,7 +496,7 @@ router.delete('/me/api-keys/:keyId', authenticate, requireReauth, async (req: Re
     }
 
     // Delete key
-    await prisma.apiKey.delete({
+    await prisma.api_keys.delete({
       where: { id: keyId },
     });
 

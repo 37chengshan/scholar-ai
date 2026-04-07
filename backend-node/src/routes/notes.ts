@@ -14,13 +14,13 @@ router.use(authenticate);
 router.post('/generate', async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user?.sub;
-    const { paper_id } = req.body;
+    const { paperId } = req.body;
 
-    if (!paper_id) {
-      throw Errors.validation('paper_id is required');
+    if (!paperId) {
+      throw Errors.validation('paperId is required');
     }
 
-    logger.info('Generate notes request', { userId, paper_id });
+    logger.info('Generate notes request', { userId, paperId });
 
     const response = await fetch(`${PYTHON_SERVICE_URL}/api/notes/generate`, {
       method: 'POST',
@@ -28,7 +28,7 @@ router.post('/generate', async (req: AuthRequest, res, next) => {
         'Content-Type': 'application/json',
         'X-User-ID': userId || '',
       },
-      body: JSON.stringify({ paper_id }),
+      body: JSON.stringify({ paperId }),
     });
 
     if (!response.ok) {
@@ -49,13 +49,13 @@ router.post('/generate', async (req: AuthRequest, res, next) => {
 router.post('/regenerate', async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user?.sub;
-    const { paper_id, modification_request } = req.body;
+    const { paperId, modification_request } = req.body;
 
-    if (!paper_id || !modification_request) {
-      throw Errors.validation('paper_id and modification_request are required');
+    if (!paperId || !modification_request) {
+      throw Errors.validation('paperId and modification_request are required');
     }
 
-    logger.info('Regenerate notes request', { userId, paper_id });
+    logger.info('Regenerate notes request', { userId, paperId });
 
     const response = await fetch(`${PYTHON_SERVICE_URL}/api/notes/regenerate`, {
       method: 'POST',
@@ -63,7 +63,7 @@ router.post('/regenerate', async (req: AuthRequest, res, next) => {
         'Content-Type': 'application/json',
         'X-User-ID': userId || '',
       },
-      body: JSON.stringify({ paper_id, modification_request }),
+      body: JSON.stringify({ paperId, modification_request }),
     });
 
     if (!response.ok) {

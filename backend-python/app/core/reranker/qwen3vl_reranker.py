@@ -53,10 +53,10 @@ class Qwen3VLRerankerService(BaseRerankerService):
         results = service.rerank(query, docs)
     """
 
-    # Model path relative to project root (not backend-python)
-    # Project root is: /Users/cc/scholar-ai-deploy/schlar ai
-    # Reranker file is in core/reranker/, so needs 6 parents to reach project root
-    MODEL_PATH = str(Path(__file__).parent.parent.parent.parent.parent.parent / "Qwen3-VL-Reranker-2B")
+    # Model path from config or relative to project root
+    from app.core.config import settings
+    
+    MODEL_PATH = settings.QWEN3VL_RERANKER_MODEL_PATH
     MODEL_NAME = "Qwen3-VL-Reranker-2B"  # For health check and logging
 
     def __init__(

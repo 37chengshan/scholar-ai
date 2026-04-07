@@ -115,13 +115,38 @@ async def process_single_pdf_async(paper_id: str, celery_task):
     processor = PDFProcessor()
 
     try:
-        # Create processing_task record
         pool = await get_db_pool()
-        task_id = await pool.fetchval(
-            """INSERT INTO processing_tasks (paper_id, status)
-               VALUES ($1, 'processing') RETURNING id""",
+        
+        # Check if task already exists
+        existing_task = await pool.fetchrow(
+            "SELECT id, storage_key FROM processing_tasks WHERE paper_id = $1",
             paper_id
         )
+        
+        if existing_task:
+            task_id = existing_task['id']
+            storage_key = existing_task['storage_key']
+            # Update status to processing
+            await pool.execute(
+                "UPDATE processing_tasks SET status = 'processing', updated_at = NOW() WHERE id = $1",
+                task_id
+            )
+        else:
+            # Create new task record with UUID
+            import uuid
+            task_id = str(uuid.uuid4())
+            # Get storage_key from papers table
+            paper = await pool.fetchrow(
+                "SELECT storage_key FROM papers WHERE id = $1",
+                paper_id
+            )
+            storage_key = paper['storage_key'] if paper else None
+            
+            await pool.execute(
+                """INSERT INTO processing_tasks (id, paper_id, status, storage_key, created_at, updated_at)
+                   VALUES ($1, $2, 'processing', $3, NOW(), NOW())""",
+                task_id, paper_id, storage_key
+            )
 
         # Processing stages with progress percentages (per D-05)
         stages = [

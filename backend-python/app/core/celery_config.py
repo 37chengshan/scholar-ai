@@ -24,12 +24,16 @@ celery_app = Celery(
 
 # Configuration per D-09 and D-10
 celery_app.conf.update(
-    # Execution limits (per D-03)
-    worker_concurrency=8,              # Initial concurrency
-    worker_max_concurrency=8,          # Max workers
-    worker_min_concurrency=2,          # Min workers
+    # Execution limits (per D-03) - Reduced concurrency to prevent crashes
+    worker_concurrency=1,              # Single worker to avoid memory issues
+    worker_max_concurrency=1,          # Max 1 worker
+    worker_min_concurrency=1,          # Min 1 worker
     task_soft_time_limit=600,          # 10 min soft limit
     task_time_limit=900,               # 15 min hard limit
+
+    # Memory limits
+    worker_max_memory_per_child=3072000,  # 3GB limit per worker (in KB)
+    worker_prefetch_multiplier=1,         # Process one task at a time
 
     # Reliability settings
     task_acks_late=True,               # Acknowledge after completion
