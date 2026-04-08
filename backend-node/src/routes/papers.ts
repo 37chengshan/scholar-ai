@@ -573,6 +573,25 @@ router.post(
       // Generate presigned upload URL
       const { url, expiresIn } = await generatePresignedUploadUrl(userId, filename);
 
+      // Create UploadHistory record (Task 3: wire upload history creation)
+      const uploadHistoryId = uuidv4();
+      await prisma.uploadHistory.create({
+        data: {
+          id: uploadHistoryId,
+          userId,
+          filename,
+          status: 'PROCESSING',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      logger.info(`Created UploadHistory record ${uploadHistoryId} for upload request`, {
+        userId,
+        filename,
+        paperId: paper.id,
+      });
+
       logger.info(`Generated upload URL for paper ${paper.id}, file: ${filename}`);
 
       res.status(201).json({
@@ -858,15 +877,39 @@ router.post(
         },
       });
 
+      // Create UploadHistory record (Task 3: wire upload history creation)
+      const uploadHistoryId = uuidv4();
+      const startTime = Date.now();
+      await prisma.uploadHistory.create({
+        data: {
+          id: uploadHistoryId,
+          userId,
+          filename,
+          status: 'PROCESSING',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      logger.info(`Created UploadHistory record ${uploadHistoryId} for paper upload ${paperId}`, {
+        userId,
+        filename,
+        paperId,
+      });
+
       // Create processing task
       const task = await prisma.processing_tasks.create({
         data: {
           id: uuidv4(),
           paperId: paperId,
           status: 'pending',
-          current_step: 'pending',
+          storageKey,
         },
       });
+
+      // Store upload history context for later updates (Task 3)
+      // Python service will populate chunksCount/llmTokens/etc. in future task
+      // We track startTime for processingTime calculation
 
       // Trigger PDF processing via webhook endpoint
       await fetch(`http://localhost:${process.env.PORT || 4000}/api/papers/webhook`, {
