@@ -94,19 +94,30 @@ class StorageManager:
     async def _store_paper_metadata(
         self, conn: asyncpg.Connection, ctx: PipelineContext
     ) -> None:
-        """Update paper with metadata and IMRaD."""
+        """Update paper with metadata and IMRaD.
+
+        Per D-04: Always update title from extracted metadata when available.
+        Filename-based title should be replaced with extracted title from PDF.
+        """
         metadata = ctx.metadata or {}
         imrad = ctx.imrad or {}
 
-        # Per D-04: Always update title from extracted metadata (not just when empty)
-        # Filename-based title should be replaced with extracted title
+        # Extract title from metadata, convert empty strings to None
+        extracted_title = metadata.get("title")
+        if extracted_title and isinstance(extracted_title, str):
+            extracted_title = extracted_title.strip() or None
+
+        # Per D-04: Use extracted title if available (overwrites filename-based title)
+        # Only fallback to existing title if extraction truly failed
+        title_update_clause = "title = $4" if extracted_title else "title = title"
+
         await conn.execute(
-            """UPDATE papers
+            f"""UPDATE papers
                SET content = $1,
                    "pageCount" = $2,
                    status = 'processing',
                    "imradJson" = $3,
-                   title = COALESCE($4, title),
+                   {title_update_clause},
                    authors = COALESCE(NULLIF($5::text[], '{}'), authors),
                    abstract = COALESCE(NULLIF($6, ''), abstract),
                    doi = COALESCE(NULLIF($7, ''), doi),
@@ -116,7 +127,7 @@ class StorageManager:
             ctx.parse_result.get("markdown", ""),
             ctx.parse_result.get("page_count", 0),
             json.dumps(imrad),
-            metadata.get("title"),
+            extracted_title,  # $4 - only used if title_update_clause is "title = $4"
             metadata.get("authors", []),
             metadata.get("abstract"),
             metadata.get("doi"),
