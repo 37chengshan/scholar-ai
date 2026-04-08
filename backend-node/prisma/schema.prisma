@@ -278,6 +278,19 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model user_memories {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  content     String
+  memoryType  String   @map("memory_type")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  user        users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_memories")
+}
+
 model users {
   id              String             @id
   email           String             @unique
@@ -298,5 +311,6 @@ model users {
   readingProgress reading_progress[] @relation("UserReadingProgress")
   refreshTokens   refresh_tokens[]   @relation("UserRefreshTokens")
   sessions        sessions[]
+  userMemories    user_memories[]
   userRoles       user_roles[]       @relation("UserRoles")
 }
