@@ -7,8 +7,7 @@
  * Part of Agent-Native architecture (D-04, D-05, D-06)
  */
 
-import { useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
   Circle,
   Loader2,
@@ -127,11 +126,6 @@ export function AgentStateSidebar({
     seconds: isZh ? '秒' : 's',
     executionPlan: isZh ? '执行计划' : 'Execution Plan',
   };
-
-  // Calculate completed steps count
-  const completedSteps = useMemo(() => {
-    return steps.filter(s => s.status === 'completed').length;
-  }, [steps]);
 
   return (
     <div

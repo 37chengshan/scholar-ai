@@ -4,9 +4,12 @@
  * Main chat interface with:
  * - SSE streaming for real-time AI responses
  * - Session persistence (create, load, switch, delete)
- * - Message history loading from database
  * - Agent activity panel (tool calls, thoughts, stats)
- * - Citations panel in right sidebar
+ * - Thinking process visualization with auto-collapse
+ * - Typing effect with Markdown rendering
+ * - Agent state sidebar (D-04, D-05, D-06)
+ *
+ * Part of Agent-Native architecture (D-18, D-19, D-20, D-21)
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -29,24 +32,22 @@ import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSSE } from '../hooks/useSSE';
 import { useSessions, ChatMessage } from '../hooks/useSessions';
-import { AgentActivityPanel } from '../components/AgentActivityPanel';
+import { ThinkingProcess, ThinkingStep } from '../components/ThinkingProcess';
+import { TypingText } from '../components/TypingText';
+import { AgentStateSidebar, AgentUIState, ExecutionStep } from '../components/AgentStateSidebar';
 import { SSEEvent } from '@/services/sseService';
-import * as usersApi from '@/services/usersApi';
 
 export function Chat() {
   const [input, setInput] = useState('');
   const [streamingMessage, setStreamingMessage] = useState<string>('');
   const [agentEvents, setAgentEvents] = useState<SSEEvent[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [monthlyTokenUsage, setMonthlyTokenUsage] = useState<{
-    totalTokens: number;
-    totalCostCny: number;
-    requestCount: number;
-  } | null>(null);
+  const [agentUIState, setAgentUIState] = useState<AgentUIState>('IDLE');
+  const [thinkingCollapsed, setThinkingCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { language } = useLanguage();
-  const { isConnected, messages, error, connect, disconnect, tokensUsed, cost, totalTimeMs } = useSSE();
+  const { isConnected, messages, error, connect, disconnect, totalTimeMs } = useSSE();
   const {
     sessions,
     currentSession,
@@ -56,7 +57,6 @@ export function Chat() {
     switchSession,
     deleteSession,
     addMessage,
-    updateCurrentSession,
   } = useSessions();
 
   const isZh = language === 'zh';
@@ -166,22 +166,56 @@ export function Chat() {
     }
   }, [sessionMessages, streamingMessage, messages]);
 
-  // Load monthly token usage
+  // Update agent UI state based on connection and events
   useEffect(() => {
-    async function loadMonthlyUsage() {
-      try {
-        const usage = await usersApi.getMonthlyTokenUsage();
-        setMonthlyTokenUsage(usage);
-      } catch (error) {
-        console.error('Failed to load monthly token usage:', error);
+    if (isConnected) {
+      setAgentUIState('RUNNING');
+      setThinkingCollapsed(false);
+    } else if (agentEvents.length > 0) {
+      // Check if waiting for confirmation
+      const hasConfirmation = agentEvents.some(e => e.type === 'confirmation_required');
+      if (hasConfirmation) {
+        setAgentUIState('WAITING');
+      } else {
+        setAgentUIState('DONE');
       }
+    } else {
+      setAgentUIState('IDLE');
     }
-    
-    loadMonthlyUsage();
-    // Refresh every 30 seconds
-    const interval = setInterval(loadMonthlyUsage, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [isConnected, agentEvents]);
+
+  // Compute thinking steps from agent events
+  const thinkingSteps = useMemo<ThinkingStep[]>(() => {
+    return agentEvents
+      .filter(e => e.type === 'thought')
+      .map(e => ({
+        type: (e.content?.type || 'analyze') as 'analyze' | 'plan' | 'execute' | 'verify',
+        content: typeof e.content === 'string' ? e.content : (e.content?.content || e.content?.thought || ''),
+        timestamp: e.timestamp ? new Date(e.timestamp).getTime() : undefined,
+      }));
+  }, [agentEvents]);
+
+  // Compute execution steps for sidebar
+  const executionSteps = useMemo<ExecutionStep[]>(() => {
+    const steps: ExecutionStep[] = [];
+    agentEvents.forEach(event => {
+      if (event.type === 'tool_call') {
+        steps.push({
+          tool: event.tool,
+          action: event.tool || 'Tool call',
+          status: 'running',
+          timestamp: event.timestamp ? new Date(event.timestamp).getTime() : undefined,
+        });
+      } else if (event.type === 'tool_result') {
+        // Update the last running step with matching tool
+        const lastRunningIdx = steps.map(s => s.tool).lastIndexOf(event.tool);
+        if (lastRunningIdx >= 0) {
+          steps[lastRunningIdx].status = event.result?.success ? 'completed' : 'failed';
+        }
+      }
+    });
+    return steps;
+  }, [agentEvents]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -189,6 +223,14 @@ export function Chat() {
       handleSend();
     }
   };
+
+  // Handle stop button click
+  const handleStop = useCallback(() => {
+    if (isConnected) {
+      disconnect();
+      setAgentUIState('DONE');
+    }
+  }, [isConnected, disconnect]);
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -363,8 +405,25 @@ export function Chat() {
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                     <Bot className="w-4 h-4 text-primary" />
                   </div>
-                  <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-muted">
-                    <div className="text-sm whitespace-pre-wrap">{streamingMessage}</div>
+                  <div className="flex-1 max-w-[80%] space-y-2">
+                    {/* Thinking Process - shown before answer (D-19, D-20, D-21) */}
+                    {thinkingSteps.length > 0 && !thinkingCollapsed && (
+                      <ThinkingProcess
+                        steps={thinkingSteps}
+                        duration={totalTimeMs / 1000}
+                        onComplete={() => setThinkingCollapsed(true)}
+                      />
+                    )}
+                    
+                    {/* Answer with TypingText effect (D-18) */}
+                    <div className="rounded-2xl px-4 py-3 bg-muted">
+                      <TypingText
+                        text={streamingMessage}
+                        speed={40}
+                        enableMarkdown={true}
+                        className="text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -427,22 +486,23 @@ export function Chat() {
         </div>
       </div>
 
-      {/* Right Sidebar: Agent Activity Panel */}
+      {/* Right Sidebar: Agent State + Activity Panel */}
       <AnimatePresence>
         {showRightPanel && (
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
-            className="w-[320px] border-l border-border/50 flex-shrink-0 hidden xl:block"
+            className="w-[320px] border-l border-border/50 flex-shrink-0 hidden xl:block flex flex-col"
           >
-            <AgentActivityPanel 
-              events={agentEvents} 
-              tokensUsed={tokensUsed} 
-              cost={cost} 
+            {/* Agent State Sidebar - 4-state visualization (D-04, D-05, D-06) */}
+            <AgentStateSidebar
+              state={agentUIState}
+              currentStep={isConnected ? 'Processing...' : undefined}
               totalTime={totalTimeMs}
-              isStreaming={isConnected}
-              monthlyTokenUsage={monthlyTokenUsage || undefined}
+              steps={executionSteps}
+              onStop={handleStop}
+              className="flex-1"
             />
           </motion.div>
         )}
