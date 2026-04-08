@@ -6,7 +6,7 @@
  * - Basic formatting: bold, lists, code blocks
  * - Auto-save every 30 seconds
  * - Controlled component with parent state
- * - Cross-paper association support
+ * - Cross-paper association support with search
  *
  * Requirements: D-06, D-07
  */
@@ -17,7 +17,9 @@ import StarterKit from '@tiptap/starter-kit';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/tooltip';
-import { Bold, List, ListOrdered, Code, Link, Paperclip } from 'lucide-react';
+import { Bold, List, ListOrdered, Code, Paperclip, Loader2 } from 'lucide-react';
+import { ScrollArea } from './ui/scroll-area';
+import { clsx } from 'clsx';
 
 interface LinkedPaper {
   id: string;
@@ -31,8 +33,14 @@ interface NotesEditorProps {
   onSave: (content: string) => void;
   paperId?: string;
   linkedPapers?: LinkedPaper[];
-  onLinkPaper?: (paperId: string) => void;
+  onLinkPaper?: () => void;
   onUnlinkPaper?: (paperId: string) => void;
+  showLinkPicker?: boolean;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  searchResults?: any[];
+  searching?: boolean;
+  onLinkPaperSelect?: (paperId: string) => void;
 }
 
 export function NotesEditor({ 
@@ -41,10 +49,15 @@ export function NotesEditor({
   paperId,
   linkedPapers = [],
   onLinkPaper,
-  onUnlinkPaper 
+  onUnlinkPaper,
+  showLinkPicker = false,
+  searchQuery = '',
+  onSearchChange,
+  searchResults = [],
+  searching = false,
+  onLinkPaperSelect
 }: NotesEditorProps) {
   const [isSaving, setIsSaving] = useState(false);
-  const [showLinkPicker, setShowLinkPicker] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -176,7 +189,7 @@ export function NotesEditor({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setShowLinkPicker(!showLinkPicker)}
+                    onClick={onLinkPaper}
                   >
                     <Paperclip className="h-4 w-4" />
                   </Button>
@@ -194,11 +207,12 @@ export function NotesEditor({
                   key={paper.id}
                   className="inline-flex items-center gap-1 bg-muted px-2 py-0.5 rounded text-xs"
                 >
-                  <span className="truncate max-w-[150px]">{paper.title}</span>
+                  <span className="truncate max-w-[120px]">{paper.title}</span>
                   {onUnlinkPaper && (
                     <button
                       onClick={() => onUnlinkPaper(paper.id)}
-                      className="hover:text-destructive"
+                      className="hover:text-destructive text-muted-foreground"
+                      title="Unlink paper"
                     >
                       ×
                     </button>
@@ -208,22 +222,53 @@ export function NotesEditor({
             </div>
           )}
 
-          {/* Link Paper Picker */}
-          {showLinkPicker && onLinkPaper && (
-            <div className="pt-1 border-t">
+          {/* Link Paper Picker with Search */}
+          {showLinkPicker && (
+            <div className="pt-1 border-t space-y-2">
               <input
                 type="text"
+                value={searchQuery}
+                onChange={(e) => onSearchChange?.(e.target.value)}
                 placeholder="Search papers to link..."
-                className="w-full text-xs p-1 border rounded"
-                onKeyDown={async (e) => {
-                  if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                    // TODO: Implement paper search
-                    console.log('Search for paper:', e.currentTarget.value);
-                    setShowLinkPicker(false);
-                  }
-                }}
-                onBlur={() => setTimeout(() => setShowLinkPicker(false), 200)}
+                className="w-full text-xs p-1.5 border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                autoFocus
               />
+              
+              <ScrollArea className="h-48">
+                {searching ? (
+                  <div className="flex items-center justify-center py-4 text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    <span className="text-xs">Searching...</span>
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  <div className="space-y-1">
+                    {searchResults.map(paper => (
+                      <button
+                        key={paper.id}
+                        onClick={() => onLinkPaperSelect?.(paper.id)}
+                        className="w-full text-left p-2 hover:bg-muted rounded text-xs transition-colors group"
+                      >
+                        <div className="font-medium line-clamp-1 group-hover:text-primary">
+                          {paper.title}
+                        </div>
+                        <div className="text-muted-foreground text-[10px] mt-0.5">
+                          {paper.authors?.slice(0, 2).join(', ')}
+                          {paper.authors?.length > 2 ? ` +${paper.authors.length - 2}` : ''}
+                          {' • '}{paper.year || 'n.d.'}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : searchQuery.trim().length >= 2 ? (
+                  <div className="text-center py-4 text-muted-foreground text-xs">
+                    No papers found
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground text-xs">
+                    Type to search papers
+                  </div>
+                )}
+              </ScrollArea>
             </div>
           )}
         </div>
