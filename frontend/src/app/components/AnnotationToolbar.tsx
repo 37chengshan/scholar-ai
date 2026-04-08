@@ -1,29 +1,40 @@
 /**
- * Annotation Toolbar Component
+ * Annotation Toolbar Component (Highlight Toolbar)
  *
  * Toolbar for creating PDF annotations:
- * - Color picker for highlights
+ * - Color picker for highlights (4 colors: yellow, orange, blue, green)
+ * - Chinese tooltips for color names per UI-SPEC
  * - Create highlight button
  * - Integration with annotationsApi
  *
- * Requirements: PAGE-06 (Read page annotation system)
+ * Requirements: D-08 (Multi-color highlights), PAGE-06 (Read page annotation system)
  */
 
 import { useState } from 'react';
 import * as annotationsApi from '@/services/annotationsApi';
 import { clsx } from 'clsx';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface AnnotationToolbarProps {
   paperId: string;
   pageNumber: number;
   onAnnotationCreated?: () => void;
+  selectedText?: string;
 }
 
-export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated }: AnnotationToolbarProps) {
+// Color definitions with Chinese names per UI-SPEC
+const HIGHLIGHT_COLORS = [
+  { hex: '#FFEB3B', zhName: '黄色', enName: 'Yellow' },
+  { hex: '#FF5722', zhName: '橙色', enName: 'Orange' },
+  { hex: '#2196F3', zhName: '蓝色', enName: 'Blue' },
+  { hex: '#4CAF50', zhName: '绿色', enName: 'Green' },
+];
+
+export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated, selectedText }: AnnotationToolbarProps) {
   const [color, setColor] = useState('#FFEB3B');
   const [isCreating, setIsCreating] = useState(false);
-
-  const colors = ['#FFEB3B', '#4CAF50', '#2196F3', '#FF5722'];
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
 
   const handleHighlight = async () => {
     setIsCreating(true);
@@ -33,7 +44,8 @@ export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated }: 
         type: 'highlight',
         pageNumber,
         position: { x: 0, y: 0, width: 100, height: 20 },
-        color
+        color,
+        content: selectedText || '',
       });
       onAnnotationCreated?.();
     } finally {
@@ -42,20 +54,24 @@ export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated }: 
   };
 
   return (
-    <div className="flex items-center gap-2 p-2 bg-card border border-border rounded-sm shadow-sm">
-      <span className="text-sm font-medium text-foreground">Highlight:</span>
-      {colors.map(c => (
+    <div className="flex items-center gap-2 p-2 bg-card border border-border rounded-sm shadow-sm" data-testid="annotation-toolbar">
+      <span className="text-sm font-medium text-foreground">
+        {isZh ? '高亮:' : 'Highlight:'}
+      </span>
+      {HIGHLIGHT_COLORS.map(c => (
         <button
-          key={c}
-          onClick={() => setColor(c)}
+          key={c.hex}
+          onClick={() => setColor(c.hex)}
+          data-testid={`color-${c.zhName}`}
           className={clsx(
             "w-6 h-6 rounded-sm border transition-all",
-            color === c 
+            color === c.hex 
               ? "border-primary ring-2 ring-primary/20" 
               : "border-border hover:border-primary/50"
           )}
-          style={{ backgroundColor: c }}
-          aria-label={`Select color ${c}`}
+          style={{ backgroundColor: c.hex }}
+          title={isZh ? c.zhName : c.enName}
+          aria-label={isZh ? `选择${c.zhName}高亮` : `Select ${c.enName} highlight`}
         />
       ))}
       <button
@@ -68,7 +84,9 @@ export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated }: 
           "shadow-sm shadow-primary/20 transition-colors"
         )}
       >
-        {isCreating ? 'Adding...' : 'Add Highlight'}
+        {isCreating 
+          ? (isZh ? '添加中...' : 'Adding...') 
+          : (isZh ? '添加高亮' : 'Add Highlight')}
       </button>
     </div>
   );

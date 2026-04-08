@@ -3,13 +3,13 @@
  *
  * Paper reading interface with:
  * - PDF viewer with pagination and zoom
- * - Section navigation (IMRaD structure)
- * - Annotation toolbar for highlights
+ * - Left sidebar tabs: Thumbnails, Section Navigation, AI Summary
+ * - Annotation toolbar for highlights (4 colors)
  * - Notes editor with auto-save
  * - Reading progress tracking
  * - Cross-paper note association
  *
- * Requirements: PAGE-06, D-07
+ * Requirements: PAGE-06, D-06, D-07, D-08
  */
 
 import { useState, useEffect } from 'react';
@@ -17,7 +17,10 @@ import { useParams } from 'react-router';
 import { PDFViewer } from '../components/PDFViewer';
 import { SectionTree } from '../components/SectionTree';
 import { AnnotationToolbar } from '../components/AnnotationToolbar';
+import { ThumbnailStrip } from '../components/ThumbnailStrip';
+import { AISummaryPanel } from '../components/AISummaryPanel';
 import { NotesEditor } from '../components/NotesEditor';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import * as papersApi from '@/services/papersApi';
 import * as annotationsApi from '@/services/annotationsApi';
 import type { Annotation } from '@/services/annotationsApi';
@@ -44,6 +47,7 @@ export function Read() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [leftTab, setLeftTab] = useState('thumbnails');
 
   // Load paper data
   useEffect(() => {
@@ -129,6 +133,7 @@ export function Read() {
     if (!id) return;
     try {
       await papersApi.update(id, { readingNotes: content });
+      toast.success(isZh ? '笔记已自动保存' : 'Note auto-saved');
     } catch (error) {
       console.error('Failed to save notes:', error);
     }
@@ -178,13 +183,44 @@ export function Read() {
 
   return (
     <div className="flex h-full">
-      {/* Left: Section tree */}
+      {/* Left: Tabbed sidebar (Thumbnails, Sections, AI Summary) */}
       <div className="w-64 border-r">
-        <SectionTree
-          imrad={paper.imradJson}
-          onPageSelect={setCurrentPage}
-          currentPage={currentPage}
-        />
+        <Tabs value={leftTab} onValueChange={setLeftTab} className="h-full flex flex-col">
+          <TabsList className="px-2 pt-2 justify-start">
+            <TabsTrigger value="thumbnails" className="text-xs">
+              {isZh ? '缩略图' : 'Thumbnails'}
+            </TabsTrigger>
+            <TabsTrigger value="sections" className="text-xs">
+              {isZh ? '章节' : 'Sections'}
+            </TabsTrigger>
+            <TabsTrigger value="summary" className="text-xs">
+              {isZh ? 'AI 总结' : 'AI Summary'}
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="thumbnails" className="flex-1 overflow-hidden mt-0">
+            <ThumbnailStrip
+              fileUrl={`/api/papers/${id}/pdf`}
+              currentPage={currentPage}
+              onPageClick={handlePageChange}
+            />
+          </TabsContent>
+          
+          <TabsContent value="sections" className="flex-1 overflow-auto mt-0">
+            <SectionTree
+              imrad={paper.imradJson}
+              onPageSelect={setCurrentPage}
+              currentPage={currentPage}
+            />
+          </TabsContent>
+          
+          <TabsContent value="summary" className="flex-1 overflow-hidden mt-0">
+            <AISummaryPanel
+              paperId={id!}
+              summary={paper.readingNotes}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Center: PDF + Toolbar */}
@@ -197,7 +233,7 @@ export function Read() {
         <div className="flex-1">
           <PDFViewer
             fileUrl={`/api/papers/${id}/pdf`}
-            initialPage={1}
+            initialPage={currentPage}
             onPageChange={handlePageChange}
           />
         </div>
