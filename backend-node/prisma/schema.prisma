@@ -101,6 +101,7 @@ model papers {
   readingProgress reading_progress[] @relation("PaperReadingProgress")
   queries         queries[]          @relation("QueryPapers")
   batch           paper_batches?     @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  uploadHistory   UploadHistory[]
 
   @@index([userId])
   @@index([starred])
@@ -291,6 +292,28 @@ model user_memories {
   @@map("user_memories")
 }
 
+model UploadHistory {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  paperId        String?   @map("paper_id")
+  filename       String
+  status         String    @default("PROCESSING")
+  chunksCount    Int?      @map("chunks_count")
+  llmTokens      Int?      @map("llm_tokens")
+  pageCount      Int?      @map("page_count")
+  imageCount     Int?      @map("image_count")
+  tableCount     Int?      @map("table_count")
+  errorMessage   String?   @map("error_message")
+  processingTime Int?      @map("processing_time")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  user           users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paper          papers?   @relation(fields: [paperId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("upload_history")
+}
+
 model users {
   id              String             @id
   email           String             @unique
@@ -311,6 +334,7 @@ model users {
   readingProgress reading_progress[] @relation("UserReadingProgress")
   refreshTokens   refresh_tokens[]   @relation("UserRefreshTokens")
   sessions        sessions[]
+  uploadHistory   UploadHistory[]
   userMemories    user_memories[]
   userRoles       user_roles[]       @relation("UserRoles")
 }
