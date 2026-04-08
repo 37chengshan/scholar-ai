@@ -1,10 +1,14 @@
 """Unit tests for intent classification rules.
 
-Tests intent detection for 4 query types:
+Tests intent detection for 8 query types:
 - compare: Multi-paper comparison queries
 - evolution: Evolution/development analysis queries
 - summary: Paper summary requests
 - question: Single-paper questions (default)
+- method: Methodology-related queries
+- results: Results/findings queries
+- code: Code/implementation queries
+- references: References/citations queries
 """
 
 import pytest
@@ -38,6 +42,30 @@ class TestIntentClassification:
         intent = detect_intent(query)
         assert intent == "question"
 
+    def test_method_intent_detection(self):
+        """Test new intent: method queries"""
+        assert detect_intent("论文使用的方法是什么") == "method"
+        assert detect_intent("explain the methodology") == "method"
+        assert detect_intent("what approach did they use") == "method"
+
+    def test_results_intent_detection(self):
+        """Test new intent: results queries"""
+        assert detect_intent("实验结果怎么样") == "results"
+        assert detect_intent("what are the findings") == "results"
+        assert detect_intent("show me the outcomes") == "results"
+
+    def test_code_intent_detection(self):
+        """Test new intent: code queries"""
+        assert detect_intent("有代码实现吗") == "code"
+        assert detect_intent("show the code") == "code"
+        assert detect_intent("implementation details") == "code"
+
+    def test_references_intent_detection(self):
+        """Test new intent: references queries"""
+        assert detect_intent("列出参考文献") == "references"
+        assert detect_intent("list citations") == "references"
+        assert detect_intent("related work") == "references"
+
     def test_keyword_matching(self):
         """Test 5: Keywords match correctly for each intent"""
         # Test compare keywords
@@ -53,6 +81,12 @@ class TestIntentClassification:
         assert detect_intent("主要贡献是什么") == "summary"
         assert detect_intent("核心思想") == "summary"
 
+        # Test new intents
+        assert detect_intent("methodology section") == "method"
+        assert detect_intent("数据结果") == "results"
+        assert detect_intent("代码开源") == "code"
+        assert detect_intent("bibliography") == "references"
+
     def test_pattern_matching(self):
         """Test 6: Patterns match correctly for complex queries"""
         # Compare patterns
@@ -65,6 +99,12 @@ class TestIntentClassification:
         # Summary patterns
         assert detect_intent("ResNet的主要贡献") == "summary"
 
+        # New intent patterns
+        assert detect_intent("how does the method work") == "method"
+        assert detect_intent("what are the results") == "results"
+        assert detect_intent("show the code") == "code"
+        assert detect_intent("list references") == "references"
+
     def test_case_insensitive_matching(self):
         """Test 7: Case-insensitive matching works"""
         # English keywords
@@ -76,25 +116,56 @@ class TestIntentClassification:
         assert detect_intent("YOLOv3 VS YOLOv4") == "compare"
         assert detect_intent("ResNet VERSUS VGG") == "compare"
 
+        # New intents
+        assert detect_intent("METHODOLOGY section") == "method"
+        assert detect_intent("RESULTS AND FINDINGS") == "results"
+        assert detect_intent("SHOW THE CODE") == "code"
+        assert detect_intent("REFERENCES list") == "references"
+
 
 class TestIntentRulesStructure:
     """Test INTENT_RULES dict structure."""
 
-    def test_intent_rules_has_four_intents(self):
-        """INTENT_RULES should have exactly 4 intents"""
-        expected_intents = ["compare", "evolution", "summary", "question"]
+    def test_intent_rules_has_eight_intents(self):
+        """INTENT_RULES should have exactly 8 intents"""
+        expected_intents = [
+            "compare",
+            "evolution",
+            "summary",
+            "question",
+            "method",
+            "results",
+            "code",
+            "references",
+        ]
         assert set(INTENT_RULES.keys()) == set(expected_intents)
 
     def test_intent_rules_has_keywords(self):
         """Each intent (except question) should have keywords"""
-        for intent in ["compare", "evolution", "summary"]:
+        for intent in [
+            "compare",
+            "evolution",
+            "summary",
+            "method",
+            "results",
+            "code",
+            "references",
+        ]:
             assert "keywords" in INTENT_RULES[intent]
             assert isinstance(INTENT_RULES[intent]["keywords"], list)
             assert len(INTENT_RULES[intent]["keywords"]) > 0
 
     def test_intent_rules_has_patterns(self):
         """Each intent (except question) should have patterns"""
-        for intent in ["compare", "evolution", "summary"]:
+        for intent in [
+            "compare",
+            "evolution",
+            "summary",
+            "method",
+            "results",
+            "code",
+            "references",
+        ]:
             assert "patterns" in INTENT_RULES[intent]
             assert isinstance(INTENT_RULES[intent]["patterns"], list)
 
