@@ -1,9 +1,9 @@
 import { Router, raw } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import multer from 'multer';
 import { logger } from '../utils/logger';
 import { authenticate } from '../middleware/auth';
 import { requirePermission } from '../middleware/rbac';
-import { requireReauth, ReauthRequest } from '../middleware/reauth';
 import { Errors } from '../middleware/errorHandler';
 import { prisma } from '../config/database';
 import { AuthRequest } from '../types/auth';
@@ -13,6 +13,7 @@ import {
   generateStorageKey,
   uploadToLocalStorage,
   USE_LOCAL_STORAGE,
+  getLocalFileBuffer,
 } from '../services/storage';
 import {
   createTask,
@@ -23,6 +24,67 @@ import {
 import { triggerBatchProcessing } from '../services/celery_client';
 
 const router = Router();
+
+// Multer configuration for direct upload
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'));
+    }
+  },
+});
+
+// GET /api/download/local/:storageKey - Serve local files (development only)
+// This endpoint must be BEFORE authenticate middleware for presigned URLs
+router.get(
+  '/download/local/:storageKey',
+  async (req: AuthRequest, res, next) => {
+    try {
+      const { storageKey } = req.params;
+
+      if (!USE_LOCAL_STORAGE) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            type: '/errors/not-found',
+            title: 'Not Found',
+            status: 404,
+            detail: 'Local storage not enabled',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const buffer = await getLocalFileBuffer(storageKey);
+
+      if (!buffer) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            type: '/errors/not-found',
+            title: 'Not Found',
+            status: 404,
+            detail: 'File not found',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Set content type and send file
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${storageKey}"`);
+      res.send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // POST /api/upload/local/:storageKey - Local file upload endpoint (development only)
 // 注意：此端点必须在 authenticate middleware 之前，因为它不需要认证
@@ -150,13 +212,149 @@ router.get('/', requirePermission('papers', 'read'), async (req: AuthRequest, re
         limit,
         totalPages,
       },
-    });
+});
   } catch (error) {
     next(error);
   }
 });
 
-// POST /api/papers - 请求上传URL
+// GET /api/papers/search - Search papers by title, authors, or abstract
+router.get(
+  '/search',
+  requirePermission('papers', 'read'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            type: '/errors/unauthorized',
+            title: 'Unauthorized',
+            status: 401,
+            detail: 'User not authenticated',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Parse query parameters
+      const { q, page: pageStr, limit: limitStr } = req.query;
+
+      // Validate search query
+      if (!q || typeof q !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'Search query (q) is required',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      if (q.length < 1 || q.length > 100) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'Search query must be between 1 and 100 characters',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Parse pagination with validation
+      const page = Math.max(1, parseInt(pageStr as string, 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(limitStr as string, 10) || 20));
+      const skip = (page - 1) * limit;
+
+      // Build search query - multi-field fuzzy search
+      const papers = await prisma.papers.findMany({
+        where: {
+          userId,
+          OR: [
+            { title: { contains: q, mode: 'insensitive' } },
+            { authors: { hasSome: [q] } },
+            { abstract: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          processingTasks: {
+            select: {
+              status: true,
+              errorMessage: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      // Get total count for pagination
+      const total = await prisma.papers.count({
+        where: {
+          userId,
+          OR: [
+            { title: { contains: q, mode: 'insensitive' } },
+            { authors: { hasSome: [q] } },
+            { abstract: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      });
+
+      const totalPages = Math.ceil(total / limit);
+
+      // Calculate processing status and progress
+      const papersWithProgress = papers.map(paper => {
+        const processingStatus = paper.processingTasks?.status as TaskStatus || paper.status;
+        const progress = getProgressPercent(processingStatus);
+
+        return {
+          ...paper,
+          processingStatus,
+          progress,
+          processingError: paper.processingTasks?.errorMessage || null,
+          lastUpdated: paper.processingTasks?.updatedAt || paper.updatedAt,
+          processingTasks: undefined,
+        };
+      });
+
+      logger.info(`Search completed for user ${userId}`, {
+        query: q,
+        results: papers.length,
+        total,
+        page,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          papers: papersWithProgress,
+          total,
+          page,
+          limit,
+          totalPages,
+          query: q,
+        },
+      });
+    } catch (error) {
+      logger.error('Search failed:', error);
+      next(error);
+    }
+  }
+);
+
+// POST /api/papers - 请求上传 URL
 router.post(
   '/',
   requirePermission('papers', 'create'),
@@ -205,6 +403,54 @@ router.post(
             detail: 'Only PDF files are accepted',
             requestId: uuidv4(),
             timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Extract title from filename
+      const title = filename.replace(/\.pdf$/i, '');
+
+      // Check for duplicate paper (same user + same title)
+      const existingPaper = await prisma.papers.findFirst({
+        where: {
+          userId: userId,
+          title: title,
+        },
+        include: {
+          processingTasks: {
+            select: {
+              status: true,
+              errorMessage: true,
+            },
+          },
+        },
+      });
+
+      if (existingPaper) {
+        logger.warn(`Duplicate paper detected: ${title} for user ${userId}`);
+        
+        return res.status(409).json({
+          success: false,
+          error: {
+            type: '/errors/conflict',
+            title: 'Duplicate Paper',
+            status: 409,
+            detail: `A paper with title "${title}" already exists in your library.`,
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+          data: {
+            existingPaper: {
+              id: existingPaper.id,
+              title: existingPaper.title,
+              status: existingPaper.status,
+              processingStatus: existingPaper.processingTasks?.status || null,
+              createdAt: existingPaper.createdAt,
+              storageKey: existingPaper.storageKey,
+            },
+            suggestion: existingPaper.storageKey
+              ? 'This paper has already been uploaded. You can view it in your library or upload a different file.'
+              : 'A paper record exists but file upload is incomplete. You can continue the upload or delete the record.',
           },
         });
       }
@@ -322,7 +568,7 @@ router.post(
       }
 
       // Check if task already exists
-      const existingTask = await prisma.processingTasks.findUnique({
+      const existingTask = await prisma.processing_tasks.findUnique({
         where: { paperId: paperId },
       });
 
@@ -342,7 +588,7 @@ router.post(
 
       // Create processing task and update paper status atomically
       const [task] = await prisma.$transaction([
-        prisma.processingTasks.create({
+        prisma.processing_tasks.create({
           data: {
             id: uuidv4(),
             paperId: paperId,
@@ -355,9 +601,9 @@ router.post(
           where: { id: paperId },
           data: {
             status: 'processing',
-            upload_status: 'completed',
-            upload_progress: 100,
-            uploaded_at: new Date(),
+            uploadStatus: 'completed',
+            uploadProgress: 100,
+            uploadedAt: new Date(),
           },
         }),
       ]);
@@ -365,33 +611,33 @@ router.post(
       logger.info(`Created processing task ${task.id} for paper ${paperId}`);
 
       // Batch tracking logic (per D-02: auto-start when all files uploaded)
-      if (paper.batch_id) {
+      if (paper.batchId) {
         // Increment batch uploaded count
         await prisma.paper_batches.update({
-          where: { id: paper.batch_id },
-          data: { uploaded_count: { increment: 1 } },
+          where: { id: paper.batchId },
+          data: { uploadedCount: { increment: 1 } },
         });
 
         // Check if all files uploaded
         const batch = await prisma.paper_batches.findUnique({
-          where: { id: paper.batch_id },
-          select: { uploaded_count: true, total_files: true },
+          where: { id: paper.batchId },
+          select: { uploadedCount: true, totalFiles: true },
         });
 
-        if (batch && batch.uploaded_count === batch.total_files) {
+        if (batch && batch.uploadedCount === batch.totalFiles) {
           logger.info('All files uploaded for batch, triggering processing', {
-            batch_id: paper.batch_id,
+            batchId: paper.batchId,
           });
 
           // Update batch status
           await prisma.paper_batches.update({
-            where: { id: paper.batch_id },
+            where: { id: paper.batchId },
             data: { status: 'processing' },
           });
 
           // Trigger Celery batch processing task
           try {
-            await triggerBatchProcessing(paper.batch_id);
+            await triggerBatchProcessing(paper.batchId);
           } catch (error) {
             logger.error('Failed to trigger batch processing:', error);
             // Don't fail the webhook if batch trigger fails
@@ -407,6 +653,143 @@ router.post(
           status: task.status,
           progress: 0,
           message: 'Upload confirmed. Processing task created.',
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /api/papers/upload - Direct file upload (for E2E tests and development)
+router.post(
+  '/upload',
+  requirePermission('papers', 'create'),
+  upload.single('file'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            type: '/errors/unauthorized',
+            title: 'Unauthorized',
+            status: 401,
+            detail: 'User not authenticated',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'No file uploaded. Use form field name "file"',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const filename = file.originalname;
+      const title = filename.replace(/\.pdf$/i, '');
+
+      // Check for duplicates
+      const existingPaper = await prisma.papers.findFirst({
+        where: { userId, title },
+      });
+
+      if (existingPaper) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            type: '/errors/conflict',
+            title: 'Duplicate Paper',
+            status: 409,
+            detail: `A paper with title "${title}" already exists`,
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+          data: { existingPaper: { id: existingPaper.id, title: existingPaper.title } },
+        });
+      }
+
+      // Generate storage key
+      const storageKey = generateStorageKey(userId, filename);
+      const paperId = uuidv4();
+
+      // Save file to storage
+      if (USE_LOCAL_STORAGE) {
+        await uploadToLocalStorage(storageKey, file.buffer);
+      } else {
+        return res.status(501).json({
+          success: false,
+          error: {
+            type: '/errors/not-implemented',
+            title: 'Not Implemented',
+            status: 501,
+            detail: 'Cloud storage not implemented, use local development mode',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Create paper record
+      const paper = await prisma.papers.create({
+        data: {
+          id: paperId,
+          title,
+          authors: [],
+          status: 'processing',
+          userId,
+          storageKey,
+          fileSize: file.size,
+          keywords: [],
+          uploadStatus: 'completed',
+          uploadProgress: 100,
+          uploadedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      // Create processing task
+      const task = await prisma.processing_tasks.create({
+        data: {
+          id: uuidv4(),
+          paper_id: paperId,
+          status: 'pending',
+          current_step: 'pending',
+        },
+      });
+
+      // Trigger PDF processing via webhook endpoint
+      await fetch(`http://localhost:${process.env.PORT || 4000}/api/papers/webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': req.headers.cookie || '',
+        },
+        body: JSON.stringify({ paperId, storageKey }),
+      });
+
+      logger.info(`Direct upload completed for paper ${paperId}`, { filename, size: file.size });
+
+      res.status(201).json({
+        success: true,
+        data: {
+          paperId: paper.id,
+          taskId: task.id,
+          status: 'processing',
+          message: 'File uploaded successfully. Processing started.',
         },
       });
     } catch (error) {
@@ -980,12 +1363,12 @@ router.patch(
   }
 );
 
-// DELETE /api/papers/:id - Delete paper (requires re-auth)
-router.delete(
+// PATCH /api/papers/:id - Update paper metadata (title, authors, abstract, etc.)
+// Used by PDF worker to update extracted metadata after parsing
+router.patch(
   '/:id',
-  requirePermission('papers', 'delete'),
-  requireReauth,
-  async (req: ReauthRequest, res, next) => {
+  requirePermission('papers', 'update'),
+  async (req: AuthRequest, res, next) => {
     try {
       const userId = req.user?.sub;
       if (!userId) {
@@ -1003,11 +1386,206 @@ router.delete(
       }
 
       const { id } = req.params;
+      const { title, authors, abstract, doi, keywords, uploadStatus, uploadProgress } = req.body;
 
-      // requireReauth already validated currentPassword
-      if (!req.reauthVerified) {
-        throw Errors.validation('Re-authentication required');
+      // Verify paper exists and belongs to user
+      const paper = await prisma.papers.findFirst({
+        where: { id, userId: userId },
+      });
+
+      if (!paper) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            type: '/errors/not-found',
+            title: 'Not Found',
+            status: 404,
+            detail: 'Paper not found',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
       }
+
+      // Build update data (only include provided fields)
+      const updateData: Record<string, any> = {};
+      if (title !== undefined) updateData.title = title;
+      if (authors !== undefined) updateData.authors = authors;
+      if (abstract !== undefined) updateData.abstract = abstract;
+      if (doi !== undefined) updateData.doi = doi;
+      if (keywords !== undefined) updateData.keywords = keywords;
+      if (uploadStatus !== undefined) updateData.uploadStatus = uploadStatus;
+      if (uploadProgress !== undefined) updateData.uploadProgress = uploadProgress;
+
+      // Ensure updatedAt is always updated
+      updateData.updatedAt = new Date();
+
+      // Update paper
+      const updated = await prisma.papers.update({
+        where: { id },
+        data: updateData,
+        select: {
+          id: true,
+          title: true,
+          authors: true,
+          abstract: true,
+          doi: true,
+          keywords: true,
+          uploadStatus: true,
+          uploadProgress: true,
+          updatedAt: true,
+        },
+      });
+
+      logger.info(`Paper ${id} metadata updated`, { 
+        userId, 
+        titleChanged: title !== undefined,
+        newTitle: title 
+      });
+
+      res.json({
+        success: true,
+        data: updated,
+      });
+    } catch (error) {
+      logger.error('Failed to update paper metadata:', error);
+      next(error);
+    }
+  }
+);
+
+// POST /api/papers/batch-delete - Batch delete papers
+router.post(
+  '/batch-delete',
+  requirePermission('papers', 'delete'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            type: '/errors/unauthorized',
+            title: 'Unauthorized',
+            status: 401,
+            detail: 'User not authenticated',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const { paperIds } = req.body;
+
+      // Validate paperIds
+      if (!paperIds || !Array.isArray(paperIds) || paperIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'paperIds must be a non-empty array',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Limit batch size to prevent abuse
+      if (paperIds.length > 100) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'Cannot delete more than 100 papers at once',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Verify all papers belong to user
+      const papers = await prisma.papers.findMany({
+        where: {
+          id: { in: paperIds },
+          userId: userId,
+        },
+        select: { id: true, storageKey: true },
+      });
+
+      if (papers.length !== paperIds.length) {
+        const foundIds = papers.map(p => p.id);
+        const missingIds = paperIds.filter(id => !foundIds.includes(id));
+        logger.warn(`Batch delete: Some papers not found or not owned by user: ${missingIds.join(', ')}`);
+      }
+
+      // Delete papers in transaction
+      const deleteResult = await prisma.$transaction(async (tx) => {
+        // Delete papers (cascade will handle processing_tasks, etc.)
+        const result = await tx.papers.deleteMany({
+          where: {
+            id: { in: paperIds },
+            userId: userId,
+          },
+        });
+
+        return result;
+      });
+
+      // Delete from object storage
+      for (const paper of papers) {
+        if (paper.storageKey) {
+          try {
+            const { deleteObject } = await import('../services/storage.js');
+            await deleteObject(paper.storageKey);
+            logger.info(`Deleted object ${paper.storageKey} from storage`);
+          } catch (storageError) {
+            logger.warn(`Failed to delete object ${paper.storageKey} from storage:`, storageError);
+          }
+        }
+      }
+
+      logger.info(`Batch deleted ${deleteResult.count} papers for user ${userId}`);
+
+      res.json({
+        success: true,
+        data: {
+          deletedCount: deleteResult.count,
+          requestedCount: paperIds.length,
+          message: `Successfully deleted ${deleteResult.count} papers`,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// DELETE /api/papers/:id - Delete paper
+router.delete(
+  '/:id',
+  requirePermission('papers', 'delete'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            type: '/errors/unauthorized',
+            title: 'Unauthorized',
+            status: 401,
+            detail: 'User not authenticated',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const { id } = req.params;
 
       // Verify paper exists and belongs to user
       const paper = await prisma.papers.findFirst({
