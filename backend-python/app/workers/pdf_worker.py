@@ -13,6 +13,12 @@ Features:
 - Indexes images and tables in Milvus (multimodal)
 """
 
+# Load environment variables BEFORE any other imports
+# Per CONTEXT.md specifics: Fix dotenv loading order
+from dotenv import load_dotenv
+
+load_dotenv()  # Must be called before any os.getenv() or module imports that use env vars
+
 import asyncio
 import json
 import os
@@ -21,10 +27,6 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 import asyncpg
 
