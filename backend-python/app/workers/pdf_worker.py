@@ -214,6 +214,7 @@ class PDFProcessor:
         Per D-07: Triggered after PDF parsing.
         Per D-08: Only when title or authors missing.
         Per D-09: Fuzzy match with 80% threshold.
+        Per D-05: Use S2 API for metadata, avoid LLM costs.
 
         Args:
             conn: Database connection
@@ -234,6 +235,13 @@ class PDFProcessor:
         if not title:
             logger.info("No title to search with", paper_id=paper_id)
             return False
+
+        # Per D-05: Use S2 API (NOT LLM) for metadata enrichment
+        logger.info(
+            "Enriching metadata via Semantic Scholar API (no LLM)",
+            paper_id=paper_id,
+            title=title[:50],
+        )
 
         try:
             s2_service = get_semantic_scholar_service()
