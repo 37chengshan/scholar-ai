@@ -25,6 +25,7 @@ Usage:
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
 import json
 import asyncio
 import time
@@ -72,6 +73,68 @@ class AgentState(Enum):
     FAILED = "failed"  # Execution failed
     PAUSED = "paused"  # Paused by user
 
+    def to_ui_state(self) -> "UIStateResult":
+        """Map internal state to simplified 4-state UI model.
+
+        Per D-04: Coarse-grained 4-state machine for UI:
+        - IDLE: Ready for input
+        - RUNNING: Executing (THINKING, TOOL_SELECTION, TOOL_EXECUTION, VERIFYING)
+        - WAITING: Awaiting user confirmation (WAITING_CONFIRMATION)
+        - DONE: Completed (COMPLETED with success=True, FAILED with success=False)
+
+        Returns:
+            UIStateResult (either AgentUIState or DoneState)
+        """
+        mapping = {
+            AgentState.IDLE: AgentUIState.IDLE,
+            AgentState.THINKING: AgentUIState.RUNNING,
+            AgentState.TOOL_SELECTION: AgentUIState.RUNNING,
+            AgentState.TOOL_EXECUTION: AgentUIState.RUNNING,
+            AgentState.VERIFYING: AgentUIState.RUNNING,
+            AgentState.WAITING_CONFIRMATION: AgentUIState.WAITING,
+            AgentState.PAUSED: AgentUIState.IDLE,
+        }
+
+        if self == AgentState.COMPLETED:
+            return DoneState(state=AgentUIState.DONE, success=True)
+        elif self == AgentState.FAILED:
+            return DoneState(state=AgentUIState.DONE, success=False)
+        else:
+            return UIStateResult(state=mapping[self])
+
+
+class AgentUIState(Enum):
+    """Simplified 4-state UI model for frontend display.
+
+    Per D-04: Coarse-grained states for user-friendly display.
+    """
+
+    IDLE = "idle"  # Ready for input
+    RUNNING = "running"  # Executing
+    WAITING = "waiting"  # Awaiting confirmation
+    DONE = "done"  # Completed
+
+
+@dataclass
+class UIStateResult:
+    """Result container for UI state queries.
+
+    For non-DONE states, wraps AgentUIState.
+    """
+
+    state: AgentUIState
+
+
+@dataclass
+class DoneState(UIStateResult):
+    """DONE state with success flag to distinguish COMPLETED from FAILED.
+
+    Per D-04: DONE state includes success boolean.
+    """
+
+    state: AgentUIState = AgentUIState.DONE
+    success: bool = True
+
 
 class AgentRunner:
     """Agent execution engine with ReAct pattern.
@@ -118,6 +181,18 @@ class AgentRunner:
         self.token_tracker = TokenTracker()
         self.total_tokens_used = 0
         self.total_cost = 0.0
+
+    def get_ui_state(self) -> UIStateResult:
+        """Get current UI state based on internal state.
+
+        Per D-04: Returns simplified 4-state model for frontend display.
+        Preserves internal state for detailed logging while exposing
+        simplified states to UI.
+
+        Returns:
+            UIStateResult (either AgentUIState or DoneState with success flag)
+        """
+        return self.current_state.to_ui_state()
 
     async def execute(
         self, user_input: str, session_id: str, user_id: str, auto_confirm: bool = False
