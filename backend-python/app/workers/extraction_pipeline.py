@@ -224,6 +224,7 @@ class ExtractionPipeline:
                     "user_id": ctx.user_id,
                     "page_num": img_data.page_num,
                     "content_type": "image",
+                    "section": "",  # Fix: Add empty section field for consistency
                     "content_data": f"Figure on page {img_data.page_num}",
                     "embedding": embedding,
                     "raw_data": {
@@ -248,6 +249,7 @@ class ExtractionPipeline:
                     "user_id": ctx.user_id,
                     "page_num": img_data.page_num,
                     "content_type": "image",
+                    "section": "",  # Fix: Add empty section field for consistency
                     "content_data": f"Figure on page {img_data.page_num}",
                     "embedding": [0.0] * self.EMBEDDING_DIM,
                     "raw_data": {"error": str(e)}
@@ -329,6 +331,7 @@ class ExtractionPipeline:
                     "user_id": ctx.user_id,
                     "page_num": table_data.page_num if hasattr(table_data, 'page_num') else 0,
                     "content_type": "table",
+                    "section": "",  # Fix: Add empty section field for consistency
                     "content_data": content_data,
                     "embedding": embedding,
                     "raw_data": {
@@ -349,6 +352,7 @@ class ExtractionPipeline:
                     "user_id": ctx.user_id,
                     "page_num": table_data.page_num if hasattr(table_data, 'page_num') else 0,
                     "content_type": "table",
+                    "section": "",  # Fix: Add empty section field for consistency
                     "content_data": "Table (embedding failed)",
                     "embedding": [0.0] * self.EMBEDDING_DIM,
                     "raw_data": {"error": str(e)}

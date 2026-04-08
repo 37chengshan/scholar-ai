@@ -61,7 +61,7 @@ router.get('/', async (req: AuthRequest, res, next) => {
 // GET /api/search/arxiv - Search arXiv specifically
 router.get('/arxiv', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { query, limit = 10 } = req.query;
+    const { query, limit = 20, offset = 0 } = req.query;
 
     if (!query) {
       return res.status(400).json({
@@ -80,7 +80,7 @@ router.get('/arxiv', authenticate, async (req: AuthRequest, res, next) => {
     // Call Python AI service for arXiv search
     const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
     const response = await fetch(
-      `${aiServiceUrl}/search/arxiv?query=${encodeURIComponent(query as string)}&limit=${limit}`
+      `${aiServiceUrl}/search/arxiv?query=${encodeURIComponent(query as string)}&limit=${limit}&offset=${offset}`
     );
 
     if (!response.ok) {
@@ -102,7 +102,7 @@ router.get('/arxiv', authenticate, async (req: AuthRequest, res, next) => {
 // GET /api/search/semantic-scholar - Search Semantic Scholar specifically
 router.get('/semantic-scholar', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { query, limit = 10 } = req.query;
+    const { query, limit = 20, offset = 0 } = req.query;
 
     if (!query) {
       return res.status(400).json({
@@ -121,7 +121,7 @@ router.get('/semantic-scholar', authenticate, async (req: AuthRequest, res, next
     // Call Python AI service for Semantic Scholar search
     const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
     const response = await fetch(
-      `${aiServiceUrl}/search/semantic-scholar?query=${encodeURIComponent(query as string)}&limit=${limit}`
+      `${aiServiceUrl}/search/semantic-scholar?query=${encodeURIComponent(query as string)}&limit=${limit}&offset=${offset}`
     );
 
     if (!response.ok) {
@@ -267,7 +267,7 @@ router.get('/author/:authorId/papers', authenticate, async (req: AuthRequest, re
 // GET /api/search/unified - Unified search (arXiv + Semantic Scholar)
 router.get('/unified', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { query, limit = 10, year_from, year_to } = req.query;
+    const { query, limit = 20, offset = 0, year_from, year_to } = req.query;
 
     if (!query) {
       return res.status(400).json({
@@ -286,7 +286,8 @@ router.get('/unified', authenticate, async (req: AuthRequest, res, next) => {
     // Build query parameters for Python service
     const params = new URLSearchParams();
     params.append('query', query as string);
-    params.append('limit', (limit as string) || '10');
+    params.append('limit', (limit as string) || '20');
+    params.append('offset', (offset as string) || '0');
     if (year_from) params.append('year_from', year_from as string);
     if (year_to) params.append('year_to', year_to as string);
 
@@ -300,14 +301,14 @@ router.get('/unified', authenticate, async (req: AuthRequest, res, next) => {
       throw new Error(`AI service returned ${response.status}`);
     }
 
-    const data = await response.json() as { results?: any[] };
+    const data = await response.json() as { results?: any[]; total?: number };
 
     res.json({
       success: true,
       data: { id: uuidv4(), updatedAt: new Date(),
         query: query,
         results: data.results || [],
-        total: data.results?.length || 0,
+        total: data.total || data.results?.length || 0,
         filters: {
           year_from: year_from || null,
           year_to: year_to || null,

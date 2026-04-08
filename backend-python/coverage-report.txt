@@ -1,5 +1,5 @@
 ERROR: usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]
 __main__.py: error: unrecognized arguments: --cov=app --cov-report=term-missing --cov-fail-under=80 --cov=app --cov-report=term-missing --cov-report=html
-  inifile: /Users/cc/scholar-ai-deploy/schlar ai/scholar-ai/backend-python/pytest.ini
-  rootdir: /Users/cc/scholar-ai-deploy/schlar ai/scholar-ai/backend-python
+  inifile: /Users/cc/scholar-ai-deploy/scholar-ai-project/scholar-ai/backend-python/pytest.ini
+  rootdir: /Users/cc/scholar-ai-deploy/scholar-ai-project/scholar-ai/backend-python
 

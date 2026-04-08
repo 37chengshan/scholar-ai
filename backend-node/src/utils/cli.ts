@@ -107,12 +107,12 @@ const resetPassword = async (args: ResetPasswordArgs): Promise<void> => {
     // Update user's password
     await prisma.users.update({
       where: { id: user.id },
-      data: { password_hash: passwordHash },
+      data: { passwordHash: passwordHash },
     });
 
     // Delete all existing refresh tokens for this user
     await prisma.refresh_tokens.deleteMany({
-      where: { user_id: user.id },
+      where: { userId: user.id },
     });
 
     logger.info({

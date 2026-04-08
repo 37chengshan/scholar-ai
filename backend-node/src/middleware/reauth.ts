@@ -40,14 +40,14 @@ export const requireReauth = async (
     // Fetch user's password hash
     const user = await prisma.users.findUnique({
       where: { id: userId },
-      select: { password_hash: true },
+      select: { passwordHash: true },
     });
 
     if (!user) {
       throw Errors.notFound('User not found');
     }
 
-    const isValid = await verifyPassword(user.password_hash, currentPassword);
+    const isValid = await verifyPassword(user.passwordHash, currentPassword);
 
     if (!isValid) {
       throw Errors.invalidCredentials('Invalid password');

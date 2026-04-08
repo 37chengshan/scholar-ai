@@ -183,7 +183,8 @@ export async function generatePresignedDownloadUrl(
 ): Promise<string> {
   if (USE_LOCAL_STORAGE) {
     // In local mode, return a direct file URL
-    return `http://localhost:${process.env.PORT || 4000}/api/download/local/${encodeURIComponent(storageKey)}`;
+    // Note: papers router is mounted at /api/papers
+    return `http://localhost:${process.env.PORT || 4000}/api/papers/download/local/${encodeURIComponent(storageKey)}`;
   }
 
   const command = new GetObjectCommand({
@@ -301,6 +302,25 @@ export async function uploadFile(
   } catch (error) {
     logger.error('Failed to upload file:', error);
     throw new Error('Failed to upload file');
+  }
+}
+
+/**
+ * Get local file buffer for serving files
+ * Only works in local storage mode
+ */
+export async function getLocalFileBuffer(storageKey: string): Promise<Buffer | null> {
+  if (!USE_LOCAL_STORAGE) {
+    return null;
+  }
+
+  try {
+    const filePath = getLocalFilePath(storageKey);
+    const buffer = await fsPromises.readFile(filePath);
+    return buffer;
+  } catch (error) {
+    logger.error('Failed to read local file:', error);
+    return null;
   }
 }
 

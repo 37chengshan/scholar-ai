@@ -59,11 +59,11 @@ router = APIRouter()
 
 async def stream_sse_event(event_type: str, data: dict) -> str:
     """Format SSE event as string.
-    
+
     Args:
         event_type: SSE event type (thought, tool_call, message, etc.)
         data: Event data payload
-        
+
     Returns:
         SSE formatted string: "event: {type}\\ndata: {json}\\n\\n"
     """
@@ -81,27 +81,28 @@ async def save_message(
     role: str,
     content: str,
     tool_name: Optional[str] = None,
-    tool_params: Optional[Dict] = None
+    tool_params: Optional[Dict] = None,
 ) -> str:
-    """Save chat message to PostgreSQL.
-    
+    """Save chat message to PostgreSQL and update session stats.
+
     Args:
         session_id: Session UUID
         role: Message role (user, assistant, tool, system)
         content: Message content
         tool_name: Tool name if role=tool
         tool_params: Tool parameters if role=tool
-        
+
     Returns:
         Message UUID
-        
+
     Raises:
         Exception: If database insert fails
     """
     message_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    
+
     async with get_db_connection() as conn:
+        # Insert message
         await conn.execute(
             """
             INSERT INTO chat_messages (id, session_id, role, content, tool_name, created_at)
@@ -112,16 +113,29 @@ async def save_message(
             role,
             content,
             tool_name,
-            created_at
+            created_at,
         )
-    
+
+        # Update session stats
+        is_tool_call = role == "tool"
+        await conn.execute(
+            """
+            UPDATE sessions
+            SET 
+                message_count = message_count + 1,
+                tool_call_count = tool_call_count + CASE WHEN $2 THEN 1 ELSE 0 END,
+                last_activity_at = $3
+            WHERE id = $1
+            """,
+            session_id,
+            is_tool_call,
+            created_at,
+        )
+
     logger.debug(
-        "Message saved",
-        message_id=message_id,
-        session_id=session_id,
-        role=role
+        "Message saved", message_id=message_id, session_id=session_id, role=role
     )
-    
+
     return message_id
 
 
@@ -132,9 +146,7 @@ async def save_message(
 
 @router.post("/chat/stream")
 async def chat_stream(
-    request: ChatStreamRequest,
-    http_request: Request,
-    user_id: str = CurrentUserId
+    request: ChatStreamRequest, http_request: Request, user_id: str = CurrentUserId
 ):
     """
     SSE streaming chat with Agent.
@@ -161,7 +173,7 @@ async def chat_stream(
             "Chat stream started",
             user_id=user_id,
             session_id=request.session_id,
-            message=request.message[:100]
+            message=request.message[:100],
         )
 
         # Get or create session
@@ -170,14 +182,15 @@ async def chat_stream(
             session = await session_manager.get_session(request.session_id)
             if not session:
                 logger.warning(
-                    "Session not found, creating new",
-                    session_id=request.session_id
+                    "Session not found, creating new", session_id=request.session_id
                 )
 
         if not session:
             session = await session_manager.create_session(
                 user_id=user_id,
-                title=request.message[:50] if len(request.message) > 50 else request.message
+                title=request.message[:50]
+                if len(request.message) > 50
+                else request.message,
             )
 
         session_id = session.id
@@ -196,14 +209,13 @@ async def chat_stream(
             try:
                 # Check for Last-Event-ID header (reconnection)
                 last_event_id = None
-                if 'last-event-id' in http_request.headers:
-                    last_event_id = http_request.headers['last-event-id']
+                if "last-event-id" in http_request.headers:
+                    last_event_id = http_request.headers["last-event-id"]
 
                 # If reconnecting, replay missed events first
                 if last_event_id:
                     async for replay_event in sse_manager.handle_reconnect(
-                        session_id,
-                        last_event_id
+                        session_id, last_event_id
                     ):
                         yield replay_event
 
@@ -213,20 +225,17 @@ async def chat_stream(
                     # Save user message before execution
                     try:
                         await save_message(
-                            session_id=session_id,
-                            role="user",
-                            content=request.message
+                            session_id=session_id, role="user", content=request.message
                         )
                     except Exception as e:
                         logger.warning("Failed to save user message", error=str(e))
-                    
+
                     # Send initial thought event
                     yield await stream_sse_event(
                         SSEEventType.THOUGHT,
                         ThoughtEventData(
-                            type="thinking",
-                            content="Analyzing your request..."
-                        ).model_dump()
+                            type="thinking", content="Analyzing your request..."
+                        ).model_dump(),
                     )
 
                     # Execute Agent
@@ -234,7 +243,7 @@ async def chat_stream(
                         user_input=request.message,
                         session_id=session_id,
                         user_id=user_id,
-                        auto_confirm=auto_confirm
+                        auto_confirm=auto_confirm,
                     )
 
                     # Handle confirmation required
@@ -246,10 +255,13 @@ async def chat_stream(
                             ConfirmationRequiredEventData(
                                 type="confirmation_required",
                                 confirmation_id=confirmation_id,
-                                message=result.get("message", "Agent wants to execute a dangerous operation"),
+                                message=result.get(
+                                    "message",
+                                    "Agent wants to execute a dangerous operation",
+                                ),
                                 tool_name=result.get("tool_name", "unknown"),
-                                parameters=result.get("tool_parameters", {})
-                            ).model_dump()
+                                parameters=result.get("tool_parameters", {}),
+                            ).model_dump(),
                         )
                         return
 
@@ -264,10 +276,10 @@ async def chat_stream(
                                 ToolCallEventData(
                                     type="tool_call",
                                     tool=tc.get("tool", "unknown"),
-                                    parameters=tc.get("parameters", {})
-                                ).model_dump()
+                                    parameters=tc.get("parameters", {}),
+                                ).model_dump(),
                             )
-                            
+
                             # Save tool call message
                             try:
                                 await save_message(
@@ -275,10 +287,12 @@ async def chat_stream(
                                     role="tool",
                                     content=json.dumps(tc.get("result", {})),
                                     tool_name=tc.get("tool", "unknown"),
-                                    tool_params=tc.get("parameters", {})
+                                    tool_params=tc.get("parameters", {}),
                                 )
                             except Exception as e:
-                                logger.warning("Failed to save tool message", error=str(e))
+                                logger.warning(
+                                    "Failed to save tool message", error=str(e)
+                                )
 
                             # Tool result event
                             tool_result = tc.get("result", {})
@@ -289,8 +303,8 @@ async def chat_stream(
                                     tool=tc.get("tool", "unknown"),
                                     success=tool_result.get("success", False),
                                     data=tool_result.get("data"),
-                                    error=tool_result.get("error")
-                                ).model_dump()
+                                    error=tool_result.get("error"),
+                                ).model_dump(),
                             )
 
                         # Send final message
@@ -298,25 +312,33 @@ async def chat_stream(
                         yield await stream_sse_event(
                             SSEEventType.MESSAGE,
                             MessageEventData(
-                                type="message",
-                                content=final_content
-                            ).model_dump()
+                                type="message", content=final_content
+                            ).model_dump(),
                         )
-                        
+
                         # Save assistant message
                         try:
                             await save_message(
                                 session_id=session_id,
                                 role="assistant",
-                                content=final_content
+                                content=final_content,
                             )
                         except Exception as e:
-                            logger.warning("Failed to save assistant message", error=str(e))
+                            logger.warning(
+                                "Failed to save assistant message", error=str(e)
+                            )
 
-                        # Send done event
+                        # Send done event with token usage
                         yield await stream_sse_event(
                             SSEEventType.DONE,
-                            {"type": "done", "content": "[DONE]"}
+                            {
+                                "type": "done",
+                                "content": "[DONE]",
+                                "tokens_used": result.get("tokens_used", 0),
+                                "cost": result.get("cost", 0.0),
+                                "iterations": result.get("iterations", 0),
+                                "total_time_ms": result.get("total_time_ms", 0),
+                            },
                         )
 
                     else:
@@ -326,14 +348,13 @@ async def chat_stream(
                             ErrorEventData(
                                 type="error",
                                 error=result.get("error", "Unknown error"),
-                                details={"iterations": result.get("iterations", 0)}
-                            ).model_dump()
+                                details={"iterations": result.get("iterations", 0)},
+                            ).model_dump(),
                         )
 
                 # Stream with heartbeat
                 async for event in sse_manager.stream_with_heartbeat(
-                    session_id,
-                    business_events()
+                    session_id, business_events()
                 ):
                     yield event
 
@@ -343,10 +364,8 @@ async def chat_stream(
                 yield await stream_sse_event(
                     SSEEventType.ERROR,
                     ErrorEventData(
-                        type="error",
-                        error=str(e),
-                        details=None
-                    ).model_dump()
+                        type="error", error=str(e), details=None
+                    ).model_dump(),
                 )
 
         # Return SSE streaming response
@@ -358,7 +377,7 @@ async def chat_stream(
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
                 "X-Session-ID": session_id,
-            }
+            },
         )
 
     except Exception as e:
@@ -372,16 +391,14 @@ async def chat_stream(
             yield await stream_sse_event(
                 SSEEventType.ERROR,
                 ErrorEventData(
-                    type="error",
-                    error=error_msg,
-                    details=None
-                ).model_dump()
+                    type="error", error=error_msg, details=None
+                ).model_dump(),
             )
 
         return StreamingResponse(
             error_stream(),
             media_type="text/event-stream",
-            status_code=status.HTTP_200_OK
+            status_code=status.HTTP_200_OK,
         )
 
 
@@ -391,10 +408,7 @@ async def chat_stream(
 
 
 @router.post("/chat/confirm")
-async def confirm_action(
-    request: ChatConfirmRequest,
-    user_id: str = CurrentUserId
-):
+async def confirm_action(request: ChatConfirmRequest, user_id: str = CurrentUserId):
     """
     User confirmation for dangerous operations.
 
@@ -412,58 +426,57 @@ async def confirm_action(
             "Confirmation received",
             confirmation_id=request.confirmation_id,
             approved=request.approved,
-            session_id=request.session_id
+            session_id=request.session_id,
         )
 
         # Validate confirmation_id from Redis
         import redis.asyncio as redis
+
         r = redis.from_url(settings.REDIS_URL, decode_responses=True)
-        
+
         confirmation_key = f"confirmation:{request.confirmation_id}"
         confirmation_data = await r.get(confirmation_key)
-        
+
         if not confirmation_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=Errors.validation("Invalid or expired confirmation_id")
+                detail=Errors.validation("Invalid or expired confirmation_id"),
             )
-        
+
         # Parse confirmation data
         import json
+
         data = json.loads(confirmation_data)
-        
+
         # Verify user ownership
         if data.get("user_id") != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=Errors.forbidden("Confirmation belongs to different user")
+                detail=Errors.forbidden("Confirmation belongs to different user"),
             )
 
         if not request.approved:
             # Clear confirmation from Redis
             await r.delete(confirmation_key)
-            return {
-                "success": False,
-                "message": "User declined the operation"
-            }
+            return {"success": False, "message": "User declined the operation"}
 
         # Resume Agent execution
         runner, _, _, _ = initialize_agent_components()
-        
+
         # Retrieve tool_name and parameters from confirmation data
         tool_name = data.get("tool_name")
         tool_params = data.get("tool_params", {})
         session_id = data.get("session_id")
-        
+
         # Clear confirmation from Redis
         await r.delete(confirmation_key)
-        
+
         return {
             "success": True,
             "message": "Operation confirmed. Agent execution resumed.",
             "tool_name": tool_name,
             "tool_params": tool_params,
-            "session_id": session_id
+            "session_id": session_id,
         }
 
     except Exception as e:
@@ -471,7 +484,7 @@ async def confirm_action(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to process confirmation: {str(e)}")
+            detail=Errors.internal(f"Failed to process confirmation: {str(e)}"),
         )
 
 
@@ -482,10 +495,7 @@ async def confirm_action(
 
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(
-    session_id: str,
-    user_id: str = CurrentUserId,
-    limit: int = 50,
-    offset: int = 0
+    session_id: str, user_id: str = CurrentUserId, limit: int = 50, offset: int = 0
 ):
     """
     Retrieve chat history for a session.
@@ -510,14 +520,16 @@ async def get_session_messages(
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found(f"Session {session_id} not found")
+                detail=Errors.not_found(f"Session {session_id} not found"),
             )
 
         # Verify ownership
         if session.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=Errors.forbidden("You don't have permission to access this session")
+                detail=Errors.forbidden(
+                    "You don't have permission to access this session"
+                ),
             )
 
         # Retrieve messages from PostgreSQL chat_messages table
@@ -532,9 +544,9 @@ async def get_session_messages(
                 """,
                 session_id,
                 limit,
-                offset
+                offset,
             )
-            
+
             messages = [dict(row) for row in rows]
 
         return {
@@ -543,8 +555,8 @@ async def get_session_messages(
                 "session_id": session_id,
                 "messages": messages,
                 "total": len(messages),
-                "limit": limit
-            }
+                "limit": limit,
+            },
         }
 
     except HTTPException:
@@ -554,5 +566,5 @@ async def get_session_messages(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to get messages: {str(e)}")
+            detail=Errors.internal(f"Failed to get messages: {str(e)}"),
         )

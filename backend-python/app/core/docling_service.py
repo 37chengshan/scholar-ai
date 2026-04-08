@@ -598,17 +598,19 @@ class DoclingParser:
         
         return ChunkQualityReport(metrics)
 
-    def _assign_section(self, text: str, imrad_structure: dict) -> Optional[str]:
+    def _assign_section(self, text: str, imrad_structure: dict) -> str:
         """Assign section based on IMRaD structure.
 
         This is a placeholder - actual section assignment
         will be done by PDF worker with page information.
+        
+        Returns empty string instead of None to prevent None-related errors.
         """
         for section_name, section_data in imrad_structure.items():
             if section_name.startswith("_"):
                 continue
             pass
-        return None
+        return ""  # Fix: Return empty string instead of None
 
     async def extract_imrad(self, markdown: str) -> dict:
         """

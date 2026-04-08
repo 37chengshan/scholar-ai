@@ -16,7 +16,7 @@ const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 // Request/Response types matching Python models
 export interface RAGQueryRequest {
   question: string;
-  paper_ids?: string[];
+  paperIds?: string[];
   query_type?: 'single' | 'cross_paper' | 'evolution';
   top_k?: number;
   conversation_id?: string;
@@ -26,7 +26,7 @@ export interface RAGQueryRequest {
 export interface RAGQueryResponse {
   answer: string;
   sources: Array<{
-    paper_id: string;
+    paperId: string;
     title?: string;
     chunk_id: string;
     score: number;
@@ -41,7 +41,7 @@ export interface RAGQueryResponse {
 export interface AgenticSearchRequest {
   query: string;
   query_type?: 'single' | 'cross_paper' | 'evolution';
-  paper_ids?: string[];
+  paperIds?: string[];
   max_rounds?: number;
   top_k?: number;
 }
@@ -83,7 +83,7 @@ async ragQuery(request: RAGQueryRequest): Promise<RAGQueryResponse> {
       logger.info('RAG query request', {
         request_id: requestId,
         question: request.question.substring(0, 50),
-        paper_count: request.paper_ids?.length || 0,
+        paper_count: request.paperIds?.length || 0,
       });
 
       // Add X-User-ID header for authentication
@@ -94,7 +94,7 @@ async ragQuery(request: RAGQueryRequest): Promise<RAGQueryResponse> {
 
       const response = await this.client.post<RAGQueryResponse>('/rag/query', {
         question: request.question,
-        paper_ids: request.paper_ids || [],
+        paperIds: request.paperIds || [],
         query_type: request.query_type || 'single',
         top_k: request.top_k || 10,
         conversation_id: request.conversation_id,
@@ -134,7 +134,7 @@ async ragQuery(request: RAGQueryRequest): Promise<RAGQueryResponse> {
       const response = await this.client.post<AgenticSearchResponse>('/rag/agentic', {
         query: request.query,
         query_type: request.query_type || 'single',
-        paper_ids: request.paper_ids || [],
+        paperIds: request.paperIds || [],
         max_rounds: request.max_rounds || 3,
         top_k: request.top_k || 5,
       });

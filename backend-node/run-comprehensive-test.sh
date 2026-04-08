@@ -35,7 +35,7 @@ fi
 echo "✓ Jest 已安装"
 
 # 检查测试PDF文件
-TEST_PDF_DIR="/Users/cc/scholar-ai-deploy/schlar ai/doc/测试论文"
+TEST_PDF_DIR="/Users/cc/scholar-ai-deploy/scholar-ai-project/doc/测试论文"
 if [ ! -d "$TEST_PDF_DIR" ]; then
     echo "⚠ 测试PDF目录不存在: $TEST_PDF_DIR"
     echo "  请确保测试PDF文件存在"

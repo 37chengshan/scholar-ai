@@ -67,12 +67,31 @@ export async function get(id: string): Promise<Paper> {
  * @param id - Paper ID
  * @param currentPassword - User's current password for re-auth
  */
-export async function deletePaper(id: string, currentPassword?: string): Promise<void> {
-  await apiClient.delete(`/api/papers/${id}`, {
+export async function deletePaper(id: string): Promise<void> {
+  await apiClient.delete(`/api/papers/${id}`);
+}
+
+export async function remove(id: string): Promise<void> {
+  return deletePaper(id);
+}
+
+export async function batchDelete(paperIds: string[]): Promise<{
+  deletedCount: number;
+  requestedCount: number;
+  message: string;
+}> {
+  const response = await apiClient.post<{
+    success: boolean;
     data: {
-      currentPassword,
-    },
+      deletedCount: number;
+      requestedCount: number;
+      message: string;
+    };
+  }>('/api/papers/batch-delete', {
+    paperIds,
   });
+
+  return response.data.data;
 }
 
 /**

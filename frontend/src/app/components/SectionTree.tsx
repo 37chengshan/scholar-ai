@@ -30,7 +30,7 @@ interface SectionTreeProps {
 
 export function SectionTree({ imrad, onPageSelect, currentPage }: SectionTreeProps) {
   if (!imrad) {
-    return <div className="p-4 text-gray-500">No sections available</div>;
+    return <div className="p-4 text-gray-500" data-testid="section-tree">No sections available</div>;
   }
 
   const sections = [
@@ -41,7 +41,7 @@ export function SectionTree({ imrad, onPageSelect, currentPage }: SectionTreePro
   ].filter(s => s.data);
 
   return (
-    <div className="p-4">
+    <div className="p-4" data-testid="section-tree">
       <h3 className="font-semibold mb-3">Sections</h3>
       <div className="space-y-1">
         {sections.map(section => {
@@ -50,6 +50,7 @@ export function SectionTree({ imrad, onPageSelect, currentPage }: SectionTreePro
             <button
               key={section.name}
               onClick={() => onPageSelect(section.data!.start)}
+              data-testid={`section-${section.name.toLowerCase()}`}
               className={`w-full text-left px-3 py-2 rounded flex items-center gap-2 ${
                 isActive ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
               }`}

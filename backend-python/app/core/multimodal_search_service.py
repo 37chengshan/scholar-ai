@@ -158,8 +158,11 @@ class MultimodalSearchService:
                     top_k=20,
                 )
 
-                # Filter by paper_ids
-                filtered = [r for r in results if r.get("paper_id") in paper_ids]
+                # Filter by paper_ids (only if paper_ids is provided)
+                if paper_ids:
+                    filtered = [r for r in results if r.get("paper_id") in paper_ids]
+                else:
+                    filtered = results  # No filter if paper_ids is empty
                 multimodal_results[content_type] = filtered
 
                 logger.debug(

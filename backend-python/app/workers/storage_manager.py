@@ -236,13 +236,6 @@ class StorageManager:
                 batch_embeddings = self.qwen3vl_service.encode_text(batch)
                 embeddings.extend(batch_embeddings)
 
-        logger.info(
-            "Paper metadata stored",
-            task_id=ctx.task_id,
-            paper_id=ctx.paper_id,
-            title=metadata.get("title", "N/A")
-        )
-
                 # Clear GPU cache after each batch
                 import torch
 

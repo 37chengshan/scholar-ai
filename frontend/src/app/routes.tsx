@@ -80,6 +80,10 @@ export const router = createBrowserRouter([
       },
       {
         path: "read",
+        element: <Navigate to="/library" replace />,
+      },
+      {
+        path: "read/:id",
         element: <LazyRoute><ProtectedRoute><Read /></ProtectedRoute></LazyRoute>,
       },
       {

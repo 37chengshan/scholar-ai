@@ -17,7 +17,7 @@ import path from 'path';
  */
 
 describe('PDF Upload and Processing Workflow E2E', () => {
-  const testPdfDir = '/Users/cc/scholar-ai-deploy/schlar ai/doc/测试论文';
+  const testPdfDir = '/Users/cc/scholar-ai-deploy/scholar-ai-project/doc/测试论文';
   const testFiles = [
     { name: '2604.01245v1.pdf', size: '265KB' },
     { name: '2604.01226v1.pdf', size: '5.2MB' },

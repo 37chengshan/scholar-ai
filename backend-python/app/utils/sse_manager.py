@@ -54,43 +54,26 @@ class SSEConnectionManager:
         Yields:
             SSE event strings (business or heartbeat)
         """
-        heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-        business_task = asyncio.create_task(self._collect_generator(generator))
+        last_heartbeat = time.time()
 
         try:
-            while True:
-                done, pending = await asyncio.wait(
-                    [heartbeat_task, business_task],
-                    return_when=asyncio.FIRST_COMPLETED
-                )
+            async for event in generator:
+                # Update last event time
+                last_heartbeat = time.time()
 
-                # Check if business task is done
-                if business_task in done:
-                    # Yield remaining business events
-                    events = business_task.result()
-                    for event in events:
-                        # Cache event
-                        await self.store_event(session_id, event)
+                # Cache event
+                await self.store_event(session_id, event)
 
-                        yield event
+                yield event
 
-                    # Cancel heartbeat task
-                    heartbeat_task.cancel()
-                    break
-
-                # Check if heartbeat task is done
-                if heartbeat_task in done:
-                    # Yield heartbeat
+                # Check if we should send a heartbeat
+                elapsed = time.time() - last_heartbeat
+                if elapsed >= self.HEARTBEAT_INTERVAL:
                     yield f"event: heartbeat\ndata: {int(time.time())}\n\n"
-
-                    # Restart heartbeat task
-                    heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                    last_heartbeat = time.time()
 
         except Exception as e:
             logger.error("Stream with heartbeat error", error=str(e))
-            # Cancel all tasks
-            heartbeat_task.cancel()
-            business_task.cancel()
             raise
 
     async def handle_reconnect(

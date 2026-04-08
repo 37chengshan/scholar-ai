@@ -22,7 +22,7 @@ module.exports = {
     'node_modules/(?!(node-fetch|data-uri-to-buffer|fetch-blob|formdata-polyfill|@aws-sdk)/)',
   ],
   moduleNameMapper: {
-    '^node-fetch$': '<rootDir>/node_modules/node-fetch/lib/index.js',
+    '^node-fetch$': '<rootDir>/node_modules/node-fetch/src/index.js',
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
   collectCoverageFrom: [

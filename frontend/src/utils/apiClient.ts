@@ -44,6 +44,11 @@ apiClient.interceptors.request.use(
       });
     }
 
+    // Mark refresh requests to prevent infinite loop
+    if (config.url?.includes('/auth/refresh')) {
+      config.metadata = { ...config.metadata, isRefreshRequest: true };
+    }
+
     return config;
   },
   (error: AxiosError) => {
@@ -77,7 +82,10 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as InternalAxiosRequestConfig & { 
+      _retry?: boolean;
+      metadata?: { isRefreshRequest?: boolean };
+    };
 
     // Log errors in development
     if (import.meta.env.DEV) {
@@ -115,6 +123,33 @@ apiClient.interceptors.response.use(
 
     // Case 2: 401 Unauthorized - Token refresh logic
     if (error.response.status === 401 && !originalRequest._retry) {
+      // CRITICAL: Don't redirect/refresh for auth check endpoints
+      // These endpoints are expected to return 401 when not logged in
+      const isAuthCheckEndpoint = 
+        originalRequest?.url?.includes('/auth/me') ||
+        originalRequest?.url?.includes('/auth/login') ||
+        originalRequest?.url?.includes('/auth/register');
+      
+      if (isAuthCheckEndpoint) {
+        // Just reject, don't trigger refresh or redirect
+        return Promise.reject(error);
+      }
+      
+      // CRITICAL: Check if this is a refresh request itself
+      // If refresh fails with 401, don't retry - go to login immediately
+      if (originalRequest?.metadata?.isRefreshRequest || originalRequest?.url?.includes('/auth/refresh')) {
+        if (import.meta.env.DEV) {
+          console.error('[API Token Refresh] Refresh request failed with 401, redirecting to login');
+        }
+        
+        // Only redirect if not already on auth pages
+        if (!window.location.pathname.match(/\/(login|register|forgot-password|reset-password)/)) {
+          toast.error('会话已过期，请重新登录');
+          window.location.href = '/login';
+        }
+        return Promise.reject(error);
+      }
+
       originalRequest._retry = true;
 
       try {
@@ -127,16 +162,17 @@ apiClient.interceptors.response.use(
 
         // Retry original request with new token (Cookie auto-updated)
         return apiClient.request(originalRequest);
-      } catch (refreshError) {
+      } catch (refreshError: any) {
         // Refresh failed - session expired
         if (import.meta.env.DEV) {
           console.error('[API Token Refresh] Refresh failed:', refreshError);
         }
 
-        toast.error('会话已过期，请重新登录');
-
-        // Redirect to login page
-        window.location.href = '/login';
+        // Only show toast and redirect if not already on auth pages
+        if (!window.location.pathname.match(/\/(login|register|forgot-password|reset-password)/)) {
+          toast.error('会话已过期，请重新登录');
+          window.location.href = '/login';
+        }
 
         return Promise.reject(refreshError);
       }

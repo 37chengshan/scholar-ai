@@ -4,11 +4,9 @@ import { requirePermission } from '../middleware/rbac';
 import { Errors } from '../middleware/errorHandler';
 import { AuthRequest } from '../types/auth';
 import { logger } from '../utils/logger';
-import fetch from 'node-fetch';
 
 const router = Router();
 
-// Python service URL
 const PYTHON_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
 // Apply authentication to all routes
@@ -47,6 +45,106 @@ router.post('/', requirePermission('chat', 'create'), async (req: AuthRequest, r
 
     const data = await response.json();
     res.json(data);
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/chat/stream - Proxy SSE stream from Python (for EventSource compatibility)
+ *
+ * Converts GET request with query params to POST request for Python service.
+ * This is needed because EventSource only supports GET requests.
+ */
+router.get('/stream', requirePermission('chat', 'create'), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+
+    if (!userId) {
+      throw Errors.unauthorized('User not authenticated');
+    }
+
+    // Extract query parameters
+    const message = req.query.message as string;
+    const paperIds = req.query.paperIds as string | undefined;
+    const sessionId = req.query.session_id as string | undefined;
+
+    if (!message) {
+      throw Errors.badRequest('Message is required');
+    }
+
+    logger.info('Chat stream request (GET)', { userId, message: message.substring(0, 50) });
+
+    // Build request body
+    const body: any = { message };
+    if (paperIds) {
+      body.paperIds = paperIds.split(',').map(id => id.trim());
+    }
+    if (sessionId) {
+      body.session_id = sessionId;
+    }
+
+    // Forward request to Python service
+    const response = await fetch(`${PYTHON_SERVICE_URL}/api/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-ID': userId,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('Python service error', { status: response.status, error: errorText });
+      throw Errors.badGateway('Python service error');
+    }
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    // Forward session ID header if present
+    const pySessionId = response.headers.get('X-Session-ID');
+    if (pySessionId) {
+      res.setHeader('X-Session-ID', pySessionId);
+    }
+
+    // Pipe SSE stream from Python to client
+    // Use ReadableStream reader (fetch API returns Web ReadableStream, not Node.js stream)
+    if (response.body) {
+      const reader = response.body.getReader();
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            logger.info('SSE stream completed (GET)');
+            res.end();
+            break;
+          }
+          
+          // Convert Uint8Array to Buffer and write to response
+          const chunk = Buffer.from(value);
+          res.write(chunk);
+        }
+      } catch (error: any) {
+        logger.error('SSE stream error', { error: error.message });
+        res.end();
+      }
+    } else {
+      logger.error('No response body from Python service (GET)');
+      res.end();
+    }
+
+    // Handle client disconnect
+    req.on('close', () => {
+      logger.info('Client disconnected from SSE stream (GET)');
+    });
 
   } catch (error) {
     next(error);
@@ -99,25 +197,36 @@ router.post('/stream', requirePermission('chat', 'create'), async (req: AuthRequ
     }
 
     // Pipe SSE stream from Python to client
-    response.body?.on('data', (chunk) => {
-      res.write(chunk);
-    });
-
-    response.body?.on('end', () => {
+    // Use ReadableStream reader (fetch API returns Web ReadableStream, not Node.js stream)
+    if (response.body) {
+      const reader = response.body.getReader();
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            logger.info('SSE stream completed');
+            res.end();
+            break;
+          }
+          
+          // Convert Uint8Array to Buffer and write to response
+          const chunk = Buffer.from(value);
+          res.write(chunk);
+        }
+      } catch (error: any) {
+        logger.error('SSE stream error', { error: error.message });
+        res.end();
+      }
+    } else {
+      logger.error('No response body from Python service');
       res.end();
-    });
-
-    response.body?.on('error', (error) => {
-      logger.error('SSE stream error', { error: error.message });
-      res.end();
-    });
+    }
 
     // Handle client disconnect
     req.on('close', () => {
       logger.info('Client disconnected from SSE stream');
-      // Removed: response.body?.destroy();
-      // Reason: Fetch API ReadableStream doesn't have destroy() method
-      // req.on('close') event already handles cleanup when client disconnects
     });
 
   } catch (error) {

@@ -62,7 +62,7 @@ router.post('/', requirePermission('queries', 'create'), async (req: AuthRequest
     // Semantic cache (Plan 02) will return cached response for similar queries
     const ragRequest: RAGQueryRequest = {
       question,
-      paper_ids: paperIds,
+      paperIds: paperIds,
       query_type: queryType,
       conversation_id: conversationId,
       userId: userId, // Pass userId for authentication

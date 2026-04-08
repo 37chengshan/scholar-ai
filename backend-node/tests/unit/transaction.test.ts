@@ -11,14 +11,14 @@ import { prisma } from '../../src/config/database';
 jest.mock('../../src/config/database', () => ({
   prisma: {
     $transaction: jest.fn(),
-    processingTask: {
+    processing_tasks: {
       create: jest.fn(),
     },
-    paper: {
+    papers: {
       update: jest.fn(),
       findFirst: jest.fn(),
     },
-    paperBatch: {
+    paper_batches: {
       update: jest.fn(),
       findUnique: jest.fn(),
     },
@@ -34,15 +34,15 @@ describe('Paper Upload Transaction', () => {
     it('should create task and update paper atomically', async () => {
       const mockTask = {
         id: 'task-123',
-        paper_id: 'paper-456',
+        paperId: 'paper-456',
         status: 'pending',
-        storage_key: 'uploads/test.pdf',
+        storageKey: 'uploads/test.pdf',
       };
 
       const mockPaper = {
         id: 'paper-456',
         status: 'processing',
-        upload_status: 'completed',
+        uploadStatus: 'completed',
       };
 
       // Mock successful transaction
@@ -52,21 +52,21 @@ describe('Paper Upload Transaction', () => {
         prisma.processing_tasks.create({
           data: {
             id: 'task-123',
-            updated_at: new Date(),
-            paper_id: 'paper-456',
+            updatedAt: new Date(),
+            paperId: 'paper-456',
             status: 'pending',
-            storage_key: 'uploads/test.pdf',
+            storageKey: 'uploads/test.pdf',
           },
         }),
         prisma.papers.update({
           where: { id: 'paper-456' },
           data: {
             id: 'task-123',
-            updated_at: new Date(),
+            updatedAt: new Date(),
             status: 'processing',
-            upload_status: 'completed',
-            upload_progress: 100,
-            uploaded_at: new Date(),
+            uploadStatus: 'completed',
+            uploadProgress: 100,
+            uploadedAt: new Date(),
           },
         }),
       ]);
@@ -87,10 +87,10 @@ describe('Paper Upload Transaction', () => {
           prisma.processing_tasks.create({
             data: {
             id: 'task-123',
-            updated_at: new Date(),
-              paper_id: 'paper-456',
+            updatedAt: new Date(),
+              paperId: 'paper-456',
               status: 'pending',
-              storage_key: 'uploads/test.pdf',
+              storageKey: 'uploads/test.pdf',
             },
           }),
           prisma.papers.update({
@@ -115,10 +115,10 @@ describe('Paper Upload Transaction', () => {
           prisma.processing_tasks.create({
             data: {
             id: 'task-123',
-            updated_at: new Date(),
-              paper_id: 'paper-456',
+            updatedAt: new Date(),
+              paperId: 'paper-456',
               status: 'pending',
-              storage_key: 'uploads/test.pdf',
+              storageKey: 'uploads/test.pdf',
             },
           }),
           prisma.papers.update({
@@ -146,10 +146,10 @@ describe('Paper Upload Transaction', () => {
           prisma.processing_tasks.create({
             data: {
             id: 'task-123',
-            updated_at: new Date(),
-              paper_id: 'paper-456',
+            updatedAt: new Date(),
+              paperId: 'paper-456',
               status: 'pending',
-              storage_key: 'uploads/test.pdf',
+              storageKey: 'uploads/test.pdf',
             },
           }),
           prisma.papers.update({
@@ -171,10 +171,10 @@ describe('Paper Upload Transaction', () => {
           prisma.processing_tasks.create({
             data: {
             id: 'task-123',
-            updated_at: new Date(),
-              paper_id: 'paper-456',
+            updatedAt: new Date(),
+              paperId: 'paper-456',
               status: 'pending',
-              storage_key: 'uploads/test.pdf',
+              storageKey: 'uploads/test.pdf',
             },
           }),
           prisma.papers.update({
@@ -190,14 +190,14 @@ describe('Paper Upload Transaction', () => {
     it('should maintain data consistency after successful transaction', async () => {
       const mockTask = {
         id: 'task-123',
-        paper_id: 'paper-456',
+        paperId: 'paper-456',
         status: 'pending',
       };
 
       const mockPaper = {
         id: 'paper-456',
         status: 'processing',
-        upload_status: 'completed',
+        uploadStatus: 'completed',
       };
 
       (prisma.$transaction as any).mockResolvedValueOnce([mockTask, mockPaper]);
@@ -206,27 +206,27 @@ describe('Paper Upload Transaction', () => {
         prisma.processing_tasks.create({
           data: {
             id: 'task-123',
-            updated_at: new Date(),
-            paper_id: 'paper-456',
+            updatedAt: new Date(),
+            paperId: 'paper-456',
             status: 'pending',
-            storage_key: 'uploads/test.pdf',
+            storageKey: 'uploads/test.pdf',
           },
         }),
         prisma.papers.update({
           where: { id: 'paper-456' },
           data: {
             id: 'task-123',
-            updated_at: new Date(),
+            updatedAt: new Date(),
             status: 'processing',
-            upload_status: 'completed',
-            upload_progress: 100,
-            uploaded_at: new Date(),
+            uploadStatus: 'completed',
+            uploadProgress: 100,
+            uploadedAt: new Date(),
           },
         }),
       ]);
 
       // Verify consistency
-      expect(task.paper_id).toBe(paper.id);
+      expect(task.paperId).toBe(paper.id);
       expect(paper.status).toBe('processing');
     });
   });

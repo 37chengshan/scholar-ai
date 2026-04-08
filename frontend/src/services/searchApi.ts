@@ -137,14 +137,16 @@ export async function getAuthorPapers(
  * Returns results from both internal papers and external sources (arXiv, S2)
  *
  * @param query - Search query string
- * @param limit - Maximum results per source (default: 10)
+ * @param limit - Maximum results per source (default: 20)
+ * @param offset - Pagination offset (default: 0)
  * @param year_from - Filter by year (optional)
  * @param year_to - Filter by year (optional)
  * @returns Unified search results
  */
 export async function unified(
   query: string,
-  limit: number = 10,
+  limit: number = 20,
+  offset: number = 0,
   year_from?: number,
   year_to?: number
 ): Promise<{
@@ -170,6 +172,7 @@ export async function unified(
   const params = new URLSearchParams();
   params.append('query', query);
   params.append('limit', limit.toString());
+  params.append('offset', offset.toString());
   if (year_from) params.append('year_from', year_from.toString());
   if (year_to) params.append('year_to', year_to.toString());
 
@@ -214,7 +217,8 @@ export async function unified(
 export async function external(
   query: string,
   sources: string[] = ['arxiv', 's2'],
-  limit: number = 10
+  limit: number = 20,
+  offset: number = 0
 ): Promise<{
   results: Array<{
     id: string;
@@ -233,6 +237,7 @@ export async function external(
   params.append('query', query);
   params.append('sources', sources.join(','));
   params.append('limit', limit.toString());
+  params.append('offset', offset.toString());
 
   const response = await apiClient.get<{
     success: boolean;

@@ -215,6 +215,7 @@ class PDFCoordinator:
         async with self.db_pool.acquire() as conn:
             completed_at = datetime.now() if status == "completed" else None
 
+            # Update processing_tasks
             await conn.execute(
                 """UPDATE processing_tasks
                    SET status = $1,
@@ -227,6 +228,17 @@ class PDFCoordinator:
                 completed_at,
                 ctx.task_id
             )
+
+            # Update papers status to keep them synchronized
+            if status in ("completed", "failed"):
+                await conn.execute(
+                    """UPDATE papers
+                       SET status = $1,
+                           "updatedAt" = NOW()
+                       WHERE id = $2""",
+                    status,
+                    ctx.paper_id
+                )
 
         logger.info("Task status updated", task_id=ctx.task_id, status=status)
 

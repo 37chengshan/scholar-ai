@@ -85,7 +85,7 @@ npm run dev
 
 测试使用真实的PDF文件，位于：
 ```
-/Users/cc/scholar-ai-deploy/schlar ai/doc/测试论文/
+/Users/cc/scholar-ai-deploy/scholar-ai-project/doc/测试论文/
 ``
 
 包含的测试文件：
@@ -238,7 +238,7 @@ export AI_SERVICE_URL=http://localhost:8000
 **解决方案**:
 检查 `testPdfDir` 路径是否正确：
 ```typescript
-const testPdfDir = '/Users/cc/scholar-ai-deploy/schlar ai/doc/测试论文';
+const testPdfDir = '/Users/cc/scholar-ai-deploy/scholar-ai-project/doc/测试论文';
 ```
 
 或者修改为你的实际路径。

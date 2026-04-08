@@ -43,6 +43,12 @@ interface UseSSEReturn {
   error: string | null;
   /** Accumulated message content (for streaming text) */
   accumulatedContent: string;
+  /** Token usage from last request */
+  tokensUsed: number;
+  /** Cost from last request */
+  cost: number;
+  /** Total execution time in ms */
+  totalTimeMs: number;
   /** Connect to SSE endpoint */
   connect: (url: string) => void;
   /** Disconnect from SSE endpoint */
@@ -64,6 +70,9 @@ export function useSSE(): UseSSEReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<SSEEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [tokensUsed, setTokensUsed] = useState(0);
+  const [cost, setCost] = useState(0);
+  const [totalTimeMs, setTotalTimeMs] = useState(0);
 
   // Ref for accumulated content (avoids stale closure issues)
   const accumulatedContent = useRef<string>('');
@@ -78,6 +87,9 @@ export function useSSE(): UseSSEReturn {
     setIsConnected(true);
     setError(null);
     setMessages([]);
+    setTokensUsed(0);
+    setCost(0);
+    setTotalTimeMs(0);
     accumulatedContent.current = '';
 
     sseService.connect(url, {
@@ -94,8 +106,13 @@ export function useSSE(): UseSSEReturn {
         setError(err.message);
         setIsConnected(false);
       },
-      onDone: () => {
+      onDone: (data) => {
         setIsConnected(false);
+        if (data) {
+          setTokensUsed(data.tokens_used || 0);
+          setCost(data.cost || 0);
+          setTotalTimeMs(data.total_time_ms || 0);
+        }
       },
     });
   }, []);
@@ -130,6 +147,9 @@ export function useSSE(): UseSSEReturn {
     messages,
     error,
     accumulatedContent: accumulatedContent.current,
+    tokensUsed,
+    cost,
+    totalTimeMs,
     connect,
     disconnect,
     clearMessages,

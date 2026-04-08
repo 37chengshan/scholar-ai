@@ -4,11 +4,9 @@ import { requirePermission } from '../middleware/rbac';
 import { Errors } from '../middleware/errorHandler';
 import { AuthRequest } from '../types/auth';
 import { logger } from '../utils/logger';
-import fetch from 'node-fetch';
 
 const router = Router();
 
-// Python service URL
 const PYTHON_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
 // Apply authentication to all routes
@@ -210,6 +208,56 @@ router.delete('/:id', requirePermission('sessions', 'delete'), async (req: AuthR
     }
 
     res.status(204).send();
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/sessions/:id/messages - Get session messages
+ *
+ * Proxies to Python /api/sessions/:id/messages
+ */
+router.get('/:id/messages', requirePermission('sessions', 'read'), async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const sessionId = req.params.id;
+
+    if (!userId) {
+      throw Errors.unauthorized('User not authenticated');
+    }
+
+    logger.info('Get session messages request', { userId, sessionId });
+
+    // Forward query params
+    const queryParams = new URLSearchParams();
+    if (req.query.limit) queryParams.append('limit', req.query.limit as string);
+    if (req.query.offset) queryParams.append('offset', req.query.offset as string);
+
+    const url = `${PYTHON_SERVICE_URL}/api/sessions/${sessionId}/messages?${queryParams.toString()}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-User-ID': userId,
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw Errors.notFound('Session not found');
+      }
+      if (response.status === 403) {
+        throw Errors.forbidden('Access denied');
+      }
+      const errorText = await response.text();
+      logger.error('Python service error', { status: response.status, error: errorText });
+      throw Errors.badGateway('Python service error');
+    }
+
+    const data = await response.json();
+    res.json(data);
 
   } catch (error) {
     next(error);

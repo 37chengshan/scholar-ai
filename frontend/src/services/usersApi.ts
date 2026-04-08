@@ -242,3 +242,62 @@ export async function getStats(userId: string): Promise<DashboardStats> {
 
   return response.data.data;
 }
+
+/**
+ * Get monthly token usage
+ *
+ * GET /api/users/me/token-usage/monthly
+ * Returns aggregated token usage for current month
+ *
+ * @param year - Year (optional, default current year)
+ * @param month - Month (optional, default current month)
+ * @returns Monthly token usage statistics
+ */
+export async function getMonthlyTokenUsage(
+  year?: number,
+  month?: number
+): Promise<{
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalCostCny: number;
+  requestCount: number;
+  dailyBreakdown: Array<{
+    date: string;
+    tokens: number;
+    cost: number;
+    requests: number;
+  }>;
+}> {
+  const params = new URLSearchParams();
+  if (year) params.append('year', year.toString());
+  if (month) params.append('month', month.toString());
+
+  const response = await apiClient.get<{
+    success: boolean;
+    data: {
+      total_tokens: number;
+      input_tokens: number;
+      output_tokens: number;
+      total_cost_cny: number;
+      request_count: number;
+      daily_breakdown: Array<{
+        date: string;
+        tokens: number;
+        cost: number;
+        requests: number;
+      }>;
+    };
+  }>(`/api/users/me/token-usage/monthly${params.toString() ? `?${params.toString()}` : ''}`);
+
+  const data = response.data.data;
+  
+  return {
+    totalTokens: data.total_tokens,
+    inputTokens: data.input_tokens,
+    outputTokens: data.output_tokens,
+    totalCostCny: data.total_cost_cny,
+    requestCount: data.request_count,
+    dailyBreakdown: data.daily_breakdown,
+  };
+}

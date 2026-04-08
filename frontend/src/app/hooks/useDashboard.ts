@@ -36,6 +36,19 @@ export interface DashboardStats {
     vectorDB: { used: number; total: number };
     blobStorage: { used: number; total: number };
   };
+  monthlyTokenUsage?: {
+    totalTokens: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalCostCny: number;
+    requestCount: number;
+    dailyBreakdown: Array<{
+      date: string;
+      tokens: number;
+      cost: number;
+      requests: number;
+    }>;
+  };
 }
 
 export function useDashboard(userId?: string) {
@@ -53,8 +66,15 @@ export function useDashboard(userId?: string) {
       try {
         setLoading(true);
         setError(null);
+        
         const data = await usersApi.getStats(userId);
-        setStats(data);
+        
+        const monthlyUsage = await usersApi.getMonthlyTokenUsage();
+        
+        setStats({
+          ...data,
+          monthlyTokenUsage: monthlyUsage,
+        });
       } catch (err: any) {
         console.error('Failed to load dashboard stats:', err);
         setError(err.response?.data?.error?.detail || err.message || 'Failed to load stats');

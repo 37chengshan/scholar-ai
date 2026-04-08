@@ -765,7 +765,7 @@ router.post(
       const task = await prisma.processing_tasks.create({
         data: {
           id: uuidv4(),
-          paper_id: paperId,
+          paperId: paperId,
           status: 'pending',
           current_step: 'pending',
         },
@@ -1001,7 +1001,7 @@ router.get(
           id: true,
           readingNotes: true,
           status: true,
-          imrad_json: true,
+          imradJson: true,
         },
       });
 
@@ -1024,7 +1024,7 @@ router.get(
         data: {
           paperId: paper.id,
           summary: paper.readingNotes,
-          imrad: paper.imrad_json,
+          imrad: paper.imradJson,
           status: paper.status,
           hasNotes: !!paper.readingNotes,
         },

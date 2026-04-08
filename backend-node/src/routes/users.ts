@@ -46,7 +46,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
         id: true,
         email: true,
         name: true,
-        email_verified: true,
+        emailVerified: true,
         avatar: true,
         createdAt: true,
         updatedAt: true
@@ -271,7 +271,7 @@ router.patch('/me/password', authenticate, requireReauth, async (req: ReauthRequ
     // Update user password
     await prisma.users.update({
       where: { id: userId },
-      data: { password_hash: passwordHash },
+      data: { passwordHash: passwordHash },
     });
 
     logger.info('Password changed', { userId });
@@ -316,12 +316,22 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res, next) => {
       prisma.sessions.count({ where: { userId: userId } }),
     ]);
 
-    // 2. LLM Tokens (aggregate from chat messages)
-    const tokensResult = await prisma.chat_messages.aggregate({
-      where: { sessions: { userId: userId } },
-      _sum: { tokens_used: true },
-    });
-    const llmTokens = tokensResult._sum.tokens_used || 0;
+    // 2. LLM Tokens - use sessions metadata if available (chat_messages table doesn't exist)
+    let llmTokens = 0;
+    try {
+      const sessionsData = await prisma.sessions.findMany({
+        where: { userId: userId },
+        select: { metadata: true },
+      });
+      sessionsData.forEach((s) => {
+        const meta = s.metadata as any;
+        if (meta?.totalTokens) {
+          llmTokens += meta.totalTokens;
+        }
+      });
+    } catch {
+      llmTokens = 0;
+    }
 
     // 3. Weekly trend (last 7 days)
     const sevenDaysAgo = new Date();
@@ -330,17 +340,17 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res, next) => {
     const weeklyTrend = await prisma.$queryRaw<
       Array<{ date: Date; papers: number; queries: number; tokens: number }>
     >`
-      SELECT DATE(createdAt) as date,
+      SELECT DATE("createdAt") as date,
              COUNT(*) FILTER (WHERE type = 'paper') as papers,
              COUNT(*) FILTER (WHERE type = 'query') as queries,
              SUM(tokens_used) as tokens
       FROM (
-        SELECT createdAt, 'paper' as type, 0 as tokens_used FROM papers WHERE userId = ${userId}
+        SELECT "createdAt", 'paper' as type, 0 as tokens_used FROM papers WHERE "userId" = ${userId}
         UNION ALL
-        SELECT createdAt, 'query' as type, 0 as tokens_used FROM queries WHERE userId = ${userId}
+        SELECT "createdAt", 'query' as type, 0 as tokens_used FROM queries WHERE "userId" = ${userId}
       ) combined
-      WHERE createdAt >= ${sevenDaysAgo}
-      GROUP BY DATE(createdAt)
+      WHERE "createdAt" >= ${sevenDaysAgo}
+      GROUP BY DATE("createdAt")
       ORDER BY date
     `;
 
@@ -350,7 +360,7 @@ router.get('/:id/stats', authenticate, async (req: AuthRequest, res, next) => {
     >`
       SELECT keyword as name, COUNT(*) as value
       FROM papers, unnest(keywords) as keyword
-      WHERE userId = ${userId}
+      WHERE "userId" = ${userId}
       GROUP BY keyword
       ORDER BY COUNT(*) DESC
       LIMIT 4
@@ -392,7 +402,7 @@ router.get('/me/api-keys', authenticate, async (req: AuthRequest, res, next) => 
   try {
     const userId = req.user?.sub;
 
-    const apiKeys = await prisma.api_keys.findMany({
+    const apiKeys = await prisma.apiKeys.findMany({
       where: { userId: userId },
       select: {
         id: true,
@@ -438,7 +448,7 @@ router.post('/me/api-keys', authenticate, async (req: AuthRequest, res, next) =>
     const keyHash = await hashPassword(apiKey);
 
     // Save to database
-    const newKey = await prisma.api_keys.create({
+    const newKey = await prisma.apiKeys.create({
       data: {
         id: crypto.randomUUID(),
         userId: userId,
@@ -487,7 +497,7 @@ router.delete('/me/api-keys/:keyId', authenticate, requireReauth, async (req: Re
     }
 
     // Verify ownership
-    const apiKey = await prisma.api_keys.findFirst({
+    const apiKey = await prisma.apiKeys.findFirst({
       where: { id: keyId, userId: userId },
     });
 
@@ -496,7 +506,7 @@ router.delete('/me/api-keys/:keyId', authenticate, requireReauth, async (req: Re
     }
 
     // Delete key
-    await prisma.api_keys.delete({
+    await prisma.apiKeys.delete({
       where: { id: keyId },
     });
 
@@ -506,6 +516,45 @@ router.delete('/me/api-keys/:keyId', authenticate, requireReauth, async (req: Re
       success: true,
       data: { message: 'API key deleted' },
     });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/users/me/token-usage/monthly - Get monthly token usage
+router.get('/me/token-usage/monthly', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+    const month = req.query.month ? parseInt(req.query.month as string) : undefined;
+
+    if (!userId) {
+      throw Errors.unauthorized('User not authenticated');
+    }
+
+    const pythonServiceUrl = process.env.PYTHON_SERVICE_URL || 'http://localhost:8000';
+    
+    const response = await fetch(
+      `${pythonServiceUrl}/api/token-usage/monthly${year || month ? `?${year ? `year=${year}` : ''}${year && month ? '&' : ''}${month ? `month=${month}` : ''}` : ''}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-ID': userId,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw Errors.internal('Failed to fetch token usage from Python service');
+    }
+
+    const data = await response.json();
+
+    logger.info('Monthly token usage fetched', { userId, year, month });
+
+    res.json(data);
 
   } catch (error) {
     next(error);

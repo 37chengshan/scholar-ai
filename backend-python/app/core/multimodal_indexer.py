@@ -409,6 +409,7 @@ class MultimodalIndexer:
             "user_id": user_id,
             "page_num": image_data.page_num,
             "content_type": "image",
+            "section": "",  # Fix: Add empty section field for consistency
             "content_data": content_data,
             "raw_data": {
                 "bbox": image_data.bbox,
@@ -567,6 +568,7 @@ class MultimodalIndexer:
             "user_id": user_id,
             "page_num": table_data.page_num,
             "content_type": "table",
+            "section": "",  # Fix: Add empty section field for consistency
             "content_data": content_data,
             "raw_data": {
                 "headers": table_data.headers if hasattr(table_data, 'headers') else [],

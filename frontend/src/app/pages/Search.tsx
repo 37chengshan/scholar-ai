@@ -20,10 +20,8 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSearch } from "@/hooks/useSearch";
-import { useAutocomplete } from "@/hooks/useAutocomplete";
 import { SearchResultCard } from "../components/SearchResultCard";
 import { AuthorResultCard } from "../components/AuthorResultCard";
-import { AutocompleteDropdown } from "../components/AutocompleteDropdown";
 import { SearchFilters } from "../components/SearchFilters";
 import * as papersApi from "@/services/papersApi";
 import * as searchApi from "@/services/searchApi";
@@ -38,28 +36,24 @@ export function Search() {
 
   // Search filters state
   const [searchFilters, setSearchFilters] = useState<{
-    sources?: string[];
-    yearFrom?: number;
-    yearTo?: number;
-    author?: string;
     sortBy?: 'relevance' | 'date';
   }>({});
 
-  // Main search hook
   const {
     query,
     setQuery,
     results,
     loading,
     error,
-  } = useSearch(300); // D-11: 300ms debounce
-
-  // Autocomplete hook (Phase 23)
-  const {
-    results: autocompleteResults,
-    loading: autocompleteLoading,
-    clear: clearAutocomplete,
-  } = useAutocomplete({ minChars: 3, debounceMs: 300, limit: 5 });
+    page,
+    totalPages,
+    nextPage,
+    prevPage,
+    goToPage,
+    hasMore,
+    hasPrev,
+    pageSize: PAGE_SIZE,
+  } = useSearch(300, searchFilters);
 
   // Author search state (Phase 23)
   const [authorResults, setAuthorResults] = useState<AuthorSearchResult[]>([]);
@@ -77,7 +71,10 @@ export function Search() {
     refresh: isZh ? "刷新令牌" : "Refresh Tokens",
     query: isZh ? "查询" : "Query",
     placeholder: isZh ? "输入检索词，例如自主智能体、大模型..." : "Search for autonomous agents, LLMs...",
-    loadMore: isZh ? "加载更多结果" : "Load More Results",
+    prevPage: isZh ? "上一页" : "Prev",
+    nextPage: isZh ? "下一页" : "Next",
+    page: isZh ? "页" : "Page",
+    of: isZh ? "/" : "/",
     import: isZh ? "导入" : "Import",
     analyze: isZh ? "分析" : "Analyze",
     source: isZh ? "原文" : "Source",
@@ -145,11 +142,10 @@ export function Search() {
   };
 
   const handleViewPaper = (paperId: string) => {
-    // Navigate to paper details (will be implemented in future)
     console.log('View paper:', paperId);
   };
 
-  const getTotalResults = () => {
+  const getCurrentPageResults = () => {
     if (!results) return 0;
     return results.internal.length + results.external.length;
   };
@@ -180,7 +176,7 @@ export function Search() {
             >
               <Globe className={clsx("w-3.5 h-3.5", activeSource === "all" ? "text-primary-foreground" : "text-primary")} />
               <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">{t.allSources}</span>
-              <span className={clsx("text-[9px] font-mono", activeSource === "all" ? "text-primary-foreground/70" : "text-muted-foreground")}>{getTotalResults()}</span>
+              <span className={clsx("text-[9px] font-mono", activeSource === "all" ? "text-primary-foreground/70" : "text-muted-foreground")}>{results?.total || 0}</span>
             </button>
           </div>
 
@@ -233,21 +229,11 @@ export function Search() {
                 <button className="bg-primary text-primary-foreground px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-secondary transition-colors h-full shadow-sm shadow-primary/20">
                   {t.query}
                 </button>
-              </div>
-              {/* Autocomplete Dropdown (Phase 23) */}
-              <AutocompleteDropdown
-                results={autocompleteResults}
-                loading={autocompleteLoading}
-                visible={query.length >= 3 && activeSource !== "authors"}
-                onSelect={(paper) => {
-                  console.log('Selected paper:', paper);
-                  clearAutocomplete();
-                }}
-              />
-            </div>
+</div>
+             </div>
             {results && (
               <div className="text-[9px] font-mono tracking-[0.2em] text-muted-foreground flex-shrink-0">
-                {getTotalResults()} {isZh ? "条结果" : "results"}
+                {results.total.toLocaleString()} {isZh ? "条结果" : "results"}
               </div>
             )}
           </div>
@@ -344,6 +330,37 @@ export function Search() {
               {/* No Results */}
               {activeSource !== "authors" && results.internal.length === 0 && results.external.length === 0 && (
                 <NoSearchResultsState query={query} />
+              )}
+
+              {activeSource !== "authors" && results.total > PAGE_SIZE && (
+                <div className="flex justify-center items-center gap-4 mt-8 pt-6 border-t border-border/50">
+                  <button
+                    onClick={prevPage}
+                    disabled={!hasPrev || loading}
+                    className="px-4 py-2 bg-card border border-border rounded-sm 
+                               text-[10px] font-bold uppercase tracking-widest
+                               hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed
+                               transition-colors shadow-sm"
+                  >
+                    {t.prevPage}
+                  </button>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 rounded-sm">
+                    <span className="text-[11px] font-mono text-muted-foreground">{t.page}</span>
+                    <span className="text-[14px] font-bold text-primary">{page + 1}</span>
+                    <span className="text-[11px] font-mono text-muted-foreground">{t.of}</span>
+                    <span className="text-[14px] font-bold text-foreground">{totalPages}</span>
+                  </div>
+                  <button
+                    onClick={nextPage}
+                    disabled={!hasMore || loading}
+                    className="px-4 py-2 bg-primary text-primary-foreground border border-primary rounded-sm 
+                               text-[10px] font-bold uppercase tracking-widest
+                               hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed
+                               transition-colors shadow-sm"
+                  >
+                    {t.nextPage}
+                  </button>
+                </div>
               )}
             </motion.div>
           )}

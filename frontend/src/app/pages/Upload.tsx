@@ -13,7 +13,13 @@ export function Upload() {
   const { language } = useLanguage();
   const isZh = language === "zh";
   
-  // Real upload hook
+  const [config, setConfig] = useState({
+    parseMeta: true,
+    genEmbed: true,
+    autoSumm: true,
+    forceOcr: false,
+  });
+  
   const { files, addFiles, uploadAll, removeFile, clearFiles, isUploading } = useUpload();
 
   const t = {
@@ -308,23 +314,16 @@ export function Upload() {
 
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
 
-          {/* Upload Input Switch */}
-          <div className="flex flex-col gap-4">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">{t.uploadInputSwitch}</h3>
-            <UploadInputSwitch
-              onFileSelect={(fileList) => {
-                if (fileList.length > 0) {
-                  addFiles(Array.from(fileList));
-                }
-              }}
-            />
-          </div>
-          
           <div className="flex flex-col gap-4">
             <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">{t.extraction}</h3>
             <div className="flex flex-col gap-3">
               <label className="flex items-start gap-3 cursor-pointer group">
-                <input type="checkbox" defaultChecked className="mt-0.5 accent-primary w-3.5 h-3.5 rounded-sm border-border/50" />
+                <input 
+                  type="checkbox" 
+                  checked={config.parseMeta}
+                  onChange={(e) => setConfig({ ...config, parseMeta: e.target.checked })}
+                  className="mt-0.5 accent-primary w-3.5 h-3.5 rounded-sm border-border/50" 
+                />
                 <div className="flex flex-col">
                   <span className="text-[11px] font-bold uppercase tracking-widest text-foreground/80 group-hover:text-primary transition-colors">{t.parseMeta}</span>
                   <span className="text-[9px] text-muted-foreground leading-tight mt-0.5">{t.parseMetaDesc}</span>
@@ -332,7 +331,12 @@ export function Upload() {
               </label>
               
               <label className="flex items-start gap-3 cursor-pointer group">
-                <input type="checkbox" defaultChecked className="mt-0.5 accent-primary w-3.5 h-3.5 rounded-sm border-border/50" />
+                <input 
+                  type="checkbox" 
+                  checked={config.genEmbed}
+                  onChange={(e) => setConfig({ ...config, genEmbed: e.target.checked })}
+                  className="mt-0.5 accent-primary w-3.5 h-3.5 rounded-sm border-border/50" 
+                />
                 <div className="flex flex-col">
                   <span className="text-[11px] font-bold uppercase tracking-widest text-foreground/80 group-hover:text-primary transition-colors">{t.genEmbed}</span>
                   <span className="text-[9px] text-muted-foreground leading-tight mt-0.5">{t.genEmbedDesc}</span>
@@ -340,7 +344,12 @@ export function Upload() {
               </label>
 
               <label className="flex items-start gap-3 cursor-pointer group">
-                <input type="checkbox" defaultChecked className="mt-0.5 accent-primary w-3.5 h-3.5 rounded-sm border-border/50" />
+                <input 
+                  type="checkbox" 
+                  checked={config.autoSumm}
+                  onChange={(e) => setConfig({ ...config, autoSumm: e.target.checked })}
+                  className="mt-0.5 accent-primary w-3.5 h-3.5 rounded-sm border-border/50" 
+                />
                 <div className="flex flex-col">
                   <span className="text-[11px] font-bold uppercase tracking-widest text-foreground/80 group-hover:text-primary transition-colors">{t.autoSumm}</span>
                   <span className="text-[9px] text-muted-foreground leading-tight mt-0.5">{t.autoSummDesc}</span>
@@ -348,7 +357,12 @@ export function Upload() {
               </label>
 
               <label className="flex items-start gap-3 cursor-pointer group">
-                <input type="checkbox" className="mt-0.5 accent-primary w-3.5 h-3.5 rounded-sm border-border/50" />
+                <input 
+                  type="checkbox" 
+                  checked={config.forceOcr}
+                  onChange={(e) => setConfig({ ...config, forceOcr: e.target.checked })}
+                  className="mt-0.5 accent-primary w-3.5 h-3.5 rounded-sm border-border/50" 
+                />
                 <div className="flex flex-col">
                   <span className="text-[11px] font-bold uppercase tracking-widest text-foreground/80 group-hover:text-primary transition-colors">{t.forceOcr}</span>
                   <span className="text-[9px] text-muted-foreground leading-tight mt-0.5">{t.forceOcrDesc}</span>

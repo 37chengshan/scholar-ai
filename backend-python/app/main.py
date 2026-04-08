@@ -9,15 +9,32 @@ ScholarAI Python AI Service
 
 # Set HuggingFace offline mode before importing any ML libraries
 import os
-os.environ['HF_HUB_OFFLINE'] = '1'
-os.environ['TRANSFORMERS_OFFLINE'] = '1'
+
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, parse, rag, entities, papers, internal, search, notes, compare, graph, session, chat, tasks, semantic_scholar
+from app.api import (
+    health,
+    parse,
+    rag,
+    entities,
+    papers,
+    internal,
+    search,
+    notes,
+    compare,
+    graph,
+    session,
+    chat,
+    tasks,
+    semantic_scholar,
+    token_usage,
+)
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
@@ -28,7 +45,7 @@ from app.core.embedding.factory import get_embedding_service  # Updated to use f
 from fastapi.exceptions import RequestValidationError
 from app.middleware.error_handler import (
     validation_exception_handler,
-    generic_exception_handler
+    generic_exception_handler,
 )
 
 
@@ -83,7 +100,7 @@ async def lifespan(app: FastAPI):
             "Embedding model loaded",
             model=model_info.get("name", "unknown"),
             type=model_info.get("type", "unknown"),
-            dimension=model_info.get("dimension", "unknown")
+            dimension=model_info.get("dimension", "unknown"),
         )
     except Exception as e:
         logger.error("Failed to initialize Embedding Service", error=str(e))
@@ -96,7 +113,7 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 ScholarAI AI Service shutting down...")
 
     # Disconnect Milvus
-    if hasattr(app.state, 'milvus_service') and app.state.milvus_service:
+    if hasattr(app.state, "milvus_service") and app.state.milvus_service:
         try:
             app.state.milvus_service.disconnect()
             logger.info("Milvus disconnected")
@@ -110,7 +127,7 @@ app = FastAPI(
     title="ScholarAI AI Service",
     description="AI services for ScholarAI - PDF parsing, RAG Q&A, Entity extraction",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Register exception handlers
@@ -141,8 +158,11 @@ app.include_router(compare.router, prefix="/compare", tags=["Comparison"])
 app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
 app.include_router(session.router, prefix="/api", tags=["Session"])
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
+app.include_router(token_usage.router, prefix="/api", tags=["Token Usage"])
 app.include_router(tasks.router, tags=["Tasks"])
-app.include_router(semantic_scholar.router, prefix="/semantic-scholar", tags=["Semantic Scholar"])
+app.include_router(
+    semantic_scholar.router, prefix="/semantic-scholar", tags=["Semantic Scholar"]
+)
 
 
 @app.get("/")
@@ -152,5 +172,5 @@ async def root():
         "service": "ScholarAI AI Service",
         "version": "1.0.0",
         "docs": "/docs",
-        "status": "running"
+        "status": "running",
     }

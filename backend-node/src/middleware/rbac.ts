@@ -45,7 +45,7 @@ export const requireRole = (roleName: string) => {
       if (!hasRole) {
         logger.warn({
           message: 'Role access denied',
-          user_id: req.user.sub,
+          userId: req.user.sub,
           requiredRole: roleName,
           path: req.path,
         });
@@ -154,7 +154,7 @@ export const requirePermission = (resource: string, action: string) => {
       if (rolesWithPermission.length === 0) {
         logger.warn({
           message: 'Permission denied',
-          user_id: req.user.sub,
+          userId: req.user.sub,
           resource,
           action,
           path: req.path,
@@ -213,7 +213,7 @@ export const getUserPermissions = async (
       roles: {
         user_roles: {
           some: {
-            user_id: userId,
+            userId: userId,
           },
         },
       },

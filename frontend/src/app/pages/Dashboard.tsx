@@ -151,7 +151,12 @@ export function Dashboard() {
     recentReads: isZh ? "最近阅读" : "Recent Readings",
     library: isZh ? "文献库" : "Library",
     activeSessions: isZh ? "活跃会话" : "Active Sessions",
-    terminal: isZh ? "终端" : "Terminal"
+    terminal: isZh ? "终端" : "Terminal",
+    monthlyUsage: isZh ? "本月用量" : "Monthly Usage",
+    totalTokens: isZh ? "总 Token" : "Total Tokens",
+    totalCost: isZh ? "总费用" : "Total Cost",
+    requestCount: isZh ? "请求次数" : "Request Count",
+    costUnit: isZh ? "元" : "CNY",
   };
 
   return (
@@ -238,6 +243,80 @@ export function Dashboard() {
               </div>
             ))}
           </motion.div>
+
+          {/* Monthly Token Usage Card */}
+          {stats?.monthlyTokenUsage && stats.monthlyTokenUsage.totalTokens > 0 && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 p-5 shadow-sm"
+            >
+              <div className="flex justify-between items-end border-b border-border/50 pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-primary" />
+                  <h3 className="font-serif text-base font-bold tracking-tight">{t.monthlyUsage}</h3>
+                </div>
+                <div className="text-[8px] font-bold tracking-[0.2em] uppercase px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded-sm">
+                  {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' })}
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-6">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[8px] font-bold tracking-[0.2em] uppercase text-muted-foreground">{t.totalTokens}</span>
+                  <div className="flex items-baseline gap-1">
+                    <h3 className="font-serif text-2xl font-black text-primary">
+                      {(stats.monthlyTokenUsage.totalTokens / 1000).toFixed(1)}K
+                    </h3>
+                    <span className="text-[10px] font-mono text-muted-foreground">tokens</span>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[8px] font-bold tracking-[0.2em] uppercase text-muted-foreground">{t.totalCost}</span>
+                  <div className="flex items-baseline gap-1">
+                    <h3 className="font-serif text-2xl font-black text-primary">
+                      {stats.monthlyTokenUsage.totalCostCny.toFixed(2)}
+                    </h3>
+                    <span className="text-[10px] font-mono text-muted-foreground">{t.costUnit}</span>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[8px] font-bold tracking-[0.2em] uppercase text-muted-foreground">{t.requestCount}</span>
+                  <div className="flex items-baseline gap-1">
+                    <h3 className="font-serif text-2xl font-black text-primary">
+                      {stats.monthlyTokenUsage.requestCount}
+                    </h3>
+                    <span className="text-[10px] font-mono text-muted-foreground">
+                      {isZh ? "次" : "reqs"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              {stats.monthlyTokenUsage.dailyBreakdown.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-border/50">
+                  <div className="text-[8px] font-bold tracking-[0.2em] uppercase text-muted-foreground mb-2">
+                    {isZh ? "每日分布" : "Daily Breakdown"}
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto">
+                    {stats.monthlyTokenUsage.dailyBreakdown.slice(-7).map((day, i) => (
+                      <div key={i} className="flex flex-col gap-0.5 bg-background/50 px-2 py-1.5 rounded-sm border border-border/30 min-w-[60px]">
+                        <span className="text-[8px] font-mono text-muted-foreground">
+                          {new Date(day.date).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}
+                        </span>
+                        <span className="text-[9px] font-bold text-primary">
+                          {(day.tokens / 1000).toFixed(1)}K
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
 
           {/* Charts Layout */}
           <motion.div 

@@ -11,6 +11,7 @@
 
 import { useState } from 'react';
 import * as annotationsApi from '@/services/annotationsApi';
+import { clsx } from 'clsx';
 
 interface AnnotationToolbarProps {
   paperId: string;
@@ -25,8 +26,6 @@ export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated }: 
   const colors = ['#FFEB3B', '#4CAF50', '#2196F3', '#FF5722'];
 
   const handleHighlight = async () => {
-    // In a real implementation, this would capture selected text
-    // For now, create a simple annotation
     setIsCreating(true);
     try {
       await annotationsApi.create({
@@ -43,13 +42,18 @@ export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated }: 
   };
 
   return (
-    <div className="flex items-center gap-2 p-2 bg-gray-100 rounded">
-      <span className="text-sm font-medium">Highlight:</span>
+    <div className="flex items-center gap-2 p-2 bg-card border border-border rounded-sm shadow-sm">
+      <span className="text-sm font-medium text-foreground">Highlight:</span>
       {colors.map(c => (
         <button
           key={c}
           onClick={() => setColor(c)}
-          className={`w-6 h-6 rounded ${color === c ? 'ring-2 ring-black' : ''}`}
+          className={clsx(
+            "w-6 h-6 rounded-sm border transition-all",
+            color === c 
+              ? "border-primary ring-2 ring-primary/20" 
+              : "border-border hover:border-primary/50"
+          )}
           style={{ backgroundColor: c }}
           aria-label={`Select color ${c}`}
         />
@@ -57,9 +61,14 @@ export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated }: 
       <button
         onClick={handleHighlight}
         disabled={isCreating}
-        className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        className={clsx(
+          "px-3 py-1.5 bg-primary text-primary-foreground rounded-sm",
+          "text-[10px] font-bold uppercase tracking-widest",
+          "hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed",
+          "shadow-sm shadow-primary/20 transition-colors"
+        )}
       >
-        Add Highlight
+        {isCreating ? 'Adding...' : 'Add Highlight'}
       </button>
     </div>
   );

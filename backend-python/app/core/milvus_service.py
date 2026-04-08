@@ -66,30 +66,33 @@ def is_header_footer(text: str) -> bool:
 
 def calculate_chunk_quality(chunk: dict) -> float:
     """Calculate chunk quality score per D-06.
-    
+
     Args:
         chunk: Chunk dictionary with text and metadata
-        
+
     Returns:
         Quality score in 0-1 range
     """
     score = 1.0
     text = chunk.get("text", "")
-    
+
     # Reduce low-quality content (per D-06 lines 407-427 in CONTEXT.md)
     if len(text) < 50:
         score *= 0.3  # Too short
-    
+
     if is_header_footer(text):
         score *= 0.2  # Header/footer
-    
-    if "references" in chunk.get("section", "").lower():
+
+    # Fix: Handle None values in section field
+    # When section is None (actual value), .get("section", "") returns None
+    # Use .get("section") or "" to handle both missing and None cases
+    if "references" in (chunk.get("section") or "").lower():
         score *= 0.5  # References section
-    
+
     # Boost high-quality content
     if chunk.get("has_equations") or chunk.get("has_figures"):
         score *= 1.2
-    
+
     return min(score, 1.0)
 
 
@@ -777,7 +780,7 @@ class MilvusService:
                             "user_id": item["user_id"],
                             "content_type": item.get("content_type", "text"),
                             "page_num": int(page_num),
-                            "section": item.get("section", ""),
+                            "section": item.get("section") or "",  # Fix: Handle explicit None values
                             "quality_score": float(quality_score),
                             "word_count": int(len(item.get("text", "").split())),
                             "has_equations": bool(item.get("has_equations", False)),

@@ -24,13 +24,13 @@ from app.utils.logger import logger
 def _serialize_datetime(value: Any) -> str:
     """
     Safely serialize datetime to ISO string.
-    
+
     Handles both datetime objects and string representations.
     Per D-07: Check type, return string directly if already string.
-    
+
     Args:
         value: datetime object or string
-        
+
     Returns:
         ISO formatted string
     """
@@ -43,9 +43,9 @@ def _serialize_datetime(value: Any) -> str:
 
 async def execute_external_search(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute external_search tool.
-    
+
     Searches arXiv and/or Semantic Scholar for papers.
-    
+
     Args:
         params: {
             "query": str,
@@ -53,75 +53,88 @@ async def execute_external_search(params: Dict[str, Any], **kwargs) -> Dict[str,
             "limit": int
         }
         **kwargs: Additional context (ignored for external search)
-    
+
     Returns:
         {success: bool, data: {results: [...]}, error: str?}
     """
     try:
         query = params.get("query", "")
-        sources = params.get("sources", ["arxiv", "semantic_scholar"])
+        sources = params.get("sources", ["semantic_scholar"])
         limit = params.get("limit", 10)
-        
+
         if not query:
             return {"success": False, "error": "Query is required", "data": None}
-        
+
         logger.info("External search initiated", query=query[:50], sources=sources)
-        
-        # Execute searches in parallel
+
+        # Execute searches in parallel (default: Semantic Scholar only for better quality)
         tasks = []
-        if "arxiv" in sources:
-            tasks.append(("arxiv", search_arxiv(query, limit=limit)))
         if "semantic_scholar" in sources:
-            tasks.append(("semantic_scholar", search_semantic_scholar(query, limit=limit)))
-        
+            tasks.append(
+                (
+                    "semantic_scholar",
+                    search_semantic_scholar(query, limit=limit, offset=0),
+                )
+            )
+        if "arxiv" in sources:
+            tasks.append(("arxiv", search_arxiv(query, limit=limit, offset=0)))
+
         results_list = await asyncio.gather(
-            *[task[1] for task in tasks],
-            return_exceptions=True
+            *[task[1] for task in tasks], return_exceptions=True
         )
-        
+
         # Combine results
         all_results = []
         for (source_name, _), result in zip(tasks, results_list):
             if isinstance(result, Exception):
                 logger.warning(f"{source_name} search failed", error=str(result))
                 continue
-            
+
             source_results = result.get("results", [])
             # Convert SearchResult objects to dicts for JSON serialization
+            # Optimize: Only include essential fields to reduce token usage
             for item in source_results:
-                if hasattr(item, 'model_dump'):
-                    all_results.append(item.model_dump())
+                if hasattr(item, "model_dump"):
+                    full_data = item.model_dump()
+                    # Keep only essential fields
+                    optimized = {
+                        "id": full_data.get("id"),
+                        "title": full_data.get("title"),
+                        "authors": full_data.get("authors", [])[:3],  # Max 3 authors
+                        "year": full_data.get("year"),
+                        "abstract": full_data.get("abstract", "")[:200] + "..."
+                        if len(full_data.get("abstract", "")) > 200
+                        else full_data.get("abstract"),
+                        "source": full_data.get("source"),
+                        "citationCount": full_data.get("citationCount"),
+                    }
+                    all_results.append(optimized)
                 else:
                     all_results.append(item)
-        
+
         # TODO: Deduplicate results by arXiv ID + title similarity
         # For now, return all combined results
-        
+
         logger.info(
             "External search completed",
             query=query[:50],
-            total_results=len(all_results)
+            total_results=len(all_results),
         )
-        
-        return {
-            "success": True,
-            "data": {"results": all_results},
-            "error": None
-        }
-        
+
+        return {"success": True, "data": {"results": all_results}, "error": None}
+
     except Exception as e:
-        logger.error("External search failed", error=str(e), query=params.get("query", "")[:50])
+        logger.error(
+            "External search failed", error=str(e), query=params.get("query", "")[:50]
+        )
         return {"success": False, "error": str(e), "data": None}
 
 
-async def execute_rag_search(
-    params: Dict[str, Any],
-    **kwargs
-) -> Dict[str, Any]:
+async def execute_rag_search(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute rag_search tool.
-    
+
     Queries user's paper library using multimodal RAG.
-    
+
     Args:
         params: {
             "question": str,
@@ -129,7 +142,7 @@ async def execute_rag_search(
             "top_k": int
         }
         **kwargs: Additional context (user_id, session_id)
-    
+
     Returns:
         {success: bool, data: {results: [...], total_count: int}, error: str?}
     """
@@ -138,54 +151,49 @@ async def execute_rag_search(
         question = params.get("question", "")
         paper_ids = params.get("paper_ids", [])
         top_k = params.get("top_k", 5)
-        
+
         if not question:
             return {"success": False, "error": "Question is required", "data": None}
-        
+
         logger.info(
             "RAG search initiated",
             question=question[:50],
             paper_count=len(paper_ids),
-            user_id=user_id
+            user_id=user_id,
         )
-        
+
         # Get multimodal search service
         service = get_multimodal_search_service()
-        
+
         # Execute search
         result = await service.search(
             query=question,
             paper_ids=paper_ids,
             user_id=user_id,
             top_k=top_k,
-            use_reranker=True
+            use_reranker=True,
         )
-        
+
         logger.info(
             "RAG search completed",
             question=question[:50],
-            result_count=len(result.get("results", []))
+            result_count=len(result.get("results", [])),
         )
-        
-        return {
-            "success": True,
-            "data": result,
-            "error": None
-        }
-        
+
+        return {"success": True, "data": result, "error": None}
+
     except Exception as e:
-        logger.error("RAG search failed", error=str(e), question=params.get("question", "")[:50])
+        logger.error(
+            "RAG search failed", error=str(e), question=params.get("question", "")[:50]
+        )
         return {"success": False, "error": str(e), "data": None}
 
 
-async def execute_list_papers(
-    params: Dict[str, Any],
-    **kwargs
-) -> Dict[str, Any]:
+async def execute_list_papers(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute list_papers tool.
-    
+
     Lists papers in user's library with optional filters.
-    
+
     Args:
         params: {
             "filter": {status?: str, ...},
@@ -193,7 +201,7 @@ async def execute_list_papers(
             "limit": int
         }
         **kwargs: Additional context (user_id, session_id)
-    
+
     Returns:
         {success: bool, data: {papers: [...]}, error: str?}
     """
@@ -202,68 +210,66 @@ async def execute_list_papers(
         filter_dict = params.get("filter", {})
         sort = params.get("sort", "created_at")
         limit = params.get("limit", 20)
-        
+
         logger.info("List papers initiated", user_id=user_id, filters=filter_dict)
-        
+
         async with get_db_connection() as conn:
-            # Build query
+            # Build query - use Prisma's camelCase column names
             query = """
-                SELECT id, title, authors, year, status, created_at
+                SELECT id, title, authors, year, status, "createdAt"
                 FROM papers
-                WHERE user_id = $1
+                WHERE "userId" = $1
             """
             query_params = [user_id]
-            
+
             # Apply filters
             if "status" in filter_dict:
-                query += f' AND status = ${len(query_params) + 1}'
+                query += f" AND status = ${len(query_params) + 1}"
                 query_params.append(filter_dict["status"])
-            
-            # Apply sorting
-            valid_sorts = ["created_at", "year", "title"]
-            if sort in valid_sorts:
-                query += f' ORDER BY "{sort}" DESC'
-            
+
+            # Apply sorting - map sort field to actual column name
+            sort_column_map = {
+                "created_at": "createdAt",
+                "year": "year",
+                "title": "title",
+            }
+            sort_column = sort_column_map.get(sort, "createdAt")
+            query += f' ORDER BY "{sort_column}" DESC'
+
             # Apply limit
             query += f" LIMIT {limit}"
-            
+
             rows = await conn.fetch(query, *query_params)
-            
+
             papers = [dict(row) for row in rows]
-            
+
             # Convert datetime to ISO string for JSON serialization
+            # Map Prisma column names to API response format
             for paper in papers:
-                if "created_at" in paper:
-                    paper["created_at"] = _serialize_datetime(paper["created_at"])
-        
+                if "createdAt" in paper:
+                    paper["createdAt"] = _serialize_datetime(paper["createdAt"])
+
         logger.info("List papers completed", user_id=user_id, count=len(papers))
-        
-        return {
-            "success": True,
-            "data": {"papers": papers},
-            "error": None
-        }
-        
+
+        return {"success": True, "data": {"papers": papers}, "error": None}
+
     except Exception as e:
         logger.error("List papers failed", error=str(e), user_id=user_id)
         return {"success": False, "error": str(e), "data": None}
 
 
-async def execute_read_paper(
-    params: Dict[str, Any],
-    **kwargs
-) -> Dict[str, Any]:
+async def execute_read_paper(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute read_paper tool.
-    
+
     Retrieves paper details from database.
-    
+
     Args:
         params: {
             "paper_id": str,
             "sections": ["metadata", "abstract", "content", "notes", "chunks"]
         }
         **kwargs: Additional context (user_id, session_id)
-    
+
     Returns:
         {success: bool, data: {paper: {...}}, error: str?}
     """
@@ -271,12 +277,12 @@ async def execute_read_paper(
     try:
         paper_id = params.get("paper_id")
         sections = params.get("sections", ["metadata", "abstract"])
-        
+
         if not paper_id:
             return {"success": False, "error": "Paper ID is required", "data": None}
-        
+
         logger.info("Read paper initiated", paper_id=paper_id, sections=sections)
-        
+
         async with get_db_connection() as conn:
             # Build SELECT clause based on sections
             select_fields = ["id"]
@@ -288,52 +294,45 @@ async def execute_read_paper(
                 select_fields.append("content")
             if "notes" in sections:
                 select_fields.append("reading_notes")
-            
+
             query = f"""
-                SELECT {', '.join(select_fields)}
+                SELECT {", ".join(select_fields)}
                 FROM papers
                 WHERE id = $1 AND user_id = $2
             """
-            
+
             row = await conn.fetchrow(query, paper_id, user_id)
-            
+
             if not row:
                 return {
                     "success": False,
                     "error": "Paper not found or access denied",
-                    "data": None
+                    "data": None,
                 }
-            
+
             paper_data = dict(row)
-        
+
         logger.info("Read paper completed", paper_id=paper_id)
-        
-        return {
-            "success": True,
-            "data": paper_data,
-            "error": None
-        }
-        
+
+        return {"success": True, "data": paper_data, "error": None}
+
     except Exception as e:
         logger.error("Read paper failed", error=str(e), paper_id=params.get("paper_id"))
         return {"success": False, "error": str(e), "data": None}
 
 
-async def execute_list_notes(
-    params: Dict[str, Any],
-    **kwargs
-) -> Dict[str, Any]:
+async def execute_list_notes(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute list_notes tool.
-    
+
     Lists user's notes with optional filters.
-    
+
     Args:
         params: {
             "filter": {paper_id?: str},
             "limit": int
         }
         **kwargs: Additional context (user_id, session_id)
-    
+
     Returns:
         {success: bool, data: {notes: [...]}, error: str?}
     """
@@ -341,9 +340,9 @@ async def execute_list_notes(
     try:
         filter_dict = params.get("filter", {})
         limit = params.get("limit", 20)
-        
+
         logger.info("List notes initiated", user_id=user_id)
-        
+
         async with get_db_connection() as conn:
             query = """
                 SELECT id, title, content, tags, paper_ids, created_at, updated_at
@@ -351,62 +350,55 @@ async def execute_list_notes(
                 WHERE user_id = $1
             """
             query_params = [user_id]
-            
+
             # Apply filters
             if "paper_id" in filter_dict:
                 query += f" AND $${len(query_params) + 1} = ANY(paper_ids)"
                 query_params.append(filter_dict["paper_id"])
-            
+
             query += f" ORDER BY created_at DESC LIMIT {limit}"
-            
+
             rows = await conn.fetch(query, *query_params)
-            
+
             notes = [dict(row) for row in rows]
-            
+
             # Convert datetime fields to ISO strings
             for note in notes:
                 if "created_at" in note:
                     note["created_at"] = _serialize_datetime(note["created_at"])
                 if "updated_at" in note:
                     note["updated_at"] = _serialize_datetime(note["updated_at"])
-        
+
         logger.info("List notes completed", user_id=user_id, count=len(notes))
-        
-        return {
-            "success": True,
-            "data": {"notes": notes},
-            "error": None
-        }
-        
+
+        return {"success": True, "data": {"notes": notes}, "error": None}
+
     except Exception as e:
         logger.error("List notes failed", error=str(e), user_id=user_id)
         return {"success": False, "error": str(e), "data": None}
 
 
-async def execute_read_note(
-    params: Dict[str, Any],
-    **kwargs
-) -> Dict[str, Any]:
+async def execute_read_note(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Execute read_note tool.
-    
+
     Retrieves note content by ID.
-    
+
     Args:
         params: {"note_id": str}
         **kwargs: Additional context (user_id, session_id)
-    
+
     Returns:
         {success: bool, data: {note details}, error: str?}
     """
     user_id = kwargs.get("user_id", "")
     try:
         note_id = params.get("note_id")
-        
+
         if not note_id:
             return {"success": False, "error": "Note ID is required", "data": None}
-        
+
         logger.info("Read note initiated", note_id=note_id)
-        
+
         async with get_db_connection() as conn:
             row = await conn.fetchrow(
                 """
@@ -415,32 +407,28 @@ async def execute_read_note(
                 WHERE id = $1 AND user_id = $2
                 """,
                 note_id,
-                user_id
+                user_id,
             )
-            
+
             if not row:
                 return {
                     "success": False,
                     "error": "Note not found or access denied",
-                    "data": None
+                    "data": None,
                 }
-            
+
             note_data = dict(row)
-            
+
             # Convert datetime to ISO string for JSON serialization
             if note_data and "created_at" in note_data:
                 note_data["created_at"] = _serialize_datetime(note_data["created_at"])
             if note_data and "updated_at" in note_data:
                 note_data["updated_at"] = _serialize_datetime(note_data["updated_at"])
-        
+
         logger.info("Read note completed", note_id=note_id)
-        
-        return {
-            "success": True,
-            "data": note_data,
-            "error": None
-        }
-        
+
+        return {"success": True, "data": note_data, "error": None}
+
     except Exception as e:
         logger.error("Read note failed", error=str(e), note_id=params.get("note_id"))
         return {"success": False, "error": str(e), "data": None}

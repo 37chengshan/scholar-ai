@@ -8,26 +8,26 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const SYSTEM_LOGS_EN = [
   "[SYS] Initializing Node 04 environment...",
-  "[SYS] Connecting to decentralized knowledge graph...",
+  "[SYS] Initializing vector database...",
   "[OK] Graph DB connected. Latency: 12ms",
   "[SYS] Loading local embedding models...",
-  "[OK] text-embedding-3-small loaded into VRAM",
+  "[OK] Qwen3-VL-Embedding loaded into VRAM",
   "[SYS] Awaiting user authentication...",
 ];
 
 const SYSTEM_LOGS_ZH = [
   "[SYS] 正在初始化 Node 04 环境...",
-  "[SYS] 正在连接至去中心化知识图谱...",
+  "[SYS] 正在初始化向量数据库...",
   "[OK] 图数据库已连接。延迟: 12ms",
   "[SYS] 正在加载本地嵌入模型...",
-  "[OK] text-embedding-3-small 已载入显存",
+  "[OK] Qwen3-VL-Embedding 已载入显存",
   "[SYS] 等待用户身份验证...",
 ];
 
 export function Login() {
   const navigate = useNavigate();
   const { language } = useLanguage();
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
   const [logs, setLogs] = useState<string[]>([]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,17 +37,24 @@ export function Login() {
   const isZh = language === "zh";
   const SYSTEM_LOGS = isZh ? SYSTEM_LOGS_ZH : SYSTEM_LOGS_EN;
 
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, authLoading, navigate]);
+
   const t = {
-    os: isZh ? "研究操作系统" : "Research Operating System",
-    vol: isZh ? "第四卷" : "Vol. 4",
+    os: isZh ? "AI驱动的个人文献数据库" : "AI-Powered Personal Literature Database",
+    vol: isZh ? "v1.0" : "v1.0",
     title1: isZh ? "知识" : "Knowledge",
     title2: isZh ? "引擎." : "Engine.",
     auth: isZh ? "身份验证" : "Authentication",
-    authDesc: isZh ? "去中心化知识图谱与语言模型推理引擎的访问权限严格限制为经授权的学术人员。所有查询及嵌入生成将被记录。" : "Access to the decentralized knowledge graph and language model inference engine is strictly restricted to authorized academic personnel. All queries and embedding generations are logged.",
+    authDesc: isZh ? "ScholarAI智读系统基于智谱GLM-5推理引擎与Qwen3-VL-Embedding向量模型，为研究人员提供高效的论文阅读与分析服务。所有查询将被绝对保密，打造您的私人文献库。" : "ScholarAI Reading System powered by GLM-5 inference engine and Qwen3-VL-Embedding model, providing efficient paper reading and analysis for researchers. All queries are kept strictly confidential, creating your private literature library.",
     index: isZh ? "全局索引" : "Global Index",
     indexDesc: isZh ? "目前已为 ArXiv、Semantic Scholar 和 PubMed 中的 1420 万篇论文建立索引。系统运行于具备实时向量同步功能的分布式节点架构之上。" : "Currently indexing 14.2M papers across ArXiv, Semantic Scholar, and PubMed. System runs on distributed Node architecture with real-time vector synchronization.",
-    activeNodes: isZh ? "活跃节点" : "Active Nodes",
-    graphSize: isZh ? "图谱大小" : "Graph Size",
+    activeNodes: isZh ? "向量维度" : "Vector Dimensions",
+    graphSize: isZh ? "Embedding模型" : "Embedding Model",
     inference: isZh ? "推理引擎" : "Inference",
     vectorDB: isZh ? "向量数据库" : "Vector DB",
     synced: isZh ? "已同步" : "Synced",
@@ -176,9 +183,9 @@ export function Login() {
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-border/50 pb-6">
             {[
-              { label: t.activeNodes, value: "1,024", icon: Activity },
-              { label: t.graphSize, value: "4.2 TB", icon: Database },
-              { label: t.inference, value: "GPT-4 Turbo", icon: Cpu },
+              { label: t.activeNodes, value: "2048", icon: Activity },
+              { label: t.graphSize, value: "Qwen3-VL-Embedding", icon: Database },
+              { label: t.inference, value: "智谱 GLM-5", icon: Cpu },
               { label: t.vectorDB, value: t.synced, icon: Command }
             ].map((stat, i) => (
               <div key={i} className="flex flex-col gap-1.5">
@@ -216,7 +223,7 @@ export function Login() {
         {/* Development Indicator */}
         <div className="absolute top-2 right-2 z-50">
           <Badge variant="secondary" className="text-xs">
-            {isZh ? "认证开发中" : "Auth Under Development"}
+            {isZh ? "Beta版本" : "Beta Version"}
           </Badge>
         </div>
 

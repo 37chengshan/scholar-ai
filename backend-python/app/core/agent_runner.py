@@ -27,6 +27,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import json
 import asyncio
+import time
 
 from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
@@ -39,7 +40,14 @@ from app.utils.token_tracker import TokenTracker
 
 # Error recovery constants per D-12
 RETRYABLE_ERRORS = ["timeout", "network", "unavailable", "connection", "temporarily"]
-NON_RETRYABLE_ERRORS = ["not found", "permission denied", "invalid", "required", "does not exist", "unauthorized"]
+NON_RETRYABLE_ERRORS = [
+    "not found",
+    "permission denied",
+    "invalid",
+    "required",
+    "does not exist",
+    "unauthorized",
+]
 
 # Alternative tool mappings for fallback per D-12
 ALTERNATIVE_TOOLS = {
@@ -50,10 +58,10 @@ ALTERNATIVE_TOOLS = {
 
 class AgentState(Enum):
     """Agent execution states.
-    
+
     States represent the agent's current phase in the execution loop.
     """
-    
+
     IDLE = "idle"  # Not executing
     THINKING = "thinking"  # Calling LLM to decide action
     TOOL_SELECTION = "tool_selection"  # Parsing tool call from response
@@ -67,12 +75,12 @@ class AgentState(Enum):
 
 class AgentRunner:
     """Agent execution engine with ReAct pattern.
-    
+
     Implements multi-step reasoning and acting:
     - Call LLM to determine next action (reasoning)
     - Execute tool based on LLM decision (acting)
     - Loop until task complete or max iterations
-    
+
     Attributes:
         llm_client: LLM client (GLM-4.5-Air)
         tool_registry: Tool registry for tool discovery
@@ -82,17 +90,17 @@ class AgentRunner:
         current_state: Current agent state
         iteration_count: Current iteration number
     """
-    
+
     def __init__(
         self,
         llm_client: Any,
         tool_registry: ToolRegistry,
         context_manager: ContextManager,
         safety_layer: SafetyLayer,
-        max_iterations: int = 10
+        max_iterations: int = 10,
     ):
         """Initialize Agent Runner.
-        
+
         Args:
             llm_client: LLM client instance
             tool_registry: Tool registry instance
@@ -108,16 +116,14 @@ class AgentRunner:
         self.current_state = AgentState.IDLE
         self.iteration_count = 0
         self.token_tracker = TokenTracker()
-        
+        self.total_tokens_used = 0
+        self.total_cost = 0.0
+
     async def execute(
-        self,
-        user_input: str,
-        session_id: str,
-        user_id: str,
-        auto_confirm: bool = False
+        self, user_input: str, session_id: str, user_id: str, auto_confirm: bool = False
     ) -> Dict[str, Any]:
         """Execute agent task with ReAct pattern.
-        
+
         Main execution loop:
         1. Build context from session
         2. Loop until complete or max iterations:
@@ -129,13 +135,13 @@ class AgentRunner:
            f. TOOL_EXECUTION: Execute tool
            g. Update context
         3. Return result
-        
+
         Args:
             user_input: User's query or instruction
             session_id: Session ID for context
             user_id: User ID for permission checks
             auto_confirm: Auto-confirm dangerous operations (default: False)
-            
+
         Returns:
             Dict with:
                 - success: Whether execution completed successfully
@@ -147,125 +153,124 @@ class AgentRunner:
         """
         logger.info(
             "Agent execution started",
-            user_input=user_input[:100],
-            session_id=session_id,
             user_id=user_id,
-            max_iterations=self.max_iterations
+            session_id=session_id,
+            input=user_input[:100],
         )
-        
+
+        start_time = time.time()
         self.current_state = AgentState.THINKING
         self.iteration_count = 0
-        
+        self.total_tokens_used = 0
+        self.total_cost = 0.0
         tool_calls_history: List[Dict[str, Any]] = []
-        
+
         # Build context
         context = await self.context_manager.build_context(session_id)
         context.objective = user_input
         context.environment["user_id"] = user_id
-        
+
         # System prompt for agent
         system_prompt = self._build_system_prompt(context)
-        
+
         # Messages for LLM
         messages = self._build_messages(context, user_input)
-        
+
         # Get tool schemas
         tools_schema = self.tool_registry.list_tools_schema()
-        
+
         try:
             while self.iteration_count < self.max_iterations:
                 self.iteration_count += 1
-                
+
                 logger.info(
                     "Iteration started",
                     iteration=self.iteration_count,
-                    state=self.current_state.value
+                    state=self.current_state.value,
                 )
-                
+
                 # THINKING: Call LLM
                 self.current_state = AgentState.THINKING
                 llm_response = await self._think(
                     system_prompt, messages, tools_schema, user_id, session_id
                 )
-                
+
                 # Check if LLM provided final answer
                 if llm_response.get("is_complete", False):
                     self.current_state = AgentState.COMPLETED
-                    
+                    total_time_ms = int((time.time() - start_time) * 1000)
+
                     logger.info(
                         "Agent completed",
                         iterations=self.iteration_count,
-                        answer_length=len(llm_response.get("content", ""))
+                        answer_length=len(llm_response.get("content", "")),
+                        total_tokens=self.total_tokens_used,
+                        total_cost=self.total_cost,
+                        total_time_ms=total_time_ms,
                     )
-                    
+
                     return {
                         "success": True,
                         "answer": llm_response.get("content"),
                         "tool_calls": tool_calls_history,
                         "iterations": self.iteration_count,
-                        "state": self.current_state.value
+                        "state": self.current_state.value,
+                        "tokens_used": self.total_tokens_used,
+                        "cost": self.total_cost,
+                        "total_time_ms": total_time_ms,
                     }
-                
+
                 # TOOL_SELECTION: Extract tool call
                 self.current_state = AgentState.TOOL_SELECTION
                 tool_call = llm_response.get("tool_call")
-                
+
                 if not tool_call:
                     # No tool call, but not complete - treat as error
                     logger.error(
-                        "No tool call in LLM response",
-                        iteration=self.iteration_count
+                        "No tool call in LLM response", iteration=self.iteration_count
                     )
                     self.current_state = AgentState.FAILED
-                    
+
                     return {
                         "success": False,
                         "error": "LLM did not provide tool call or final answer",
                         "tool_calls": tool_calls_history,
                         "iterations": self.iteration_count,
-                        "state": self.current_state.value
+                        "state": self.current_state.value,
                     }
-                
+
                 tool_name = tool_call.get("name")
                 tool_parameters = tool_call.get("parameters", {})
-                
-                logger.info(
-                    "Tool selected",
-                    tool=tool_name,
-                    parameters=tool_parameters
-                )
-                
+
+                logger.info("Tool selected", tool=tool_name, parameters=tool_parameters)
+
                 # Check permission
                 permission_context = {
                     "user_id": user_id,
                     "session_id": session_id,
                     "tool_name": tool_name,
-                    "parameters": tool_parameters
+                    "parameters": tool_parameters,
                 }
-                
+
                 permission_result = await self.safety_layer.check_permission(
-                    tool_name,
-                    permission_context
+                    tool_name, permission_context
                 )
-                
+
                 # If needs confirmation
                 if permission_result.get("needs_confirmation", False):
                     if auto_confirm:
                         # Auto-confirm dangerous operations
-                        logger.info(
-                            "Auto-confirming dangerous tool",
-                            tool=tool_name
-                        )
+                        logger.info("Auto-confirming dangerous tool", tool=tool_name)
                     else:
                         # Pause for user confirmation
                         self.current_state = AgentState.WAITING_CONFIRMATION
-                        
+
                         logger.info(
                             "Agent paused for confirmation",
                             tool=tool_name,
-                            message=permission_result.get("message")
+                            message=permission_result.get("message"),
                         )
-                        
+
                         return {
                             "success": False,
                             "needs_confirmation": True,
@@ -274,128 +279,125 @@ class AgentRunner:
                             "message": permission_result.get("message"),
                             "tool_calls": tool_calls_history,
                             "iterations": self.iteration_count,
-                            "state": self.current_state.value
+                            "state": self.current_state.value,
                         }
-                
+
                 # TOOL_EXECUTION: Execute tool with multi-layer error recovery
                 self.current_state = AgentState.TOOL_EXECUTION
-                
+
                 tool_result = await self._execute_with_fallback(
-                    tool_name,
-                    tool_parameters,
-                    context
+                    tool_name, tool_parameters, context
                 )
-                
+
                 logger.info(
-                    "Tool executed",
-                    tool=tool_name,
-                    success=tool_result.get("success")
+                    "Tool executed", tool=tool_name, success=tool_result.get("success")
                 )
-                
+
                 # Record tool call
-                tool_calls_history.append({
-                    "iteration": self.iteration_count,
-                    "tool": tool_name,
-                    "parameters": tool_parameters,
-                    "result": tool_result
-                })
-                
+                tool_calls_history.append(
+                    {
+                        "iteration": self.iteration_count,
+                        "tool": tool_name,
+                        "parameters": tool_parameters,
+                        "result": tool_result,
+                    }
+                )
+
                 # Update context with tool result
-                context.tool_history.append({
-                    "tool": tool_name,
-                    "parameters": tool_parameters,
-                    "result": tool_result
-                })
-                
+                context.tool_history.append(
+                    {
+                        "tool": tool_name,
+                        "parameters": tool_parameters,
+                        "result": tool_result,
+                    }
+                )
+
                 # Add tool result to messages
-                messages.append({
-                    "role": "tool",
-                    "content": json.dumps(tool_result),
-                    "name": tool_name
-                })
-                
+                messages.append(
+                    {
+                        "role": "tool",
+                        "content": json.dumps(tool_result),
+                        "name": tool_name,
+                    }
+                )
+
                 # Check if tool execution failed
                 if not tool_result.get("success", False):
                     # Handle tool execution error
                     error_msg = tool_result.get("error", "Tool execution failed")
-                    
+
                     logger.error(
-                        "Tool execution failed",
-                        tool=tool_name,
-                        error=error_msg
+                        "Tool execution failed", tool=tool_name, error=error_msg
                     )
-                    
+
                     # Special case: Tool not found - fail immediately (cannot recover)
                     if "not found" in error_msg.lower():
                         self.current_state = AgentState.FAILED
-                        
+
                         return {
                             "success": False,
                             "error": error_msg,
                             "tool_calls": tool_calls_history,
                             "iterations": self.iteration_count,
-                            "state": self.current_state.value
+                            "state": self.current_state.value,
                         }
-                    
+
                     # Other errors: Add error to messages and continue (let LLM decide how to handle)
-                    messages.append({
-                        "role": "assistant",
-                        "content": f"Tool '{tool_name}' failed: {error_msg}. I'll try a different approach."
-                    })
-                    
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": f"Tool '{tool_name}' failed: {error_msg}. I'll try a different approach.",
+                        }
+                    )
+
                     # Continue to next iteration
                     continue
-            
+
             # Max iterations reached
             self.current_state = AgentState.FAILED
-            
-            logger.warning(
-                "Max iterations reached",
-                iterations=self.iteration_count
-            )
-            
+
+            logger.warning("Max iterations reached", iterations=self.iteration_count)
+
             return {
                 "success": False,
                 "error": f"Max iterations ({self.max_iterations}) reached without completion",
                 "tool_calls": tool_calls_history,
                 "iterations": self.iteration_count,
-                "state": self.current_state.value
+                "state": self.current_state.value,
             }
-            
+
         except Exception as e:
             self.current_state = AgentState.FAILED
-            
+
             logger.error(
-                "Agent execution failed",
-                error=str(e),
-                iteration=self.iteration_count
+                "Agent execution failed", error=str(e), iteration=self.iteration_count
             )
-            
+
             return {
                 "success": False,
                 "error": str(e),
                 "tool_calls": tool_calls_history,
                 "iterations": self.iteration_count,
-                "state": self.current_state.value
+                "state": self.current_state.value,
             }
-    
+
     async def _think(
         self,
         system_prompt: str,
         messages: List[Dict[str, Any]],
         tools_schema: List[Dict[str, Any]],
         user_id: str = "",
-        session_id: str = ""
+        session_id: str = "",
     ) -> Dict[str, Any]:
         """Call LLM to determine next action.
-        
+
         Args:
             system_prompt: System prompt for agent
             messages: Conversation messages
             tools_schema: Available tool schemas
             user_id: User ID for token tracking
             session_id: Session ID for token tracking
-            
+
         Returns:
             Dict with:
                 - is_complete: Whether LLM provided final answer
@@ -404,81 +406,107 @@ class AgentRunner:
         """
         try:
             llm_client = get_llm_client()
-            
+
             # Call LLM with tools
             response = await llm_client.chat_completion(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    *messages
-                ],
+                messages=[{"role": "system", "content": system_prompt}, *messages],
                 tools=tools_schema,
                 tool_choice="auto",
                 max_tokens=2048,
-                temperature=0.7
+                temperature=0.7,
             )
-            
-            # Track token usage
-            if hasattr(response, 'usage') and response.usage:
+
+            # Debug: Log raw response structure
+            logger.debug(
+                "Raw LLM response received",
+                response_type=type(response).__name__,
+                has_usage=hasattr(response, "usage"),
+                usage_type=type(response.usage).__name__
+                if hasattr(response, "usage")
+                else None,
+                usage_repr=str(response.usage) if hasattr(response, "usage") else None,
+            )
+
+            # Track token usage - handle different response formats
+            if hasattr(response, "usage") and response.usage:
                 try:
+                    usage_data = response.usage
+
+                    # Handle dict format (some APIs return dict instead of object)
+                    if isinstance(usage_data, dict):
+                        prompt_tokens = usage_data.get("prompt_tokens", 0)
+                        completion_tokens = usage_data.get("completion_tokens", 0)
+                        total_tokens = usage_data.get("total_tokens", 0)
+                    else:
+                        # Handle object format (Pydantic model)
+                        prompt_tokens = getattr(usage_data, "prompt_tokens", 0) or 0
+                        completion_tokens = (
+                            getattr(usage_data, "completion_tokens", 0) or 0
+                        )
+                        total_tokens = getattr(usage_data, "total_tokens", 0) or 0
+
+                    self.total_tokens_used += total_tokens
+
                     cost = await self.token_tracker.track_usage(
                         user_id=user_id,
                         model="glm-4.5-air",
-                        input_tokens=response.usage.prompt_tokens,
-                        output_tokens=response.usage.completion_tokens,
-                        session_id=session_id
+                        input_tokens=prompt_tokens,
+                        output_tokens=completion_tokens,
+                        session_id=session_id,
                     )
-                    
+
+                    self.total_cost += cost if cost else 0
+
                     logger.info(
                         "Token usage tracked",
-                        prompt_tokens=response.usage.prompt_tokens,
-                        completion_tokens=response.usage.completion_tokens,
-                        total_tokens=response.usage.total_tokens,
-                        cost_cny=cost
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        accumulated_tokens=self.total_tokens_used,
+                        cost_cny=cost,
                     )
                 except Exception as e:
-                    logger.warning("Failed to track token usage", error=str(e))
-            
+                    logger.warning(
+                        "Failed to track token usage",
+                        error=str(e),
+                        usage_repr=str(response.usage),
+                    )
+
             # Parse response
             message = response.choices[0].message
-            
+
             # Check if LLM made a tool call
-            if hasattr(message, 'tool_calls') and message.tool_calls:
+            if hasattr(message, "tool_calls") and message.tool_calls:
                 # Extract first tool call
                 tool_call = message.tool_calls[0]
-                
+
                 return {
                     "is_complete": False,
                     "tool_call": {
                         "name": tool_call.function.name,
-                        "parameters": json.loads(tool_call.function.arguments)
-                    }
+                        "parameters": json.loads(tool_call.function.arguments),
+                    },
                 }
-            
+
             # No tool call - treat as final answer
             content = message.content
-            
-            return {
-                "is_complete": True,
-                "content": content
-            }
-            
+
+            return {"is_complete": True, "content": content}
+
         except Exception as e:
             logger.error("LLM call failed", error=str(e))
             raise
-    
+
     async def _execute_tool(
-        self,
-        tool_name: str,
-        parameters: Dict[str, Any],
-        context: Context
+        self, tool_name: str, parameters: Dict[str, Any], context: Context
     ) -> Dict[str, Any]:
         """Execute a tool with parameters.
-        
+
         Args:
             tool_name: Tool to execute
             parameters: Tool parameters
             context: Execution context
-            
+
         Returns:
             Tool result dict with:
                 - success: Whether execution succeeded
@@ -486,108 +514,97 @@ class AgentRunner:
                 - error: (if failed) Error message
         """
         tool = self.tool_registry.get(tool_name)
-        
+
         if not tool:
             logger.error("Tool not found", tool=tool_name)
             return {
                 "success": False,
-                "error": f"Tool '{tool_name}' not found in registry"
+                "error": f"Tool '{tool_name}' not found in registry",
             }
-        
+
         try:
             # Execute tool via Tool Registry (actual implementation)
             logger.info(
-                "Executing tool via registry",
-                tool=tool_name,
-                parameters=parameters
+                "Executing tool via registry", tool=tool_name, parameters=parameters
             )
 
             result = await self.tool_registry.execute(
-                tool_name,
-                parameters,
-                **context.environment
+                tool_name, parameters, **context.environment
             )
 
             logger.info(
                 "Tool execution completed",
                 tool=tool_name,
-                success=result.get("success")
+                success=result.get("success"),
             )
 
             return result
-            
+
         except Exception as e:
-            logger.error(
-                "Tool execution failed",
-                tool=tool_name,
-                error=str(e)
-            )
-            
-            return {
-                "success": False,
-                "error": str(e)
-            }
-    
+            logger.error("Tool execution failed", tool=tool_name, error=str(e))
+
+            return {"success": False, "error": str(e)}
+
     def _is_retryable_error(self, error: str) -> bool:
         """Check if error is transient and can be retried.
-        
+
         Per D-12: Non-retryable errors are "not found", "permission denied",
         "invalid", "required". Retryable errors are "timeout", "network", "unavailable".
-        
+
         Args:
             error: Error message string
-            
+
         Returns:
             True if error is retryable, False otherwise
         """
         error_lower = error.lower()
-        
+
         # Check for non-retryable errors first (these should NOT be retried)
         for non_retryable in NON_RETRYABLE_ERRORS:
             if non_retryable in error_lower:
                 return False
-        
+
         # Check for retryable errors
         for retryable in RETRYABLE_ERRORS:
             if retryable in error_lower:
                 return True
-        
+
         # Default: not retryable
         return False
-    
+
     def _get_alternative_tool(self, failed_tool: str) -> Optional[str]:
         """Get alternative tool for fallback when primary fails.
-        
+
         Per D-12: Provides fallback tools for search operations.
-        
+
         Args:
             failed_tool: Name of the tool that failed
-            
+
         Returns:
             Alternative tool name, or None if no alternative exists
         """
         return ALTERNATIVE_TOOLS.get(failed_tool)
-    
+
     async def _execute_with_fallback(
         self,
         tool_name: str,
         params: Dict[str, Any],
         context: Context,
-        max_retries: int = 3
+        max_retries: int = 3,
     ) -> Dict[str, Any]:
         """Execute tool with multi-layer error recovery.
-        
+
         Per D-12: Three-layer recovery mechanism:
         1. Auto-retry (3 times with exponential backoff: 1s, 2s, 4s)
         2. Alternative tool (external_search → rag_search fallback)
         3. User decision (explain error, suggest solutions)
-        
+
         Args:
             tool_name: Primary tool to execute
             params: Tool parameters
             context: Execution context
             max_retries: Maximum retry attempts (default: 3)
-            
+
         Returns:
             Tool result with:
                 - success: Whether execution succeeded
@@ -599,32 +616,30 @@ class AgentRunner:
         # Layer 1: Retry with exponential backoff
         backoff_delays = [1, 2, 4]  # 1s, 2s, 4s per D-12
         result = {"success": False, "error": "No execution attempted", "data": None}
-        
+
         for attempt in range(max_retries):
             logger.info(
                 "Tool execution attempt",
                 tool=tool_name,
                 attempt=attempt + 1,
-                max_retries=max_retries
+                max_retries=max_retries,
             )
-            
+
             result = await self._execute_tool(tool_name, params, context)
-            
+
             if result.get("success"):
                 return result
-            
+
             error = result.get("error", "")
-            
+
             # Check if error is retryable
             if not self._is_retryable_error(error):
                 # Non-retryable error, skip retry layer
                 logger.warning(
-                    "Non-retryable error encountered",
-                    tool=tool_name,
-                    error=error
+                    "Non-retryable error encountered", tool=tool_name, error=error
                 )
                 break
-            
+
             # Wait before next retry (exponential backoff)
             if attempt < len(backoff_delays):
                 delay = backoff_delays[attempt]
@@ -632,118 +647,116 @@ class AgentRunner:
                     "Retrying after delay",
                     tool=tool_name,
                     delay_seconds=delay,
-                    next_attempt=attempt + 2
+                    next_attempt=attempt + 2,
                 )
                 await asyncio.sleep(delay)
-        
+
         # Layer 2: Try alternative tool
         alternative_tool = self._get_alternative_tool(tool_name)
-        
+
         if alternative_tool:
             logger.info(
                 "Trying alternative tool",
                 primary_tool=tool_name,
-                alternative_tool=alternative_tool
+                alternative_tool=alternative_tool,
             )
-            
+
             alternative_result = await self._execute_tool(
-                alternative_tool,
-                params,
-                context
+                alternative_tool, params, context
             )
-            
+
             if alternative_result.get("success"):
                 return {
                     "success": True,
                     "data": alternative_result.get("data"),
                     "error": None,
                     "used_alternative": True,
-                    "alternative_tool": alternative_tool
+                    "alternative_tool": alternative_tool,
                 }
-        
+
         # Layer 3: User decision needed
         logger.warning(
             "All recovery options exhausted, needs user decision",
             tool=tool_name,
-            error=result.get("error", "Unknown error")
+            error=result.get("error", "Unknown error"),
         )
-        
+
         suggestion = f"The tool '{tool_name}' failed after {max_retries} attempts."
         if alternative_tool:
             suggestion += f" Alternative tool '{alternative_tool}' also failed."
         suggestion += " Please check your request or try a different approach."
-        
+
         return {
             "success": False,
             "error": result.get("error", "Tool execution failed"),
             "data": None,
             "needs_user_decision": True,
             "suggestion": suggestion,
-            "alternatives": ["Try a different query", "Check if service is available"]
+            "alternatives": ["Try a different query", "Check if service is available"],
         }
-    
+
     async def resume_with_tool(
         self,
         session_id: str,
         tool_name: str,
         parameters: Dict[str, Any],
-        confirmed: bool = True
+        confirmed: bool = True,
     ) -> Dict[str, Any]:
         """Resume execution after user confirmation.
-        
+
         Args:
             session_id: Session ID
             tool_name: Tool to execute after confirmation
             parameters: Tool parameters
             confirmed: Whether user confirmed (default: True)
-            
+
         Returns:
             Execution result dict
         """
         if not confirmed:
             logger.info("User declined tool execution", tool=tool_name)
             self.current_state = AgentState.PAUSED
-            
+
             return {
                 "success": False,
                 "error": "User declined tool execution",
-                "state": self.current_state.value
+                "state": self.current_state.value,
             }
-        
+
         logger.info("Resuming with confirmed tool", tool=tool_name)
-        
+
         # Build context
         context = await self.context_manager.build_context(session_id)
-        
+
         # Execute confirmed tool
         self.current_state = AgentState.TOOL_EXECUTION
         tool_result = await self._execute_tool(tool_name, parameters, context)
-        
+
         # Continue execution from this point
         # (Simplified - full implementation would rebuild messages and continue loop)
-        
+
         return {
             "success": tool_result.get("success"),
             "tool_result": tool_result,
-            "state": self.current_state.value
+            "state": self.current_state.value,
         }
-    
+
     def _build_system_prompt(self, context: Context) -> str:
         """Build system prompt for agent with reasoning framework per D-11.
-        
+
         Per D-11: Enhanced system prompt includes:
         1. Explicit reasoning framework (Analyze → Select → Plan → Verify)
         2. Error handling strategy guidance
         3. Clear tool categorization
-        
+
         Args:
             context: Execution context
-            
+
         Returns:
             System prompt string
         """
         objective = context.objective
-        
+
         prompt = f"""You are an intelligent academic assistant helping researchers manage their paper library and research workflow.
 
 User's objective: {objective}
@@ -813,39 +826,31 @@ Guidelines for error recovery:
 
 ## CURRENT ENVIRONMENT
 
-- User ID: {context.environment.get('user_id', 'unknown')}
-- Session ID: {context.environment.get('session_id', 'unknown')}
+- User ID: {context.environment.get("user_id", "unknown")}
+- Session ID: {context.environment.get("session_id", "unknown")}
 """
-        
+
         return prompt
-    
+
     def _build_messages(
-        self,
-        context: Context,
-        user_input: str
+        self, context: Context, user_input: str
     ) -> List[Dict[str, Any]]:
         """Build messages list for LLM.
-        
+
         Args:
             context: Execution context
             user_input: Current user input
-            
+
         Returns:
             List of message dicts
         """
         messages = []
-        
+
         # Add important messages from context
         for msg in context.important_messages:
-            messages.append({
-                "role": msg.role,
-                "content": msg.content
-            })
-        
+            messages.append({"role": msg.role, "content": msg.content})
+
         # Add current user input
-        messages.append({
-            "role": "user",
-            "content": user_input
-        })
-        
+        messages.append({"role": "user", "content": user_input})
+
         return messages

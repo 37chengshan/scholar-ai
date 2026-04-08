@@ -262,7 +262,7 @@ const userData = generateTestUserData();
 
 ### 测试PDF文件
 
-位置: `/Users/cc/scholar-ai-deploy/schlar ai/doc/测试论文/`
+位置: `/Users/cc/scholar-ai-deploy/scholar-ai-project/doc/测试论文/`
 
 包含文件:
 - `2604.01245v1.pdf` (270KB)

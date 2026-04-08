@@ -75,7 +75,7 @@ describe('Graph API E2E', () => {
       // Verify paper structure
       if (response.body.papers.length > 0) {
         const paper = response.body.papers[0];
-        expect(paper).toHaveProperty('paper_id');
+        expect(paper).toHaveProperty('paperId');
         expect(paper).toHaveProperty('title');
         expect(paper).toHaveProperty('score');
         expect(typeof paper.score).toBe('number');

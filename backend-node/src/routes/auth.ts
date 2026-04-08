@@ -113,7 +113,7 @@ router.post('/register', async (req, res, next) => {
       data: {
         id: uuidv4(),
         userId: userId,
-        role_id: userRole.id,
+        roleId: userRole.id,
       },
     });
 

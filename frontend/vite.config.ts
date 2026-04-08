@@ -17,6 +17,20 @@ export default defineConfig({
     },
   },
 
+  // Proxy API requests to backend
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        secure: false,
+        cookiePathRewrite: {
+          '*': '/',
+        },
+      },
+    },
+  },
+
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv', '**/*.html'],
 })

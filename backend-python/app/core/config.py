@@ -34,8 +34,12 @@ class Settings(BaseSettings):
     MILVUS_PORT: int = 19530
     MILVUS_COLLECTION_IMAGES: str = "paper_images"
     MILVUS_COLLECTION_TABLES: str = "paper_tables"
-    MILVUS_COLLECTION_CONTENTS: str = "paper_contents"  # Unified 1024-dim BGE-M3 collection
-    MILVUS_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"  # Unified 2048-dim Qwen3-VL collection
+    MILVUS_COLLECTION_CONTENTS: str = (
+        "paper_contents"  # Unified 1024-dim BGE-M3 collection
+    )
+    MILVUS_COLLECTION_CONTENTS_V2: str = (
+        "paper_contents_v2"  # Unified 2048-dim Qwen3-VL collection
+    )
     MILVUS_POOL_SIZE: int = 10
     MILVUS_TIMEOUT: int = 10
 
@@ -45,6 +49,11 @@ class Settings(BaseSettings):
     ZHIPU_MODEL_TEXT: str = "glm-4-flash"  # For table description generation
     ZHIPU_MAX_TOKENS: int = 150
     ZHIPU_TEMPERATURE: float = 0.3
+
+    # External Search API Keys
+    SEMANTIC_SCHOLAR_API_KEY: str = (
+        ""  # Semantic Scholar API Key for higher rate limits
+    )
 
     # CORS
     ALLOWED_HOSTS: List[str] = ["*"]
@@ -64,24 +73,26 @@ class Settings(BaseSettings):
 
     # LLM配置
     DEFAULT_MODEL: str = "gpt-4o-mini"
-    
+
     # Embedding Model Configuration (Qwen3-VL)
     EMBEDDING_MODEL: str = "qwen3-vl-2b"  # Model identifier
     EMBEDDING_QUANTIZATION: str = "int4"  # Quantization type: "int4" or "fp16"
     EMBEDDING_DIMENSION: int = 2048  # Qwen3-VL output dimension
     EMBEDDING_DEVICE: str = "auto"  # Device: "auto" | "cpu" | "cuda" | "mps" (per D-19)
-    
+
     # Reranker Configuration (per D-R05)
-    RERANKER_MODEL: str = "bge-reranker"  # Model type: "bge-reranker" or "qwen3-vl-reranker"
+    RERANKER_MODEL: str = (
+        "bge-reranker"  # Model type: "bge-reranker" or "qwen3-vl-reranker"
+    )
     RERANKER_QUANTIZATION: str = "fp16"  # Quantization: "fp16" or "int8"
-    
+
     # Local Model Paths
     QWEN3VL_EMBEDDING_MODEL_PATH: str = "./Qwen/Qwen3-VL-Embedding-2B"
     QWEN3VL_RERANKER_MODEL_PATH: str = "./Qwen/Qwen3-VL-Reranker-2B"
-    
+
     # Legacy embedding config (to be removed after migration)
     # EMBEDDING_MODEL: str = "text-embedding-3-small"  # Old OpenAI embedding
-    
+
     # GLM-4.5-Air Configuration (for Agent Runner)
     LLM_MODEL: str = "glm-4.5-air"  # ZhipuAI model name (no prefix)
     LLM_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"  # Zhipu AI API base
@@ -92,9 +103,11 @@ class Settings(BaseSettings):
     # JWT内部服务通信 (RS256公钥用于验证Node.js Gateway发来的token)
     JWT_INTERNAL_PUBLIC_KEY: str = ""
     JWT_INTERNAL_PUBLIC_KEY_FILE: str = ""
-    
+
     # JWT Authentication (HS256 for direct API access)
-    JWT_SECRET: str = "test-secret-key-for-development-only"  # Should be overridden in .env
+    JWT_SECRET: str = (
+        "test-secret-key-for-development-only"  # Should be overridden in .env
+    )
     JWT_ALGORITHM: str = "HS256"
 
     # Semantic Scholar API
@@ -106,8 +119,10 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # 如果配置了公钥文件路径，从文件读取
-        if self.JWT_INTERNAL_PUBLIC_KEY_FILE and os.path.exists(self.JWT_INTERNAL_PUBLIC_KEY_FILE):
-            with open(self.JWT_INTERNAL_PUBLIC_KEY_FILE, 'r') as f:
+        if self.JWT_INTERNAL_PUBLIC_KEY_FILE and os.path.exists(
+            self.JWT_INTERNAL_PUBLIC_KEY_FILE
+        ):
+            with open(self.JWT_INTERNAL_PUBLIC_KEY_FILE, "r") as f:
                 self.JWT_INTERNAL_PUBLIC_KEY = f.read()
 
     class Config:

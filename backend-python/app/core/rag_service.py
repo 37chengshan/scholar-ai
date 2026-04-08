@@ -149,8 +149,11 @@ class RAGService:
             top_k=top_k,
         )
 
-        # Filter by paper_ids
-        chunks = [r for r in results if r.get("paper_id") in paper_ids]
+        # Filter by paper_ids (only if paper_ids is provided)
+        if paper_ids:
+            chunks = [r for r in results if r.get("paper_id") in paper_ids]
+        else:
+            chunks = results  # No filter if paper_ids is empty
 
         if not chunks:
             return {

@@ -11,6 +11,7 @@ import asyncio
 import json
 import math
 import os
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -30,8 +31,85 @@ router = APIRouter()
 
 
 # =============================================================================
+# Rate Limiting for External APIs
+# =============================================================================
+
+
+class RateLimiter:
+    """Rate limiter for external API calls with exponential backoff.
+
+    Implements:
+    - Token bucket algorithm for rate limiting
+    - Exponential backoff on 429 errors
+    - Per-API rate limit configuration
+    """
+
+    def __init__(self, min_interval: float, max_backoff: float = 60.0):
+        """Initialize rate limiter.
+
+        Args:
+            min_interval: Minimum seconds between requests
+            max_backoff: Maximum backoff time in seconds
+        """
+        self.min_interval = min_interval
+        self.max_backoff = max_backoff
+        self.last_request_time = 0.0
+        self.consecutive_failures = 0
+        self._lock = asyncio.Lock()
+
+    async def acquire(self):
+        """Acquire permission to make a request.
+
+        Waits if necessary to respect rate limit.
+        Implements exponential backoff after failures.
+        """
+        async with self._lock:
+            now = time.time()
+
+            # Calculate wait time
+            if self.consecutive_failures > 0:
+                # Exponential backoff: 1s, 2s, 4s, 8s, ...
+                backoff = min((2**self.consecutive_failures) * 1.0, self.max_backoff)
+                wait_time = max(0, self.last_request_time + backoff - now)
+            else:
+                # Normal rate limit
+                wait_time = max(0, self.last_request_time + self.min_interval - now)
+
+            if wait_time > 0:
+                logger.debug(
+                    "Rate limiter waiting",
+                    wait_seconds=wait_time,
+                    consecutive_failures=self.consecutive_failures,
+                )
+                await asyncio.sleep(wait_time)
+
+            self.last_request_time = time.time()
+
+    def record_success(self):
+        """Record successful request, reset failure counter."""
+        self.consecutive_failures = 0
+
+    def record_failure(self):
+        """Record failed request, increment failure counter."""
+        self.consecutive_failures += 1
+        logger.warning(
+            "Rate limiter recorded failure",
+            consecutive_failures=self.consecutive_failures,
+        )
+
+
+# Global rate limiters for each API
+# arXiv: max 1 request per 3 seconds
+_arxiv_rate_limiter = RateLimiter(min_interval=3.0, max_backoff=60.0)
+
+# Semantic Scholar: max 1 request per 1 second
+_s2_rate_limiter = RateLimiter(min_interval=1.0, max_backoff=30.0)
+
+
+# =============================================================================
 # External Search Models
 # =============================================================================
+
 
 class SearchResult(BaseModel):
     """Unified external search result format."""
@@ -52,11 +130,13 @@ class SearchResponse(BaseModel):
     """External search response format."""
 
     results: List[SearchResult]
+    total: int = 0
 
 
 # =============================================================================
 # Library Search Models
 # =============================================================================
+
 
 class LibrarySearchResult(BaseModel):
     """Library hybrid search result (chunk-level)."""
@@ -64,7 +144,9 @@ class LibrarySearchResult(BaseModel):
     id: str = Field(..., description="Chunk ID")
     paper_id: str = Field(..., description="Paper ID")
     content: str = Field(..., description="Chunk content preview")
-    section: Optional[str] = Field(None, description="Section name (Introduction/Method/etc)")
+    section: Optional[str] = Field(
+        None, description="Section name (Introduction/Method/etc)"
+    )
     page: Optional[int] = Field(None, description="Page number")
     rrf_score: float = Field(..., description="RRF fusion score")
     dense_score: float = Field(0.0, description="Dense vector similarity score")
@@ -92,11 +174,13 @@ class FusionSearchRequest(BaseModel):
     """Fusion search request combining library + external sources."""
 
     query: str = Field(..., description="Search query", min_length=1, max_length=500)
-    paper_ids: List[str] = Field(default=[], description="User's library paper IDs to search")
+    paper_ids: List[str] = Field(
+        default=[], description="User's library paper IDs to search"
+    )
     limit: int = Field(default=20, description="Maximum results to return", ge=1, le=50)
     sources: List[str] = Field(
         default=["library", "arxiv", "semantic_scholar"],
-        description="Sources to search (library, arxiv, semantic_scholar)"
+        description="Sources to search (library, arxiv, semantic_scholar)",
     )
 
 
@@ -106,8 +190,7 @@ class FusionSearchResponse(BaseModel):
     query: str = Field(..., description="Original search query")
     results: List[SearchResult] = Field(..., description="Merged and ranked results")
     sources: Dict[str, Dict[str, Any]] = Field(
-        ...,
-        description="Per-source status {count, success, error?}"
+        ..., description="Per-source status {count, success, error?}"
     )
     warnings: List[str] = Field(default=[], description="Warnings for failed sources")
 
@@ -124,11 +207,12 @@ async def get_redis_client():
     global _redis_client
     if _redis_client is None:
         import redis.asyncio as redis
+
         _redis_client = redis.from_url(
             settings.REDIS_URL,
             decode_responses=True,
             socket_connect_timeout=5,
-            socket_read_timeout=5,
+            # Note: socket_read_timeout not supported in this Redis version
             health_check_interval=30,
         )
     return _redis_client
@@ -154,7 +238,9 @@ async def get_search_cache(cache_key: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-async def set_search_cache(cache_key: str, results: Dict[str, Any], ttl: int = 86400) -> None:
+async def set_search_cache(
+    cache_key: str, results: Dict[str, Any], ttl: int = 86400
+) -> None:
     """Cache search results in Redis.
 
     Args:
@@ -176,9 +262,7 @@ async def set_search_cache(cache_key: str, results: Dict[str, Any], ttl: int = 8
 
 
 def calculate_paper_score(
-    citation_count: Optional[int],
-    year: int,
-    relevance: float = 0.5
+    citation_count: Optional[int], year: int, relevance: float = 0.5
 ) -> float:
     """Calculate composite score for paper ranking.
 
@@ -234,8 +318,7 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
 
     # Sort so S2 results (with more metadata) are preferred
     sorted_results = sorted(
-        results,
-        key=lambda r: (0 if r.source == "semantic-scholar" else 1)
+        results, key=lambda r: 0 if r.source == "semantic-scholar" else 1
     )
 
     for result in sorted_results:
@@ -245,7 +328,7 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
                 logger.debug(
                     "Deduplicating by arXiv ID",
                     arxiv_id=result.arxivId,
-                    title=result.title[:50]
+                    title=result.title[:50],
                 )
                 continue
             seen_arxiv_ids.add(result.arxivId)
@@ -256,10 +339,7 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
             for seen_title in seen_titles
         )
         if is_duplicate:
-            logger.debug(
-                "Deduplicating by title similarity",
-                title=result.title[:50]
-            )
+            logger.debug("Deduplicating by title similarity", title=result.title[:50])
             continue
 
         seen_titles.append(result.title)
@@ -269,7 +349,7 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
         "Deduplication complete",
         input_count=len(results),
         output_count=len(unique_results),
-        duplicates_removed=len(results) - len(unique_results)
+        duplicates_removed=len(results) - len(unique_results),
     )
 
     return unique_results
@@ -283,14 +363,15 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
 @router.get("/arxiv", response_model=SearchResponse)
 async def search_arxiv(
     query: str,
-    limit: int = Query(default=10, le=50, ge=1),
+    limit: int = Query(default=20, le=50, ge=1),
+    offset: int = Query(default=0, ge=0),
 ) -> Dict[str, Any]:
     """Search arXiv for papers.
 
     Uses the arXiv Atom API to search for papers.
     Results are cached in Redis for 24 hours.
     """
-    cache_key = f"search:arxiv:{query}:{limit}"
+    cache_key = f"search:arxiv:{query}:{limit}:{offset}"
 
     # Check cache first
     cached = await get_search_cache(cache_key)
@@ -300,18 +381,30 @@ async def search_arxiv(
 
     logger.info("arXiv search cache miss", query=query, limit=limit)
 
+    # Apply rate limiting
+    await _arxiv_rate_limiter.acquire()
+
     url = "https://export.arxiv.org/api/query"
     params = {
         "search_query": f"all:{query}",
-        "start": 0,
+        "start": offset,
         "max_results": limit,
         "sortBy": "relevance",
         "sortOrder": "descending",
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(url, params=params)
-        response.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+
+            # Handle rate limiting
+            if response.status_code == 429:
+                logger.warning("arXiv API rate limited", query=query, status_code=429)
+                _arxiv_rate_limiter.record_failure()
+                return {"results": [], "total": 0}
+
+            response.raise_for_status()
+            _arxiv_rate_limiter.record_success()
 
         # Parse Atom XML response
         import xml.etree.ElementTree as ET
@@ -322,7 +415,13 @@ async def search_arxiv(
         ns = {
             "atom": "http://www.w3.org/2005/Atom",
             "arxiv": "http://arxiv.org/schemas/atom",
+            "opensearch": "http://a9.com/-/spec/opensearch/1.1/",
         }
+
+        total = 0
+        total_elem = root.find("opensearch:totalResults", ns)
+        if total_elem is not None and total_elem.text:
+            total = int(total_elem.text)
 
         results = []
         for entry in root.findall("atom:entry", ns):
@@ -357,7 +456,9 @@ async def search_arxiv(
 
             # Get primary category
             primary_category = entry.find("arxiv:primary_category", ns)
-            category = primary_category.get("term") if primary_category is not None else ""
+            category = (
+                primary_category.get("term") if primary_category is not None else ""
+            )
 
             results.append(
                 SearchResult(
@@ -374,26 +475,49 @@ async def search_arxiv(
                 )
             )
 
-        result_data = {"results": results}
+        result_data = {"results": results, "total": total}
 
-        # Cache the results
         await set_search_cache(cache_key, result_data)
-        logger.info("arXiv search results cached", query=query, result_count=len(results))
+        logger.info(
+            "arXiv search results cached",
+            query=query,
+            result_count=len(results),
+            total=total,
+        )
 
         return result_data
+
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "arXiv API HTTP error",
+            query=query,
+            status_code=e.response.status_code,
+            error=str(e),
+        )
+        _arxiv_rate_limiter.record_failure()
+        return {"results": [], "total": 0}
+    except Exception as e:
+        logger.error(
+            "arXiv search failed",
+            query=query,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return {"results": [], "total": 0}
 
 
 @router.get("/semantic-scholar", response_model=SearchResponse)
 async def search_semantic_scholar(
     query: str,
-    limit: int = Query(default=10, le=50, ge=1),
+    limit: int = Query(default=20, le=50, ge=1),
+    offset: int = Query(default=0, ge=0),
 ) -> Dict[str, Any]:
     """Search Semantic Scholar for papers.
 
     Uses the Semantic Scholar API to search for papers.
     Results are cached in Redis for 24 hours.
     """
-    cache_key = f"search:s2:{query}:{limit}"
+    cache_key = f"search:s2:{query}:{limit}:{offset}"
 
     # Check cache first
     cached = await get_search_cache(cache_key)
@@ -403,6 +527,9 @@ async def search_semantic_scholar(
 
     logger.info("Semantic Scholar search cache miss", query=query, limit=limit)
 
+    # Apply rate limiting
+    await _s2_rate_limiter.acquire()
+
     api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
     headers = {"x-api-key": api_key} if api_key else {}
 
@@ -410,15 +537,28 @@ async def search_semantic_scholar(
     params = {
         "query": query,
         "limit": limit,
+        "offset": offset,
         "fields": "title,authors,year,abstract,openAccessPdf,externalIds,citationCount",
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(url, params=params, headers=headers)
-        response.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+
+            # Handle rate limiting
+            if response.status_code == 429:
+                logger.warning(
+                    "Semantic Scholar API rate limited", query=query, status_code=429
+                )
+                _s2_rate_limiter.record_failure()
+                return {"results": [], "total": 0}
+
+            response.raise_for_status()
+            _s2_rate_limiter.record_success()
 
         data = response.json()
         papers = data.get("data", [])
+        total = data.get("total", len(papers))
 
         results = []
         for paper in papers:
@@ -455,13 +595,35 @@ async def search_semantic_scholar(
                 )
             )
 
-        result_data = {"results": results}
+        result_data = {"results": results, "total": total}
 
-        # Cache the results
         await set_search_cache(cache_key, result_data)
-        logger.info("Semantic Scholar search results cached", query=query, result_count=len(results))
+        logger.info(
+            "Semantic Scholar search results cached",
+            query=query,
+            result_count=len(results),
+            total=total,
+        )
 
         return result_data
+
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "Semantic Scholar API HTTP error",
+            query=query,
+            status_code=e.response.status_code,
+            error=str(e),
+        )
+        _s2_rate_limiter.record_failure()
+        return {"results": [], "total": 0}
+    except Exception as e:
+        logger.error(
+            "Semantic Scholar search failed",
+            query=query,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return {"results": [], "total": 0}
 
 
 @router.get("/doi/{doi:path}", response_model=SearchResult)
@@ -504,8 +666,12 @@ async def resolve_doi(doi: str):
 @router.get("/library", response_model=LibrarySearchResponse)
 async def search_library(
     q: str = Query(..., description="Search query", min_length=1, max_length=500),
-    paper_ids: List[str] = Query(default=[], description="Specific paper IDs to search (optional)"),
-    limit: int = Query(default=10, description="Maximum results to return", ge=1, le=50),
+    paper_ids: List[str] = Query(
+        default=[], description="Specific paper IDs to search (optional)"
+    ),
+    limit: int = Query(
+        default=10, description="Maximum results to return", ge=1, le=50
+    ),
     user_id: str = CurrentUserId,
 ) -> Dict[str, Any]:
     """Search within user's library using Milvus vector search.
@@ -557,7 +723,9 @@ async def search_library(
                 LibrarySearchResult(
                     id=str(r.get("id", "")),
                     paper_id=r.get("paper_id", ""),
-                    content=r.get("content_data", "")[:500] if r.get("content_data") else "",
+                    content=r.get("content_data", "")[:500]
+                    if r.get("content_data")
+                    else "",
                     section=r.get("section"),
                     page=r.get("page_num"),
                     rrf_score=r.get("reranker_score", r.get("distance", 0.0)),
@@ -585,8 +753,7 @@ async def search_library(
     except Exception as e:
         logger.error("Library search failed", error=str(e), query=q[:50])
         raise HTTPException(
-            status_code=500,
-            detail=Errors.internal(f"Search failed: {str(e)}")
+            status_code=500, detail=Errors.internal(f"Search failed: {str(e)}")
         )
 
 
@@ -598,7 +765,8 @@ async def search_library(
 @router.get("/unified", response_model=SearchResponse)
 async def search_unified(
     query: str,
-    limit: int = Query(default=10, le=50, ge=1),
+    limit: int = Query(default=20, le=50, ge=1),
+    offset: int = Query(default=0, ge=0),
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -606,7 +774,8 @@ async def search_unified(
 
     Query params:
     - query: Search query string
-    - limit: Max results (1-50, default 10)
+    - limit: Max results (1-50, default 20)
+    - offset: Pagination offset (default 0)
     - year_from: Filter papers from this year (inclusive)
     - year_to: Filter papers to this year (inclusive)
 
@@ -616,7 +785,7 @@ async def search_unified(
     3. Filtered by year range
     4. Sorted by citation-based composite score
     """
-    cache_key = f"search:unified:{query}:{limit}:{year_from}:{year_to}"
+    cache_key = f"search:unified:{query}:{limit}:{offset}:{year_from}:{year_to}"
 
     # Check cache first
     cached = await get_search_cache(cache_key)
@@ -629,30 +798,31 @@ async def search_unified(
         query=query,
         limit=limit,
         year_from=year_from,
-        year_to=year_to
+        year_to=year_to,
     )
 
     # Parallel search with error handling
-    arxiv_task = search_arxiv(query, limit=limit)
-    s2_task = search_semantic_scholar(query, limit=limit)
+    arxiv_task = search_arxiv(query, limit=limit, offset=offset)
+    s2_task = search_semantic_scholar(query, limit=limit, offset=offset)
 
-    results = await asyncio.gather(
-        arxiv_task, s2_task, return_exceptions=True
-    )
+    results = await asyncio.gather(arxiv_task, s2_task, return_exceptions=True)
 
-    # Extract results, handling errors gracefully
     arxiv_list: List[SearchResult] = []
     s2_list: List[SearchResult] = []
+    arxiv_total = 0
+    s2_total = 0
 
     if isinstance(results[0], Exception):
         logger.warning(f"arXiv search failed: {results[0]}")
     else:
         arxiv_list = results[0].get("results", [])
+        arxiv_total = results[0].get("total", 0)
 
     if isinstance(results[1], Exception):
         logger.warning(f"Semantic Scholar search failed: {results[1]}")
     else:
         s2_list = results[1].get("results", [])
+        s2_total = results[1].get("total", 0)
 
     # Merge and deduplicate
     all_results = arxiv_list + s2_list
@@ -668,23 +838,21 @@ async def search_unified(
     scored_results = sorted(
         unique_results,
         key=lambda r: calculate_paper_score(
-            getattr(r, 'citationCount', None),
-            r.year,
-            relevance=0.5
+            getattr(r, "citationCount", None), r.year, relevance=0.5
         ),
-        reverse=True
+        reverse=True,
     )
 
-    result_data = {"results": scored_results[:limit]}
+    total = arxiv_total + s2_total
+    result_data = {"results": scored_results[:limit], "total": total}
 
-    # Cache the results
     await set_search_cache(cache_key, result_data)
     logger.info(
         "Unified search complete",
         query=query,
         total_results=len(all_results),
         unique_results=len(unique_results),
-        returned_results=len(result_data["results"])
+        returned_results=len(result_data["results"]),
     )
 
     return result_data
@@ -698,7 +866,9 @@ async def search_unified(
 class MultimodalSearchRequest(BaseModel):
     """Multimodal search request model."""
 
-    query: str = Field(..., description="Search query string", min_length=1, max_length=500)
+    query: str = Field(
+        ..., description="Search query string", min_length=1, max_length=500
+    )
     paper_ids: List[str] = Field(..., description="List of paper IDs to search within")
     top_k: int = Field(default=10, description="Maximum results to return", ge=1, le=50)
     use_reranker: bool = Field(default=True, description="Whether to apply reranking")
@@ -706,7 +876,9 @@ class MultimodalSearchRequest(BaseModel):
         default=None,
         description="Content types to search (text, image, table)",
     )
-    enable_clustering: bool = Field(default=True, description="Whether to cluster results by page")
+    enable_clustering: bool = Field(
+        default=True, description="Whether to cluster results by page"
+    )
 
 
 class ClusterResult(BaseModel):
@@ -714,17 +886,27 @@ class ClusterResult(BaseModel):
 
     cluster_id: int = Field(..., description="Cluster identifier")
     pages: List[int] = Field(..., description="Page numbers in this cluster")
-    results: List[Dict[str, Any]] = Field(..., description="Search results in this cluster")
+    results: List[Dict[str, Any]] = Field(
+        ..., description="Search results in this cluster"
+    )
 
 
 class MultimodalSearchResponse(BaseModel):
     """Multimodal search response model."""
 
     query: str = Field(..., description="Search query")
-    intent: str = Field(..., description="Detected modality intent (default, image_weighted, table_weighted)")
-    query_intent: Optional[str] = Field(None, description="Detected query intent (question, compare, summary, evolution)")
+    intent: str = Field(
+        ...,
+        description="Detected modality intent (default, image_weighted, table_weighted)",
+    )
+    query_intent: Optional[str] = Field(
+        None,
+        description="Detected query intent (question, compare, summary, evolution)",
+    )
     weights: Dict[str, float] = Field(..., description="Modality weights applied")
-    clusters: Optional[List[ClusterResult]] = Field(None, description="Page clusters if enabled")
+    clusters: Optional[List[ClusterResult]] = Field(
+        None, description="Page clusters if enabled"
+    )
     results: List[Dict[str, Any]] = Field(..., description="Search results")
     total_count: int = Field(..., description="Total number of results")
 
@@ -782,7 +964,7 @@ async def multimodal_search(
             user_id=user_id,
             top_k=request.top_k,
             use_reranker=request.use_reranker,
-            content_types=request.content_types
+            content_types=request.content_types,
         )
 
         # Apply page clustering if enabled
@@ -795,7 +977,7 @@ async def multimodal_search(
                     ClusterResult(
                         cluster_id=cid,
                         pages=list(set(r.get("page_num", 0) for r in results)),
-                        results=results
+                        results=results,
                     )
                     for cid, results in clusters.items()
                 ]
@@ -820,7 +1002,7 @@ async def multimodal_search(
         logger.error("Multimodal search failed", error=str(e), query=request.query[:50])
         raise HTTPException(
             status_code=500,
-            detail=Errors.internal(f"Multimodal search failed: {str(e)}")
+            detail=Errors.internal(f"Multimodal search failed: {str(e)}"),
         )
 
 
@@ -877,6 +1059,7 @@ async def fusion_search(
 
     # 1. Library search (Milvus)
     if "library" in request.sources and request.paper_ids:
+
         async def search_library_internal():
             from app.core.multimodal_search_service import get_multimodal_search_service
 
@@ -916,12 +1099,13 @@ async def fusion_search(
 
     # 3. Semantic Scholar search
     if "semantic_scholar" in request.sources:
-        tasks.append(("semantic_scholar", search_semantic_scholar(query=request.query, limit=10)))
+        tasks.append(
+            ("semantic_scholar", search_semantic_scholar(query=request.query, limit=10))
+        )
 
     # Execute all searches in parallel with error handling
     search_results = await asyncio.gather(
-        *[task[1] for task in tasks],
-        return_exceptions=True
+        *[task[1] for task in tasks], return_exceptions=True
     )
 
     # Process results
@@ -967,7 +1151,9 @@ async def fusion_search(
         key=lambda r: calculate_paper_score(
             r.citationCount,
             r.year,
-            relevance=1.0 if r.source == "library" else 0.5  # D-05: internal > external
+            relevance=1.0
+            if r.source == "library"
+            else 0.5,  # D-05: internal > external
         ),
         reverse=True,
     )
@@ -977,12 +1163,12 @@ async def fusion_search(
         query=request.query[:50],
         total_results=len(results),
         unique_results=len(unique_results),
-        returned=len(scored_results[:request.limit]),
+        returned=len(scored_results[: request.limit]),
     )
 
     return FusionSearchResponse(
         query=request.query,
-        results=scored_results[:request.limit],
+        results=scored_results[: request.limit],
         sources=sources_status,
         warnings=warnings,
     )

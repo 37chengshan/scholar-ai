@@ -19,7 +19,7 @@ import { logger } from '../../src/utils/logger';
  */
 
 describe('Comprehensive Integration E2E Test', () => {
-  const testPdfDir = '/Users/cc/scholar-ai-deploy/schlar ai/doc/测试论文';
+  const testPdfDir = '/Users/cc/scholar-ai-deploy/scholar-ai-project/doc/测试论文';
   
   // Test configuration
   const testConfig = {
@@ -527,7 +527,7 @@ describe('Comprehensive Integration E2E Test', () => {
 
       const generateResponse = await agent
         .post('/api/notes/generate')
-        .send({ paper_id: paperId });
+        .send({ paperId: paperId });
 
       // 笔记生成可能需要较长时间
       if (generateResponse.status === 201 || generateResponse.status === 200) {
@@ -576,7 +576,7 @@ describe('Comprehensive Integration E2E Test', () => {
       const regenerateResponse = await agent
         .post('/api/notes/regenerate')
         .send({
-          paper_id: paperId,
+          paperId: paperId,
           modification_request: 'Please add more detailed explanation of the methods section'
         });
 
@@ -628,7 +628,7 @@ describe('Comprehensive Integration E2E Test', () => {
         .post('/api/chat')
         .send({
           message: 'What is the main contribution of this paper?',
-          paper_ids: [paperId],
+          paperIds: [paperId],
           session_id: 'test-session-1',
         });
 
@@ -656,7 +656,7 @@ describe('Comprehensive Integration E2E Test', () => {
         .post('/api/chat')
         .send({
           message: 'Compare the approaches used in these papers',
-          paper_ids: completedPapers.slice(0, 2),
+          paperIds: completedPapers.slice(0, 2),
           session_id: 'test-session-2',
         });
 
@@ -682,7 +682,7 @@ describe('Comprehensive Integration E2E Test', () => {
         .post('/api/chat/stream')
         .send({
           message: 'Explain the methodology in detail',
-          paper_ids: [paperId],
+          paperIds: [paperId],
           session_id: 'test-session-3',
         });
 

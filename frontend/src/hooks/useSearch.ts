@@ -7,7 +7,8 @@
  * - Debounced search query (300ms delay)
  * - Unified search across internal + external sources
  * - Loading and error states
- * - Results caching
+ * - Pagination support (page navigation)
+ * - Filter support (year range, sources, sort)
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -32,43 +33,78 @@ export interface SearchResults {
   total: number;
 }
 
+export interface SearchFilters {
+  sources?: string[];
+  yearFrom?: number;
+  yearTo?: number;
+  author?: string;
+  sortBy?: 'relevance' | 'date';
+}
+
+const PAGE_SIZE = 20;
+
 /**
- * useSearch hook with debounce
+ * useSearch hook with debounce and filters
  *
  * @param debounceMs - Debounce delay in milliseconds (default: 300ms per D-11)
+ * @param filters - Search filters (sources, year range, sort)
  * @returns Search state and handlers
  */
-export function useSearch(debounceMs: number = 300) {
+export function useSearch(debounceMs: number = 300, filters?: SearchFilters) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [page, setPage] = useState(0);
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Debounce query (D-11: 300ms)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(query);
+      setPage(0);
     }, debounceMs);
 
     return () => clearTimeout(timer);
   }, [query, debounceMs]);
 
-  // Search when debounced query changes
   useEffect(() => {
     if (!debouncedQuery.trim()) {
       setResults(null);
+      setPage(0);
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    searchApi.unified(debouncedQuery)
+    const offset = page * PAGE_SIZE;
+
+    searchApi.unified(
+      debouncedQuery,
+      PAGE_SIZE,
+      offset,
+      filters?.yearFrom,
+      filters?.yearTo
+    )
       .then(data => {
-        // Separate internal and external results
-        const internal = data.results.filter(r => r.source === 'internal');
-        const external = data.results.filter(r => r.source !== 'internal');
+        let internal = data.results.filter(r => r.source === 'internal');
+        let external = data.results.filter(r => r.source !== 'internal');
+
+        if (filters?.sources && filters.sources.length > 0) {
+          external = external.filter(r =>
+            filters.sources!.some(s => {
+              if (s === 'arxiv') return r.source === 'arxiv';
+              if (s === 'semantic-scholar' || s === 's2') return r.source === 's2';
+              return false;
+            })
+          );
+        }
+
+        if (filters?.sortBy === 'date') {
+          const sortByYear = (a: SearchResult, b: SearchResult) => (b.year || 0) - (a.year || 0);
+          internal = [...internal].sort(sortByYear);
+          external = [...external].sort(sortByYear);
+        }
 
         setResults({
           internal,
@@ -82,15 +118,31 @@ export function useSearch(debounceMs: number = 300) {
       .finally(() => {
         setLoading(false);
       });
-  }, [debouncedQuery]);
+  }, [debouncedQuery, page, filters?.yearFrom, filters?.yearTo, filters?.sources, filters?.sortBy]);
 
-  // Clear search
+  const nextPage = useCallback(() => {
+    if (results && (results.internal.length + results.external.length) >= PAGE_SIZE) {
+      setPage(p => p + 1);
+    }
+  }, [results]);
+
+  const prevPage = useCallback(() => {
+    setPage(p => Math.max(0, p - 1));
+  }, []);
+
+  const goToPage = useCallback((pageNum: number) => {
+    setPage(Math.max(0, pageNum));
+  }, []);
+
   const clearSearch = useCallback(() => {
     setQuery('');
     setDebouncedQuery('');
     setResults(null);
     setError(null);
+    setPage(0);
   }, []);
+
+  const totalPages = results ? Math.ceil(results.total / PAGE_SIZE) : 0;
 
   return {
     query,
@@ -99,5 +151,13 @@ export function useSearch(debounceMs: number = 300) {
     loading,
     error,
     clearSearch,
+    page,
+    totalPages,
+    nextPage,
+    prevPage,
+    goToPage,
+    hasMore: results && page < totalPages - 1,
+    hasPrev: page > 0,
+    pageSize: PAGE_SIZE,
   };
 }

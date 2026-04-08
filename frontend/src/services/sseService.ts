@@ -46,7 +46,7 @@ export interface SSEEvent {
 export interface SSEHandlers {
   onMessage: (event: SSEEvent) => void;
   onError: (error: Error) => void;
-  onDone: () => void;
+  onDone: (data?: { tokens_used?: number; cost?: number; iterations?: number; total_time_ms?: number }) => void;
 }
 
 /**
@@ -60,7 +60,7 @@ interface SSEConfig {
 
 const DEFAULT_CONFIG: SSEConfig = {
   maxReconnects: 3,
-  heartbeatTimeout: 15000, // 15s per D-05
+  heartbeatTimeout: 60000, // 60s - Python agent may take time to respond
   reconnectBaseDelay: 1000, // 1s base for exponential backoff
 };
 
@@ -92,6 +92,7 @@ export class SSEService {
   private lastEventId: string | null = null;
   private currentUrl: string = '';
   private currentHandlers: SSEHandlers | null = null;
+  private isDisconnecting: boolean = false; // Flag to prevent reconnect on intentional disconnect
 
   constructor(config: Partial<SSEConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -106,6 +107,9 @@ export class SSEService {
   connect(url: string, handlers: SSEHandlers): void {
     // Disconnect any existing connection
     this.disconnect();
+
+    // Reset disconnecting flag for new connection
+    this.isDisconnecting = false;
 
     // Store for reconnection
     this.currentUrl = url;
@@ -133,12 +137,19 @@ export class SSEService {
 
   /**
    * Set up EventSource event handlers
+   * 
+   * IMPORTANT: EventSource API behavior:
+   * - onmessage only listens to default events (no "event:" field)
+   * - addEventListener('type', ...) listens to named events ("event: type")
+   * 
+   * Python backend sends: "event: message\ndata: {...}"
+   * So we MUST use addEventListener, not onmessage!
    */
   private setupEventHandlers(handlers: SSEHandlers): void {
     if (!this.eventSource) return;
 
-    // Handle incoming messages
-    this.eventSource.onmessage = (e: MessageEvent) => {
+    // Generic event handler for all named events
+    const handleEvent = (eventType: string, e: MessageEvent) => {
       this.resetHeartbeat();
 
       try {
@@ -149,11 +160,19 @@ export class SSEService {
           this.lastEventId = e.lastEventId;
         }
 
+        console.log('[SSE] Received event:', eventType, event);
+
         // Handle different event types
-        if (event.type === 'done') {
-          handlers.onDone();
+        if (eventType === 'done') {
+          this.isDisconnecting = true; // Prevent reconnect
+          handlers.onDone({
+            tokens_used: event.tokens_used || event.content?.tokens_used || 0,
+            cost: event.cost || event.content?.cost || 0,
+            iterations: event.iterations || event.content?.iterations || 0,
+            total_time_ms: event.total_time_ms || event.content?.total_time_ms || 0
+          });
           this.disconnect();
-        } else if (event.type === 'heartbeat') {
+        } else if (eventType === 'heartbeat') {
           // Heartbeat received, connection is alive
           // Already reset heartbeat timer above
         } else {
@@ -165,9 +184,58 @@ export class SSEService {
       }
     };
 
+    // Listen to all named event types from Python backend
+    // Python sends: "event: thought\ndata: {...}"
+    const eventTypes: SSEEventType[] = [
+      'thought',
+      'tool_call',
+      'tool_result',
+      'confirmation_required',
+      'message',
+      'error',
+      'done',
+      'heartbeat'
+    ];
+
+    eventTypes.forEach(type => {
+      this.eventSource!.addEventListener(type, (e: MessageEvent) => {
+        handleEvent(type, e);
+      });
+    });
+
     // Handle errors (connection drops, etc.)
-    this.eventSource.onerror = () => {
-      console.error('[SSE] Connection error');
+    this.eventSource.onerror = (event: Event) => {
+      const readyState = this.eventSource?.readyState;
+      
+      console.error('[SSE] Connection error', {
+        readyState,
+        readyStateText: readyState === EventSource.CONNECTING ? 'CONNECTING' : 
+                        readyState === EventSource.OPEN ? 'OPEN' : 
+                        readyState === EventSource.CLOSED ? 'CLOSED' : 'UNKNOWN',
+        isDisconnecting: this.isDisconnecting
+      });
+
+      // Don't reconnect if intentionally disconnecting
+      if (this.isDisconnecting) {
+        console.log('[SSE] Skipping reconnect - intentionally disconnecting');
+        return;
+      }
+
+      // Don't reconnect if still connecting (readyState 0)
+      // This can happen when the connection is being established
+      if (readyState === EventSource.CONNECTING) {
+        console.log('[SSE] Still connecting, waiting...');
+        return;
+      }
+
+      // Check if connection is closed
+      if (readyState === EventSource.CLOSED) {
+        console.log('[SSE] Connection closed, not reconnecting');
+        if (this.currentHandlers) {
+          this.currentHandlers.onError(new Error('Connection closed'));
+        }
+        return;
+      }
 
       // Attempt reconnection
       this.handleReconnect();
@@ -184,6 +252,12 @@ export class SSEService {
    * Handle reconnection with exponential backoff
    */
   private handleReconnect(): void {
+    // Don't reconnect if intentionally disconnecting
+    if (this.isDisconnecting) {
+      console.log('[SSE] Skipping reconnect - intentionally disconnecting');
+      return;
+    }
+
     if (this.reconnectAttempts < this.config.maxReconnects) {
       // Calculate delay with exponential backoff: 1s, 2s, 4s
       const delay = this.config.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts);
@@ -248,6 +322,9 @@ export class SSEService {
    * Cleans up EventSource and timers
    */
   disconnect(): void {
+    // Set flag to prevent reconnect
+    this.isDisconnecting = true;
+
     // Close EventSource
     if (this.eventSource) {
       this.eventSource.close();
