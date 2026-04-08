@@ -1,6 +1,7 @@
 import { Router, raw } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
+import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { authenticate } from '../middleware/auth';
 import { requirePermission } from '../middleware/rbac';
@@ -157,49 +158,145 @@ router.get('/', requirePermission('papers', 'read'), async (req: AuthRequest, re
     // 获取当前用户ID
     const userId = req.user?.sub;
 
-    // Parse starred filter
+    // Parse filters
     const starredParam = req.query.starred as string | undefined;
     const starredFilter = starredParam === 'true' ? true : starredParam === 'false' ? false : undefined;
+    const readStatus = req.query.readStatus as string | undefined;
+    const dateFrom = req.query.dateFrom as string | undefined;
+    const dateTo = req.query.dateTo as string | undefined;
 
     // Build where clause
-    const where: { userId?: string; starred?: boolean } = {};
+    const where: any = {};
     if (userId) where.userId = userId;
     if (starredFilter !== undefined) where.starred = starredFilter;
 
-    const [papers, total] = await Promise.all([
-      prisma.papers.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          processingTasks: {
-            select: {
-              status: true,
-              errorMessage: true,
-              updatedAt: true,
-            },
+    // Date range filter
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+      if (dateTo) where.createdAt.lte = new Date(dateTo);
+    }
+
+    // Read status filter (D-03)
+    // unread: papers with no reading_progress record
+    // in-progress: papers with reading_progress.currentPage > 0 but < totalPages
+    // completed: papers with reading_progress.currentPage >= totalPages
+    let papersQuery: any;
+    let countQuery: any;
+
+    if (readStatus === 'unread') {
+      // Papers without reading progress
+      where.NOT = {
+        readingProgress: {
+          some: {
+            userId: userId,
           },
         },
-      }),
-      prisma.papers.count({ where }),
-    ]);
+      };
+    } else if (readStatus === 'in-progress' || readStatus === 'completed') {
+      // Need to join with reading_progress table
+      papersQuery = prisma.$queryRaw`
+        SELECT p.*,
+               pt.status as "processingStatus",
+               pt.error_message as "processingError",
+               pt.updated_at as "lastUpdated"
+        FROM papers p
+        LEFT JOIN processing_tasks pt ON p.id = pt.paper_id
+        INNER JOIN reading_progress rp ON p.id = rp.paper_id
+        WHERE p.user_id = ${userId}
+          AND rp.user_id = ${userId}
+          ${starredFilter !== undefined ? Prisma.sql`AND p.starred = ${starredFilter}` : Prisma.sql``}
+          ${dateFrom ? Prisma.sql`AND p.created_at >= ${new Date(dateFrom)}` : Prisma.sql``}
+          ${dateTo ? Prisma.sql`AND p.created_at <= ${new Date(dateTo)}` : Prisma.sql``}
+          ${readStatus === 'in-progress' 
+            ? Prisma.sql`AND rp.current_page > 0 AND rp.current_page < COALESCE(rp.total_pages, 999999)` 
+            : Prisma.sql`AND rp.current_page >= COALESCE(rp.total_pages, 0)`
+          }
+        ORDER BY p.created_at DESC
+        LIMIT ${limit}
+        OFFSET ${skip}
+      `;
+
+      countQuery = prisma.$queryRaw`
+        SELECT COUNT(*) as count
+        FROM papers p
+        INNER JOIN reading_progress rp ON p.id = rp.paper_id
+        WHERE p.user_id = ${userId}
+          AND rp.user_id = ${userId}
+          ${starredFilter !== undefined ? Prisma.sql`AND p.starred = ${starredFilter}` : Prisma.sql``}
+          ${dateFrom ? Prisma.sql`AND p.created_at >= ${new Date(dateFrom)}` : Prisma.sql``}
+          ${dateTo ? Prisma.sql`AND p.created_at <= ${new Date(dateTo)}` : Prisma.sql``}
+          ${readStatus === 'in-progress' 
+            ? Prisma.sql`AND rp.current_page > 0 AND rp.current_page < COALESCE(rp.total_pages, 999999)` 
+            : Prisma.sql`AND rp.current_page >= COALESCE(rp.total_pages, 0)`
+          }
+      `;
+    }
+
+    let papers: any[];
+    let total: number;
+
+    if (readStatus === 'in-progress' || readStatus === 'completed') {
+      // Use raw query for complex join
+      const [rawPapers, countResult] = await Promise.all([
+        papersQuery,
+        countQuery,
+      ]);
+      papers = rawPapers;
+      total = Number((countResult as any)[0]?.count || 0);
+    } else {
+      // Use Prisma ORM for simpler queries
+      [papers, total] = await Promise.all([
+        prisma.papers.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            processingTasks: {
+              select: {
+                status: true,
+                errorMessage: true,
+                updatedAt: true,
+              },
+            },
+            readingProgress: {
+              where: { userId: userId },
+              select: {
+                currentPage: true,
+                totalPages: true,
+              },
+            },
+          },
+        }),
+        prisma.papers.count({ where }),
+      ]);
+    }
 
     const totalPages = Math.ceil(total / limit);
 
-    // 计算处理进度
+    // 计算处理进度和阅读进度
     const papersWithProgress = papers.map(paper => {
       const processingStatus = paper.processingTasks?.status as TaskStatus || paper.status;
       const progress = getProgressPercent(processingStatus);
+      
+      // Calculate reading progress (D-03)
+      const readingProgressData = paper.readingProgress?.[0];
+      let readingProgressPercent = 0;
+      if (readingProgressData && readingProgressData.totalPages) {
+        readingProgressPercent = Math.round((readingProgressData.currentPage / readingProgressData.totalPages) * 100);
+      }
+
+      // Destructure to remove nested relations
+      const { processingTasks, readingProgress, ...paperData } = paper as any;
 
       return {
-        ...paper,
+        ...paperData,
         processingStatus,
         progress,
-        processingError: paper.processingTasks?.errorMessage || null,
-        lastUpdated: paper.processingTasks?.updatedAt || paper.updatedAt,
-        // Remove the nested processingTask from response
-        processingTasks: undefined,
+        readingProgress: readingProgressPercent,
+        processingError: processingTasks?.errorMessage || null,
+        lastUpdated: processingTasks?.updatedAt || paperData.updatedAt,
       };
     });
 
@@ -1449,6 +1546,107 @@ router.patch(
       });
     } catch (error) {
       logger.error('Failed to update paper metadata:', error);
+      next(error);
+    }
+  }
+);
+
+// POST /api/papers/batch/star - Batch star/unstar papers
+router.post(
+  '/batch/star',
+  requirePermission('papers', 'update'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            type: '/errors/unauthorized',
+            title: 'Unauthorized',
+            status: 401,
+            detail: 'User not authenticated',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const { paperIds, starred } = req.body;
+
+      // Validate input
+      if (!paperIds || !Array.isArray(paperIds) || paperIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'paperIds must be a non-empty array',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      if (typeof starred !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'starred field must be a boolean',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Limit batch size
+      if (paperIds.length > 100) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            type: '/errors/validation-error',
+            title: 'Validation Error',
+            status: 400,
+            detail: 'Cannot update more than 100 papers at once',
+            requestId: uuidv4(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Update papers (only those belonging to user)
+      const result = await prisma.papers.updateMany({
+        where: {
+          id: { in: paperIds },
+          userId: userId,
+        },
+        data: {
+          starred: starred,
+          updatedAt: new Date(),
+        },
+      });
+
+      logger.info(`Batch starred ${result.count} papers for user ${userId}`, {
+        starred,
+        requested: paperIds.length,
+        updated: result.count,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          updatedCount: result.count,
+          requestedCount: paperIds.length,
+          starred: starred,
+          message: `Successfully ${starred ? 'starred' : 'unstarred'} ${result.count} papers`,
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to batch star papers:', error);
       next(error);
     }
   }

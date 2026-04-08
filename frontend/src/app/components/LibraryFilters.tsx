@@ -27,6 +27,8 @@ interface LibraryFiltersProps {
  * Filter panel for Library page (D-11):
  * - Starred filter (checkbox)
  * - Author filter (text input)
+ * - Reading status filter (D-03)
+ * - Time range filter (D-03)
  * - Project filter (select dropdown - if available)
  *
  * Follows UI-SPEC.md design constraints.
@@ -40,6 +42,16 @@ export function LibraryFilters({ filters, onFilterChange }: LibraryFiltersProps)
     starred: isZh ? "仅显示已星标" : "Starred Only",
     author: isZh ? "作者" : "Author",
     authorPlaceholder: isZh ? "输入作者名称" : "Enter author name",
+    readingStatus: isZh ? "阅读状态" : "Reading Status",
+    allStatus: isZh ? "全部" : "All",
+    unread: isZh ? "未读" : "Unread",
+    inProgress: isZh ? "阅读中" : "In Progress",
+    completed: isZh ? "已完成" : "Completed",
+    timeRange: isZh ? "时间范围" : "Time Range",
+    allTime: isZh ? "全部时间" : "All Time",
+    last7Days: isZh ? "最近7天" : "Last 7 Days",
+    last30Days: isZh ? "最近30天" : "Last 30 Days",
+    last90Days: isZh ? "最近90天" : "Last 90 Days",
     project: isZh ? "项目" : "Project",
     clearFilters: isZh ? "清空筛选" : "Clear Filters",
   };
@@ -52,11 +64,25 @@ export function LibraryFilters({ filters, onFilterChange }: LibraryFiltersProps)
     onFilterChange({ ...filters, author: value || undefined });
   };
 
+  const handleReadingStatusChange = (value: string) => {
+    onFilterChange({ 
+      ...filters, 
+      readingStatus: value === 'all' ? undefined : value as 'unread' | 'in-progress' | 'completed'
+    });
+  };
+
+  const handleTimeRangeChange = (value: string) => {
+    onFilterChange({ 
+      ...filters, 
+      timeRange: value as '7d' | '30d' | '90d' | 'all'
+    });
+  };
+
   const handleClearFilters = () => {
     onFilterChange({});
   };
 
-  const hasActiveFilters = filters.starred || filters.author || filters.projectId;
+  const hasActiveFilters = filters.starred || filters.author || filters.projectId || filters.readingStatus || (filters.timeRange && filters.timeRange !== 'all');
 
   return (
     <div className="space-y-4 p-4 bg-white border border-[#f4ece1] rounded-sm">
@@ -83,6 +109,44 @@ export function LibraryFilters({ filters, onFilterChange }: LibraryFiltersProps)
           <Label htmlFor="starred" className="text-sm cursor-pointer">
             {t.starred}
           </Label>
+        </div>
+
+        {/* Reading Status Filter */}
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">{t.readingStatus}</Label>
+          <Select
+            value={filters.readingStatus || 'all'}
+            onValueChange={handleReadingStatusChange}
+          >
+            <SelectTrigger className="bg-[#fdfaf6]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t.allStatus}</SelectItem>
+              <SelectItem value="unread">{t.unread}</SelectItem>
+              <SelectItem value="in-progress">{t.inProgress}</SelectItem>
+              <SelectItem value="completed">{t.completed}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Time Range Filter */}
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">{t.timeRange}</Label>
+          <Select
+            value={filters.timeRange || 'all'}
+            onValueChange={handleTimeRangeChange}
+          >
+            <SelectTrigger className="bg-[#fdfaf6]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t.allTime}</SelectItem>
+              <SelectItem value="7d">{t.last7Days}</SelectItem>
+              <SelectItem value="30d">{t.last30Days}</SelectItem>
+              <SelectItem value="90d">{t.last90Days}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Author Filter */}

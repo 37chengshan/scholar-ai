@@ -147,6 +147,10 @@ export interface PapersQueryParams {
   search?: string;
   sortBy?: 'createdAt' | 'updatedAt' | 'title' | 'year' | 'citations';
   sortOrder?: 'asc' | 'desc';
+  starred?: boolean;
+  readStatus?: 'unread' | 'in-progress' | 'completed';
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /**

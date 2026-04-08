@@ -64,10 +64,19 @@ export function Library() {
   const [batchAddProjectId, setBatchAddProjectId] = useState<string | null>(null);
   const [isAddingToProject, setIsAddingToProject] = useState(false);
 
-  // Use the usePapers hook
+  // Use the usePapers hook with filters
   const { papers, total, page, totalPages, loading, error, setPage, refetch, updatePaperLocal } = usePapers({
     limit: 20,
     search: debouncedSearch || undefined,
+    starred: libraryFilters.starred,
+    readStatus: libraryFilters.readingStatus,
+    dateFrom: libraryFilters.timeRange && libraryFilters.timeRange !== 'all' 
+      ? new Date(Date.now() - (
+          libraryFilters.timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 :
+          libraryFilters.timeRange === '30d' ? 30 * 24 * 60 * 60 * 1000 :
+          90 * 24 * 60 * 60 * 1000
+        )).toISOString()
+      : undefined,
   });
 
   // Filter state for LibraryFilters (must be defined before use)
@@ -79,36 +88,9 @@ export function Library() {
     timeRange?: '7d' | '30d' | '90d' | 'all';
   }>({});
 
-// Apply LibraryFilters to papers
-  const filteredPapers = papers.filter(paper => {
-    if (libraryFilters.starred && !paper.starred) return false;
-    if (libraryFilters.author && !paper.authors?.some(a => a.toLowerCase().includes(libraryFilters.author!.toLowerCase()))) return false;
-    if (libraryFilters.projectId) {
-      // TODO: Filter by project when project assignment is implemented
-      return false;
-    }
-    
-    // Reading status filter (D-03)
-    if (libraryFilters.readingStatus) {
-      const progress = paper.progress || 0;
-      if (libraryFilters.readingStatus === 'unread' && progress !== 0) return false;
-      if (libraryFilters.readingStatus === 'in-progress' && (progress === 0 || progress === 100)) return false;
-      if (libraryFilters.readingStatus === 'completed' && progress !== 100) return false;
-    }
-    
-    // Time range filter (D-03)
-    if (libraryFilters.timeRange) {
-      const now = new Date();
-      const uploadedAt = new Date(paper.uploadedAt || paper.createdAt);
-      const diffDays = (now.getTime() - uploadedAt.getTime()) / (1000 * 60 * 60 * 24);
-      
-      if (libraryFilters.timeRange === '7d' && diffDays > 7) return false;
-      if (libraryFilters.timeRange === '30d' && diffDays > 30) return false;
-      if (libraryFilters.timeRange === '90d' && diffDays > 90) return false;
-    }
-    
-    return true;
-  });
+  // Papers are now filtered on the backend, no need for client-side filtering
+  const filteredPapers = papers;
+
   // Calculate starred count from filtered papers
   const starredCount = filteredPapers.filter(p => p.starred).length;
   
@@ -181,27 +163,23 @@ export function Library() {
         return paper?.starred;
       });
 
-      // Update each paper
-      for (const paperId of selectedPapers) {
-        const paper = papers.find(p => p.id === paperId);
-        if (paper && paper.starred !== !allStarred) {
-          updatePaperLocal(paperId, { starred: !allStarred });
-          await papersApi.toggleStar(paperId, !allStarred);
-        }
-      }
+      // Use batch API
+      const result = await papersApi.batchStar(Array.from(selectedPapers), !allStarred);
 
       toast.success(
         isZh
-          ? (allStarred ? "已批量取消星标" : "已批量添加到星标")
-          : (allStarred ? "Batch unstarred" : "Batch starred")
+          ? (allStarred ? `已批量取消星标 ${result.updatedCount} 篇论文` : `已批量添加到星标 ${result.updatedCount} 篇论文`)
+          : (allStarred ? `Batch unstarred ${result.updatedCount} papers` : `Batch starred ${result.updatedCount} papers`)
       );
+      
       setSelectedPapers(new Set());
       setBatchMode(false);
+      refetch();
     } catch (error: any) {
       toast.error(isZh ? "批量操作失败" : "Batch operation failed");
-      refetch();
+      console.error('Batch star failed:', error);
     }
-  }, [selectedPapers, papers, isZh, updatePaperLocal, refetch]);
+  }, [selectedPapers, papers, isZh, refetch]);
 
   // Batch add to project handler
   const handleBatchAddToProject = useCallback(() => {

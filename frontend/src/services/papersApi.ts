@@ -20,7 +20,7 @@ import type { PapersListResponse, Paper, PaperWithProgress, PapersQueryParams, P
  * GET /api/papers
  * Returns user's papers with processing status and progress
  *
- * @param params - Query parameters (page, limit, search, sortBy)
+ * @param params - Query parameters (page, limit, search, sortBy, starred, readStatus, dateFrom, dateTo)
  * @returns Papers list with pagination info
  */
 export async function list(params?: PapersQueryParams): Promise<PapersListResponse> {
@@ -31,6 +31,10 @@ export async function list(params?: PapersQueryParams): Promise<PapersListRespon
       search: params?.search,
       sortBy: params?.sortBy || 'createdAt',
       sortOrder: params?.sortOrder || 'desc',
+      starred: params?.starred,
+      readStatus: params?.readStatus,
+      dateFrom: params?.dateFrom,
+      dateTo: params?.dateTo,
     },
   });
 
@@ -89,6 +93,41 @@ export async function batchDelete(paperIds: string[]): Promise<{
     };
   }>('/api/papers/batch-delete', {
     paperIds,
+  });
+
+  return response.data.data;
+}
+
+/**
+ * Batch star/unstar papers
+ *
+ * POST /api/papers/batch/star
+ * Updates starred status for multiple papers at once
+ *
+ * @param paperIds - Array of paper IDs
+ * @param starred - New starred status
+ * @returns Update result
+ */
+export async function batchStar(
+  paperIds: string[],
+  starred: boolean
+): Promise<{
+  updatedCount: number;
+  requestedCount: number;
+  starred: boolean;
+  message: string;
+}> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: {
+      updatedCount: number;
+      requestedCount: number;
+      starred: boolean;
+      message: string;
+    };
+  }>('/api/papers/batch/star', {
+    paperIds,
+    starred,
   });
 
   return response.data.data;

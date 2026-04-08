@@ -24,6 +24,9 @@ interface UsePapersOptions {
   limit?: number;
   search?: string;
   starred?: boolean;
+  readStatus?: 'unread' | 'in-progress' | 'completed';
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /**
@@ -51,7 +54,7 @@ interface UsePapersReturn {
  * @returns Papers state and actions
  */
 export function usePapers(options: UsePapersOptions = {}): UsePapersReturn {
-  const { limit = 20, search, starred } = options;
+  const { limit = 20, search, starred, readStatus, dateFrom, dateTo } = options;
   const { user } = useAuth();
 
   // Local state for page
@@ -59,7 +62,7 @@ export function usePapers(options: UsePapersOptions = {}): UsePapersReturn {
 
   // React Query hook for papers
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['papers', { page, limit, search, starred, userId: user?.id }],
+    queryKey: ['papers', { page, limit, search, starred, readStatus, dateFrom, dateTo, userId: user?.id }],
     queryFn: async () => {
       if (!user) {
         return { papers: [], total: 0 };
@@ -70,6 +73,10 @@ export function usePapers(options: UsePapersOptions = {}): UsePapersReturn {
         page,
         limit,
         search: search || undefined,
+        starred: starred,
+        readStatus: readStatus,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
       };
 
       const response = await papersApi.list(params);
