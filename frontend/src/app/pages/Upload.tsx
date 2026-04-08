@@ -1,12 +1,18 @@
-import { UploadCloud, FolderUp, Link, History, Settings2, FileText, CheckCircle2, Clock, Play, Server, Tags, AlertCircle, RefreshCw } from "lucide-react";
+import { UploadCloud, FolderUp, Link, History, Settings2, FileText, CheckCircle2, Clock, Play, Server, Tags, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
 import { clsx } from "clsx";
 import { motion } from "motion/react";
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useUpload } from "../hooks/useUpload";
+import { useUploadHistory } from "@/hooks/useUploadHistory";
 import { Progress } from "../components/ui/progress";
 import { UploadInputSwitch } from "../components/UploadInputSwitch";
+import { UploadHistoryList } from "@/components/upload/UploadHistoryList";
+import { ProgressIndicator } from "@/components/upload/ProgressIndicator";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/app/components/ui/dialog";
+import { Button } from "@/app/components/ui/button";
+import toast from "react-hot-toast";
 
 export function Upload() {
   const [activeTab, setActiveTab] = useState("local");
@@ -21,6 +27,28 @@ export function Upload() {
   });
   
   const { files, addFiles, uploadAll, removeFile, clearFiles, isUploading } = useUpload();
+  
+  // Upload history hook (Task 4)
+  const { records: historyRecords, isLoading: historyLoading, deleteRecord } = useUploadHistory({ limit: 10 });
+  
+  // Delete confirmation dialog state (Task 4)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
+  
+  // Handle delete confirmation (Task 4)
+  const handleDeleteClick = (id: string) => {
+    setRecordToDelete(id);
+    setDeleteDialogOpen(true);
+  };
+  
+  const handleConfirmDelete = () => {
+    if (recordToDelete) {
+      deleteRecord(recordToDelete);
+      toast.success(isZh ? '上传记录已删除' : 'Upload history record deleted');
+    }
+    setDeleteDialogOpen(false);
+    setRecordToDelete(null);
+  };
 
   const t = {
     sources: isZh ? "数据来源" : "Sources",
@@ -29,7 +57,7 @@ export function Upload() {
     urlDoi: isZh ? "URL / DOI" : "URL / DOI",
     syncZotero: isZh ? "同步 Zotero" : "Sync Zotero",
     uploadInputSwitch: isZh ? "上传方式" : "Upload Method",
-    recentBatches: isZh ? "最近批次" : "Recent Batches",
+    recentBatches: isZh ? "上传历史" : "Upload History",
     filesCount: isZh ? "个文件" : "Files",
     ingestionQueue: isZh ? "处理队列" : "Ingestion Queue",
     itemsPending: isZh ? `${files.length} 个项目待处理` : `${files.length} items pending`,
@@ -69,13 +97,43 @@ export function Upload() {
     mins: isZh ? `~${Math.ceil(files.length * 0.4)} 分钟` : `~${Math.ceil(files.length * 0.4)} mins`,
     uploading: isZh ? "上传中..." : "Uploading...",
     noFiles: isZh ? "暂无文件" : "No files",
+    // Delete confirmation dialog (Task 4)
+    deleteTitle: isZh ? "删除上传记录" : "Delete Upload Record",
+    deleteDesc: isZh ? "此操作将删除上传历史记录，但论文数据仍保留在文献库中。确定删除？" : "This will delete the upload history record, but the paper will remain in your library. Are you sure?",
+    btnCancel: isZh ? "取消" : "Cancel",
+    btnConfirm: isZh ? "删除" : "Delete",
+    noHistory: isZh ? "暂无历史" : "No History",
   };
 
-  const BATCHES = [
-    { id: "B-842", time: isZh ? "10分钟前" : "10 mins ago", count: 12, status: "completed" },
-    { id: "B-841", time: isZh ? "2小时前" : "2 hours ago", count: 4, status: "completed" },
-    { id: "B-840", time: isZh ? "昨天" : "Yesterday", count: 28, status: "completed" },
-  ];
+  // Format relative time for upload history
+  const formatRelativeTime = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) return isZh ? "刚刚" : "Just now";
+    if (diffMins < 60) return isZh ? `${diffMins}分钟前` : `${diffMins} mins ago`;
+    if (diffHours < 24) return isZh ? `${diffHours}小时前` : `${diffHours} hours ago`;
+    if (diffDays < 7) return isZh ? `${diffDays}天前` : `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  // Get status icon for upload history
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return <CheckCircle2 className="w-3 h-3 text-green-500" />;
+      case 'PROCESSING':
+        return <RefreshCw className="w-3 h-3 text-primary animate-spin" />;
+      case 'FAILED':
+        return <AlertCircle className="w-3 h-3 text-red-500" />;
+      default:
+        return <Clock className="w-3 h-3 text-muted-foreground" />;
+    }
+  };
 
   // Dropzone configuration
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -166,18 +224,45 @@ export function Upload() {
               <History className="w-3 h-3" /> {t.recentBatches}
             </div>
             <div className="flex flex-col gap-2">
-              {BATCHES.map((batch) => (
-                <div key={batch.id} className="flex flex-col gap-1 p-2 rounded-sm hover:bg-card border border-transparent hover:border-border/50 transition-colors cursor-pointer group">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-mono font-bold group-hover:text-primary transition-colors">{batch.id}</span>
-                    <span className="text-[9px] font-mono text-muted-foreground">{batch.time}</span>
-                  </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-foreground/60">{batch.count} {t.filesCount}</span>
-                    <CheckCircle2 className="w-3 h-3 text-green-500" />
-                  </div>
+              {historyLoading ? (
+                <div className="text-[9px] text-muted-foreground text-center py-4">
+                  {isZh ? "加载中..." : "Loading..."}
                 </div>
-              ))}
+              ) : historyRecords.length === 0 ? (
+                <div className="text-[9px] text-muted-foreground text-center py-4">
+                  {t.noHistory}
+                </div>
+              ) : (
+                historyRecords.map((record) => (
+                  <div 
+                    key={record.id} 
+                    className="flex flex-col gap-1 p-2 rounded-sm hover:bg-card border border-transparent hover:border-border/50 transition-colors cursor-pointer group"
+                    onClick={() => record.paper?.id && (window.location.href = `/read/${record.paper.id}`)}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-mono font-bold group-hover:text-primary transition-colors truncate max-w-[100px]">
+                        {record.filename.replace(/\.pdf$/i, '')}
+                      </span>
+                      <span className="text-[9px] font-mono text-muted-foreground">
+                        {formatRelativeTime(record.createdAt)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center mt-1">
+                      <span className={clsx(
+                        "text-[9px] font-bold uppercase tracking-widest",
+                        record.status === 'COMPLETED' ? "text-green-600" :
+                        record.status === 'FAILED' ? "text-red-600" :
+                        "text-primary"
+                      )}>
+                        {record.status === 'COMPLETED' ? (isZh ? "完成" : "Done") :
+                         record.status === 'FAILED' ? (isZh ? "失败" : "Failed") :
+                         (isZh ? "处理中" : "Processing")}
+                      </span>
+                      {getStatusIcon(record.status)}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -270,7 +355,15 @@ export function Upload() {
                         </span>
                       </div>
                       <div className="col-span-2">
-                        <Progress value={file.progress} className="h-1" />
+                        <ProgressIndicator 
+                          status={file.status === 'pending' ? 'pending' : 
+                                 file.status === 'uploading' ? 'uploading' :
+                                 file.status === 'processing' ? 'parsing' :
+                                 file.status === 'completed' ? 'completed' :
+                                 file.status === 'failed' ? 'failed' : 'parsing'}
+                          progress={file.progress}
+                          errorMessage={file.error}
+                        />
                       </div>
                       <div className="col-span-1 text-right text-[10px] font-mono text-muted-foreground">
                         {formatSize(file.file.size)}
@@ -407,7 +500,37 @@ export function Upload() {
             <span className="font-bold text-primary">{t.mins}</span>
           </div>
         </div>
-      </motion.div>
+</motion.div>
+      </div>
+
+      {/* Delete Confirmation Dialog (Task 4) */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold">{t.deleteTitle}</DialogTitle>
+            <DialogDescription className="text-base">
+              {t.deleteDesc}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              className="text-sm"
+            >
+              {t.btnCancel}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              className="text-sm"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              {t.btnConfirm}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
