@@ -100,7 +100,7 @@ export function BatchActionBar({
         <button
           onClick={onBatchDelete}
           disabled={selectedCount === 0}
-          className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest bg-destructive text-destructive-foreground px-3 py-1.5 rounded-sm hover:bg-destructive/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest bg-muted text-destructive px-3 py-1.5 rounded-sm hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Trash2 className="w-3 h-3" />
           {t.batchDelete}
