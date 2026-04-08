@@ -2,12 +2,21 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { Input } from './ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 interface LibraryFiltersProps {
   filters: {
     starred?: boolean;
     author?: string;
     projectId?: string;
+    readingStatus?: 'unread' | 'in-progress' | 'completed';
+    timeRange?: '7d' | '30d' | '90d' | 'all';
   };
   onFilterChange: (filters: LibraryFiltersProps['filters']) => void;
 }
