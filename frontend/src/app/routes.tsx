@@ -17,6 +17,7 @@ const Read = lazy(() => import("./pages/Read").then(m => ({ default: m.Read })))
 const Chat = lazy(() => import("./pages/Chat").then(m => ({ default: m.Chat })));
 const Upload = lazy(() => import("./pages/Upload").then(m => ({ default: m.Upload })));
 const Settings = lazy(() => import("./pages/Settings").then(m => ({ default: m.Settings })));
+const Notes = lazy(() => import("./pages/Notes").then(m => ({ default: m.Notes })));
 
 // Auth guard component for protected routes
 // Uses AuthContext (Cookie-based auth) instead of localStorage
@@ -97,6 +98,10 @@ export const router = createBrowserRouter([
       {
         path: "settings",
         element: <LazyRoute><ProtectedRoute><Settings /></ProtectedRoute></LazyRoute>,
+      },
+      {
+        path: "notes",
+        element: <LazyRoute><ProtectedRoute><Notes /></ProtectedRoute></LazyRoute>,
       },
     ],
   },
