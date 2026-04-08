@@ -1,0 +1,450 @@
+---
+# Workflow Test Suite for Agent-Native System
+# Per D-25: YAML test definitions for core scenarios
+# Per D-26: Cover all 15+ tool combinations (40+ scenarios total)
+---
+
+test_suites:
+  # ========================================
+  # Core Scenario 1: Paper Upload and RAG Query
+  # ========================================
+  - name: "Paper Upload and RAG Query"
+    description: "Upload PDF, parse, then query with RAG"
+    tags: ["upload", "rag", "basic"]
+    setup:
+      - type: "file"
+        path: "/tmp/test_paper_upload.pdf"
+        fixture: "sample_paper1.pdf"
+      - type: "database"
+        operation: "clean"
+        tables: ["papers", "paper_contents", "chat_messages"]
+    steps:
+      - tool: "upload_paper"
+        params:
+          file_path: "/tmp/test_paper_upload.pdf"
+          auto_parse: true
+        expect:
+          success: true
+          has_paper_id: true
+        timeout: 10s
+
+      - wait:
+          type: "pdf_worker"
+          condition: "parsed"
+          paper_id: "${upload_paper.paper_id}"
+          timeout: 60s
+
+      - tool: "rag_search"
+        params:
+          question: "What is the main contribution of this paper?"
+          paper_id: "${upload_paper.paper_id}"
+        expect:
+          success: true
+          has_answer: true
+          has_sources: true
+          source_count: ">= 1"
+        timeout: 15s
+
+    assertions:
+      - type: "database"
+        query: "SELECT status FROM papers WHERE id = $1"
+        params: ["${upload_paper.paper_id}"]
+        expect: "parsed"
+
+      - type: "response"
+        field: "rag_search.answer"
+        condition: "not_empty"
+
+      - type: "response"
+        field: "rag_search.sources"
+        condition: "length >= 1"
+
+    quality_metrics:
+      - name: "success_rate"
+        threshold: ">= 0.95"
+      - name: "avg_upload_time"
+        threshold: "<= 10s"
+      - name: "avg_parse_time"
+        threshold: "<= 60s"
+      - name: "avg_rag_time"
+        threshold: "<= 15s"
+      - name: "token_cost"
+        threshold: "<= 5000"
+
+  # ========================================
+  # Core Scenario 2: Cross-Paper Comparison
+  # ========================================
+  - name: "Cross-Paper Comparison"
+    description: "Compare two papers using RAG"
+    tags: ["rag", "compare", "multi-paper"]
+    setup:
+      - type: "seed_data"
+        papers:
+          - id: "paper_yolov5"
+            fixture: "sample_paper1.pdf"
+            title: "YOLOv5 Paper"
+          - id: "paper_yolov8"
+            fixture: "sample_paper2.pdf"
+            title: "YOLOv8 Paper"
+    steps:
+      - tool: "rag_search"
+        params:
+          question: "Compare the methods used in these two papers"
+          paper_ids:
+            - "${paper_yolov5.id}"
+            - "${paper_yolov8.id}"
+        expect:
+          success: true
+          has_answer: true
+          contains_keywords: ["compare", "difference", "对比", "不同"]
+        timeout: 20s
+
+    assertions:
+      - type: "response"
+        field: "answer"
+        condition: "contains_keywords:compare,difference,对比,不同"
+
+      - type: "response"
+        field: "sources"
+        condition: "length >= 2"
+
+    quality_metrics:
+      - name: "citation_count"
+        threshold: ">= 2"
+      - name: "comparison_quality"
+        threshold: ">= 0.80"
+
+  # ========================================
+  # Core Scenario 3: External Search
+  # ========================================
+  - name: "External Search"
+    description: "Search external academic databases"
+    tags: ["external_search", "search"]
+    setup:
+      - type: "environment"
+        ensure_services: ["semantic_scholar", "crossref"]
+    steps:
+      - tool: "external_search"
+        params:
+          query: "deep learning transformers"
+          limit: 5
+        expect:
+          success: true
+          has_results: true
+          result_count: ">= 1"
+        timeout: 30s
+
+    assertions:
+      - type: "response"
+        field: "results"
+        condition: "length >= 1"
+
+      - type: "response"
+        field: "results[0].title"
+        condition: "not_empty"
+
+    quality_metrics:
+      - name: "search_latency"
+        threshold: "<= 30s"
+      - name: "result_quality"
+        threshold: ">= 0.70"
+
+  # ========================================
+  # Core Scenario 4: Note Creation and Retrieval
+  # ========================================
+  - name: "Note Creation and Retrieval"
+    description: "Create, list, and read notes"
+    tags: ["notes", "crud"]
+    setup:
+      - type: "database"
+        operation: "clean"
+        tables: ["notes"]
+      - type: "seed_data"
+        user_id: "test_user_001"
+    steps:
+      - tool: "create_note"
+        params:
+          content: "This is a test note about paper analysis"
+          paper_id: null
+          tags: ["test", "analysis"]
+        expect:
+          success: true
+          has_note_id: true
+        timeout: 5s
+
+      - tool: "list_notes"
+        params:
+          user_id: "${create_note.user_id}"
+          limit: 10
+        expect:
+          success: true
+          has_notes: true
+          note_count: ">= 1"
+        timeout: 5s
+
+      - tool: "read_note"
+        params:
+          note_id: "${create_note.note_id}"
+        expect:
+          success: true
+          has_content: true
+          content_matches: "This is a test note"
+        timeout: 5s
+
+    assertions:
+      - type: "database"
+        query: "SELECT COUNT(*) FROM notes WHERE user_id = $1"
+        params: ["${create_note.user_id}"]
+        expect: ">= 1"
+
+      - type: "response"
+        field: "read_note.content"
+        condition: "contains:test note"
+
+    quality_metrics:
+      - name: "note_creation_time"
+        threshold: "<= 5s"
+      - name: "note_retrieval_time"
+        threshold: "<= 5s"
+
+  # ========================================
+  # Core Scenario 5: Paper Deletion
+  # ========================================
+  - name: "Paper Deletion"
+    description: "Delete paper with CRITICAL confirmation"
+    tags: ["paper", "delete", "critical"]
+    setup:
+      - type: "seed_data"
+        paper_id: "test_paper_to_delete"
+        fixture: "sample_paper1.pdf"
+    steps:
+      - tool: "delete_paper"
+        params:
+          paper_id: "${test_paper_to_delete}"
+        expect:
+          success: true
+          requires_confirmation: true
+          confirmation_message: "Delete paper"
+        timeout: 10s
+
+      # Simulate user confirmation
+      - type: "user_action"
+        action: "confirm"
+        params:
+          confirmation: "yes"
+        expect:
+          success: true
+          paper_deleted: true
+
+    assertions:
+      - type: "database"
+        query: "SELECT COUNT(*) FROM papers WHERE id = $1"
+        params: ["${test_paper_to_delete}"]
+        expect: 0
+
+      - type: "audit_log"
+        query: "SELECT COUNT(*) FROM audit_logs WHERE tool = 'delete_paper' AND user_id = $1"
+        params: ["${user_id}"]
+        expect: ">= 1"
+
+    quality_metrics:
+      - name: "deletion_time"
+        threshold: "<= 10s"
+      - name: "audit_logged"
+        threshold: "= true"
+
+  # ========================================
+  # Core Scenario 6: Intent Classification - Question
+  # ========================================
+  - name: "Intent Classification - Question"
+    description: "Classify question intent correctly"
+    tags: ["intent", "classification", "question"]
+    setup:
+      - type: "environment"
+        ensure_intent_classifier: true
+    steps:
+      - type: "intent_check"
+        query: "What is the main contribution?"
+        expect:
+          intent: "question"
+          confidence: ">= 0.7"
+        timeout: 5s
+
+    assertions:
+      - type: "response"
+        field: "intent"
+        condition: "= question"
+
+    quality_metrics:
+      - name: "classification_time"
+        threshold: "<= 5s"
+      - name: "accuracy"
+        threshold: ">= 0.90"
+
+  # ========================================
+  # Core Scenario 7: Intent Classification - Compare
+  # ========================================
+  - name: "Intent Classification - Compare"
+    description: "Classify compare intent correctly"
+    tags: ["intent", "classification", "compare"]
+    setup:
+      - type: "environment"
+        ensure_intent_classifier: true
+    steps:
+      - type: "intent_check"
+        query: "Compare these two papers"
+        expect:
+          intent: "compare"
+          confidence: ">= 0.7"
+        timeout: 5s
+
+    assertions:
+      - type: "response"
+        field: "intent"
+        condition: "= compare"
+
+    quality_metrics:
+      - name: "classification_time"
+        threshold: "<= 5s"
+      - name: "accuracy"
+        threshold: ">= 0.90"
+
+  # ========================================
+  # Core Scenario 8: Sliding Window Context
+  # ========================================
+  - name: "Sliding Window Context"
+    description: "Verify 20-message context truncation"
+    tags: ["context", "sliding_window", "memory"]
+    setup:
+      - type: "database"
+        operation: "clean"
+        tables: ["chat_messages"]
+      - type: "seed_data"
+        session_id: "test_session_window"
+        messages:
+          count: 25
+          pattern: "Message #{i}"
+    steps:
+      - tool: "rag_search"
+        params:
+          question: "Test query"
+          session_id: "${test_session_window}"
+        expect:
+          success: true
+          context_message_count: "= 20"
+        timeout: 10s
+
+    assertions:
+      - type: "context_check"
+        field: "context_messages"
+        condition: "length = 20"
+
+      - type: "context_check"
+        field: "context_messages[0]"
+        condition: "timestamp >= ${messages[5].timestamp}"
+
+    quality_metrics:
+      - name: "context_build_time"
+        threshold: "<= 100ms"
+
+  # ========================================
+  # Core Scenario 9: Memory Retrieval
+  # ========================================
+  - name: "Memory Retrieval"
+    description: "Store memory, query, and retrieve"
+    tags: ["memory", "vector", "retrieval"]
+    setup:
+      - type: "database"
+        operation: "clean"
+        tables: ["user_memories"]
+      - type: "seed_data"
+        user_id: "test_user_mem"
+        memories:
+          - content: "User prefers Chinese language"
+            embedding: "vector_placeholder"
+          - content: "User likes dark theme"
+            embedding: "vector_placeholder"
+    steps:
+      - tool: "rag_search"
+        params:
+          question: "What is my preference?"
+          user_id: "${test_user_mem}"
+        expect:
+          success: true
+          has_memory_retrieval: true
+        timeout: 10s
+
+    assertions:
+      - type: "response"
+        field: "answer"
+        condition: "contains_any:Chinese,dark theme"
+
+    quality_metrics:
+      - name: "memory_retrieval_time"
+        threshold: "<= 100ms"
+
+  # ========================================
+  # Core Scenario 10: Multi-Tool Workflow
+  # ========================================
+  - name: "Multi-Tool Workflow"
+    description: "Complex workflow: upload → parse → RAG → create_note"
+    tags: ["workflow", "multi-tool", "complex"]
+    setup:
+      - type: "file"
+        path: "/tmp/test_multi_tool.pdf"
+        fixture: "sample_paper1.pdf"
+      - type: "database"
+        operation: "clean"
+        tables: ["papers", "notes"]
+    steps:
+      - tool: "upload_paper"
+        params:
+          file_path: "/tmp/test_multi_tool.pdf"
+          auto_parse: true
+        expect:
+          success: true
+        timeout: 10s
+
+      - wait:
+          type: "pdf_worker"
+          condition: "parsed"
+          paper_id: "${upload_paper.paper_id}"
+          timeout: 60s
+
+      - tool: "rag_search"
+        params:
+          question: "Summarize the main findings"
+          paper_id: "${upload_paper.paper_id}"
+        expect:
+          success: true
+        timeout: 15s
+
+      - tool: "create_note"
+        params:
+          content: "${rag_search.answer}"
+          paper_id: "${upload_paper.paper_id}"
+          tags: ["summary", "findings"]
+        expect:
+          success: true
+        timeout: 5s
+
+    assertions:
+      - type: "database"
+        query: "SELECT COUNT(*) FROM papers WHERE id = $1 AND status = 'parsed'"
+        params: ["${upload_paper.paper_id}"]
+        expect: 1
+
+      - type: "database"
+        query: "SELECT COUNT(*) FROM notes WHERE paper_id = $1"
+        params: ["${upload_paper.paper_id}"]
+        expect: 1
+
+      - type: "response"
+        field: "create_note.content"
+        condition: "not_empty"
+
+    quality_metrics:
+      - name: "total_workflow_time"
+        threshold: "<= 90s"
+      - name: "success_rate"
+        threshold: ">= 0.90"
