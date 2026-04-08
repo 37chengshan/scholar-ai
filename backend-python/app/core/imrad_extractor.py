@@ -22,67 +22,119 @@ from app.utils.logger import logger
 
 IMRAD_PATTERNS = {
     "introduction": [
-        r"^\s*introduction",
-        r"^\s*background",
-        r"^\s*1\.\s*introduction",
-        r"^\s*i\s*\.\s*introduction",
-        r"introduction and background",
-        r"^\s*引言",
-        r"^\s*简介",
-        r"^\s*背景",
+        # Exact matches (confidence = 0.9)
+        r"^\s*introduction$",
+        r"^\s*background$",
+        r"^\s*引言$",
+        r"^\s*简介$",
+        r"^\s*背景$",
+        r"^\s*前言$",
+        r"^\s*绪论$",
+        # Numbered sections (confidence = 0.85)
+        r"^\s*1\.?\s*introduction",
+        r"^\s*i\.?\s*introduction",
         r"^\s*1[\.\s]引言",
         r"^\s*一[\.、\s]",
-        r"^\s*前言",
-        r"^\s*绪论",
+        # Fuzzy matches (confidence = 0.7)
+        r"introduction and background",
         r"^\s*研究背景",
+        r"^\s*overview",
+        r"^\s*motivation",
+        r"^\s*related work",
+        r"^\s*literature review",
     ],
     "methods": [
-        r"^\s*methods?",
-        r"^\s*methodology",
-        r"^\s*materials?\s*(and|&)\s*methods?",
-        r"^\s*experimental\s*(setup|methods?)",
-        r"^\s*2\.\s*methods?",
-        r"^\s*ii\s*\.\s*methods?",
-        r"^\s*方法",
-        r"^\s*研究方法",
-        r"^\s*实验方法",
-        r"^\s*材料与方法",
+        # Exact matches (confidence = 0.9)
+        r"^\s*methods?$",
+        r"^\s*methodology$",
+        r"^\s*方法$",
+        r"^\s*研究方法$",
+        r"^\s*实验方法$",
+        r"^\s*方法论$",
+        # Numbered sections (confidence = 0.85)
+        r"^\s*2\.?\s*methods?",
+        r"^\s*ii\.?\s*methods?",
         r"^\s*2[\.\s]方法",
         r"^\s*二[\.、\s]",
+        # Fuzzy matches (confidence = 0.7)
+        r"^\s*materials?\s*(and|&)\s*methods?",
+        r"^\s*experimental\s*(setup|methods?)",
+        r"^\s*材料与方法",
         r"^\s*实验设计",
-        r"^\s*方法论",
+        r"^\s*approach",
+        r"^\s*experimental design",
     ],
     "results": [
-        r"^\s*results?",
-        r"^\s*findings",
-        r"^\s*3\.\s*results?",
-        r"^\s*iii\s*\.\s*results?",
-        r"results?\s*(and|&)\s*discussion",
-        r"^\s*结果",
-        r"^\s*实验结果",
-        r"^\s*研究发现",
+        # Exact matches (confidence = 0.9)
+        r"^\s*results?$",
+        r"^\s*findings?$",
+        r"^\s*结果$",
+        r"^\s*实验结果$",
+        r"^\s*研究发现$",
+        r"^\s*研究结果$",
+        # Numbered sections (confidence = 0.85)
+        r"^\s*3\.?\s*results?",
+        r"^\s*iii\.?\s*results?",
         r"^\s*3[\.\s]结果",
         r"^\s*三[\.、\s]",
+        # Fuzzy matches (confidence = 0.7)
+        r"results?\s*(and|&)\s*discussion",
         r"^\s*结果与分析",
-        r"^\s*研究结果",
+        r"^\s*evaluation",
+        r"^\s*experiments?",
+        r"^\s*performance analysis",
+        r"^\s*analysis",
     ],
     "conclusion": [
-        r"^\s*conclusions?",
-        r"^\s*discussion",
-        r"^\s*4\.\s*conclusions?",
-        r"^\s*iv\s*\.\s*conclusions?",
-        r"^\s*summary",
-        r"^\s*concluding\s*remarks",
-        r"^\s*结论",
-        r"^\s*讨论",
-        r"^\s*总结",
+        # Exact matches (confidence = 0.9)
+        r"^\s*conclusions?$",
+        r"^\s*discussion$",
+        r"^\s*总结$",
+        r"^\s*讨论$",
+        r"^\s*结论$",
+        # Numbered sections (confidence = 0.85)
+        r"^\s*4\.?\s*(?:conclusions?|discussion)",
+        r"^\s*iv\.?\s*(?:conclusions?|discussion)",
         r"^\s*4[\.\s]结论",
         r"^\s*四[\.、\s]",
+        # Fuzzy matches (confidence = 0.7)
+        r"^\s*summary",
+        r"^\s*concluding\s*remarks",
         r"^\s*结论与讨论",
         r"^\s*总结与展望",
         r"^\s*结论与展望",
-    ]
+        r"^\s*future work",
+        r"^\s*limitations",
+    ],
 }
+
+
+def calculate_pattern_confidence(text: str, pattern: str, section: str) -> float:
+    """Calculate confidence score based on pattern type.
+
+    Per D-03: Weighted confidence scoring.
+    - Exact match (pattern ends with $): 0.9
+    - Numbered section (pattern contains \d\.?): 0.85
+    - Fuzzy match (general pattern): 0.7
+
+    Args:
+        text: The matched text
+        pattern: The regex pattern that matched
+        section: Section name
+
+    Returns:
+        Confidence score (0.7-0.9)
+    """
+    # Check if it's an exact match pattern (ends with $)
+    if pattern.endswith("$"):
+        return 0.9
+
+    # Check if it's a numbered section pattern (contains digit + optional punctuation)
+    if re.search(r"\\d\.?", pattern) or re.search(r"(一|二|三|四)[\.、]", pattern):
+        return 0.85
+
+    # Default fuzzy match confidence
+    return 0.7
 
 
 def is_section_header(text: str, section: str) -> bool:
@@ -98,6 +150,29 @@ def is_section_header(text: str, section: str) -> bool:
     text_lower = text.strip().lower()
     patterns = IMRAD_PATTERNS.get(section, [])
     return any(re.match(pattern, text_lower, re.IGNORECASE) for pattern in patterns)
+
+
+def detect_section_with_confidence(text: str) -> tuple[Optional[str], float]:
+    """Detect which section a header belongs to with confidence score.
+
+    Per D-03: Returns section name and confidence (0.7-0.9).
+
+    Args:
+        text: The header text to analyze
+
+    Returns:
+        Tuple of (section name, confidence) or (None, 0.0) if not matched
+    """
+    text_lower = text.strip().lower()
+
+    for section in ["introduction", "methods", "results", "conclusion"]:
+        patterns = IMRAD_PATTERNS.get(section, [])
+        for pattern in patterns:
+            if re.match(pattern, text_lower, re.IGNORECASE):
+                confidence = calculate_pattern_confidence(text, pattern, section)
+                return (section, confidence)
+
+    return (None, 0.0)
 
 
 def detect_section(text: str) -> Optional[str]:
@@ -134,7 +209,8 @@ def extract_imrad_structure(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         "conclusion": {"texts": [], "page_start": None, "page_end": None},
     }
     current_section = "introduction"  # Default assumption
-    detected_headers = set()
+    detected_headers = {}
+    section_confidences = {}
 
     for item in items:
         if item.get("type") != "text":
@@ -144,20 +220,24 @@ def extract_imrad_structure(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         if not text:
             continue
 
-        # Check if this is a section header
-        detected = detect_section(text)
+        # Check if this is a section header with confidence scoring
+        detected, confidence = detect_section_with_confidence(text)
         if detected:
             current_section = detected
-            detected_headers.add(detected)
+            detected_headers[detected] = text
+            # Track best confidence for each section per D-03
+            if (
+                detected not in section_confidences
+                or confidence > section_confidences[detected]
+            ):
+                section_confidences[detected] = confidence
             continue  # Don't include header text in content
 
         # Add text to current section
         if current_section in sections:
-            sections[current_section]["texts"].append({
-                "text": text,
-                "page": item.get("page"),
-                "bbox": item.get("bbox")
-            })
+            sections[current_section]["texts"].append(
+                {"text": text, "page": item.get("page"), "bbox": item.get("bbox")}
+            )
 
             # Update page range
             page = item.get("page")
@@ -173,7 +253,7 @@ def extract_imrad_structure(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not has_headers:
         return _apply_fallback_strategy(items, sections)
 
-    # Build final structure with confidence scoring
+    # Build final structure with weighted confidence scoring per D-03
     result = {}
     total_words = 0
     for section_name, data in sections.items():
@@ -181,8 +261,15 @@ def extract_imrad_structure(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         word_count = len(combined_text.split()) if combined_text else 0
         total_words += word_count
 
-        # Calculate confidence based on header detection
-        confidence = 1.0 if section_name in detected_headers else 0.5
+        # Use weighted confidence from header detection per D-03
+        if section_name in section_confidences:
+            confidence = section_confidences[section_name]  # 0.7-0.9
+        elif section_name in detected_headers:
+            # Header detected but no confidence recorded - use default
+            confidence = 0.85
+        else:
+            # No header detected for this section
+            confidence = 0.5
 
         result[section_name] = {
             "content": combined_text,
@@ -192,17 +279,21 @@ def extract_imrad_structure(items: List[Dict[str, Any]]) -> Dict[str, Any]:
             "confidence": confidence,
         }
 
-    # Overall confidence score
+    # Overall confidence score (average of detected sections)
+    detected_count = len(detected_headers)
     result["_estimated"] = False
-    result["_confidence_score"] = len(detected_headers) / 4.0
-    result["_detected_headers"] = list(detected_headers)
+    result["_confidence_score"] = (
+        sum(section_confidences.values()) / detected_count
+        if detected_count > 0
+        else 0.5
+    )
+    result["_detected_headers"] = list(detected_headers.keys())
 
     return result
 
 
 def _apply_fallback_strategy(
-    items: List[Dict[str, Any]],
-    sections: Dict[str, Dict[str, Any]]
+    items: List[Dict[str, Any]], sections: Dict[str, Dict[str, Any]]
 ) -> Dict[str, Any]:
     """Apply fallback strategy when no section headers detected.
 
@@ -221,21 +312,19 @@ def _apply_fallback_strategy(
         if item.get("type") == "text":
             text = item.get("text", "").strip()
             if text:
-                all_texts.append({
-                    "text": text,
-                    "page": item.get("page"),
-                    "bbox": item.get("bbox")
-                })
+                all_texts.append(
+                    {"text": text, "page": item.get("page"), "bbox": item.get("bbox")}
+                )
 
     n = len(all_texts)
     if n == 0:
         return _create_empty_result()
 
     # Distribute content evenly: 25% each section
-    intro_texts = all_texts[:max(1, n // 4)]
-    methods_texts = all_texts[max(1, n // 4):max(1, n // 2)]
-    results_texts = all_texts[max(1, n // 2):max(1, 3 * n // 4)]
-    conclusion_texts = all_texts[max(1, 3 * n // 4):]
+    intro_texts = all_texts[: max(1, n // 4)]
+    methods_texts = all_texts[max(1, n // 4) : max(1, n // 2)]
+    results_texts = all_texts[max(1, n // 2) : max(1, 3 * n // 4)]
+    conclusion_texts = all_texts[max(1, 3 * n // 4) :]
 
     result = {}
     section_texts_map = {
@@ -302,7 +391,9 @@ def _create_empty_result() -> Dict[str, Any]:
     }
 
 
-def extract_metadata(items: List[Dict[str, Any]], arxiv_id: Optional[str] = None) -> Dict[str, Any]:
+def extract_metadata(
+    items: List[Dict[str, Any]], arxiv_id: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Extract paper metadata (title, authors, abstract) from first page.
     Uses heuristics based on position and formatting.
@@ -329,31 +420,28 @@ def extract_metadata(items: List[Dict[str, Any]], arxiv_id: Optional[str] = None
     if arxiv_id:
         try:
             # Remove version suffix if present (v1, v2, etc.)
-            arxiv_id_clean = re.sub(r'v\d+$', '', arxiv_id)
+            arxiv_id_clean = re.sub(r"v\d+$", "", arxiv_id)
             # Extract first 2 digits (year)
             year_part = arxiv_id_clean[:2]
-            year = 2000 + int(year_part) if int(year_part) < 50 else 1900 + int(year_part)
-            metadata["year"] = year
-            logger.info(
-                "Extracted year from arXiv ID",
-                arxiv_id=arxiv_id,
-                year=year
+            year = (
+                2000 + int(year_part) if int(year_part) < 50 else 1900 + int(year_part)
             )
+            metadata["year"] = year
+            logger.info("Extracted year from arXiv ID", arxiv_id=arxiv_id, year=year)
         except (ValueError, IndexError):
             pass
 
     # Get first page items only
     first_page_items = [
-        i for i in items
-        if i.get("page") == 1 and i.get("type") == "text"
+        i for i in items if i.get("page") == 1 and i.get("type") == "text"
     ]
 
     if not first_page_items:
         return metadata
-    
+
     # Sort by vertical position (top to bottom)
     first_page_items.sort(key=lambda x: x.get("bbox", {}).get("t", 0), reverse=True)
-    
+
     # Extract title (usually the largest text at the top)
     # Title is typically on the first few items and has larger font
     # Use the first non-empty text item as title (it's usually at the very top)
@@ -362,10 +450,10 @@ def extract_metadata(items: List[Dict[str, Any]], arxiv_id: Optional[str] = None
         if text and len(text) > 10:  # Minimum title length
             # Check if it looks like a title (not an author or affiliation line)
             # Titles typically don't contain commas separating names or email addresses
-            if not re.search(r'@|alibaba|university|institute', text, re.IGNORECASE):
+            if not re.search(r"@|alibaba|university|institute", text, re.IGNORECASE):
                 metadata["title"] = text
                 break
-    
+
     # If still no title, use font size heuristic
     if not metadata["title"]:
         title_candidates = []
@@ -374,17 +462,13 @@ def extract_metadata(items: List[Dict[str, Any]], arxiv_id: Optional[str] = None
             if text and len(text) > 10:  # Minimum title length
                 bbox = item.get("bbox", {})
                 height = bbox.get("t", 0) - bbox.get("b", 0)
-                title_candidates.append({
-                    "text": text,
-                    "height": height,
-                    "index": idx
-                })
-        
+                title_candidates.append({"text": text, "height": height, "index": idx})
+
         # Select title: prefer larger font (height)
         if title_candidates:
             title_candidates.sort(key=lambda x: x["height"], reverse=True)
             metadata["title"] = title_candidates[0]["text"]
-    
+
     # Extract authors (usually after title, before affiliations)
     # Authors typically contain multiple names separated by commas or numbers
     author_items = []
@@ -392,72 +476,80 @@ def extract_metadata(items: List[Dict[str, Any]], arxiv_id: Optional[str] = None
         text = item.get("text", "").strip()
         if not text:
             continue
-        
+
         # Check if this looks like author names
         # Authors often have: "Name1, Name2, Name3" or "Name1 1, Name2 2"
-        if re.search(r'\d{1,2}\s*,|\s+and\s+|,\s*[A-Z]', text):
+        if re.search(r"\d{1,2}\s*,|\s+and\s+|,\s*[A-Z]", text):
             # Check it's not an affiliation (which usually has "University", "Institute", etc.)
-            if not re.search(r'(University|Institute|College|Department|Lab|Laboratory)', text, re.IGNORECASE):
+            if not re.search(
+                r"(University|Institute|College|Department|Lab|Laboratory)",
+                text,
+                re.IGNORECASE,
+            ):
                 author_items.append(text)
-    
+
     if author_items:
         # Combine and clean author names
         authors_text = author_items[0]
         # Remove superscript numbers
-        authors_text = re.sub(r'\s*\d+\s*', ' ', authors_text)
+        authors_text = re.sub(r"\s*\d+\s*", " ", authors_text)
         # Split by comma or "and"
-        authors = re.split(r',\s*|\s+and\s+', authors_text)
-        metadata["authors"] = [a.strip() for a in authors if a.strip() and len(a.strip()) > 2]
-    
+        authors = re.split(r",\s*|\s+and\s+", authors_text)
+        metadata["authors"] = [
+            a.strip() for a in authors if a.strip() and len(a.strip()) > 2
+        ]
+
     # Extract abstract
     abstract_start = None
     abstract_text = []
-    
+
     for idx, item in enumerate(first_page_items):
         text = item.get("text", "").strip()
         if not text:
             continue
-        
+
         # Detect abstract header
-        if re.match(r'^(abstract|摘要)\s*$', text, re.IGNORECASE):
+        if re.match(r"^(abstract|摘要)\s*$", text, re.IGNORECASE):
             abstract_start = idx + 1
             continue
-        
+
         # Collect abstract text
         if abstract_start and idx >= abstract_start:
             # Stop at next section header
-            if re.match(r'^(1\.|introduction|keywords|关键词)', text, re.IGNORECASE):
+            if re.match(r"^(1\.|introduction|keywords|关键词)", text, re.IGNORECASE):
                 break
             abstract_text.append(text)
-    
+
     if abstract_text:
         metadata["abstract"] = " ".join(abstract_text)
-    
+
     # Extract keywords
     keywords_text = None
     for item in first_page_items:
         text = item.get("text", "").strip()
         # Look for keywords section
-        if re.match(r'^(keywords|关键词|key words)', text, re.IGNORECASE):
+        if re.match(r"^(keywords|关键词|key words)", text, re.IGNORECASE):
             # Extract keywords after the label
-            keywords_match = re.search(r'(?:keywords|关键词|key words)[:\s]+(.+)', text, re.IGNORECASE)
+            keywords_match = re.search(
+                r"(?:keywords|关键词|key words)[:\s]+(.+)", text, re.IGNORECASE
+            )
             if keywords_match:
                 keywords_text = keywords_match.group(1)
             break
-    
+
     if keywords_text:
         # Split by comma, semicolon, or period
-        keywords = re.split(r'[,;，；]\s*', keywords_text)
+        keywords = re.split(r"[,;，；]\s*", keywords_text)
         metadata["keywords"] = [k.strip() for k in keywords if k.strip()]
-    
+
     # Extract DOI
     for item in first_page_items:
         text = item.get("text", "").strip()
-        doi_match = re.search(r'(?:doi:?\s*)?(10\.\d{4,}/[^\s]+)', text, re.IGNORECASE)
+        doi_match = re.search(r"(?:doi:?\s*)?(10\.\d{4,}/[^\s]+)", text, re.IGNORECASE)
         if doi_match:
             metadata["doi"] = doi_match.group(1)
             break
-    
+
     # Extract year from arXiv ID or text (fallback)
     # Note: year already extracted from arXiv ID if provided
     if not metadata["year"]:
@@ -465,32 +557,30 @@ def extract_metadata(items: List[Dict[str, Any]], arxiv_id: Optional[str] = None
         for item in first_page_items[:15]:
             text = item.get("text", "").strip()
             # Look for arXiv submission date pattern
-            date_match = re.search(r'(\d{1,2}\s+[A-Za-z]{3}\s+(\d{4}))', text)
+            date_match = re.search(r"(\d{1,2}\s+[A-Za-z]{3}\s+(\d{4}))", text)
             if date_match:
                 metadata["year"] = int(date_match.group(2))
                 break
-            
+
             # Fallback: look for 4-digit year
             if not metadata["year"]:
-                year_match = re.search(r'\b(19|20)\d{2}\b', text)
+                year_match = re.search(r"\b(19|20)\d{2}\b", text)
                 if year_match:
                     metadata["year"] = int(year_match.group(0))
                     break
-    
+
     logger.info(
         "Extracted metadata from first page",
         title=metadata["title"][:50] if metadata["title"] else None,
         authors_count=len(metadata["authors"]),
-        has_abstract=metadata["abstract"] is not None
+        has_abstract=metadata["abstract"] is not None,
     )
-    
+
     return metadata
 
 
 async def extract_imrad_enhanced(
-    items: List[Dict[str, Any]],
-    markdown: str,
-    paper_metadata: Dict[str, Any]
+    items: List[Dict[str, Any]], markdown: str, paper_metadata: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Enhanced IMRaD extraction with LLM assistance per D-05.
 
@@ -518,35 +608,30 @@ async def extract_imrad_enhanced(
     # Step 2: High confidence - return as-is
     if confidence >= 0.75:  # LOCKED threshold per D-05
         logger.info(
-            "High confidence IMRaD extraction, skipping LLM",
-            confidence=confidence
+            "High confidence IMRaD extraction, skipping LLM", confidence=confidence
         )
         return rule_based_result
 
     # Step 3: Low confidence - use LLM (per D-05)
     logger.info(
-        "Low confidence IMRaD extraction, using LLM assistance",
-        confidence=confidence
+        "Low confidence IMRaD extraction, using LLM assistance", confidence=confidence
     )
 
     try:
         llm_result = await _extract_with_llm(
             markdown=markdown,
-            model="glm-4-flash"  # LOCKED model per D-05
+            model="glm-4-flash",  # LOCKED model per D-05
         )
 
         # Step 4: Merge results
-        final_result = _merge_imrad_results(
-            rule_based_result,
-            llm_result
-        )
+        final_result = _merge_imrad_results(rule_based_result, llm_result)
 
         return final_result
 
     except Exception as e:
         logger.error(
             "LLM-assisted IMRaD extraction failed, returning rule-based result",
-            error=str(e)
+            error=str(e),
         )
         # Return rule-based result even if LLM fails
         return rule_based_result
@@ -593,9 +678,7 @@ async def _extract_with_llm(markdown: str, model: str) -> Dict[str, Any]:
 """
 
     response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
+        model=model, messages=[{"role": "user", "content": prompt}], temperature=0.3
     )
 
     # Parse JSON response
@@ -614,14 +697,13 @@ async def _extract_with_llm(markdown: str, model: str) -> Dict[str, Any]:
         logger.error(
             "Failed to parse LLM IMRaD response as JSON",
             error=str(e),
-            content=content[:500]
+            content=content[:500],
         )
         raise ValueError(f"Invalid JSON from LLM: {e}")
 
 
 def _merge_imrad_results(
-    rule_based: Dict[str, Any],
-    llm: Dict[str, Any]
+    rule_based: Dict[str, Any], llm: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Merge rule-based and LLM results.
 
@@ -649,8 +731,12 @@ def _merge_imrad_results(
             rule_data = {}
 
         # Prefer higher confidence result
-        rule_confidence = rule_data.get("confidence", 0) if isinstance(rule_data, dict) else 0
-        llm_confidence = llm_data.get("confidence", 0) if isinstance(llm_data, dict) else 0
+        rule_confidence = (
+            rule_data.get("confidence", 0) if isinstance(rule_data, dict) else 0
+        )
+        llm_confidence = (
+            llm_data.get("confidence", 0) if isinstance(llm_data, dict) else 0
+        )
 
         if rule_confidence >= llm_confidence:
             merged[section] = rule_data
@@ -659,16 +745,22 @@ def _merge_imrad_results(
             merged[section] = {
                 "content": rule_data.get("content", ""),
                 "word_count": rule_data.get("word_count", 0),
-                "page_start": llm_data.get("page_start") if isinstance(llm_data, dict) else None,
-                "page_end": llm_data.get("page_end") if isinstance(llm_data, dict) else None,
-                "confidence": llm_data.get("confidence", 0.75) if isinstance(llm_data, dict) else 0.75,
+                "page_start": llm_data.get("page_start")
+                if isinstance(llm_data, dict)
+                else None,
+                "page_end": llm_data.get("page_end")
+                if isinstance(llm_data, dict)
+                else None,
+                "confidence": llm_data.get("confidence", 0.75)
+                if isinstance(llm_data, dict)
+                else 0.75,
             }
 
     # LLM-assisted results have minimum 0.75 confidence
     merged["_estimated"] = False
     merged["_confidence_score"] = max(
         rule_based.get("_confidence_score", 0),
-        0.75  # LLM-assisted minimum confidence
+        0.75,  # LLM-assisted minimum confidence
     )
     merged["_detected_headers"] = rule_based.get("_detected_headers", [])
 
@@ -711,7 +803,9 @@ def _merge_imrad_results(
             break
 
     # Clean up author list
-    metadata["authors"] = list(dict.fromkeys(author_candidates))[:10]  # Remove duplicates, max 10
+    metadata["authors"] = list(dict.fromkeys(author_candidates))[
+        :10
+    ]  # Remove duplicates, max 10
 
     # Abstract: look for "Abstract" or "摘要" header followed by text
     abstract_started = False
@@ -725,7 +819,9 @@ def _merge_imrad_results(
 
         if abstract_started:
             # Stop if we hit another section header
-            if detect_section(text) or re.match(r"^\s*(introduction|引言|1\.\s)", text, re.IGNORECASE):
+            if detect_section(text) or re.match(
+                r"^\s*(introduction|引言|1\.\s)", text, re.IGNORECASE
+            ):
                 break
             if len(text) > 20:  # Abstract paragraphs are substantial
                 abstract_texts.append(text)
@@ -740,9 +836,13 @@ def _merge_imrad_results(
         text = item.get("text", "").strip()
         if re.match(r"^\s*(keywords|关键词)", text, re.IGNORECASE):
             # Keywords might be on same line or next item
-            keyword_text = re.sub(r"^\s*(keywords|关键词)[：:]?\s*", "", text, flags=re.IGNORECASE)
+            keyword_text = re.sub(
+                r"^\s*(keywords|关键词)[：:]?\s*", "", text, flags=re.IGNORECASE
+            )
             if keyword_text:
-                metadata["keywords"] = [k.strip() for k in re.split(r"[,;，；]", keyword_text) if k.strip()]
+                metadata["keywords"] = [
+                    k.strip() for k in re.split(r"[,;，；]", keyword_text) if k.strip()
+                ]
             break
 
     # DOI: pattern matching

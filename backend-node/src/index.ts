@@ -28,6 +28,7 @@ import { annotationsRouter } from './routes/annotations';
 import { readingProgressRouter } from './routes/readingProgress';
 import { dashboardRouter } from './routes/dashboard';
 import { systemRouter } from './routes/system';
+import { uploadHistoryRouter } from './routes/upload-history';
 
 dotenv.config();
 
@@ -65,6 +66,7 @@ app.use('/api/annotations', annotationsRouter);
 app.use('/api/reading-progress', readingProgressRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/system', systemRouter);
+app.use('/api/upload-history', uploadHistoryRouter);
 
 // 错误处理
 app.use(errorHandler);
