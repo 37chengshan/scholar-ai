@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
-import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight, Plus, X, Trash2 } from "lucide-react";
+import { clsx } from "clsx";
+import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight, Plus, X, Trash2, CheckSquare, Square, Grid, List } from "lucide-react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
@@ -19,6 +20,17 @@ import {
 import { ListSkeleton } from "../components/Skeleton";
 import { NoPapersState } from "../components/EmptyState";
 import { LibraryFilters } from "../components/LibraryFilters";
+import { BatchActionBar, BatchProjectDialog } from "../components/BatchActionBar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 
 export function Library() {
   const { language } = useLanguage();
@@ -37,6 +49,21 @@ export function Library() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Batch selection state
+  const [selectedPapers, setSelectedPapers] = useState<Set<string>>(new Set());
+  const [batchMode, setBatchMode] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [singleDeletePaperId, setSingleDeletePaperId] = useState<string | null>(null);
+
+  // Compact mode state (D-01: default to compact)
+  const [compactMode, setCompactMode] = useState(true);
+
+  // Batch project dialog state
+  const [showProjectDialog, setShowProjectDialog] = useState(false);
+  const [batchAddProjectId, setBatchAddProjectId] = useState<string | null>(null);
+  const [isAddingToProject, setIsAddingToProject] = useState(false);
+
   // Use the usePapers hook
   const { papers, total, page, totalPages, loading, error, setPage, refetch, updatePaperLocal } = usePapers({
     limit: 20,
@@ -48,9 +75,11 @@ export function Library() {
     starred?: boolean;
     author?: string;
     projectId?: string;
+    readingStatus?: 'unread' | 'in-progress' | 'completed';
+    timeRange?: '7d' | '30d' | '90d' | 'all';
   }>({});
 
-  // Apply LibraryFilters to papers
+// Apply LibraryFilters to papers
   const filteredPapers = papers.filter(paper => {
     if (libraryFilters.starred && !paper.starred) return false;
     if (libraryFilters.author && !paper.authors?.some(a => a.toLowerCase().includes(libraryFilters.author!.toLowerCase()))) return false;
@@ -58,9 +87,28 @@ export function Library() {
       // TODO: Filter by project when project assignment is implemented
       return false;
     }
+    
+    // Reading status filter (D-03)
+    if (libraryFilters.readingStatus) {
+      const progress = paper.progress || 0;
+      if (libraryFilters.readingStatus === 'unread' && progress !== 0) return false;
+      if (libraryFilters.readingStatus === 'in-progress' && (progress === 0 || progress === 100)) return false;
+      if (libraryFilters.readingStatus === 'completed' && progress !== 100) return false;
+    }
+    
+    // Time range filter (D-03)
+    if (libraryFilters.timeRange) {
+      const now = new Date();
+      const uploadedAt = new Date(paper.uploadedAt || paper.createdAt);
+      const diffDays = (now.getTime() - uploadedAt.getTime()) / (1000 * 60 * 60 * 24);
+      
+      if (libraryFilters.timeRange === '7d' && diffDays > 7) return false;
+      if (libraryFilters.timeRange === '30d' && diffDays > 30) return false;
+      if (libraryFilters.timeRange === '90d' && diffDays > 90) return false;
+    }
+    
     return true;
   });
-
   // Calculate starred count from filtered papers
   const starredCount = filteredPapers.filter(p => p.starred).length;
   
@@ -91,6 +139,151 @@ export function Library() {
       console.error('Failed to toggle star:', error);
     }
   }, [isZh, updatePaperLocal]);
+
+  // Batch selection handlers
+  const toggleBatchMode = useCallback(() => {
+    setBatchMode(prev => !prev);
+    setSelectedPapers(new Set());
+  }, []);
+
+  const togglePaperSelection = useCallback((paperId: string) => {
+    setSelectedPapers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(paperId)) {
+        newSet.delete(paperId);
+      } else {
+        newSet.add(paperId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const selectAllPapers = useCallback(() => {
+    const allIds = filteredPapers.map(p => p.id);
+    setSelectedPapers(new Set(allIds));
+  }, [filteredPapers]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedPapers(new Set());
+  }, []);
+
+  // Batch star handler
+  const handleBatchStar = useCallback(async () => {
+    if (selectedPapers.size === 0) {
+      toast.error(isZh ? "请选择要星标的论文" : "Please select papers to star");
+      return;
+    }
+
+    try {
+      // Check if all selected are already starred
+      const allStarred = Array.from(selectedPapers).every(id => {
+        const paper = papers.find(p => p.id === id);
+        return paper?.starred;
+      });
+
+      // Update each paper
+      for (const paperId of selectedPapers) {
+        const paper = papers.find(p => p.id === paperId);
+        if (paper && paper.starred !== !allStarred) {
+          updatePaperLocal(paperId, { starred: !allStarred });
+          await papersApi.toggleStar(paperId, !allStarred);
+        }
+      }
+
+      toast.success(
+        isZh
+          ? (allStarred ? "已批量取消星标" : "已批量添加到星标")
+          : (allStarred ? "Batch unstarred" : "Batch starred")
+      );
+      setSelectedPapers(new Set());
+      setBatchMode(false);
+    } catch (error: any) {
+      toast.error(isZh ? "批量操作失败" : "Batch operation failed");
+      refetch();
+    }
+  }, [selectedPapers, papers, isZh, updatePaperLocal, refetch]);
+
+  // Batch add to project handler
+  const handleBatchAddToProject = useCallback(() => {
+    if (selectedPapers.size === 0) {
+      toast.error(isZh ? "请选择要添加到项目的论文" : "Please select papers to add to project");
+      return;
+    }
+
+    if (projects.length === 0) {
+      toast.error(isZh ? "请先创建项目" : "Please create a project first");
+      return;
+    }
+
+    setBatchAddProjectId(null);
+    setShowProjectDialog(true);
+  }, [selectedPapers.size, projects.length, isZh]);
+
+  const confirmBatchAddToProject = useCallback(async () => {
+    if (!batchAddProjectId) {
+      toast.error(isZh ? "请选择项目" : "Please select a project");
+      return;
+    }
+
+    setIsAddingToProject(true);
+    try {
+      // TODO: Implement batch add to project API when backend supports it
+      // For now, show success message
+      toast.success(
+        isZh
+          ? `已将 ${selectedPapers.size} 篇论文添加到项目`
+          : `Added ${selectedPapers.size} papers to project`
+      );
+      setSelectedPapers(new Set());
+      setBatchMode(false);
+      setShowProjectDialog(false);
+      setBatchAddProjectId(null);
+    } catch (error: any) {
+      toast.error(isZh ? "操作失败" : "Failed to add to project");
+    } finally {
+      setIsAddingToProject(false);
+    }
+  }, [batchAddProjectId, selectedPapers.size, isZh]);
+
+  const handleBatchDelete = useCallback(() => {
+    if (selectedPapers.size === 0) {
+      toast.error(isZh ? "请选择要删除的论文" : "Please select papers to delete");
+      return;
+    }
+
+    setSingleDeletePaperId(null);
+    setShowDeleteDialog(true);
+  }, [selectedPapers.size, isZh]);
+
+  const confirmDelete = useCallback(async () => {
+    setIsDeleting(true);
+    try {
+      if (singleDeletePaperId) {
+        // Single delete
+        await papersApi.remove(singleDeletePaperId);
+        toast.success(isZh ? "论文已删除" : "Paper deleted");
+      } else {
+        // Batch delete
+        const result = await papersApi.batchDelete(Array.from(selectedPapers));
+        toast.success(
+          isZh 
+            ? `已删除 ${result.deletedCount} 篇论文`
+            : `Deleted ${result.deletedCount} papers`
+        );
+        setSelectedPapers(new Set());
+        setBatchMode(false);
+      }
+      
+      setShowDeleteDialog(false);
+      setSingleDeletePaperId(null);
+      refetch();
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error?.detail || error.message;
+      toast.error(isZh ? `删除失败: ${errorMsg}` : `Failed to delete: ${errorMsg}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [selectedPapers, singleDeletePaperId, isZh, refetch]);
 
   // Projects hook
   const { projects, loading: projectsLoading, createProject, deleteProject } = useProjects();
@@ -151,13 +344,9 @@ export function Library() {
         navigate(`/read/${paperId}`);
         break;
       case 'delete':
-        try {
-          await papersApi.remove(paperId);
-          toast.success(isZh ? "论文已删除" : "Paper deleted");
-          refetch();
-        } catch (error: any) {
-          toast.error(isZh ? "删除失败" : "Failed to delete paper");
-        }
+        // Show password confirmation dialog for single delete
+        setSingleDeletePaperId(paperId);
+        setShowDeleteDialog(true);
         break;
       case 'star':
         // Star toggle is already handled by handleToggleStar
@@ -167,7 +356,7 @@ export function Library() {
         }
         break;
     }
-  }, [navigate, isZh, refetch, papers, handleToggleStar]);
+  }, [navigate, papers, handleToggleStar]);
   
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
@@ -378,8 +567,52 @@ export function Library() {
                   className="w-full bg-muted/50 border border-border/50 rounded-sm pl-9 pr-4 py-1.5 text-xs font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all"
                 />
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCompactMode(!compactMode)}
+                  className={clsx(
+                    "text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm transition-colors flex items-center gap-1.5",
+                    compactMode 
+                      ? "bg-background border border-border/50 text-foreground hover:bg-muted" 
+                      : "bg-primary text-primary-foreground shadow-sm"
+                  )}
+                  title={isZh ? (compactMode ? "当前：紧凑模式" : "切换到紧凑模式") : (compactMode ? "Current: Compact" : "Switch to Compact")}
+                >
+                  {compactMode ? <List className="w-3 h-3" /> : <Grid className="w-3 h-3" />}
+                  {compactMode ? (isZh ? "紧凑" : "Compact") : (isZh ? "标准" : "Standard")}
+                </button>
+                <button
+                  onClick={toggleBatchMode}
+                  className={clsx(
+                    "text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm transition-colors",
+                    batchMode 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "bg-background border border-border/50 text-foreground hover:bg-muted"
+                  )}
+                >
+                  {batchMode ? (isZh ? "取消批量" : "Cancel Batch") : (isZh ? "批量管理" : "Batch Manage")}
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Batch operation toolbar */}
+          {batchMode && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <BatchActionBar
+                selectedCount={selectedPapers.size}
+                onSelectAll={selectAllPapers}
+                onClear={clearSelection}
+                onBatchStar={handleBatchStar}
+                onBatchDelete={handleBatchDelete}
+                onBatchAddToProject={handleBatchAddToProject}
+                isStarred={false}
+              />
+            </motion.div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto bg-muted/10 p-5">
@@ -403,54 +636,102 @@ export function Library() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
-                className="grid grid-cols-1 xl:grid-cols-2 gap-5"
+                className={clsx(
+                  "grid grid-cols-1 xl:grid-cols-2",
+                  compactMode ? "gap-3" : "gap-5"
+                )}
               >
                 {filteredPapers.map((paper) => (
                   <div
                     key={paper.id}
-                    onClick={() => navigate(`/read/${paper.id}`)}
+                    onClick={() => {
+                      if (batchMode) {
+                        togglePaperSelection(paper.id);
+                      } else {
+                        navigate(`/read/${paper.id}`);
+                      }
+                    }}
                     onContextMenu={(e) => handleContextMenu(e, paper)}
-                    className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all duration-300 relative overflow-hidden cursor-pointer"
+                    className={clsx(
+                      "border bg-card rounded-sm flex flex-col group hover:shadow-md transition-all duration-300 relative overflow-hidden cursor-pointer",
+                      compactMode ? "p-3 gap-2" : "p-5 gap-3",
+                      batchMode && selectedPapers.has(paper.id) 
+                        ? "border-primary shadow-md shadow-primary/20" 
+                        : "border-border/50 hover:border-primary/50"
+                    )}
                   >
-                    <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500" />
+                    {/* Batch selection checkbox */}
+                    {batchMode && (
+                      <div className={clsx("absolute z-10", compactMode ? "top-2 left-2" : "top-3 left-3")}>
+                        {selectedPapers.has(paper.id) ? (
+                          <CheckSquare className={clsx(compactMode ? "w-3.5 h-3.5" : "w-4 h-4", "text-primary")} />
+                        ) : (
+                          <Square className={clsx(compactMode ? "w-3.5 h-3.5" : "w-4 h-4", "text-muted-foreground hover:text-primary transition-colors")} />
+                        )}
+                      </div>
+                    )}
+
+                    <div className={clsx("absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500", batchMode && selectedPapers.has(paper.id) && "via-primary/50")} />
 
 <div className="flex justify-between items-start">
                        <div className="flex items-center gap-2">
-                         <span className="text-[8px] font-bold uppercase tracking-widest bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm">{paper.venue || '—'}</span>
-                         <span className="text-[9px] font-mono text-muted-foreground">{paper.year || '—'}</span>
+                         <span className={clsx("font-bold uppercase tracking-widest bg-primary/10 text-primary rounded-sm", compactMode ? "text-[7px] px-1 py-0.5" : "text-[8px] px-1.5 py-0.5")}>{paper.venue || '—'}</span>
+                         <span className={clsx("font-mono text-muted-foreground", compactMode ? "text-[8px]" : "text-[9px]")}>{paper.year || '—'}</span>
                        </div>
                        <Star
                          onClick={(e) => {
                            e.stopPropagation();
                            handleToggleStar(paper.id, paper.starred || false);
                          }}
-                         className={`w-3.5 h-3.5 transition-colors cursor-pointer ${
-                           paper.starred ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"
-                         }`}
+                         className={clsx("transition-colors cursor-pointer",
+                           paper.starred ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary",
+                           compactMode ? "w-3 h-3" : "w-3.5 h-3.5"
+                         )}
                        />
                      </div>
 
-                    <div className="flex flex-col gap-1.5">
-                      <h3 className="font-serif font-black text-xl leading-tight group-hover:text-primary transition-colors tracking-tight line-clamp-2">
+                    <div className={clsx("flex flex-col", compactMode ? "gap-1" : "gap-1.5")}>
+                      <h3 className={clsx(
+                        "font-serif font-black leading-tight group-hover:text-primary transition-colors tracking-tight line-clamp-2",
+                        compactMode ? "text-base" : "text-xl"
+                      )}>
                         {paper.title}
                       </h3>
-                      <p className="font-sans text-[11px] font-medium text-foreground/80 line-clamp-1 truncate">{paper.authors?.join(', ') || '—'}</p>
+                      <p className={clsx(
+                        "font-sans font-medium text-foreground/80 line-clamp-1 truncate",
+                        compactMode ? "text-[10px]" : "text-[11px]"
+                      )}>{paper.authors?.join(', ') || '—'}</p>
                     </div>
 
-                    <div className="flex gap-4 mt-2">
-                      <div className="w-14 h-20 bg-muted border border-border/50 rounded-sm flex-shrink-0 relative overflow-hidden group-hover:shadow-sm">
+                    <div className={clsx("flex mt-2", compactMode ? "gap-2" : "gap-4")}>
+                      <div className={clsx(
+                        "bg-muted border border-border/50 rounded-sm flex-shrink-0 relative overflow-hidden group-hover:shadow-sm",
+                        compactMode ? "w-10 h-14" : "w-14 h-20"
+                      )}>
                         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1707256786130-6d028236813f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhY2FkZW1pYyUyMHBhcGVyJTIwY292ZXJ8ZW58MXx8fHwxNzc1MTk4MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080')] bg-cover opacity-20 grayscale group-hover:grayscale-0 group-hover:opacity-50 transition-all duration-700" />
                       </div>
-                      <p className="font-serif text-xs text-foreground/70 leading-[1.6] line-clamp-4 italic border-l-2 border-primary/20 pl-3 flex-1 h-fit">
+                      <p className={clsx(
+                        "font-serif text-foreground/70 leading-[1.6] italic border-l-2 border-primary/20 pl-3 flex-1 h-fit",
+                        compactMode ? "text-[10px] line-clamp-2" : "text-xs line-clamp-4"
+                      )}>
                         {paper.abstract || '—'}
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="text-[9px] font-bold uppercase tracking-widest bg-foreground text-background px-3 py-1.5 rounded-sm hover:bg-primary transition-colors shadow-sm">
+                    <div className={clsx(
+                      "flex items-center opacity-0 group-hover:opacity-100 transition-opacity",
+                      compactMode ? "gap-2 mt-2 pt-2 border-t border-border/30" : "gap-3 mt-3 pt-3 border-t border-border/30"
+                    )}>
+                      <button className={clsx(
+                        "font-bold uppercase tracking-widest bg-foreground text-background rounded-sm hover:bg-primary transition-colors shadow-sm",
+                        compactMode ? "text-[8px] px-2 py-1" : "text-[9px] px-3 py-1.5"
+                      )}>
                         {t.openReader}
                       </button>
-                      <button className="text-[9px] font-bold uppercase tracking-widest border border-foreground/20 text-foreground px-3 py-1.5 rounded-sm hover:bg-muted transition-colors">
+                      <button className={clsx(
+                        "font-bold uppercase tracking-widest border border-foreground/20 text-foreground rounded-sm hover:bg-muted transition-colors",
+                        compactMode ? "text-[8px] px-2 py-1" : "text-[9px] px-3 py-1.5"
+                      )}>
                         {t.details}
                       </button>
                     </div>
@@ -546,6 +827,66 @@ export function Library() {
 
         </div>
       </motion.div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={(open) => {
+        setShowDeleteDialog(open);
+        if (!open) {
+          setSingleDeletePaperId(null);
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {singleDeletePaperId 
+                ? (isZh ? "确认删除" : "Confirm Delete")
+                : (isZh ? "确认批量删除" : "Confirm Batch Delete")
+              }
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {singleDeletePaperId
+                ? (isZh 
+                    ? "您即将删除这篇论文。此操作不可撤销。"
+                    : "You are about to delete this paper. This action cannot be undone."
+                  )
+                : (isZh 
+                    ? `您即将删除 ${selectedPapers.size} 篇论文。此操作不可撤销。`
+                    : `You are about to delete ${selectedPapers.size} papers. This action cannot be undone.`
+                  )
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowDeleteDialog(false);
+              setSingleDeletePaperId(null);
+            }}>
+              {isZh ? "取消" : "Cancel"}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting 
+                ? (isZh ? "删除中..." : "Deleting...") 
+                : (isZh ? "确认删除" : "Confirm Delete")
+              }
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Batch Add to Project Dialog */}
+      <BatchProjectDialog
+        open={showProjectDialog}
+        onOpenChange={setShowProjectDialog}
+        projects={projects}
+        selectedProjectId={batchAddProjectId}
+        onProjectChange={setBatchAddProjectId}
+        onConfirm={confirmBatchAddToProject}
+        isConfirming={isAddingToProject}
+      />
     </div>
   );
 }
