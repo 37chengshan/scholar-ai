@@ -37,6 +37,7 @@ from app.core.config import settings
 from app.utils.logger import logger
 from app.utils.zhipu_client import get_llm_client
 from app.utils.token_tracker import TokenTracker
+from app.utils.audit_logger import get_audit_logger
 
 
 # Error recovery constants per D-12
@@ -597,6 +598,9 @@ class AgentRunner:
                 "error": f"Tool '{tool_name}' not found in registry",
             }
 
+        # Track execution time for audit logging
+        execution_start = time.time()
+
         try:
             # Execute tool via Tool Registry (actual implementation)
             logger.info(
@@ -607,16 +611,85 @@ class AgentRunner:
                 tool_name, parameters, **context.environment
             )
 
+            # Calculate execution time
+            execution_ms = int((time.time() - execution_start) * 1000)
+
             logger.info(
                 "Tool execution completed",
                 tool=tool_name,
                 success=result.get("success"),
+                execution_ms=execution_ms,
             )
+
+            # Record audit log (per D-08)
+            try:
+                audit_logger = get_audit_logger()
+                user_id = context.environment.get("user_id", "unknown")
+
+                # Get risk level from safety layer
+                risk_level = "LOW"  # Default for unknown tools
+                if hasattr(self.safety_layer, "TOOL_PERMISSIONS"):
+                    from app.core.safety_layer import PermissionLevel
+
+                    perm = self.safety_layer.TOOL_PERMISSIONS.get(tool_name)
+                    if perm:
+                        risk_level = perm.name
+
+                await audit_logger.record(
+                    user_id=user_id,
+                    tool=tool_name,
+                    risk_level=risk_level,
+                    params=parameters,
+                    result=result.get("error")
+                    if not result.get("success")
+                    else "Success",
+                    tokens_used=self.total_tokens_used,
+                    cost_cny=self.total_cost,
+                    execution_ms=execution_ms,
+                )
+            except Exception as audit_error:
+                # Log audit error but don't fail tool execution
+                logger.warning(
+                    "Audit logging failed (non-blocking)",
+                    error=str(audit_error),
+                    tool=tool_name,
+                )
 
             return result
 
         except Exception as e:
+            execution_ms = int((time.time() - execution_start) * 1000)
             logger.error("Tool execution failed", tool=tool_name, error=str(e))
+
+            # Record failed execution to audit log
+            try:
+                audit_logger = get_audit_logger()
+                user_id = context.environment.get("user_id", "unknown")
+
+                risk_level = "LOW"
+                if hasattr(self.safety_layer, "TOOL_PERMISSIONS"):
+                    from app.core.safety_layer import PermissionLevel
+
+                    perm = self.safety_layer.TOOL_PERMISSIONS.get(tool_name)
+                    if perm:
+                        risk_level = perm.name
+
+                await audit_logger.record(
+                    user_id=user_id,
+                    tool=tool_name,
+                    risk_level=risk_level,
+                    params=parameters,
+                    result=f"Error: {str(e)}",
+                    tokens_used=self.total_tokens_used,
+                    cost_cny=self.total_cost,
+                    execution_ms=execution_ms,
+                )
+            except Exception as audit_error:
+                logger.warning(
+                    "Audit logging failed (non-blocking)",
+                    error=str(audit_error),
+                    tool=tool_name,
+                )
 
             return {"success": False, "error": str(e)}
 
