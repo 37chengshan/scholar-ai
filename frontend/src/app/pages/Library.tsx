@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { clsx } from "clsx";
-import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight, Plus, X, Trash2, CheckSquare, Square, Grid, List } from "lucide-react";
+import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight, Plus, X, Trash2, CheckSquare, Square, Grid, List, StickyNote } from "lucide-react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
 import { usePapers } from "../../hooks/usePapers";
 import { useProjects } from "../../hooks/useProjects";
+import { useNotes } from "../../hooks/useNotes";
 import * as papersApi from "../../services/papersApi";
 import { toast } from "sonner";
+import { NotesList } from "../components/notes/NotesList";
+import { ViewToggle } from "../components/notes/ViewToggle";
 import {
   Pagination,
   PaginationContent,
@@ -59,10 +62,25 @@ export function Library() {
   // Compact mode state (D-01: default to compact)
   const [compactMode, setCompactMode] = useState(true);
 
+  // Library view mode (D-08: Papers vs Notes integration)
+  const [libraryView, setLibraryView] = useState<'papers' | 'notes'>('papers');
+
+  // Notes view mode (D-09: Multi-view toggle for notes)
+  const [noteViewMode, setNoteViewMode] = useState<'time' | 'paper' | 'tag'>('time');
+
   // Batch project dialog state
   const [showProjectDialog, setShowProjectDialog] = useState(false);
   const [batchAddProjectId, setBatchAddProjectId] = useState<string | null>(null);
   const [isAddingToProject, setIsAddingToProject] = useState(false);
+
+  // Filter state for LibraryFilters (must be defined before use)
+  const [libraryFilters, setLibraryFilters] = useState<{
+    starred?: boolean;
+    author?: string;
+    projectId?: string;
+    readingStatus?: 'unread' | 'in-progress' | 'completed';
+    timeRange?: '7d' | '30d' | '90d' | 'all';
+  }>({});
 
   // Use the usePapers hook with filters
   const { papers, total, page, totalPages, loading, error, setPage, refetch, updatePaperLocal } = usePapers({
@@ -79,14 +97,11 @@ export function Library() {
       : undefined,
   });
 
-  // Filter state for LibraryFilters (must be defined before use)
-  const [libraryFilters, setLibraryFilters] = useState<{
-    starred?: boolean;
-    author?: string;
-    projectId?: string;
-    readingStatus?: 'unread' | 'in-progress' | 'completed';
-    timeRange?: '7d' | '30d' | '90d' | 'all';
-  }>({});
+  // Projects hook (must be defined before handleBatchAddToProject)
+  const { projects, loading: projectsLoading, createProject, deleteProject } = useProjects();
+
+  // Notes hook (D-08: Notes integration in Library)
+  const { notes, loading: notesLoading, error: notesError } = useNotes();
 
   // Papers are now filtered on the backend, no need for client-side filtering
   const filteredPapers = papers;
@@ -263,9 +278,6 @@ export function Library() {
     }
   }, [selectedPapers, singleDeletePaperId, isZh, refetch]);
 
-  // Projects hook
-  const { projects, loading: projectsLoading, createProject, deleteProject } = useProjects();
-  
   // Selected project filter
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   
@@ -348,6 +360,7 @@ export function Library() {
     allPapers: isZh ? "所有文献" : "All Papers",
     starred: isZh ? "已加星标" : "Starred",
     projects: isZh ? "项目" : "Projects",
+    notes: isZh ? "笔记" : "Notes",
     new: isZh ? "新建" : "New",
     documents: isZh ? "文档库" : "Documents",
     showing: isZh ? `显示 ${total} 个结果` : `Showing ${total} results`,
@@ -365,6 +378,9 @@ export function Library() {
     tags: isZh ? "标签" : "Tags",
     noPapers: isZh ? "暂无论文" : "No papers found",
     noPapersDesc: isZh ? "上传您的第一篇论文开始使用" : "Upload your first paper to get started",
+    noNotes: isZh ? "暂无笔记" : "No notes yet",
+    noNotesDesc: isZh ? "阅读论文时创建笔记来整理思路" : "Create notes while reading papers",
+    createNote: isZh ? "创建笔记" : "Create Note",
     tagNames: isZh ? ["Transformer", "大语言模型", "视觉", "对齐", "RLHF", "智能体"] : ["Transformers", "LLM", "Vision", "Alignment", "RLHF", "Agents"],
     previous: isZh ? "上一页" : "Previous",
     next: isZh ? "下一页" : "Next",
@@ -396,10 +412,31 @@ export function Library() {
                 <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">{t.recent}</span>
                 <span className="text-[9px] font-mono text-muted-foreground group-hover:text-primary">{recentCount}</span>
               </button>
-              <button className="flex items-center gap-2.5 px-2 py-2 rounded-sm bg-primary text-primary-foreground transition-colors group shadow-sm shadow-primary/20">
-                <FileText className="w-3.5 h-3.5 text-primary-foreground/90" />
+              <button 
+                onClick={() => setLibraryView('papers')}
+                className={clsx(
+                  "flex items-center gap-2.5 px-2 py-2 rounded-sm transition-colors group",
+                  libraryView === 'papers'
+                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                    : "hover:bg-muted text-foreground/80 hover:text-primary"
+                )}
+              >
+                <FileText className={clsx("w-3.5 h-3.5", libraryView === 'papers' ? "text-primary-foreground/90" : "text-primary/70 group-hover:text-primary")} />
                 <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">{t.allPapers}</span>
-                <span className="text-[9px] font-mono text-primary-foreground/70">{total}</span>
+                <span className={clsx("text-[9px] font-mono", libraryView === 'papers' ? "text-primary-foreground/70" : "text-muted-foreground group-hover:text-primary")}>{total}</span>
+              </button>
+              <button 
+                onClick={() => setLibraryView('notes')}
+                className={clsx(
+                  "flex items-center gap-2.5 px-2 py-2 rounded-sm transition-colors group",
+                  libraryView === 'notes'
+                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                    : "hover:bg-muted text-foreground/80 hover:text-primary"
+                )}
+              >
+                <StickyNote className={clsx("w-3.5 h-3.5", libraryView === 'notes' ? "text-primary-foreground/90" : "text-primary/70 group-hover:text-primary")} />
+                <span className="text-[10px] font-bold uppercase tracking-widest flex-1 text-left">{t.notes}</span>
+                <span className={clsx("text-[9px] font-mono", libraryView === 'notes' ? "text-primary-foreground/70" : "text-muted-foreground group-hover:text-primary")}>{notes.length}</span>
               </button>
               <button className="flex items-center gap-2.5 px-2 py-2 rounded-sm hover:bg-muted transition-colors text-foreground/80 hover:text-primary group">
                 <Star className="w-3.5 h-3.5 text-primary/70 group-hover:text-primary" />
@@ -531,45 +568,65 @@ export function Library() {
         <div className="px-6 py-4 border-b border-border/50 bg-background/90 backdrop-blur-md sticky top-0 z-10 flex flex-col gap-4 shadow-sm">
           <div className="flex justify-between items-center">
             <div className="flex items-baseline gap-3">
-              <h2 className="font-serif text-2xl font-black tracking-tight">{t.documents}</h2>
-              <span className="text-[9px] font-mono tracking-[0.2em] text-muted-foreground">{t.showing}</span>
+              <h2 className="font-serif text-2xl font-black tracking-tight">{libraryView === 'papers' ? t.documents : t.notes}</h2>
+              <span className="text-[9px] font-mono tracking-[0.2em] text-muted-foreground">
+                {libraryView === 'papers' ? t.showing : `${notes.length} notes`}
+              </span>
             </div>
             <div className="flex items-center gap-3">
-              <div className="relative w-64">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t.searchPlaceholder}
-                  className="w-full bg-muted/50 border border-border/50 rounded-sm pl-9 pr-4 py-1.5 text-xs font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all"
-                />
-              </div>
+              {libraryView === 'papers' && (
+                <div className="relative w-64">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t.searchPlaceholder}
+                    className="w-full bg-muted/50 border border-border/50 rounded-sm pl-9 pr-4 py-1.5 text-xs font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all"
+                  />
+                </div>
+              )}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCompactMode(!compactMode)}
-                  className={clsx(
-                    "text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm transition-colors flex items-center gap-1.5",
-                    compactMode 
-                      ? "bg-background border border-border/50 text-foreground hover:bg-muted" 
-                      : "bg-primary text-primary-foreground shadow-sm"
-                  )}
-                  title={isZh ? (compactMode ? "当前：紧凑模式" : "切换到紧凑模式") : (compactMode ? "Current: Compact" : "Switch to Compact")}
-                >
-                  {compactMode ? <List className="w-3 h-3" /> : <Grid className="w-3 h-3" />}
-                  {compactMode ? (isZh ? "紧凑" : "Compact") : (isZh ? "标准" : "Standard")}
-                </button>
-                <button
-                  onClick={toggleBatchMode}
-                  className={clsx(
-                    "text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm transition-colors",
-                    batchMode 
-                      ? "bg-primary text-primary-foreground shadow-sm" 
-                      : "bg-background border border-border/50 text-foreground hover:bg-muted"
-                  )}
-                >
-                  {batchMode ? (isZh ? "取消批量" : "Cancel Batch") : (isZh ? "批量管理" : "Batch Manage")}
-                </button>
+                {libraryView === 'notes' && (
+                  <ViewToggle value={noteViewMode} onChange={setNoteViewMode} />
+                )}
+                {libraryView === 'notes' && (
+                  <button
+                    onClick={() => navigate('/notes')}
+                    className="text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm bg-primary text-primary-foreground shadow-sm flex items-center gap-1.5 hover:bg-primary/90"
+                  >
+                    <Plus className="w-3 h-3" />
+                    {t.createNote}
+                  </button>
+                )}
+                {libraryView === 'papers' && (
+                  <>
+                    <button
+                      onClick={() => setCompactMode(!compactMode)}
+                      className={clsx(
+                        "text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm transition-colors flex items-center gap-1.5",
+                        compactMode 
+                          ? "bg-background border border-border/50 text-foreground hover:bg-muted" 
+                          : "bg-primary text-primary-foreground shadow-sm"
+                      )}
+                      title={isZh ? (compactMode ? "当前：紧凑模式" : "切换到紧凑模式") : (compactMode ? "Current: Compact" : "Switch to Compact")}
+                    >
+                      {compactMode ? <List className="w-3 h-3" /> : <Grid className="w-3 h-3" />}
+                      {compactMode ? (isZh ? "紧凑" : "Compact") : (isZh ? "标准" : "Standard")}
+                    </button>
+                    <button
+                      onClick={toggleBatchMode}
+                      className={clsx(
+                        "text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm transition-colors",
+                        batchMode 
+                          ? "bg-primary text-primary-foreground shadow-sm" 
+                          : "bg-background border border-border/50 text-foreground hover:bg-muted"
+                      )}
+                    >
+                      {batchMode ? (isZh ? "取消批量" : "Cancel Batch") : (isZh ? "批量管理" : "Batch Manage")}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -594,32 +651,34 @@ export function Library() {
         </div>
 
         <div className="flex-1 overflow-y-auto bg-muted/10 p-5">
-          {loading ? (
-            <ListSkeleton count={6} />
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <FileText className="w-12 h-12 mb-4 opacity-50" />
-              <p className="text-sm font-medium">{error}</p>
-            </div>
-          ) : papers.length === 0 && !debouncedSearch ? (
-            <NoPapersState onUpload={() => navigate('/upload')} isZh={isZh} />
-          ) : papers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <FileText className="w-12 h-12 mb-4 opacity-50" />
-              <p className="text-sm font-medium">{isZh ? "未找到匹配的论文" : "No papers match your search"}</p>
-            </div>
-          ) : (
-            <>
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className={clsx(
-                  "grid grid-cols-1 xl:grid-cols-2",
-                  compactMode ? "gap-3" : "gap-5"
-                )}
-              >
-                {filteredPapers.map((paper) => (
+          {libraryView === 'papers' ? (
+            // Papers view (existing implementation)
+            loading ? (
+              <ListSkeleton count={6} />
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                <FileText className="w-12 h-12 mb-4 opacity-50" />
+                <p className="text-sm font-medium">{error}</p>
+              </div>
+            ) : papers.length === 0 && !debouncedSearch ? (
+              <NoPapersState onUpload={() => navigate('/upload')} isZh={isZh} />
+            ) : papers.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                <FileText className="w-12 h-12 mb-4 opacity-50" />
+                <p className="text-sm font-medium">{isZh ? "未找到匹配的论文" : "No papers match your search"}</p>
+              </div>
+            ) : (
+              <>
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className={clsx(
+                    "grid grid-cols-1 xl:grid-cols-2",
+                    compactMode ? "gap-3" : "gap-5"
+                  )}
+                >
+                  {filteredPapers.map((paper) => (
                   <div
                     key={paper.id}
                     onClick={() => {
@@ -718,32 +777,64 @@ export function Library() {
               </motion.div>
 
               {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="mt-6">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => page > 1 && setPage(page - 1)}
-                          className={page <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                        />
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationLink isActive>
-                          {t.pageOf} {page} {t.pageOfTotal} {totalPages} {t.pageTotal}
-                        </PaginationLink>
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => page < totalPages && setPage(page + 1)}
-                          className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
+                {totalPages > 1 && (
+                  <div className="mt-6">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            onClick={() => page > 1 && setPage(page - 1)}
+                            className={page <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                        <PaginationItem>
+                          <PaginationLink isActive>
+                            {t.pageOf} {page} {t.pageOfTotal} {totalPages} {t.pageTotal}
+                          </PaginationLink>
+                        </PaginationItem>
+                        <PaginationItem>
+                          <PaginationNext
+                            onClick={() => page < totalPages && setPage(page + 1)}
+                            className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                )}
+              </>
+            )
+          ) : (
+            // Notes view (D-08: Notes integration)
+            notesLoading ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {isZh ? "加载笔记..." : "Loading notes..."}
+              </div>
+            ) : notesError ? (
+              <div className="text-center py-8 text-destructive">
+                <p>{notesError}</p>
+              </div>
+            ) : notes.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-muted-foreground mb-4">
+                  <StickyNote className="w-16 h-16 mx-auto opacity-50" />
                 </div>
-              )}
-            </>
+                <h3 className="font-semibold text-lg mb-2">{t.noNotes}</h3>
+                <p className="text-muted-foreground text-sm mb-4">{t.noNotesDesc}</p>
+                <button
+                  onClick={() => navigate('/notes')}
+                  className="text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm bg-primary text-primary-foreground shadow-sm"
+                >
+                  {t.createNote}
+                </button>
+              </div>
+            ) : (
+              <NotesList
+                notes={notes}
+                viewMode={noteViewMode}
+                loading={notesLoading}
+              />
+            )
           )}
         </div>
       </div>
