@@ -17,7 +17,7 @@ model annotations {
   content     String?
   color       String   @default("#FFEB3B")
   createdAt   DateTime @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime @updatedAt
   papers      papers   @relation(fields: [paperId], references: [id], onDelete: Cascade)
   users       users    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -31,7 +31,7 @@ model configs {
   key         String   @unique
   value       Json
   description String?
-  updatedAt   DateTime
+  updatedAt   DateTime @updatedAt
 }
 
 model knowledge_maps {
@@ -42,7 +42,7 @@ model knowledge_maps {
   nodeCount   Int      @default(0)
   edgeCount   Int      @default(0)
   createdAt   DateTime @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime @updatedAt
   userId      String
   users       users    @relation("UserKnowledgeMaps", fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -82,13 +82,17 @@ model papers {
   venue           String?
   citations       Int?
   createdAt       DateTime           @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime           @updatedAt
   userId          String
   storageKey      String?            @map("storage_key")
   readingNotes    String?            @map("reading_notes")
   notesVersion    Int                @default(0) @map("notes_version")
   starred         Boolean            @default(false)
   projectId       String?
+  batchId         String?            @map("batch_id")
+  uploadStatus    String?            @default("pending") @map("upload_status")
+  uploadProgress  Int?               @default(0) @map("upload_progress")
+  uploadedAt      DateTime?          @map("uploaded_at")
   annotations     annotations[]
   paperChunks     paper_chunks[]     @relation("PaperChunks")
   projects        projects?          @relation(fields: [projectId], references: [id])
@@ -96,10 +100,13 @@ model papers {
   processingTasks processing_tasks?  @relation("PaperProcessingTasks")
   readingProgress reading_progress[] @relation("PaperReadingProgress")
   queries         queries[]          @relation("QueryPapers")
+  batch           paper_batches?     @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([starred])
   @@index([userId, starred])
+  @@index([batchId])
+  @@unique([userId, title], name: "unique_user_title")
 }
 
 model permissions {
@@ -119,11 +126,26 @@ model processing_tasks {
   errorMessage String?   @map("error_message")
   attempts     Int       @default(0)
   createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @map("updated_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
   completedAt  DateTime? @map("completed_at")
   papers       papers    @relation("PaperProcessingTasks", fields: [paperId], references: [id], onDelete: Cascade)
 
   @@index([paperId])
+  @@index([status])
+}
+
+model paper_batches {
+  id            String   @id
+  userId        String
+  totalFiles    Int      @map("total_files")
+  uploadedCount Int      @default(0) @map("uploaded_count")
+  status        String   @default("uploading")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  papers        papers[]
+  users         users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@index([status])
 }
 
@@ -133,7 +155,7 @@ model projects {
   name      String
   color     String   @default("#3B82F6")
   createdAt DateTime @default(now())
-  updatedAt DateTime
+  updatedAt DateTime @updatedAt
   papers    papers[]
   users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -216,6 +238,26 @@ model notes {
   @@map("notes")
 }
 
+model sessions {
+  id             String   @id
+  userId         String   @map("user_id")
+  title          String?
+  status         String   @default("active")
+  metadata       Json     @default("{}")
+  messageCount   Int      @default(0) @map("message_count")
+  toolCallCount  Int      @default(0) @map("tool_call_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  lastActivityAt DateTime @default(now()) @map("last_activity_at")
+  expiresAt      DateTime @map("expires_at")
+  user           users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
 model users {
   id              String             @id
   email           String             @unique
@@ -224,14 +266,16 @@ model users {
   emailVerified   Boolean            @default(false) @map("email_verified")
   avatar          String?
   createdAt       DateTime           @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime           @updatedAt
   annotations     annotations[]
   knowledgeMaps   knowledge_maps[]   @relation("UserKnowledgeMaps")
   notes           notes[]
   papers          papers[]
+  paperBatches    paper_batches[]
   projects        projects[]
   queries         queries[]
   readingProgress reading_progress[] @relation("UserReadingProgress")
   refreshTokens   refresh_tokens[]   @relation("UserRefreshTokens")
+  sessions        sessions[]
   userRoles       user_roles[]       @relation("UserRoles")
 }
