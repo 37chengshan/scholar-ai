@@ -33,6 +33,7 @@ import time
 from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
 from app.core.context_manager import ContextManager, Context
+from app.core.intent_classifier import IntentClassifier
 from app.core.config import settings
 from app.utils.logger import logger
 from app.utils.zhipu_client import get_llm_client
@@ -182,6 +183,7 @@ class AgentRunner:
         self.token_tracker = TokenTracker()
         self.total_tokens_used = 0
         self.total_cost = 0.0
+        self.intent_classifier = IntentClassifier()  # Per D-22, D-23
 
     def get_ui_state(self) -> UIStateResult:
         """Get current UI state based on internal state.
@@ -242,9 +244,34 @@ class AgentRunner:
         tool_calls_history: List[Dict[str, Any]] = []
 
         # Build context
-        context = await self.context_manager.build_context(session_id)
+        context = await self.context_manager.build_context(session_id, user_id)
         context.objective = user_input
         context.environment["user_id"] = user_id
+
+        # Classify intent - Per D-22, D-23
+        try:
+            intent_result = await self.intent_classifier.classify(user_input)
+            context.working_memory["intent"] = intent_result
+
+            logger.info(
+                "Intent classified",
+                intent=intent_result.get("intent"),
+                confidence=intent_result.get("confidence"),
+                needs_clarification=intent_result.get("needs_clarification"),
+            )
+
+            # Handle fuzzy instructions - Per D-24
+            if intent_result.get("needs_clarification"):
+                return {
+                    "success": False,
+                    "needs_intent_selection": True,
+                    "suggested_intents": intent_result.get("suggested_intents", []),
+                    "message": "Multiple intents detected. Please select one.",
+                }
+
+        except Exception as e:
+            logger.error("Intent classification failed", error=str(e))
+            # Continue without intent classification
 
         # System prompt for agent
         system_prompt = self._build_system_prompt(context)
