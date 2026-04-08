@@ -15,7 +15,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { NotesList } from '@/app/components/notes/NotesList';
 import { ViewToggle } from '@/app/components/notes/ViewToggle';
 import { Button } from '@/app/components/ui/button';
-import { FileText } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 
 export function Notes() {
   const [viewMode, setViewMode] = useState<'time' | 'paper' | 'tag'>('time');
@@ -42,11 +42,11 @@ export function Notes() {
           {/* View Toggle */}
           <ViewToggle value={viewMode} onChange={setViewMode} />
 
-          {/* Create Note Button (future) */}
-          {/* <Button variant="default" size="sm" className="flex items-center gap-1">
+          {/* Create Note Button */}
+          <Button variant="default" size="sm" className="flex items-center gap-1">
             <Plus className="w-4 h-4" />
             New Note
-          </Button> */}
+          </Button>
         </div>
       </div>
 
