@@ -258,6 +258,26 @@ model sessions {
   @@map("sessions")
 }
 
+model AuditLog {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  tool         String
+  riskLevel    String    @map("risk_level")
+  params       Json?
+  result       String?
+  tokensUsed   Int?      @map("tokens_used")
+  costCny      Float?    @map("cost_cny")
+  executionMs  Int?      @map("execution_ms")
+  ipAddress    String?   @map("ip_address")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  user         users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([riskLevel])
+  @@map("audit_logs")
+}
+
 model users {
   id              String             @id
   email           String             @unique
@@ -268,6 +288,7 @@ model users {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   annotations     annotations[]
+  auditLogs       AuditLog[]
   knowledgeMaps   knowledge_maps[]   @relation("UserKnowledgeMaps")
   notes           notes[]
   papers          papers[]
