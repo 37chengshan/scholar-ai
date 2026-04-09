@@ -4,12 +4,13 @@
  * React-pdf based PDF viewer with:
  * - Pagination controls (previous/next, page number)
  * - Zoom controls (50%-200%)
+ * - Smooth page scrolling when currentPage prop changes
  * - Responsive layout
  *
- * Requirements: PAGE-06 (Read page PDF viewer)
+ * Requirements: PAGE-06 (Read page PDF viewer), 30-03 (smooth page transitions)
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -22,14 +23,33 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 interface PDFViewerProps {
   fileUrl: string;
+  currentPage?: number;
   onPageChange?: (page: number) => void;
   initialPage?: number;
 }
 
-export function PDFViewer({ fileUrl, onPageChange, initialPage = 1 }: PDFViewerProps) {
+export function PDFViewer({ fileUrl, currentPage, onPageChange, initialPage = 1 }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState(initialPage);
   const [scale, setScale] = useState(1.0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sync external currentPage prop to internal state
+  useEffect(() => {
+    if (currentPage !== undefined && currentPage !== pageNumber && currentPage >= 1 && currentPage <= numPages) {
+      setPageNumber(currentPage);
+    }
+  }, [currentPage]);
+
+  // Smooth scroll to page when pageNumber changes
+  useEffect(() => {
+    if (containerRef.current && numPages > 0) {
+      const pageEl = containerRef.current.querySelector(`[data-page="${pageNumber}"]`);
+      if (pageEl) {
+        pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [pageNumber, numPages]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -45,7 +65,7 @@ export function PDFViewer({ fileUrl, onPageChange, initialPage = 1 }: PDFViewerP
   return (
     <div className="flex flex-col h-full" data-testid="pdf-viewer">
       {/* Controls */}
-      <div className="flex items-center gap-4 p-2 border-b" data-testid="pdf-controls">
+      <div className="flex items-center gap-4 p-2 border-b bg-white" data-testid="pdf-controls">
         <button
           onClick={() => goToPage(pageNumber - 1)}
           disabled={pageNumber <= 1}
@@ -73,7 +93,7 @@ export function PDFViewer({ fileUrl, onPageChange, initialPage = 1 }: PDFViewerP
         >
           -
         </button>
-        <span className="text-sm" data-testid="zoom-level">{Math.round(scale * 100)}%</span>
+        <span className="text-sm min-w-[48px] text-center" data-testid="zoom-level">{Math.round(scale * 100)}%</span>
         <button
           onClick={() => setScale(s => Math.min(2, s + 0.1))}
           data-testid="zoom-in"
@@ -84,9 +104,14 @@ export function PDFViewer({ fileUrl, onPageChange, initialPage = 1 }: PDFViewerP
       </div>
 
       {/* PDF */}
-      <div className="flex-1 overflow-auto" data-testid="pdf-content">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-auto"
+        style={{ scrollBehavior: 'smooth' }}
+        data-testid="pdf-content"
+      >
         <Document file={fileUrl} onLoadSuccess={onDocumentLoadSuccess}>
-          <Page pageNumber={pageNumber} scale={scale} />
+          <Page pageNumber={pageNumber} scale={scale} data-page={pageNumber} />
         </Document>
       </div>
     </div>
