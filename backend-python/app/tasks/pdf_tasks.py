@@ -8,12 +8,18 @@ Per D-09: Rate limiting at 120/min for LLM API protection
 """
 
 import asyncio
+import uuid
+from datetime import datetime, timezone
 from typing import Dict, Any
+
+from sqlalchemy import select, func, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.celery_config import celery_app
 from app.workers.pdf_worker import PDFProcessor
 from app.utils.logger import logger
-from app.core.database import postgres_db
+from app.database import AsyncSessionLocal
+from app.models import Paper, ProcessingTask, PaperBatch
 
 
 # Current concurrency level (will be adjusted by memory monitor)
@@ -31,13 +37,6 @@ def set_current_concurrency(value: int):
     _current_concurrency = value
 
 
-async def get_db_pool():
-    """Get database connection pool."""
-    if not postgres_db.pool:
-        await postgres_db.connect()
-    return postgres_db.pool
-
-
 @celery_app.task(bind=True, rate_limit='120/m')
 def process_pdf_batch_task(self, batch_id: str):
     """
@@ -48,58 +47,64 @@ def process_pdf_batch_task(self, batch_id: str):
     """
 
     async def _process_batch():
-        pool = await get_db_pool()
+        async with AsyncSessionLocal() as db:
+            # Query papers for this batch (only uploaded ones)
+            result = await db.execute(
+                select(Paper.id).where(
+                    Paper.batch_id == batch_id,
+                    Paper.upload_status == 'completed'
+                )
+            )
+            papers = result.scalars().all()
 
-        # Query papers for this batch (only uploaded ones)
-        papers = await pool.fetch(
-            """SELECT id FROM papers
-               WHERE batch_id = $1 AND upload_status = 'completed'""",
-            batch_id
-        )
+            if not papers:
+                logger.info(f"No uploaded papers found for batch {batch_id}")
+                return
 
-        if not papers:
-            logger.info(f"No uploaded papers found for batch {batch_id}")
-            return
+            # Get dynamic concurrency
+            concurrency = get_current_concurrency()
+            semaphore = asyncio.Semaphore(concurrency)
 
-        # Get dynamic concurrency
-        concurrency = get_current_concurrency()
-        semaphore = asyncio.Semaphore(concurrency)
+            logger.info(f"Processing batch {batch_id} with {len(papers)} papers, concurrency={concurrency}")
 
-        logger.info(f"Processing batch {batch_id} with {len(papers)} papers, concurrency={concurrency}")
+            async def process_with_semaphore(paper_id: str):
+                """Process single PDF with semaphore limit."""
+                async with semaphore:
+                    try:
+                        await process_single_pdf_async(paper_id, self)
+                    except Exception as e:
+                        # Log error but don't raise - failure isolation (D-06)
+                        logger.error(f"Paper {paper_id} failed: {e}")
+                        # Error already recorded in process_single_pdf_async
 
-        async def process_with_semaphore(paper_id: str):
-            """Process single PDF with semaphore limit."""
-            async with semaphore:
-                try:
-                    await process_single_pdf_async(paper_id, self)
-                except Exception as e:
-                    # Log error but don't raise - failure isolation (D-06)
-                    logger.error(f"Paper {paper_id} failed: {e}")
-                    # Error already recorded in process_single_pdf_async
+            # Process all papers concurrently with failure isolation
+            tasks = [process_with_semaphore(paper_id) for paper_id in papers]
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Process all papers concurrently with failure isolation
-        tasks = [process_with_semaphore(paper['id']) for paper in papers]
-        await asyncio.gather(*tasks, return_exceptions=True)
+            # Update batch status
+            completed_result = await db.execute(
+                select(func.count()).select_from(Paper).where(
+                    Paper.batch_id == batch_id,
+                    Paper.status == 'completed'
+                )
+            )
+            completed = completed_result.scalar() or 0
 
-        # Update batch status
-        completed = await pool.fetchval(
-            """SELECT COUNT(*) FROM papers
-               WHERE batch_id = $1 AND status = 'completed'""",
-            batch_id
-        )
-        failed = await pool.fetchval(
-            """SELECT COUNT(*) FROM papers
-               WHERE batch_id = $1 AND status = 'failed'""",
-            batch_id
-        )
+            failed_result = await db.execute(
+                select(func.count()).select_from(Paper).where(
+                    Paper.batch_id == batch_id,
+                    Paper.status == 'failed'
+                )
+            )
+            failed = failed_result.scalar() or 0
 
-        status = 'completed' if failed == 0 else 'partial_failure'
-        await pool.execute(
-            "UPDATE paper_batches SET status = $1 WHERE id = $2",
-            status, batch_id
-        )
+            status = 'completed' if failed == 0 else 'partial_failure'
+            await db.execute(
+                update(PaperBatch).where(PaperBatch.id == batch_id).values(status=status)
+            )
+            await db.commit()
 
-        logger.info(f"Batch {batch_id} complete: {completed} success, {failed} failed")
+            logger.info(f"Batch {batch_id} complete: {completed} success, {failed} failed")
 
     # Run async function in sync Celery task
     asyncio.run(_process_batch())
@@ -114,114 +119,115 @@ async def process_single_pdf_async(paper_id: str, celery_task):
     """
     processor = PDFProcessor()
 
-    try:
-        pool = await get_db_pool()
-        
-        # Check if task already exists
-        existing_task = await pool.fetchrow(
-            "SELECT id, storage_key FROM processing_tasks WHERE paper_id = $1",
-            paper_id
-        )
-        
-        if existing_task:
-            task_id = existing_task['id']
-            storage_key = existing_task['storage_key']
-            # Update status to processing
-            await pool.execute(
-                "UPDATE processing_tasks SET status = 'processing', updated_at = NOW() WHERE id = $1",
-                task_id
+    async with AsyncSessionLocal() as db:
+        try:
+            # Check if task already exists
+            result = await db.execute(
+                select(ProcessingTask).where(ProcessingTask.paper_id == paper_id)
             )
-        else:
-            # Create new task record with UUID
-            import uuid
-            task_id = str(uuid.uuid4())
-            # Get storage_key from papers table
-            paper = await pool.fetchrow(
-                "SELECT storage_key FROM papers WHERE id = $1",
-                paper_id
+            existing_task = result.scalar_one_or_none()
+
+            if existing_task:
+                task_id = existing_task.id
+                storage_key = existing_task.storage_key
+                # Update status to processing
+                existing_task.status = 'processing'
+                existing_task.updated_at = datetime.now(timezone.utc)
+            else:
+                # Create new task record with UUID
+                task_id = str(uuid.uuid4())
+                # Get storage_key from papers table
+                paper_result = await db.execute(
+                    select(Paper.storage_key).where(Paper.id == paper_id)
+                )
+                storage_key = paper_result.scalar_one_or_none()
+
+                new_task = ProcessingTask(
+                    id=task_id,
+                    paper_id=paper_id,
+                    status='processing',
+                    storage_key=storage_key or '',
+                )
+                db.add(new_task)
+
+            await db.commit()
+
+            # Processing stages with progress percentages (per D-05)
+            stages = [
+                ('processing_ocr', 15),
+                ('parsing', 30),
+                ('extracting_imrad', 45),
+                ('generating_notes', 60),
+                ('storing_vectors', 75),
+                ('indexing_multimodal', 90),
+            ]
+
+            # Execute stages
+            for stage_name, progress in stages:
+                # Update Celery state for progress tracking
+                celery_task.update_state(
+                    state='PROGRESS',
+                    meta={
+                        'paper_id': paper_id,
+                        'stage': stage_name,
+                        'progress': progress
+                    }
+                )
+
+                # Update processing_task status
+                await db.execute(
+                    update(ProcessingTask).where(ProcessingTask.id == task_id).values(status=stage_name)
+                )
+                await db.commit()
+
+                # Execute stage using PDFProcessor
+                # Note: PDFProcessor.process_pdf_task handles all stages internally
+                # This is a simplified version - actual implementation would call individual stages
+                logger.info(f"Processing paper {paper_id} at stage {stage_name}")
+
+            # Use PDFProcessor to process the PDF
+            success = await processor.process_pdf_task(task_id)
+
+            if success:
+                # Mark as completed
+                await db.execute(
+                    update(ProcessingTask).where(ProcessingTask.id == task_id).values(
+                        status='completed',
+                        completed_at=datetime.now(timezone.utc)
+                    )
+                )
+                await db.execute(
+                    update(Paper).where(Paper.id == paper_id).values(status='completed')
+                )
+                await db.commit()
+
+                # Update Celery state
+                celery_task.update_state(
+                    state='COMPLETED',
+                    meta={'paper_id': paper_id, 'progress': 100}
+                )
+            else:
+                raise Exception("PDF processing failed")
+
+        except Exception as e:
+            logger.error(f"Failed to process paper {paper_id}: {e}")
+
+            # Record error details (per D-08)
+            # Note: error_stage and error_time fields not in current ProcessingTask model
+            # Storing error info in error_message with context
+            error_detail = f"[stage: processing] {str(e)}"
+            await db.execute(
+                update(ProcessingTask).where(ProcessingTask.paper_id == paper_id).values(
+                    error_message=error_detail,
+                    status='failed'
+                )
             )
-            storage_key = paper['storage_key'] if paper else None
-            
-            await pool.execute(
-                """INSERT INTO processing_tasks (id, paper_id, status, storage_key, created_at, updated_at)
-                   VALUES ($1, $2, 'processing', $3, NOW(), NOW())""",
-                task_id, paper_id, storage_key
+            await db.execute(
+                update(Paper).where(Paper.id == paper_id).values(status='failed')
             )
+            await db.commit()
 
-        # Processing stages with progress percentages (per D-05)
-        stages = [
-            ('processing_ocr', 15),
-            ('parsing', 30),
-            ('extracting_imrad', 45),
-            ('generating_notes', 60),
-            ('storing_vectors', 75),
-            ('indexing_multimodal', 90),
-        ]
-
-        # Execute stages
-        for stage_name, progress in stages:
-            # Update Celery state for progress tracking
-            celery_task.update_state(
-                state='PROGRESS',
-                meta={
-                    'paper_id': paper_id,
-                    'stage': stage_name,
-                    'progress': progress
-                }
-            )
-
-            # Update processing_task status
-            await pool.execute(
-                "UPDATE processing_tasks SET status = $1 WHERE id = $2",
-                stage_name, task_id
-            )
-
-            # Execute stage using PDFProcessor
-            # Note: PDFProcessor.process_pdf_task handles all stages internally
-            # This is a simplified version - actual implementation would call individual stages
-            logger.info(f"Processing paper {paper_id} at stage {stage_name}")
-
-        # Use PDFProcessor to process the PDF
-        success = await processor.process_pdf_task(task_id)
-
-        if success:
-            # Mark as completed
-            await pool.execute(
-                "UPDATE processing_tasks SET status = 'completed' WHERE id = $1",
-                task_id
-            )
-            await pool.execute(
-                "UPDATE papers SET status = 'completed' WHERE id = $1",
-                paper_id
-            )
-
-            # Update Celery state
-            celery_task.update_state(
-                state='COMPLETED',
-                meta={'paper_id': paper_id, 'progress': 100}
-            )
-        else:
-            raise Exception("PDF processing failed")
-
-    except Exception as e:
-        logger.error(f"Failed to process paper {paper_id}: {e}")
-
-        # Record error details (per D-08)
-        await pool.execute(
-            """UPDATE processing_tasks
-               SET error_message = $1,
-                   error_stage = $2,
-                   error_time = NOW(),
-                   status = 'failed'
-               WHERE paper_id = $3""",
-            str(e), 'processing', paper_id
-        )
-        await pool.execute(
-            "UPDATE papers SET status = 'failed' WHERE id = $1",
-            paper_id
-        )
-
-        raise
+            raise
 
 
 @celery_app.task(bind=True, rate_limit='120/m')
@@ -235,19 +241,20 @@ def retry_batch_failed_papers_task(batch_id: str):
     """Retry all failed papers in a batch."""
 
     async def _retry_failed():
-        pool = await get_db_pool()
+        async with AsyncSessionLocal() as db:
+            # Find failed papers
+            result = await db.execute(
+                select(Paper.id).where(
+                    Paper.batch_id == batch_id,
+                    Paper.status == 'failed'
+                )
+            )
+            failed_papers = result.scalars().all()
 
-        # Find failed papers
-        failed_papers = await pool.fetch(
-            """SELECT id FROM papers
-               WHERE batch_id = $1 AND status = 'failed'""",
-            batch_id
-        )
+            logger.info(f"Retrying {len(failed_papers)} failed papers in batch {batch_id}")
 
-        logger.info(f"Retrying {len(failed_papers)} failed papers in batch {batch_id}")
-
-        # Trigger retry for each
-        for paper in failed_papers:
-            process_single_pdf_task.delay(paper['id'])
+            # Trigger retry for each
+            for paper_id in failed_papers:
+                process_single_pdf_task.delay(paper_id)
 
     asyncio.run(_retry_failed())
