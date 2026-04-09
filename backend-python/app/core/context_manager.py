@@ -21,13 +21,21 @@ Context Structure:
 Usage:
     manager = ContextManager()
     context = await manager.build_context(session_id, user_id)
+
+Migration Notes:
+    - Migrated from get_db_connection (asyncpg) to SQLAlchemy ORM
+    - Uses AsyncSessionLocal for session management
+    - ChatMessage model doesn't have metadata column, uses tool_params
 """
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-import json
+
+from sqlalchemy import select
 
 from app.config import settings
+from app.database import AsyncSessionLocal
+from app.models import ChatMessage
 from app.utils.logger import logger
 from app.utils.zhipu_client import get_llm_client
 
@@ -140,31 +148,24 @@ class ContextManager:
         Returns:
             Context object
         """
-        from app.core.database import get_db_connection
-
         logger.info("Building context", session_id=session_id, user_id=user_id)
 
-        # Fetch messages from database
+        # Fetch messages from database using SQLAlchemy ORM
         messages = []
         try:
-            async with get_db_connection() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT role, content, metadata
-                    FROM chat_messages
-                    WHERE session_id = $1
-                    ORDER BY created_at ASC
-                    """,
-                    session_id,
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(ChatMessage)
+                    .where(ChatMessage.session_id == session_id)
+                    .order_by(ChatMessage.created_at.asc())
                 )
+                rows = result.scalars().all()
 
                 messages = [
                     Message(
-                        role=row["role"],
-                        content=row["content"],
-                        metadata=json.loads(row["metadata"])
-                        if row["metadata"]
-                        else None,
+                        role=row.role,
+                        content=row.content,
+                        metadata=row.tool_params,  # Use tool_params as metadata
                     )
                     for row in rows
                 ]
@@ -363,10 +364,8 @@ class ContextManager:
         Returns:
             Dict of user preferences
         """
-        from app.core.database import get_db_connection
-
         try:
-            async with get_db_connection() as conn:
+            async with AsyncSessionLocal() as db:
                 # Fetch from users table (Node.js backend manages this)
                 # For now, return empty dict
                 # In production, this would query the users table
