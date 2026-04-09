@@ -1,0 +1,229 @@
+"""Unified Pydantic Settings configuration for ScholarAI.
+
+Merges environment variables from both Node.js and Python backends.
+Per D-07: Type-safe configuration with automatic env loading.
+
+Usage:
+    from app.config import settings, get_settings
+
+    # Access settings
+    db_url = settings.DATABASE_URL
+    async_url = settings.async_database_url
+"""
+
+import os
+from functools import lru_cache
+from typing import List, Optional
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Unified configuration merging Node.js + Python settings.
+
+    Application:
+        APP_NAME, DEBUG, LOG_LEVEL, PORT
+
+    Database:
+        DATABASE_URL (postgresql://user:pass@host/db)
+
+    Redis:
+        REDIS_URL
+
+    Neo4j:
+        NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
+
+    JWT/Auth:
+        JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+
+    CORS:
+        ALLOWED_HOSTS
+
+    File Upload:
+        MAX_FILE_SIZE, UPLOAD_DIR
+
+    S3 Storage:
+        S3_ENDPOINT, S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, USE_LOCAL_STORAGE
+
+    AI Service:
+        ZHIPU_API_KEY, EMBEDDING_MODEL
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
+    # =========================================================================
+    # Application Configuration
+    # =========================================================================
+    APP_NAME: str = "ScholarAI API"
+    DEBUG: bool = False
+    LOG_LEVEL: str = "info"
+    PORT: int = 8000
+    ENVIRONMENT: str = "development"
+
+    # =========================================================================
+    # Database Configuration
+    # =========================================================================
+    DATABASE_URL: str = "postgresql://scholarai:scholarai123@localhost:5432/scholarai"
+
+    @property
+    def async_database_url(self) -> str:
+        """Convert DATABASE_URL to asyncpg URL format.
+
+        Replaces postgresql:// with postgresql+asyncpg:// for SQLAlchemy async engine.
+        """
+        url = self.DATABASE_URL
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql+asyncpg://"):
+            return url
+        return url
+
+    # =========================================================================
+    # Redis Configuration
+    # =========================================================================
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: str = ""
+
+    # =========================================================================
+    # Neo4j Graph Database Configuration
+    # =========================================================================
+    NEO4J_URI: str = "bolt://localhost:7687"
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "scholarai123"
+
+    # =========================================================================
+    # Milvus Vector Database Configuration
+    # =========================================================================
+    MILVUS_HOST: str = "localhost"
+    MILVUS_PORT: int = 19530
+    MILVUS_COLLECTION_IMAGES: str = "paper_images"
+    MILVUS_COLLECTION_TABLES: str = "paper_tables"
+    MILVUS_COLLECTION_CONTENTS: str = "paper_contents"
+    MILVUS_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"
+    MILVUS_POOL_SIZE: int = 10
+    MILVUS_TIMEOUT: int = 10
+
+    # =========================================================================
+    # JWT Authentication Configuration
+    # =========================================================================
+    JWT_SECRET: str = "test-secret-key-for-development-only"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Internal service JWT (RS256)
+    JWT_INTERNAL_PUBLIC_KEY: str = ""
+    JWT_INTERNAL_PUBLIC_KEY_FILE: str = ""
+
+    # =========================================================================
+    # CORS Configuration
+    # =========================================================================
+    ALLOWED_HOSTS: List[str] = ["*"]
+
+    # =========================================================================
+    # File Upload Configuration
+    # =========================================================================
+    MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
+    UPLOAD_DIR: str = "/app/uploads"
+
+    # =========================================================================
+    # S3 / Object Storage Configuration
+    # =========================================================================
+    S3_ENDPOINT: Optional[str] = None
+    S3_BUCKET: Optional[str] = None
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    USE_LOCAL_STORAGE: bool = True
+
+    # Legacy OSS configuration (for backward compatibility)
+    OSS_ENDPOINT: str = "local"
+    LOCAL_STORAGE_PATH: str = "/app/uploads"
+
+    # =========================================================================
+    # AI Service Configuration
+    # =========================================================================
+    # Zhipu AI API (for LLM and Vision)
+    ZHIPU_API_KEY: str = ""
+    ZHIPU_MODEL_VISION: str = "glm-4v"
+    ZHIPU_MODEL_TEXT: str = "glm-4-flash"
+    ZHIPU_MAX_TOKENS: int = 150
+    ZHIPU_TEMPERATURE: float = 0.3
+
+    # LLM Configuration
+    LLM_MODEL: str = "glm-4.5-air"
+    LLM_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"
+    LLM_MAX_TOKENS: int = 2048
+    LLM_TEMPERATURE: float = 0.7
+    LLM_MAX_RETRIES: int = 5
+    DEFAULT_MODEL: str = "gpt-4o-mini"
+
+    # Embedding Model Configuration
+    EMBEDDING_MODEL: str = "qwen3-vl-2b"
+    EMBEDDING_QUANTIZATION: str = "int4"
+    EMBEDDING_DIMENSION: int = 2048
+    EMBEDDING_DEVICE: str = "auto"  # auto | cpu | cuda | mps
+
+    # Reranker Configuration
+    RERANKER_MODEL: str = "bge-reranker"
+    RERANKER_QUANTIZATION: str = "fp16"
+
+    # Local Model Paths
+    QWEN3VL_EMBEDDING_MODEL_PATH: str = "./Qwen/Qwen3-VL-Embedding-2B"
+    QWEN3VL_RERANKER_MODEL_PATH: str = "./Qwen/Qwen3-VL-Reranker-2B"
+
+    # =========================================================================
+    # RAG Configuration
+    # =========================================================================
+    CHUNK_SIZE: int = 500
+    CHUNK_OVERLAP: int = 100
+    CHUNK_MIN_SIZE: int = 100
+    CHUNK_MAX_SIZE: int = 600
+    CHUNK_ADAPTIVE_ENABLED: bool = True
+    CHUNK_QUALITY_THRESHOLD: float = 0.7
+    TOP_K_RETRIEVAL: int = 10
+
+    # =========================================================================
+    # External API Configuration
+    # =========================================================================
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    SEMANTIC_SCHOLAR_API_KEY: str = ""
+    S2_API_KEY: str = ""
+
+    # Semantic Scholar Cache TTLs
+    S2_CACHE_TTL: int = 86400  # 24 hours
+    S2_PAPER_TTL: int = 604800  # 7 days
+    S2_CITATION_TTL: int = 2592000  # 30 days
+
+    # HuggingFace Offline Mode
+    HF_HUB_OFFLINE: str = "1"
+    TRANSFORMERS_OFFLINE: str = "1"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Load JWT public key from file if configured
+        if self.JWT_INTERNAL_PUBLIC_KEY_FILE and os.path.exists(
+            self.JWT_INTERNAL_PUBLIC_KEY_FILE
+        ):
+            with open(self.JWT_INTERNAL_PUBLIC_KEY_FILE, "r") as f:
+                # Need to set on the instance, not class
+                object.__setattr__(self, "JWT_INTERNAL_PUBLIC_KEY", f.read())
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    """Get cached Settings instance.
+
+    Uses lru_cache to ensure only one Settings instance is created.
+    """
+    return Settings()
+
+
+# Global settings instance
+settings = get_settings()
