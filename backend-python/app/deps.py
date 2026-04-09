@@ -1,7 +1,8 @@
 """FastAPI dependency injection functions.
 
 Provides common dependencies for:
-- Database sessions
+- Database sessions (SQLAlchemy for PostgreSQL)
+- Neo4j and Redis connections
 - Authentication
 - User context
 
@@ -10,7 +11,7 @@ Usage:
 
     @router.get("/papers")
     async def list_papers(
-        db = Depends(get_db),
+        db: AsyncSession = Depends(get_db),
         user: User = Depends(get_current_user),
     ):
         # ...
@@ -18,15 +19,16 @@ Usage:
 
 from typing import AsyncGenerator, Optional
 
-# Re-export database dependencies
+# SQLAlchemy database session (PostgreSQL)
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import get_db as sqlalchemy_get_db
+
+# Neo4j and Redis from core.database
 from app.core.database import (
-    postgres_db,
     neo4j_db,
     redis_db,
-    get_postgres,
     get_neo4j,
     get_redis,
-    get_db_connection,
 )
 
 # Re-export auth dependencies
@@ -43,32 +45,16 @@ from app.middleware.auth import (
 from app.services.auth_service import User
 
 
-async def get_db():
-    """Get PostgreSQL database instance.
-
-    This is the primary database dependency.
-    Use for direct SQL queries via postgres_db.
-
-    Returns:
-        PostgresDB instance
-
-    Example:
-        @router.get("/items")
-        async def get_items(db = Depends(get_db)):
-            rows = await db.fetch("SELECT * FROM items")
-            return rows
-    """
-    return postgres_db
+# Re-export SQLAlchemy get_db directly (it's already a proper async generator)
+get_db = sqlalchemy_get_db
 
 
 __all__ = [
-    # Database
+    # Database (SQLAlchemy)
     "get_db",
-    "get_postgres",
+    # Neo4j and Redis
     "get_neo4j",
     "get_redis",
-    "get_db_connection",
-    "postgres_db",
     "neo4j_db",
     "redis_db",
     # Auth
