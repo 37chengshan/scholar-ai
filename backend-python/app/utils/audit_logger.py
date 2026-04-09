@@ -21,8 +21,11 @@ Usage:
 
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone, timedelta
-import json
 
+from sqlalchemy import delete, func, select
+
+from app.database import AsyncSessionLocal
+from app.models.orm_audit_log import AuditLog
 from app.utils.logger import logger
 
 
@@ -71,32 +74,26 @@ class AuditLogger:
             True if logged successfully, False otherwise
         """
         try:
-            from app.core.database import get_db_connection
-            import uuid
-
-            log_id = str(uuid.uuid4())
             created_at = datetime.now(timezone.utc)
 
-            async with get_db_connection() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO audit_logs 
-                    (id, user_id, tool, risk_level, params, result, 
-                     tokens_used, cost_cny, execution_ms, ip_address, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                    """,
-                    log_id,
-                    user_id,
-                    tool,
-                    risk_level,
-                    json.dumps(params) if params else None,
-                    result,
-                    tokens_used,
-                    cost_cny,
-                    execution_ms,
-                    ip_address,
-                    created_at,
+            async with AsyncSessionLocal() as db:
+                # Create AuditLog ORM object
+                log_entry = AuditLog(
+                    user_id=user_id,
+                    tool=tool,
+                    risk_level=risk_level,
+                    params=params,
+                    result=result,
+                    tokens_used=tokens_used,
+                    cost_cny=cost_cny,
+                    execution_ms=execution_ms,
+                    ip_address=ip_address,
+                    created_at=created_at,
                 )
+                db.add(log_entry)
+                await db.flush()  # Flush to get the ID without committing
+
+                log_id = log_entry.id
 
             logger.info(
                 "Audit log recorded",
@@ -142,28 +139,35 @@ class AuditLogger:
             List of audit log records
         """
         try:
-            from app.core.database import get_db_connection
-
-            async with get_db_connection() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT id, user_id, tool, risk_level, params, result,
-                           tokens_used, cost_cny, execution_ms, ip_address, created_at
-                    FROM audit_logs
-                    WHERE user_id = $1
-                      AND created_at >= $2
-                      AND created_at <= $3
-                    ORDER BY created_at DESC
-                    LIMIT $4 OFFSET $5
-                    """,
-                    user_id,
-                    start_date,
-                    end_date,
-                    limit,
-                    offset,
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(AuditLog)
+                    .where(AuditLog.user_id == user_id)
+                    .where(AuditLog.created_at >= start_date)
+                    .where(AuditLog.created_at <= end_date)
+                    .order_by(AuditLog.created_at.desc())
+                    .limit(limit)
+                    .offset(offset)
                 )
+                logs = result.scalars().all()
 
-                return [dict(row) for row in rows]
+                # Convert ORM objects to dicts
+                return [
+                    {
+                        "id": log.id,
+                        "user_id": log.user_id,
+                        "tool": log.tool,
+                        "risk_level": log.risk_level,
+                        "params": log.params,
+                        "result": log.result,
+                        "tokens_used": log.tokens_used,
+                        "cost_cny": log.cost_cny,
+                        "execution_ms": log.execution_ms,
+                        "ip_address": log.ip_address,
+                        "created_at": log.created_at,
+                    }
+                    for log in logs
+                ]
 
         except Exception as e:
             logger.error(
@@ -184,30 +188,25 @@ class AuditLogger:
             Dict with count per risk level (LOW, MEDIUM, HIGH, CRITICAL)
         """
         try:
-            from app.core.database import get_db_connection
-
             start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
-            async with get_db_connection() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT risk_level, COUNT(*) as count
-                    FROM audit_logs
-                    WHERE user_id = $1 AND created_at >= $2
-                    GROUP BY risk_level
-                    """,
-                    user_id,
-                    start_date,
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(AuditLog.risk_level, func.count(AuditLog.id).label("count"))
+                    .where(AuditLog.user_id == user_id)
+                    .where(AuditLog.created_at >= start_date)
+                    .group_by(AuditLog.risk_level)
                 )
+                rows = result.all()
 
                 # Initialize with all risk levels
                 summary = {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "CRITICAL": 0}
 
                 # Update with actual counts
                 for row in rows:
-                    level = row["risk_level"]
+                    level = row.risk_level
                     if level in summary:
-                        summary[level] = row["count"]
+                        summary[level] = row.count
 
                 return summary
 
@@ -233,26 +232,18 @@ class AuditLogger:
         retention_days = days or self.DEFAULT_RETENTION_DAYS
 
         try:
-            from app.core.database import get_db_connection
-
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
-            async with get_db_connection() as conn:
-                result = await conn.execute(
-                    """
-                    DELETE FROM audit_logs
-                    WHERE created_at < $1
-                    """,
-                    cutoff_date,
+            async with AsyncSessionLocal() as db:
+                # First count how many will be deleted
+                count_result = await db.execute(
+                    select(func.count(AuditLog.id)).where(AuditLog.created_at < cutoff_date)
                 )
+                deleted_count = count_result.scalar() or 0
 
-                # Extract count from result (format: "DELETE N")
-                deleted_count = 0
-                if result:
-                    try:
-                        deleted_count = int(result.split()[-1])
-                    except (ValueError, IndexError):
-                        pass
+                # Delete old logs
+                if deleted_count > 0:
+                    await db.execute(delete(AuditLog).where(AuditLog.created_at < cutoff_date))
 
                 logger.info(
                     "Audit logs cleaned up",

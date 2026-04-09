@@ -33,10 +33,13 @@ class TestAuditLoggerRecord:
     @pytest.mark.asyncio
     async def test_record_inserts_log_with_required_fields(self, audit_logger):
         """Test that record() inserts log with all required fields."""
-        # Mock database connection
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        # Mock AsyncSessionLocal
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.flush = AsyncMock()
+
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             await audit_logger.record(
                 user_id="user123",
@@ -50,15 +53,22 @@ class TestAuditLoggerRecord:
                 ip_address="192.168.1.1",
             )
 
-            # Verify execute was called
-            assert mock_conn.execute.called
+            # Verify add was called with AuditLog object
+            assert mock_session.add.called
+            added_obj = mock_session.add.call_args[0][0]
+            assert added_obj.user_id == "user123"
+            assert added_obj.tool == "delete_paper"
+            assert added_obj.risk_level == "CRITICAL"
 
     @pytest.mark.asyncio
     async def test_record_with_minimal_fields(self, audit_logger):
         """Test record() with only required fields."""
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.flush = AsyncMock()
+
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             await audit_logger.record(
                 user_id="user123",
@@ -67,20 +77,27 @@ class TestAuditLoggerRecord:
                 params={"question": "test"},
             )
 
-            assert mock_conn.execute.called
+            assert mock_session.add.called
+            added_obj = mock_session.add.call_args[0][0]
+            assert added_obj.tool == "rag_search"
+            assert added_obj.risk_level == "LOW"
 
     @pytest.mark.asyncio
     async def test_record_handles_database_error_gracefully(self, audit_logger):
         """Test that record() handles database errors without raising."""
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute.side_effect = Exception("Database error")
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.flush.side_effect = Exception("Database error")
 
-            # Should not raise exception
-            await audit_logger.record(
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+
+            # Should not raise exception, returns False
+            result = await audit_logger.record(
                 user_id="user123", tool="test_tool", risk_level="LOW"
             )
+
+            assert result is False
 
 
 class TestAuditLoggerGetUserAudit:
@@ -94,20 +111,28 @@ class TestAuditLoggerGetUserAudit:
     @pytest.mark.asyncio
     async def test_get_user_audit_returns_logs_in_date_range(self, audit_logger):
         """Test get_user_audit() returns logs within date range."""
-        mock_logs = [
-            {
-                "id": "log1",
-                "user_id": "user123",
-                "tool": "rag_search",
-                "risk_level": "LOW",
-                "created_at": datetime.now(timezone.utc),
-            }
-        ]
+        # Create mock AuditLog objects
+        mock_log = MagicMock()
+        mock_log.id = "log1"
+        mock_log.user_id = "user123"
+        mock_log.tool = "rag_search"
+        mock_log.risk_level = "LOW"
+        mock_log.params = None
+        mock_log.result = None
+        mock_log.tokens_used = None
+        mock_log.cost_cny = None
+        mock_log.execution_ms = None
+        mock_log.ip_address = None
+        mock_log.created_at = datetime.now(timezone.utc)
 
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetch.return_value = mock_logs
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_log]
+
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             start_date = datetime.now(timezone.utc) - timedelta(days=7)
             end_date = datetime.now(timezone.utc)
@@ -122,10 +147,14 @@ class TestAuditLoggerGetUserAudit:
     @pytest.mark.asyncio
     async def test_get_user_audit_with_pagination(self, audit_logger):
         """Test get_user_audit() with limit and offset."""
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetch.return_value = []
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             await audit_logger.get_user_audit(
                 user_id="user123",
@@ -135,7 +164,7 @@ class TestAuditLoggerGetUserAudit:
                 offset=0,
             )
 
-            assert mock_conn.fetch.called
+            assert mock_session.execute.called
 
 
 class TestAuditLoggerGetRiskSummary:
@@ -149,17 +178,22 @@ class TestAuditLoggerGetRiskSummary:
     @pytest.mark.asyncio
     async def test_get_risk_summary_returns_counts_by_level(self, audit_logger):
         """Test get_risk_summary() returns counts for each risk level."""
-        mock_summary = [
-            {"risk_level": "LOW", "count": 100},
-            {"risk_level": "MEDIUM", "count": 50},
-            {"risk_level": "HIGH", "count": 10},
-            {"risk_level": "CRITICAL", "count": 2},
+        # Mock rows with risk_level and count
+        mock_rows = [
+            MagicMock(risk_level="LOW", count=100),
+            MagicMock(risk_level="MEDIUM", count=50),
+            MagicMock(risk_level="HIGH", count=10),
+            MagicMock(risk_level="CRITICAL", count=2),
         ]
 
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetch.return_value = mock_summary
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_result = MagicMock()
+        mock_result.all.return_value = mock_rows
+
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             result = await audit_logger.get_risk_summary(user_id="user123", days=7)
 
@@ -171,12 +205,14 @@ class TestAuditLoggerGetRiskSummary:
     @pytest.mark.asyncio
     async def test_get_risk_summary_defaults_to_zero(self, audit_logger):
         """Test get_risk_summary() returns zeros for missing levels."""
-        mock_summary = []  # No logs
+        mock_result = MagicMock()
+        mock_result.all.return_value = []  # No logs
 
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetch.return_value = mock_summary
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             result = await audit_logger.get_risk_summary(user_id="user123", days=7)
 
@@ -198,25 +234,53 @@ class TestAuditLoggerCleanupOldLogs:
     @pytest.mark.asyncio
     async def test_cleanup_old_logs_deletes_old_records(self, audit_logger):
         """Test cleanup_old_logs() deletes records older than specified days."""
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute.return_value = "DELETE 100"
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        # Mock count result
+        mock_count_result = MagicMock()
+        mock_count_result.scalar.return_value = 100
+
+        mock_session = AsyncMock()
+        mock_session.execute.side_effect = [mock_count_result, None]
+
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             result = await audit_logger.cleanup_old_logs(days=30)
 
             # Should return deleted count
-            assert mock_conn.execute.called
+            assert result == 100
+            assert mock_session.execute.call_count == 2  # count + delete
 
     @pytest.mark.asyncio
     async def test_cleanup_uses_default_30_days(self, audit_logger):
         """Test cleanup defaults to 30 days per D-09."""
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute.return_value = "DELETE 50"
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_count_result = MagicMock()
+        mock_count_result.scalar.return_value = 50
 
-            await audit_logger.cleanup_old_logs()
+        mock_session = AsyncMock()
+        mock_session.execute.side_effect = [mock_count_result, None]
 
-            # Should use 30 days default
-            assert mock_conn.execute.called
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+
+            result = await audit_logger.cleanup_old_logs()
+
+            # Should use 30 days default and return deleted count
+            assert result == 50
+
+    @pytest.mark.asyncio
+    async def test_cleanup_skips_delete_if_count_zero(self, audit_logger):
+        """Test cleanup skips delete if no records to delete."""
+        mock_count_result = MagicMock()
+        mock_count_result.scalar.return_value = 0
+
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_count_result
+
+        with patch("app.utils.audit_logger.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+
+            result = await audit_logger.cleanup_old_logs(days=30)
+
+            # Should return 0 and only call execute once (count only)
+            assert result == 0
+            assert mock_session.execute.call_count == 1
