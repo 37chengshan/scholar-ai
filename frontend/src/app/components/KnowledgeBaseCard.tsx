@@ -59,10 +59,7 @@ export function KnowledgeBaseCard({
   return (
     <Card
       data-kb-id={id}
-      className="group relative flex flex-col gap-0 border border-border/50 bg-card transition-all duration-300 hover:shadow-lg hover:border-primary/30 cursor-pointer"
-      style={{
-        boxShadow: "var(--card-shadow, 0 1px 3px rgba(0,0,0,0.06))",
-      }}
+      className="magazine-card group relative flex flex-col gap-0 bg-white border border-border/50 transition-all duration-300 hover:border-primary/30 cursor-pointer"
       onClick={(e) => {
         // Don't navigate if clicking action buttons
         if ((e.target as HTMLElement).closest("button")) return;
@@ -74,11 +71,11 @@ export function KnowledgeBaseCard({
           <div className="flex items-start gap-3 min-w-0">
             <span className="text-2xl flex-shrink-0 mt-0.5">{icon}</span>
             <div className="min-w-0">
-              <h3 className="text-lg font-semibold leading-tight text-foreground group-hover:text-primary transition-colors truncate">
+              <h3 className="font-serif text-lg font-semibold leading-tight text-foreground group-hover:text-primary transition-colors truncate">
                 {name}
               </h3>
               {category && (
-                <Badge variant="secondary" className="mt-1.5 text-xs">
+                <Badge className="magazine-badge mt-1.5">
                   {category}
                 </Badge>
               )}
