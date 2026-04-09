@@ -1,10 +1,26 @@
 """
-ScholarAI Python AI Service
+ScholarAI Unified FastAPI Backend
 
-基于FastAPI的AI服务，提供：
-- PDF解析 (Docling)
-- RAG问答 (PaperQA2)
-- 实体抽取
+Provides complete API services for ScholarAI:
+- OAuth 2.0 + Cookie-based Authentication
+- User management
+- Paper CRUD operations
+- PDF upload and processing
+- Task management
+- Notes, Projects, Annotations
+- Reading progress tracking
+- Dashboard statistics
+- External search integration
+- Semantic Scholar integration
+- Session management
+- Chat with SSE streaming
+- Entity extraction
+- Knowledge graph
+- Paper comparison
+- RAG Q&A
+- System diagnostics
+
+Wave 4 Integration - Unified backend replacing Node.js + Python split architecture.
 """
 
 # Set HuggingFace offline mode before importing any ML libraries
@@ -18,35 +34,50 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# API Routes - Wave 1-3 routers
 from app.api import (
+    # Wave 1 (27-02): Auth
+    auth,
+    # Wave 2 (27-03a): Users
+    users,
+    # Wave 2 (27-03b): Papers, Uploads, Tasks
+    papers,
+    uploads,
+    tasks,
+    # Wave 3 (27-04): Extended APIs
+    notes,
+    projects,
+    annotations,
+    reading_progress,
+    dashboard,
+    search,
+    semantic_scholar,
+    session,
+    chat,
+    entities,
+    graph,
+    compare,
+    system,
+    # Legacy/Python-specific routes
     health,
     parse,
     rag,
-    entities,
-    papers,
     internal,
-    search,
-    notes,
-    compare,
-    graph,
-    session,
-    chat,
-    tasks,
-    semantic_scholar,
     token_usage,
 )
-from app.core.config import settings
+
+from app.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
 from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
-from app.core.reranker.factory import get_reranker_service  # Updated to use factory
-from app.core.embedding.factory import get_embedding_service  # Updated to use factory
-from fastapi.exceptions import RequestValidationError
-from app.middleware.error_handler import (
-    validation_exception_handler,
-    generic_exception_handler,
-)
+from app.core.reranker.factory import get_reranker_service
+from app.core.embedding.factory import get_embedding_service
+
+# Middleware
+from app.middleware.cors import get_cors_config
+from app.middleware.logging import RequestLoggingMiddleware
+from app.middleware.error_handler import setup_error_handlers
 
 
 @asynccontextmanager
@@ -124,53 +155,99 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ScholarAI AI Service",
-    description="AI services for ScholarAI - PDF parsing, RAG Q&A, Entity extraction",
+    title="ScholarAI Unified API",
+    description="Complete API services for ScholarAI - Authentication, Papers, Chat, RAG, Knowledge Graph",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Register exception handlers
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
-# Don't add generic handler in development - let FastAPI show tracebacks
-# In production, uncomment:
-# app.add_exception_handler(Exception, generic_exception_handler)
+# ============================================================================
+# Middleware Registration
+# ============================================================================
 
-# CORS配置
+# Request logging middleware (first - logs all requests)
+app.add_middleware(RequestLoggingMiddleware)
+
+# CORS middleware (use unified config)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_HOSTS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **get_cors_config()
 )
 
-# 路由
-app.include_router(health.router, prefix="/health", tags=["Health"])
-app.include_router(papers.router, prefix="/papers", tags=["Papers"])
-app.include_router(notes.router, prefix="/notes", tags=["Notes"])
-app.include_router(parse.router, prefix="/parse", tags=["PDF Parsing"])
-app.include_router(rag.router, prefix="/rag", tags=["RAG Q&A"])
-app.include_router(entities.router, prefix="/entities", tags=["Entity Extraction"])
-app.include_router(internal.router, prefix="/internal", tags=["Internal API"])
-app.include_router(search.router, prefix="/search", tags=["External Search"])
-app.include_router(compare.router, prefix="/compare", tags=["Comparison"])
-app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
-app.include_router(session.router, prefix="/api", tags=["Session"])
-app.include_router(chat.router, prefix="/api", tags=["Chat"])
-app.include_router(token_usage.router, prefix="/api", tags=["Token Usage"])
-app.include_router(tasks.router, tags=["Tasks"])
-app.include_router(
-    semantic_scholar.router, prefix="/semantic-scholar", tags=["Semantic Scholar"]
-)
+# Error handlers (RFC 7807 format)
+setup_error_handlers(app, include_generic=settings.ENVIRONMENT == "production")
 
+# ============================================================================
+# Router Registration - API v1 Routes
+# ============================================================================
+
+# Wave 1: Authentication (27-02)
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+
+# Wave 2: Users (27-03a)
+app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+
+# Wave 2: Papers, Uploads, Tasks (27-03b)
+app.include_router(papers.router, prefix="/api/v1/papers", tags=["papers"])
+app.include_router(uploads.router, prefix="/api/v1/uploads", tags=["uploads"])
+app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
+
+# Wave 3: Notes, Projects, Annotations, Reading Progress (27-04)
+app.include_router(notes.router, prefix="/api/v1/notes", tags=["notes"])
+app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
+app.include_router(annotations.router, prefix="/api/v1/annotations", tags=["annotations"])
+app.include_router(reading_progress.router, prefix="/api/v1/reading-progress", tags=["reading-progress"])
+
+# Wave 3: Dashboard, Search, System (27-04)
+app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
+app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
+app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
+
+# Wave 3: Semantic Scholar, Session, Chat (27-04)
+app.include_router(semantic_scholar.router, prefix="/api/v1/semantic-scholar", tags=["semantic-scholar"])
+app.include_router(session.router, prefix="/api/v1/sessions", tags=["session"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
+
+# Wave 3: Entities, Graph, Compare (27-04)
+app.include_router(entities.router, prefix="/api/v1/entities", tags=["entities"])
+app.include_router(graph.router, prefix="/api/v1/graph", tags=["graph"])
+app.include_router(compare.router, prefix="/api/v1/compare", tags=["compare"])
+
+# ============================================================================
+# Legacy/Python-specific Routes (keep for backward compatibility)
+# ============================================================================
+
+# RAG Q&A - Python-specific AI service
+app.include_router(rag.router, prefix="/api/v1/queries", tags=["queries"])
+
+# PDF Parsing - Python-specific AI service
+app.include_router(parse.router, prefix="/parse", tags=["pdf-parsing"])
+
+# Internal API - Worker callbacks
+app.include_router(internal.router, prefix="/internal", tags=["internal"])
+
+# Token Usage - Monitoring
+app.include_router(token_usage.router, prefix="/api/v1/token-usage", tags=["token-usage"])
+
+# ============================================================================
+# Health Check - No auth required
+# ============================================================================
+
+app.include_router(health.router, prefix="/health", tags=["health"])
+
+
+# ============================================================================
+# Root Endpoint
+# ============================================================================
 
 @app.get("/")
 async def root():
-    """根路径"""
+    """Root endpoint - API info."""
     return {
-        "service": "ScholarAI AI Service",
+        "service": "ScholarAI Unified API",
         "version": "1.0.0",
         "docs": "/docs",
+        "redoc": "/redoc",
+        "health": "/health",
         "status": "running",
     }
