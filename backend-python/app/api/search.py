@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
-from app.core.config import settings
+from app.config import settings
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.page_clustering import cluster_pages
 from app.utils.logger import logger

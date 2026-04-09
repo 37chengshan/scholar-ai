@@ -109,7 +109,7 @@ async def generate_reading_notes(
         Exception: If LLM call fails
     """
     from zhipuai import ZhipuAI
-    from app.core.config import settings
+    from app.config import settings
 
     # Extract content from IMRaD sections (truncate to avoid token limits)
     intro_text = imrad_sections.get("introduction", {}).get("content", "")[:500]

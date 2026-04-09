@@ -102,7 +102,7 @@ class EmbeddingObjectPool:
         """Initialize the embedding object pool."""
         async def create_service():
             from app.core.qwen3vl_service import Qwen3VLMultimodalEmbedding
-            from app.core.config import settings
+            from app.config import settings
             
             service = Qwen3VLMultimodalEmbedding(
                 quantization=settings.EMBEDDING_QUANTIZATION,

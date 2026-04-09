@@ -21,7 +21,7 @@ import uuid
 
 import redis.asyncio as redis
 
-from app.core.config import settings
+from app.config import settings
 from app.core.database import get_db_connection
 from app.utils.logger import logger
 

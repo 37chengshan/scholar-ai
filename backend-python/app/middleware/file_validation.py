@@ -10,7 +10,7 @@ Prevents file masquerading attacks where malicious files are renamed to .pdf
 
 from fastapi import UploadFile, HTTPException
 from typing import Optional
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 # PDF magic bytes: %PDF- (hex: 25 50 44 46 2D)

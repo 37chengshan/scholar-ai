@@ -16,7 +16,7 @@ import json
 from typing import List, Dict, Any, Optional
 
 from zhipuai import ZhipuAI
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 

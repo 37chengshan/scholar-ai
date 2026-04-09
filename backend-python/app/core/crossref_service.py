@@ -13,7 +13,7 @@ import json
 import httpx
 from typing import Any, Dict, Optional
 
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 

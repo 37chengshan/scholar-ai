@@ -12,7 +12,7 @@ Requirements:
 from typing import Optional
 import redis.asyncio as redis
 
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 

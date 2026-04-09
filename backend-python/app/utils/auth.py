@@ -12,7 +12,7 @@ from typing import Optional
 
 from jose import JWTError, jwt
 
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 

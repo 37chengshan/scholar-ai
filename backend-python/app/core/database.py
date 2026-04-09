@@ -10,7 +10,7 @@ import redis.asyncio as redis
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 

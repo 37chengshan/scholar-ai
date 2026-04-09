@@ -18,7 +18,7 @@ import json
 import asyncio
 
 from app.utils.logger import logger
-from app.core.config import settings
+from app.config import settings
 
 
 class GLM45AirClient:

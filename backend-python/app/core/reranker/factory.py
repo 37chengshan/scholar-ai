@@ -27,7 +27,7 @@ from typing import Dict, Any
 from app.core.reranker.base import BaseRerankerService
 from app.core.reranker.bge_reranker import BGERerankerService
 from app.core.reranker.qwen3vl_reranker import Qwen3VLRerankerService
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 

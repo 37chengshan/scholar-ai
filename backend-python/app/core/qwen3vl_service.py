@@ -21,7 +21,7 @@ import torch
 
 from PIL import Image
 
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 # Add Qwen model scripts path to sys.path

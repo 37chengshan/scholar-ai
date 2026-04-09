@@ -23,7 +23,7 @@ from PIL import Image
 from unittest.mock import Mock
 
 from app.core.reranker.base import BaseRerankerService
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 
@@ -54,7 +54,7 @@ class Qwen3VLRerankerService(BaseRerankerService):
     """
 
     # Model path from config or relative to project root
-    from app.core.config import settings
+    from app.config import settings
     
     MODEL_PATH = settings.QWEN3VL_RERANKER_MODEL_PATH
     MODEL_NAME = "Qwen3-VL-Reranker-2B"  # For health check and logging

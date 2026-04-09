@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 import json
 
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 from app.utils.zhipu_client import get_llm_client
 

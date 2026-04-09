@@ -312,7 +312,7 @@ class DoclingParser:
         Returns:
             List of chunks with page tracking, section info, and overlap tracking
         """
-        from app.core.config import settings
+        from app.config import settings
         
         chunk_size = chunk_size or settings.CHUNK_SIZE
         chunk_overlap = chunk_overlap or settings.CHUNK_OVERLAP

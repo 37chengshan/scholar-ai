@@ -29,7 +29,7 @@ from typing import Dict
 from app.core.embedding.base import BaseEmbeddingService
 from app.core.embedding.bge_embedding import BGEEmbeddingService
 from app.core.embedding.qwen3vl_embedding import Qwen3VLEmbeddingService
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 
 

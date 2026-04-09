@@ -165,7 +165,7 @@ async def system_health():
 
     Returns status of all services.
     """
-    from app.core.config import settings
+    from app.config import settings
 
     services_status = {}
 

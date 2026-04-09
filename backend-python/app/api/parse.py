@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 
-from app.core.config import settings
+from app.config import settings
 from app.core.docling_service import DoclingParser
 from app.core.imrad_extractor import extract_imrad_structure, extract_metadata
 from app.middleware.file_validation import validate_pdf_upload

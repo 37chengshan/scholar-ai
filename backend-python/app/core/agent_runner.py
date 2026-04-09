@@ -34,7 +34,7 @@ from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
 from app.core.context_manager import ContextManager, Context
 from app.core.intent_classifier import IntentClassifier
-from app.core.config import settings
+from app.config import settings
 from app.utils.logger import logger
 from app.utils.zhipu_client import get_llm_client
 from app.utils.token_tracker import TokenTracker

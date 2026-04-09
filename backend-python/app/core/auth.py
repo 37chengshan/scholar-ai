@@ -33,7 +33,7 @@ from cryptography.hazmat.backends import default_backend
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from app.core.config import settings
+from app.config import settings
 from app.utils.user_context import get_current_user_id, require_user_id
 
 security = HTTPBearer()
