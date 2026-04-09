@@ -21,8 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.orm_note import Note
+from app.models.paper import Paper
 from app.core.notes_generator import NotesGenerator
-from app.core.database import postgres_db
 from app.utils.logger import logger
 from app.core.auth import CurrentUserId
 from app.utils.problem_detail import Errors
@@ -398,27 +398,27 @@ async def get_notes_by_paper(
 @router.post("/generate", response_model=GeneratedNotesResponse, status_code=status.HTTP_201_CREATED)
 async def generate_notes(
     request: GenerateNotesRequest,
-    user_id: str = CurrentUserId
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
 ):
     """Generate reading notes for a paper using AI.
 
     This uses the existing NotesGenerator to create AI-powered reading notes.
     """
     try:
-        # Fetch paper data
-        row = await postgres_db.fetchrow(
-            """SELECT title, authors, year, venue, imrad_json, notes_version
-               FROM papers WHERE id = $1""",
-            request.paper_id
+        # Fetch paper data using SQLAlchemy
+        result = await db.execute(
+            select(Paper).where(Paper.id == request.paper_id)
         )
+        paper = result.scalar_one_or_none()
 
-        if not row:
+        if not paper:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Paper not found")
             )
 
-        imrad_data = row["imrad_json"]
+        imrad_data = paper.imrad_json
         if not imrad_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -431,10 +431,10 @@ async def generate_notes(
 
         # Prepare metadata
         paper_metadata = {
-            "title": row["title"] or "Unknown",
-            "authors": row["authors"] if row["authors"] else [],
-            "year": row["year"] or "",
-            "venue": row["venue"] or ""
+            "title": paper.title or "Unknown",
+            "authors": paper.authors if paper.authors else [],
+            "year": str(paper.year) if paper.year else "",
+            "venue": paper.venue or ""
         }
 
         # Generate notes
@@ -443,18 +443,12 @@ async def generate_notes(
             imrad_structure=imrad_data
         )
 
-        # Update paper with new notes
-        new_version = (row["notes_version"] or 0) + 1
-        await postgres_db.execute(
-            """UPDATE papers
-               SET reading_notes = $1,
-                   notes_version = $2,
-                   updated_at = NOW()
-               WHERE id = $3""",
-            notes,
-            new_version,
-            request.paper_id
-        )
+        # Update paper with new notes using SQLAlchemy
+        new_version = (paper.notes_version or 0) + 1
+        paper.reading_notes = notes
+        paper.notes_version = new_version
+        await db.flush()
+        await db.refresh(paper)
 
         logger.info(
             "Notes generated",
@@ -481,24 +475,24 @@ async def generate_notes(
 @router.post("/regenerate", response_model=GeneratedNotesResponse)
 async def regenerate_notes(
     request: RegenerateNotesRequest,
-    user_id: str = CurrentUserId
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
 ):
     """Regenerate reading notes with modification request."""
     try:
-        # Fetch paper data
-        row = await postgres_db.fetchrow(
-            """SELECT title, authors, year, venue, imrad_json, notes_version
-               FROM papers WHERE id = $1""",
-            request.paper_id
+        # Fetch paper data using SQLAlchemy
+        result = await db.execute(
+            select(Paper).where(Paper.id == request.paper_id)
         )
+        paper = result.scalar_one_or_none()
 
-        if not row:
+        if not paper:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Paper not found")
             )
 
-        imrad_data = row["imrad_json"]
+        imrad_data = paper.imrad_json
         if not imrad_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -511,10 +505,10 @@ async def regenerate_notes(
 
         # Prepare metadata
         paper_metadata = {
-            "title": row["title"] or "Unknown",
-            "authors": row["authors"] if row["authors"] else [],
-            "year": row["year"] or "",
-            "venue": row["venue"] or ""
+            "title": paper.title or "Unknown",
+            "authors": paper.authors if paper.authors else [],
+            "year": str(paper.year) if paper.year else "",
+            "venue": paper.venue or ""
         }
 
         # Regenerate notes with modification request
@@ -524,18 +518,12 @@ async def regenerate_notes(
             modification_request=request.modification_request
         )
 
-        # Update paper with new notes
-        new_version = (row["notes_version"] or 0) + 1
-        await postgres_db.execute(
-            """UPDATE papers
-               SET reading_notes = $1,
-                   notes_version = $2,
-                   updated_at = NOW()
-               WHERE id = $3""",
-            notes,
-            new_version,
-            request.paper_id
-        )
+        # Update paper with new notes using SQLAlchemy
+        new_version = (paper.notes_version or 0) + 1
+        paper.reading_notes = notes
+        paper.notes_version = new_version
+        await db.flush()
+        await db.refresh(paper)
 
         logger.info(
             "Notes regenerated",
@@ -561,22 +549,26 @@ async def regenerate_notes(
 
 
 @router.get("/{paper_id}/export")
-async def export_notes(paper_id: str, user_id: str = CurrentUserId):
+async def export_notes(
+    paper_id: str,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
+):
     """Export reading notes as Markdown."""
     try:
-        row = await postgres_db.fetchrow(
-            """SELECT title, authors, year, venue, reading_notes, notes_version, updated_at
-               FROM papers WHERE id = $1""",
-            paper_id
+        # Fetch paper data using SQLAlchemy
+        result = await db.execute(
+            select(Paper).where(Paper.id == paper_id)
         )
+        paper = result.scalar_one_or_none()
 
-        if not row:
+        if not paper:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Paper not found")
             )
 
-        if not row["reading_notes"]:
+        if not paper.reading_notes:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Notes not yet generated")
@@ -584,23 +576,23 @@ async def export_notes(paper_id: str, user_id: str = CurrentUserId):
 
         # Prepare metadata for export
         paper_metadata = {
-            "title": row["title"] or "Unknown",
-            "authors": row["authors"] if row["authors"] else [],
-            "year": row["year"] or "N/A",
-            "venue": row["venue"] or "N/A",
-            "generated_at": row["updated_at"].isoformat() if row["updated_at"] else "N/A"
+            "title": paper.title or "Unknown",
+            "authors": paper.authors if paper.authors else [],
+            "year": str(paper.year) if paper.year else "N/A",
+            "venue": paper.venue or "N/A",
+            "generated_at": paper.updated_at.isoformat() if paper.updated_at else "N/A"
         }
 
         # Generate Markdown with header
         markdown = notes_generator.export_to_markdown(
-            notes=row["reading_notes"],
+            notes=paper.reading_notes,
             paper_metadata=paper_metadata
         )
 
         return {
             "paper_id": paper_id,
             "markdown": markdown,
-            "version": row["notes_version"] or 0,
+            "version": paper.notes_version or 0,
             "filename": f"{paper_id}_notes.md"
         }
 
