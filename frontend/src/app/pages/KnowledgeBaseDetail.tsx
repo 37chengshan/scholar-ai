@@ -77,6 +77,8 @@ export function KnowledgeBaseDetail() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [showImportDialog, setShowImportDialog] = useState(false);
 
+  // TODO: FE-04 — When real API data exceeds ~50 items, wrap this list with react-window's VariableSizeList
+
   // Sync tab with URL
   useEffect(() => {
     const tab = searchParams.get("tab") || "papers";
@@ -139,7 +141,7 @@ export function KnowledgeBaseDetail() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="max-w-7xl mx-auto px-6 pt-4">
+      <div className="container-query max-w-7xl mx-auto px-6 pt-4">
         <div className="magazine-card-warm rounded-lg px-4 py-3 mt-4">
           <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="w-full max-w-2xl">
@@ -230,7 +232,7 @@ export function KnowledgeBaseDetail() {
                 ))}
               </motion.div>
             ) : (
-              <motion.div className="grid grid-cols-1 md:grid-cols-2 gap-4" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } }}>
+              <motion.div className="grid grid-cols-1 md:grid-cols-2 cq-paper-grid gap-4" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } }}>
                 {MOCK_PAPERS.map((paper) => (
                   <motion.div key={paper.id} variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } }}>
                     <PaperListItem

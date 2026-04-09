@@ -108,6 +108,8 @@ export function KnowledgeBaseList() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [importTarget, setImportTarget] = useState<{ id: string; name: string } | null>(null);
 
+  // TODO: FE-04 — When real API data exceeds ~50 items, wrap this grid with react-window's VariableSizeGrid
+
   // Filter knowledge bases
   const filtered = MOCK_KNOWLEDGE_BASES.filter((kb) => {
     const matchesSearch =
@@ -223,7 +225,7 @@ export function KnowledgeBaseList() {
       </div>
 
       {/* Content Area */}
-      <div className="max-w-7xl mx-auto px-6 pb-12">
+      <div className="container-query max-w-7xl mx-auto px-6 pb-12">
         {filtered.length === 0 ? (
           <EmptyState
             icon="📚"
@@ -235,7 +237,7 @@ export function KnowledgeBaseList() {
             }}
           />
         ) : viewMode === "card" ? (
-          <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } }}>
+          <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 cq-grid-cols gap-6" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } }}>
             {filtered.map((kb) => (
               <motion.div key={kb.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } }}>
                 <KnowledgeBaseCard
