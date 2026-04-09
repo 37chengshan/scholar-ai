@@ -10,7 +10,7 @@ import {
   List as ListIcon,
   Link as LinkIcon,
 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Tabs, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PaperListItem } from "../components/PaperListItem";
@@ -26,6 +26,7 @@ import {
   BreadcrumbSeparator,
 } from "../components/ui/breadcrumb";
 import { Badge } from "../components/ui/badge";
+
 
 // Mock data for papers
 const MOCK_PAPERS = [
@@ -86,6 +87,8 @@ export function KnowledgeBaseDetail() {
   }, [searchParams]);
 
   const handleTabChange = (tab: string) => {
+    // Prevent switching to disabled tabs
+    if (tab === "graph" || tab === "compare") return;
     setActiveTab(tab);
     setSearchParams({ tab });
   };
@@ -144,13 +147,50 @@ export function KnowledgeBaseDetail() {
       <div className="container-query max-w-7xl mx-auto px-6 pt-4">
         <div className="magazine-card-warm rounded-lg px-4 py-3 mt-4">
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="w-full max-w-2xl">
-            <TabsTrigger value="papers">📄 论文列表</TabsTrigger>
-            <TabsTrigger value="search">🔍 知识检索</TabsTrigger>
-            <TabsTrigger value="qa">💬 知识问答</TabsTrigger>
-            <TabsTrigger value="graph">🕸️ 知识图谱</TabsTrigger>
-            <TabsTrigger value="compare">📊 对比分析</TabsTrigger>
-          </TabsList>
+          {/* Magazine-style tab bar */}
+          <div className="magazine-tabs">
+            <button
+              className={`magazine-tab ${activeTab === 'papers' ? 'magazine-tab--active' : ''}`}
+              onClick={() => handleTabChange('papers')}
+            >
+              论文列表
+              <span className="ml-1.5 text-xs text-muted-foreground/60">{MOCK_PAPERS.length}</span>
+            </button>
+            <button
+              className={`magazine-tab ${activeTab === 'search' ? 'magazine-tab--active' : ''}`}
+              onClick={() => handleTabChange('search')}
+            >
+              知识检索
+            </button>
+            <button
+              className={`magazine-tab ${activeTab === 'qa' ? 'magazine-tab--active' : ''}`}
+              onClick={() => handleTabChange('qa')}
+            >
+              知识问答
+            </button>
+            <button
+              className={`magazine-tab ${activeTab === 'graph' ? 'magazine-tab--active' : 'magazine-tab--disabled'}`}
+              onClick={() => handleTabChange('graph')}
+              aria-disabled="true"
+              title="知识图谱功能开发中"
+            >
+              知识图谱
+              <span className="ml-1 text-[10px] bg-muted text-muted-foreground px-1 rounded">
+                开发中
+              </span>
+            </button>
+            <button
+              className={`magazine-tab ${activeTab === 'compare' ? 'magazine-tab--active' : 'magazine-tab--disabled'}`}
+              onClick={() => handleTabChange('compare')}
+              aria-disabled="true"
+              title="对比分析功能开发中"
+            >
+              对比分析
+              <span className="ml-1 text-[10px] bg-muted text-muted-foreground px-1 rounded">
+                开发中
+              </span>
+            </button>
+          </div>
 
           {/* 论文列表 Tab */}
           <TabsContent value="papers" className="mt-6">
@@ -204,7 +244,6 @@ export function KnowledgeBaseDetail() {
             {/* Paper List */}
             {MOCK_PAPERS.length === 0 ? (
               <EmptyState
-                icon="📚"
                 title="暂无论文"
                 description="导入论文开始构建您的知识库"
                 action={{
@@ -298,30 +337,22 @@ export function KnowledgeBaseDetail() {
           {/* 知识图谱 Tab */}
           <TabsContent value="graph" className="mt-6">
             <div className="magazine-card-warm rounded-lg p-8">
-              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                <span className="text-5xl mb-4">🕸️</span>
-                <h3 className="font-serif text-lg font-semibold text-foreground mb-2">
-                  知识图谱功能开发中
-                </h3>
-                <p className="text-sm">
-                  基于 Neo4j 的实体关系可视化，展示论文间的知识关联
-                </p>
-              </div>
+              <EmptyState
+                variant="graph"
+                title="知识图谱"
+                description="基于 Neo4j 的实体关系可视化，展示论文间的知识关联与引用网络。"
+              />
             </div>
           </TabsContent>
 
           {/* 对比分析 Tab */}
           <TabsContent value="compare" className="mt-6">
             <div className="magazine-card-warm rounded-lg p-8">
-              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                <span className="text-5xl mb-4">📊</span>
-                <h3 className="font-serif text-lg font-semibold text-foreground mb-2">
-                  对比分析功能开发中
-                </h3>
-                <p className="text-sm">
-                  提取论文关键信息进行多维度对比分析
-                </p>
-              </div>
+              <EmptyState
+                variant="compare"
+                title="对比分析"
+                description="提取论文关键信息进行多维度对比分析，帮助您快速发现研究趋势与差异。"
+              />
             </div>
           </TabsContent>
         </Tabs>
