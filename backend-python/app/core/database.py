@@ -1,73 +1,15 @@
 """数据库连接模块
 
-提供 PostgreSQL、Neo4j、Redis 的数据库连接管理
-支持云端数据库 (223.6.249.253)
+提供 Neo4j 和 Redis 的数据库连接管理。
+PostgreSQL 已迁移到 app/database.py (SQLAlchemy ORM)。
 """
 
-import asyncpg
 from neo4j import AsyncGraphDatabase
 import redis.asyncio as redis
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional
+from typing import Optional
 
 from app.config import settings
 from app.utils.logger import logger
-
-
-# =============================================================================
-# PostgreSQL 连接池
-# =============================================================================
-
-class PostgresDB:
-    """PostgreSQL 数据库连接管理"""
-
-    def __init__(self):
-        self.pool: Optional[asyncpg.Pool] = None
-
-    async def connect(self):
-        """创建连接池"""
-        try:
-            self.pool = await asyncpg.create_pool(
-                settings.DATABASE_URL,
-                min_size=5,
-                max_size=20,
-                command_timeout=60,
-            )
-            logger.info("✅ PostgreSQL 连接成功")
-        except Exception as e:
-            logger.error(f"❌ PostgreSQL 连接失败: {e}")
-            raise
-
-    async def disconnect(self):
-        """关闭连接池"""
-        if self.pool:
-            await self.pool.close()
-            logger.info("🔌 PostgreSQL 连接已关闭")
-
-    async def fetch(self, query: str, *args):
-        """执行查询并返回结果"""
-        if not self.pool:
-            raise RuntimeError("数据库未连接")
-        async with self.pool.acquire() as conn:
-            return await conn.fetch(query, *args)
-
-    async def fetchrow(self, query: str, *args):
-        """执行查询并返回单行结果"""
-        if not self.pool:
-            raise RuntimeError("数据库未连接")
-        async with self.pool.acquire() as conn:
-            return await conn.fetchrow(query, *args)
-
-    async def execute(self, query: str, *args):
-        """执行 SQL 命令"""
-        if not self.pool:
-            raise RuntimeError("数据库未连接")
-        async with self.pool.acquire() as conn:
-            return await conn.execute(query, *args)
-
-
-# 全局 PostgreSQL 实例
-postgres_db = PostgresDB()
 
 
 # =============================================================================
@@ -230,11 +172,6 @@ redis_db = RedisDB()
 # 依赖注入函数 (FastAPI 依赖)
 # =============================================================================
 
-async def get_postgres() -> PostgresDB:
-    """获取 PostgreSQL 实例"""
-    return postgres_db
-
-
 async def get_neo4j() -> Neo4jDB:
     """获取 Neo4j 实例"""
     return neo4j_db
@@ -250,11 +187,11 @@ async def get_redis() -> RedisDB:
 # =============================================================================
 
 async def init_databases():
-    """初始化所有数据库连接"""
-    logger.info("🔄 正在初始化数据库连接...")
+    """初始化 Neo4j 和 Redis 连接。
 
-    # PostgreSQL
-    await postgres_db.connect()
+    PostgreSQL 已迁移到 app/database.py (SQLAlchemy)。
+    """
+    logger.info("正在初始化 Neo4j 和 Redis 连接...")
 
     # Neo4j
     await neo4j_db.connect()
@@ -262,37 +199,14 @@ async def init_databases():
     # Redis
     await redis_db.connect()
 
-    logger.info("✅ 所有数据库连接初始化完成")
+    logger.info("Neo4j 和 Redis 连接初始化完成")
 
 
 async def close_databases():
-    """关闭所有数据库连接"""
-    logger.info("🔄 正在关闭数据库连接...")
+    """关闭 Neo4j 和 Redis 连接。"""
+    logger.info("正在关闭 Neo4j 和 Redis 连接...")
 
-    await postgres_db.disconnect()
     await neo4j_db.disconnect()
     await redis_db.disconnect()
 
-    logger.info("✅ 所有数据库连接已关闭")
-
-
-# =============================================================================
-# 原始连接上下文管理器 (用于需要原始 asyncpg.Connection 的场景)
-# =============================================================================
-
-@asynccontextmanager
-async def get_db_connection() -> AsyncGenerator[asyncpg.Connection, None]:
-    """获取原始 PostgreSQL 连接 (用于需要执行原始 SQL 的场景)
-
-    Yields:
-        asyncpg.Connection: 原始数据库连接
-
-    Example:
-        async with get_db_connection() as conn:
-            rows = await conn.fetch("SELECT * FROM papers")
-    """
-    if not postgres_db.pool:
-        raise RuntimeError("PostgreSQL 连接池未初始化")
-
-    async with postgres_db.pool.acquire() as conn:
-        yield conn
+    logger.info("Neo4j 和 Redis 连接已关闭")
