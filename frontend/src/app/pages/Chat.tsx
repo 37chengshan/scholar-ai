@@ -2,12 +2,14 @@
  * Chat Page - SSE Streaming with Citations & Session Persistence
  *
  * Main chat interface with:
- * - SSE streaming for real-time AI responses
+ * - SSE streaming for real-time AI responses (MarkdownRenderer, D-01)
  * - Session persistence (create, load, switch, delete)
  * - Agent activity panel (tool calls, thoughts, stats)
- * - Thinking process visualization with auto-collapse
- * - Typing effect with Markdown rendering
- * - Agent state sidebar (D-04, D-05, D-06)
+ * - Thinking process visualization with auto-collapse (D-02, D-03)
+ * - Tool call cards (D-04)
+ * - Citations panel with inline markers (D-05)
+ * - Token monitoring (D-06)
+ * - Confirmation dialog for agent approval
  *
  * Part of Agent-Native architecture (D-18, D-19, D-20, D-21)
  */
@@ -24,8 +26,6 @@ import {
   Loader2,
   User,
   MessageSquare,
-  Activity,
-  ChevronRight,
   ChevronLeft,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -33,7 +33,11 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useSSE } from '../hooks/useSSE';
 import { useSessions, ChatMessage } from '../hooks/useSessions';
 import { ThinkingProcess, ThinkingStep } from '../components/ThinkingProcess';
-import { TypingText } from '../components/TypingText';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { ToolCallCard } from '../components/ToolCallCard';
+import { CitationsPanel } from '../components/CitationsPanel';
+import { TokenMonitor } from '../components/TokenMonitor';
+import { ConfirmationDialog } from '../components/ConfirmationDialog';
 import { AgentStateSidebar, AgentUIState, ExecutionStep } from '../components/AgentStateSidebar';
 import { SSEEvent } from '@/services/sseService';
 
@@ -43,11 +47,14 @@ export function Chat() {
   const [agentEvents, setAgentEvents] = useState<SSEEvent[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [agentUIState, setAgentUIState] = useState<AgentUIState>('IDLE');
-  const [thinkingCollapsed, setThinkingCollapsed] = useState(false);
+  const [sending, setSending] = useState(false); // 防止重复发送
+  const [sessionTokens, setSessionTokens] = useState(0); // 当前session的token
+  const [sessionCost, setSessionCost] = useState(0); // 当前session的花费
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { language } = useLanguage();
-  const { isConnected, messages, error, connect, disconnect, totalTimeMs } = useSSE();
+  const { isConnected, messages, error, connect, disconnect, totalTimeMs,
+          toolCalls, confirmation, citations, currentMessageTokens, resetConfirmation } = useSSE();
   const {
     sessions,
     currentSession,
@@ -71,6 +78,7 @@ export function Chat() {
     verify: isZh ? '请验证输出结果。' : 'Verify outputs.',
     noMessages: isZh ? '开始新对话' : 'Start a new conversation',
     sendFirst: isZh ? '发送您的第一条消息' : 'Send your first message',
+    streaming: isZh ? '流式响应中...' : 'Streaming...',
     deleteConfirm: isZh ? '确定删除此对话？' : 'Delete this conversation?',
   };
 
@@ -80,6 +88,8 @@ export function Chat() {
     if (session) {
       setStreamingMessage('');
       setAgentEvents([]);
+      setSessionTokens(0); // 重置token计数
+      setSessionCost(0); // 重置cost计数
     }
   }, [isConnected, disconnect, createSession, isZh]);
 
@@ -88,6 +98,8 @@ export function Chat() {
     await switchSession(sessionId);
     setStreamingMessage('');
     setAgentEvents([]);
+    setSessionTokens(0); // 重置token计数
+    setSessionCost(0); // 重置cost计数
   }, [isConnected, disconnect, switchSession]);
 
   const handleDeleteSession = useCallback(async (sessionId: string, e: React.MouseEvent) => {
@@ -98,36 +110,44 @@ export function Chat() {
   }, [deleteSession, t.deleteConfirm]);
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || isConnected) return;
+    if (!input.trim() || isConnected || sending) return;
 
-    let sessionId = currentSession?.id;
+    setSending(true); // 防止重复发送
     
-    if (!sessionId) {
-      const newSession = await createSession(input.trim().substring(0, 50));
-      if (!newSession) return;
-      sessionId = newSession.id;
+    try {
+      let sessionId = currentSession?.id;
+      
+      if (!sessionId) {
+        const newSession = await createSession(input.trim().substring(0, 50));
+        if (!newSession) return;
+        sessionId = newSession.id;
+      }
+
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        session_id: sessionId,
+        role: 'user',
+        content: input.trim(),
+        created_at: new Date().toISOString(),
+      };
+      
+      addMessage(userMessage);
+
+      const message = encodeURIComponent(input.trim());
+      
+      // Connect directly to Node.js backend to bypass Vite proxy
+      // This ensures cookies are sent with EventSource requests
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const url = `${apiUrl}/api/chat/stream?message=${message}&session_id=${sessionId}`;
+      
+      connect(url);
+      setInput('');
+    } catch (error) {
+      console.error('Send message failed:', error);
+    } finally {
+      setSending(false);
     }
-
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      session_id: sessionId,
-      role: 'user',
-      content: input.trim(),
-      created_at: new Date().toISOString(),
-    };
-    
-    addMessage(userMessage);
-
-    const message = encodeURIComponent(input.trim());
-    
-    // Connect directly to Node.js backend to bypass Vite proxy
-    // This ensures cookies are sent with EventSource requests
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-    const url = `${apiUrl}/api/chat/stream?message=${message}&session_id=${sessionId}`;
-    
-    connect(url);
-    setInput('');
-  }, [input, isConnected, currentSession, createSession, addMessage, connect]);
+  }, [input, isConnected, sending, currentSession, createSession, addMessage, connect]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -142,6 +162,15 @@ export function Chat() {
         latestMessage.type === 'tool_call' || 
         latestMessage.type === 'tool_result') {
       setAgentEvents(prev => [...prev, latestMessage]);
+    }
+
+    // Capture token usage from done event
+    if (latestMessage.type === 'done') {
+      const tokensUsed = latestMessage.content?.tokens_used || 0;
+      const cost = latestMessage.content?.cost || 0;
+      
+      setSessionTokens(prev => prev + tokensUsed);
+      setSessionCost(prev => prev + cost);
     }
   }, [messages]);
 
@@ -168,9 +197,8 @@ export function Chat() {
 
   // Update agent UI state based on connection and events
   useEffect(() => {
-    if (isConnected) {
+    if (isConnected || sending) {
       setAgentUIState('RUNNING');
-      setThinkingCollapsed(false);
     } else if (agentEvents.length > 0) {
       // Check if waiting for confirmation
       const hasConfirmation = agentEvents.some(e => e.type === 'confirmation_required');
@@ -182,7 +210,7 @@ export function Chat() {
     } else {
       setAgentUIState('IDLE');
     }
-  }, [isConnected, agentEvents]);
+  }, [isConnected, sending, agentEvents]);
 
   // Compute thinking steps from agent events
   const thinkingSteps = useMemo<ThinkingStep[]>(() => {
@@ -331,31 +359,7 @@ export function Chat() {
             <h2 className="font-serif text-base font-bold truncate">
               {currentSession?.title || t.newChat}
             </h2>
-          </div>
-          <div className="flex items-center gap-3">
-            {isConnected && (
-              <span className="flex items-center gap-1.5 text-primary text-xs">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Streaming...
-              </span>
-            )}
-            
-            {agentEvents.length > 0 && (
-              <span className="flex items-center gap-1.5 text-muted-foreground text-xs hidden xl:flex">
-                <Activity className="w-3 h-3" />
-                {agentEvents.filter(e => e.type === 'tool_call').length} tools
-              </span>
-            )}
-            
-            {showRightPanel && agentEvents.length > 0 && (
-              <button
-                onClick={() => setShowRightPanel(false)}
-                className="w-6 h-6 rounded border border-border hover:bg-muted flex items-center justify-center hidden xl:flex"
-              >
-                <ChevronRight className="w-3 h-3" />
-              </button>
-            )}
-          </div>
+        </div>
         </div>
 
         {/* Messages */}
@@ -406,24 +410,48 @@ export function Chat() {
                     <Bot className="w-4 h-4 text-primary" />
                   </div>
                   <div className="flex-1 max-w-[80%] space-y-2">
-                    {/* Thinking Process - shown before answer (D-19, D-20, D-21) */}
-                    {thinkingSteps.length > 0 && !thinkingCollapsed && (
+                    {/* Thinking Process - inline above AI answer (D-02, D-03) */}
+                    {thinkingSteps.length > 0 && (
                       <ThinkingProcess
                         steps={thinkingSteps}
                         duration={totalTimeMs / 1000}
-                        onComplete={() => setThinkingCollapsed(true)}
+                        onComplete={() => {}}
+                        autoCollapse={true}
                       />
                     )}
-                    
-                    {/* Answer with TypingText effect (D-18) */}
-                    <div className="rounded-2xl px-4 py-3 bg-muted">
-                      <TypingText
-                        text={streamingMessage}
-                        speed={40}
-                        enableMarkdown={true}
-                        className="text-sm"
-                      />
-                    </div>
+
+                    {/* Tool Call Cards (D-04) */}
+                    {toolCalls.length > 0 && (
+                      <div className="space-y-2">
+                        {toolCalls.map(tc => (
+                          <ToolCallCard key={tc.id} toolCall={tc} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Answer with MarkdownRenderer (D-01) */}
+                    <motion.div
+                      initial={{ opacity: 0.7 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.05 }}
+                    >
+                      <div className="rounded-2xl px-4 py-3 bg-muted">
+                        <MarkdownRenderer content={streamingMessage} className="text-sm" />
+                      </div>
+                    </motion.div>
+
+                    {/* Citations Panel (D-05) */}
+                    {citations.length > 0 && (
+                      <CitationsPanel citations={citations} />
+                    )}
+
+                    {/* Message-level token usage (D-06) */}
+                    {currentMessageTokens && (
+                      <div className="text-xs text-muted-foreground font-mono mt-1">
+                        Token: {currentMessageTokens.tokensUsed.toLocaleString()}
+                        {currentMessageTokens.cost > 0 && ` · ¥${currentMessageTokens.cost.toFixed(4)}`}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -452,7 +480,7 @@ export function Chat() {
                 placeholder={t.placeholder}
                 className="flex-1 p-2 text-sm bg-transparent resize-none focus:outline-none min-h-[40px] max-h-[120px]"
                 rows={1}
-                disabled={isConnected}
+                disabled={isConnected || sending}
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
                   target.style.height = 'auto';
@@ -461,15 +489,15 @@ export function Chat() {
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isConnected}
+                disabled={!input.trim() || isConnected || sending}
                 className={clsx(
                   'w-10 h-10 rounded-lg flex items-center justify-center transition-all',
-                  input.trim() && !isConnected
+                  input.trim() && !isConnected && !sending
                     ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                     : 'bg-muted text-muted-foreground'
                 )}
               >
-                {isConnected ? (
+                {isConnected || sending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
@@ -502,11 +530,30 @@ export function Chat() {
               totalTime={totalTimeMs}
               steps={executionSteps}
               onStop={handleStop}
-              className="flex-1"
             />
+
+            {/* Token Monitor - session level (D-06) */}
+            {sessionTokens > 0 && (
+              <div className="border-t border-border/50 p-4">
+                <TokenMonitor tokens={sessionTokens} cost={sessionCost} limit={128000} />
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Confirmation Dialog for agent approval */}
+      <ConfirmationDialog
+        tool={confirmation?.tool || ''}
+        params={confirmation?.params || {}}
+        isOpen={confirmation !== null}
+        onApprove={() => {
+          resetConfirmation();
+        }}
+        onReject={() => {
+          resetConfirmation();
+        }}
+      />
       
       {/* Toggle Right Panel Button (when hidden) */}
       {!showRightPanel && (
