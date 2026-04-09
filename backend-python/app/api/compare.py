@@ -8,12 +8,15 @@ from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel, Field, validator
 from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.logger import logger
-from app.core.database import get_db_connection
+from app.database import get_db
 from app.core.auth import get_current_service
 from app.utils.zhipu_client import get_llm_client
 from app.utils.problem_detail import Errors
+from app.models.paper import Paper, PaperChunk
 
 router = APIRouter()
 
@@ -114,52 +117,59 @@ class EvolutionRequest(BaseModel):
 
 async def fetch_papers_for_comparison(
     paper_ids: List[str],
-    user_id: str
+    user_id: str,
+    db: AsyncSession
 ) -> List[Dict[str, Any]]:
     """Fetch paper metadata and chunks for comparison.
 
     Validates ownership and returns complete paper data.
     """
-    async with get_db_connection() as conn:
-        # Fetch paper metadata
-        papers_result = await conn.fetch(
-            """
-            SELECT id, title, authors, year, abstract, status
-            FROM papers
-            WHERE id = ANY($1) AND user_id = $2
-            """,
-            paper_ids,
-            user_id
+    # Fetch paper metadata using SQLAlchemy
+    result = await db.execute(
+        select(Paper).where(Paper.id.in_(paper_ids), Paper.user_id == user_id)
+    )
+    papers_db = result.scalars().all()
+
+    found_ids = {p.id for p in papers_db}
+    missing_ids = set(paper_ids) - found_ids
+
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=Errors.not_found(f"Papers not found or not accessible: {list(missing_ids)}")
         )
 
-        found_ids = {p['id'] for p in papers_result}
-        missing_ids = set(paper_ids) - found_ids
+    # Fetch chunks for each paper and build response
+    papers = []
+    for paper in papers_db:
+        paper_dict = {
+            'id': paper.id,
+            'title': paper.title,
+            'authors': paper.authors,
+            'year': paper.year,
+            'abstract': paper.abstract,
+            'status': paper.status
+        }
 
-        if missing_ids:
-            raise HTTPException(
-                status_code=404,
-                detail=Errors.not_found(f"Papers not found or not accessible: {list(missing_ids)}")
-            )
+        # Fetch chunks for this paper
+        chunks_result = await db.execute(
+            select(PaperChunk)
+            .where(PaperChunk.paper_id == paper.id)
+            .order_by(PaperChunk.page_start.asc(), PaperChunk.id.asc())
+        )
+        chunks = chunks_result.scalars().all()
 
-        # Fetch chunks for each paper
-        papers = []
-        for paper_row in papers_result:
-            paper = dict(paper_row)
+        paper_dict['chunks'] = [
+            {
+                'content': c.content,
+                'section': c.section,
+                'page': c.page_start
+            }
+            for c in chunks
+        ]
+        papers.append(paper_dict)
 
-            chunks_result = await conn.fetch(
-                """
-                SELECT content, section, page_start as page
-                FROM paper_chunks
-                WHERE paper_id = $1
-                ORDER BY page_start ASC, id ASC
-                """,
-                paper['id']
-            )
-
-            paper['chunks'] = [dict(c) for c in chunks_result]
-            papers.append(paper)
-
-        return papers
+    return papers
 
 
 async def analyze_papers_with_llm(
@@ -453,6 +463,7 @@ def detect_evolution_pattern(timeline: List[Dict[str, Any]]) -> str:
 @router.post("/compare", response_model=CompareResponse)
 async def compare_papers_endpoint(
     request: CompareRequest,
+    db: AsyncSession = Depends(get_db),
     service: dict = Depends(get_current_service)
 ) -> Dict[str, Any]:
     """Compare multiple papers across specified dimensions.
@@ -475,7 +486,7 @@ async def compare_papers_endpoint(
     )
 
     # Fetch papers (validates ownership)
-    papers = await fetch_papers_for_comparison(request.paper_ids, user_id)
+    papers = await fetch_papers_for_comparison(request.paper_ids, user_id, db)
 
     # Analyze with LLM
     analysis = await analyze_papers_with_llm(papers, request.dimensions)
@@ -514,6 +525,7 @@ async def compare_papers_endpoint(
 @router.post("/evolution", response_model=EvolutionTimeline)
 async def detect_evolution_timeline(
     request: EvolutionRequest,
+    db: AsyncSession = Depends(get_db),
     service: dict = Depends(get_current_service)
 ) -> Dict[str, Any]:
     """Detect method evolution timeline from papers.
@@ -538,28 +550,31 @@ async def detect_evolution_timeline(
         user_id=user_id
     )
 
-    # Fetch papers (validates ownership)
-    async with get_db_connection() as conn:
-        papers_result = await conn.fetch(
-            """
-            SELECT id, title, authors, year, abstract
-            FROM papers
-            WHERE id = ANY($1) AND user_id = $2
-            """,
-            request.paper_ids,
-            user_id
+    # Fetch papers using SQLAlchemy (validates ownership)
+    result = await db.execute(
+        select(Paper).where(Paper.id.in_(request.paper_ids), Paper.user_id == user_id)
+    )
+    papers_db = result.scalars().all()
+
+    found_ids = {p.id for p in papers_db}
+    missing_ids = set(request.paper_ids) - found_ids
+
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=Errors.not_found(f"Papers not found or not accessible: {list(missing_ids)}")
         )
 
-        found_ids = {p['id'] for p in papers_result}
-        missing_ids = set(request.paper_ids) - found_ids
-
-        if missing_ids:
-            raise HTTPException(
-                status_code=404,
-                detail=Errors.not_found(f"Papers not found or not accessible: {list(missing_ids)}")
-            )
-
-        papers = [dict(p) for p in papers_result]
+    papers = [
+        {
+            'id': p.id,
+            'title': p.title,
+            'authors': p.authors,
+            'year': p.year,
+            'abstract': p.abstract
+        }
+        for p in papers_db
+    ]
 
     # Extract versions with LLM
     version_data = await extract_versions_with_llm(papers, request.method_name)
