@@ -172,6 +172,40 @@
   }
 }
 
+/* Badge and toolbar utility classes */
+
+/* Academic magazine badge */
+.magazine-badge {
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+  font-family: var(--font-serif);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(45, 36, 30, 0.08);
+}
+
+/* Magazine toolbar with backdrop blur */
+.magazine-toolbar {
+  background: color-mix(in srgb, var(--color-background) 80%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(45, 36, 30, 0.08);
+  color: var(--color-foreground);
+}
+
+/* Magazine toolbar heading with serif typography */
+.magazine-toolbar-heading {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+/* Warm card background with subtle gradient */
+.magazine-card-warm {
+  background: linear-gradient(135deg, white 0%, var(--color-muted) 100%);
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .magazine-section {
