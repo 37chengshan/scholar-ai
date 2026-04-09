@@ -32,7 +32,7 @@ from app.utils.problem_detail import ProblemDetail, ErrorTypes
 from app.utils.logger import logger
 
 
-router = APIRouter(prefix="/api/v1/papers", tags=["Papers"])
+router = APIRouter(tags=["Papers"])
 
 
 # =============================================================================

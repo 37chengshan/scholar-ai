@@ -23,7 +23,7 @@ from app.utils.problem_detail import ProblemDetail, ErrorTypes
 from app.utils.logger import logger
 
 
-router = APIRouter(prefix="/api/v1/tasks", tags=["Tasks"])
+router = APIRouter(tags=["Tasks"])
 
 
 # =============================================================================
