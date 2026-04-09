@@ -9,6 +9,10 @@ docling>=2.0.0,<3.0.0
 # Zhipu AI SDK (替代 litellm)
 zhipuai>=2.1.5
 
+# Database (Phase 27 - SQLAlchemy ORM)
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+
 # 向量数据库
 pgvector>=0.2.0
 psycopg[binary]>=3.1.0
@@ -81,6 +85,9 @@ cryptography==42.0.5
 
 # Password hashing
 argon2-cffi>=23.1.0
+
+# Email validation
+email-validator>=2.1.0
 
 # 文本相似度计算 (去重)
 rapidfuzz>=3.0.0
