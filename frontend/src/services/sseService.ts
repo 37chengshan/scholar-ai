@@ -27,7 +27,8 @@ export type SSEEventType =
   | 'confirmation_required'
   | 'message'
   | 'done'
-  | 'heartbeat';
+  | 'heartbeat'
+  | 'citation';
 
 /**
  * SSE Event structure
@@ -38,6 +39,8 @@ export interface SSEEvent {
   timestamp?: string;
   tool?: string; // For tool_call/tool_result
   result?: any; // For tool_result
+  event?: string; // Raw SSE event name
+  data?: any; // Raw SSE event data
 }
 
 /**
@@ -46,7 +49,7 @@ export interface SSEEvent {
 export interface SSEHandlers {
   onMessage: (event: SSEEvent) => void;
   onError: (error: Error) => void;
-  onDone: (data?: { tokens_used?: number; cost?: number; iterations?: number; total_time_ms?: number }) => void;
+  onDone: (data?: { tokens_used?: number; cost?: number; iterations?: number; total_time_ms?: number; citations?: any[] }) => void;
 }
 
 /**
