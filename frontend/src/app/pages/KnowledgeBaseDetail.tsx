@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
+import { motion } from "motion/react";
 import {
   ArrowLeft,
   Brain,
@@ -15,6 +16,7 @@ import { Input } from "../components/ui/input";
 import { PaperListItem } from "../components/PaperListItem";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
 import { EmptyState } from "../components/EmptyState";
+import { PaperTexture } from "../components/PaperTexture";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -99,9 +101,10 @@ export function KnowledgeBaseDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="relative min-h-screen bg-background">
+      <PaperTexture />
       {/* Breadcrumb Header */}
-      <div className="border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10">
+      <div className="magazine-toolbar sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <Breadcrumb>
             <BreadcrumbList>
@@ -120,13 +123,13 @@ export function KnowledgeBaseDetail() {
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbPage className="flex items-center gap-2">
+                <BreadcrumbPage className="font-serif flex items-center gap-2">
                   <Brain className="h-4 w-4" />
                   {MOCK_KB.name}
                 </BreadcrumbPage>
               </BreadcrumbItem>
               <BreadcrumbItem>
-                <Badge variant="secondary" className="ml-1 text-xs">
+                <Badge className="magazine-badge ml-1">
                   {MOCK_KB.type}
                 </Badge>
               </BreadcrumbItem>
@@ -137,7 +140,8 @@ export function KnowledgeBaseDetail() {
 
       {/* Tab Navigation */}
       <div className="max-w-7xl mx-auto px-6 pt-4">
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <div className="magazine-card-warm rounded-lg px-4 py-3 mt-4">
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="w-full max-w-2xl">
             <TabsTrigger value="papers">📄 论文列表</TabsTrigger>
             <TabsTrigger value="search">🔍 知识检索</TabsTrigger>
@@ -149,47 +153,49 @@ export function KnowledgeBaseDetail() {
           {/* 论文列表 Tab */}
           <TabsContent value="papers" className="mt-6">
             {/* Toolbar */}
-            <div className="flex items-center gap-4 mb-6">
-              <Button
-                onClick={() => handleOpenImport("local")}
-                className="gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                导入论文
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleOpenImport("url")}
-                className="gap-2"
-              >
-                <LinkIcon className="h-4 w-4" />
-                从 URL 导入
-              </Button>
-
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="搜索论文..." className="pl-9" />
-              </div>
-
-              <div className="flex items-center gap-1 ml-auto">
+            <div className="magazine-card-warm rounded-lg p-3 mb-6">
+              <div className="flex items-center gap-4">
                 <Button
-                  variant={viewMode === "card" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("card")}
-                  className="gap-1.5"
+                  onClick={() => handleOpenImport("local")}
+                  className="gap-2"
                 >
-                  <Grid className="h-4 w-4" />
-                  卡片
+                  <Plus className="h-4 w-4" />
+                  导入论文
                 </Button>
                 <Button
-                  variant={viewMode === "list" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("list")}
-                  className="gap-1.5"
+                  variant="outline"
+                  onClick={() => handleOpenImport("url")}
+                  className="gap-2"
                 >
-                  <ListIcon className="h-4 w-4" />
-                  列表
+                  <LinkIcon className="h-4 w-4" />
+                  从 URL 导入
                 </Button>
+
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="搜索论文..." className="pl-9" />
+                </div>
+
+                <div className="flex items-center gap-1 ml-auto">
+                  <Button
+                    variant={viewMode === "card" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setViewMode("card")}
+                    className="gap-1.5"
+                  >
+                    <Grid className="h-4 w-4" />
+                    卡片
+                  </Button>
+                  <Button
+                    variant={viewMode === "list" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setViewMode("list")}
+                    className="gap-1.5"
+                  >
+                    <ListIcon className="h-4 w-4" />
+                    列表
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -205,108 +211,119 @@ export function KnowledgeBaseDetail() {
                 }}
               />
             ) : viewMode === "list" ? (
-              <div className="flex flex-col gap-3">
+              <motion.div className="flex flex-col gap-3" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } }}>
                 {MOCK_PAPERS.map((paper) => (
-                  <PaperListItem
-                    key={paper.id}
-                    id={paper.id}
-                    title={paper.title}
-                    authors={paper.authors}
-                    year={paper.year}
-                    venue={paper.venue}
-                    chunkCount={paper.chunkCount}
-                    parseStatus={paper.parseStatus}
-                    entityCount={paper.entityCount}
-                    onRead={() => handleRead(paper.id)}
-                    onNotes={() => handleNotes(paper.id)}
-                  />
+                  <motion.div key={paper.id} variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } }}>
+                    <PaperListItem
+                      id={paper.id}
+                      title={paper.title}
+                      authors={paper.authors}
+                      year={paper.year}
+                      venue={paper.venue}
+                      chunkCount={paper.chunkCount}
+                      parseStatus={paper.parseStatus}
+                      entityCount={paper.entityCount}
+                      onRead={() => handleRead(paper.id)}
+                      onNotes={() => handleNotes(paper.id)}
+                    />
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <motion.div className="grid grid-cols-1 md:grid-cols-2 gap-4" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } }}>
                 {MOCK_PAPERS.map((paper) => (
-                  <PaperListItem
-                    key={paper.id}
-                    id={paper.id}
-                    title={paper.title}
-                    authors={paper.authors}
-                    year={paper.year}
-                    venue={paper.venue}
-                    chunkCount={paper.chunkCount}
-                    parseStatus={paper.parseStatus}
-                    entityCount={paper.entityCount}
-                    onRead={() => handleRead(paper.id)}
-                    onNotes={() => handleNotes(paper.id)}
-                  />
+                  <motion.div key={paper.id} variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } }}>
+                    <PaperListItem
+                      id={paper.id}
+                      title={paper.title}
+                      authors={paper.authors}
+                      year={paper.year}
+                      venue={paper.venue}
+                      chunkCount={paper.chunkCount}
+                      parseStatus={paper.parseStatus}
+                      entityCount={paper.entityCount}
+                      onRead={() => handleRead(paper.id)}
+                      onNotes={() => handleNotes(paper.id)}
+                    />
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
             )}
           </TabsContent>
 
           {/* 知识检索 Tab */}
           <TabsContent value="search" className="mt-6">
-            <div className="flex flex-col items-center justify-center py-16">
-              <div className="w-full max-w-2xl">
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    placeholder="输入检索问题，如：RLHF 和 DPO 方法有什么区别？"
-                    className="pl-12 py-6 text-base"
-                  />
+            <div className="magazine-card-warm rounded-lg p-8">
+              <div className="flex flex-col items-center justify-center py-8">
+                <div className="w-full max-w-2xl">
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input
+                      placeholder="输入检索问题，如：RLHF 和 DPO 方法有什么区别？"
+                      className="pl-12 py-6 text-base"
+                    />
+                  </div>
+                  <p className="text-center text-sm text-muted-foreground mt-4">
+                    知识检索功能开发中 — 基于 PGVector 的跨论文语义检索
+                  </p>
                 </div>
-                <p className="text-center text-sm text-muted-foreground mt-4">
-                  知识检索功能开发中 — 基于 PGVector 的跨论文语义检索
-                </p>
               </div>
             </div>
           </TabsContent>
 
           {/* 知识问答 Tab */}
           <TabsContent value="qa" className="mt-6">
-            <div className="flex flex-col items-center justify-center py-16">
-              <div className="w-full max-w-2xl">
-                <div className="relative">
-                  <Input
-                    placeholder="输入您的问题..."
-                    className="py-6 text-base pr-24"
-                  />
-                  <Button className="absolute right-2 top-1/2 -translate-y-1/2">
-                    发送
-                  </Button>
+            <div className="magazine-card-warm rounded-lg p-8">
+              <div className="flex flex-col items-center justify-center py-8">
+                <div className="w-full max-w-2xl">
+                  <div className="relative">
+                    <Input
+                      placeholder="输入您的问题..."
+                      className="py-6 text-base pr-24"
+                    />
+                    <Button className="absolute right-2 top-1/2 -translate-y-1/2">
+                      发送
+                    </Button>
+                  </div>
+                  <p className="text-center text-sm text-muted-foreground mt-4">
+                    知识问答功能开发中 — 基于知识库的 RAG 对话问答
+                  </p>
                 </div>
-                <p className="text-center text-sm text-muted-foreground mt-4">
-                  知识问答功能开发中 — 基于知识库的 RAG 对话问答
-                </p>
               </div>
             </div>
           </TabsContent>
 
           {/* 知识图谱 Tab */}
           <TabsContent value="graph" className="mt-6">
-            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <span className="text-5xl mb-4">🕸️</span>
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                知识图谱功能开发中
-              </h3>
-              <p className="text-sm">
-                基于 Neo4j 的实体关系可视化，展示论文间的知识关联
-              </p>
+            <div className="magazine-card-warm rounded-lg p-8">
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <span className="text-5xl mb-4">🕸️</span>
+                <h3 className="font-serif text-lg font-semibold text-foreground mb-2">
+                  知识图谱功能开发中
+                </h3>
+                <p className="text-sm">
+                  基于 Neo4j 的实体关系可视化，展示论文间的知识关联
+                </p>
+              </div>
             </div>
           </TabsContent>
 
           {/* 对比分析 Tab */}
           <TabsContent value="compare" className="mt-6">
-            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-              <span className="text-5xl mb-4">📊</span>
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                对比分析功能开发中
-              </h3>
-              <p className="text-sm">
-                提取论文关键信息进行多维度对比分析
-              </p>
+            <div className="magazine-card-warm rounded-lg p-8">
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <span className="text-5xl mb-4">📊</span>
+                <h3 className="font-serif text-lg font-semibold text-foreground mb-2">
+                  对比分析功能开发中
+                </h3>
+                <p className="text-sm">
+                  提取论文关键信息进行多维度对比分析
+                </p>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
+        </div>
       </div>
 
       {/* Import Dialog */}
