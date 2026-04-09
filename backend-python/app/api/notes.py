@@ -1,52 +1,409 @@
-"""Notes API endpoints
+"""Notes API endpoints.
 
-Provides endpoints for generating, regenerating, and exporting reading notes.
+Provides CRUD endpoints for user notes:
+- GET /api/v1/notes - List notes with filters
+- POST /api/v1/notes - Create note
+- GET /api/v1/notes/:id - Get note
+- PUT /api/v1/notes/:id - Update note
+- DELETE /api/v1/notes/:id - Delete note
+- GET /api/v1/notes/paper/:paperId - Get notes for paper
+- POST /api/v1/notes/generate - Generate reading notes (AI)
+- POST /api/v1/notes/regenerate - Regenerate with modification
 """
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
+import json
 
+from fastapi import APIRouter, HTTPException, Depends, Query, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select, func, desc, asc, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.models.orm_note import Note
 from app.core.notes_generator import NotesGenerator
 from app.core.database import postgres_db
 from app.utils.logger import logger
+from app.core.auth import CurrentUserId
 from app.utils.problem_detail import Errors
 
 router = APIRouter()
 notes_generator = NotesGenerator()
 
 
+# =============================================================================
+# Request/Response Models
+# =============================================================================
+
+class NoteCreate(BaseModel):
+    """Request to create a note."""
+    title: str = Field(..., min_length=1, max_length=500)
+    content: str = Field(..., min_length=1)
+    tags: List[str] = Field(default=[])
+    paperIds: List[str] = Field(default=[], alias="paperIds")
+
+    class Config:
+        populate_by_name = True
+
+
+class NoteUpdate(BaseModel):
+    """Request to update a note."""
+    title: Optional[str] = Field(None, min_length=1, max_length=500)
+    content: Optional[str] = Field(None, min_length=1)
+    tags: Optional[List[str]] = None
+    paperIds: Optional[List[str]] = Field(None, alias="paperIds")
+
+    class Config:
+        populate_by_name = True
+
+
+class NoteResponse(BaseModel):
+    """Response for a single note."""
+    id: str
+    user_id: str
+    title: str
+    content: str
+    tags: List[str]
+    paper_ids: List[str]
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class NotesListResponse(BaseModel):
+    """Response for notes list."""
+    notes: List[NoteResponse]
+    total: int
+
+
 class GenerateNotesRequest(BaseModel):
     """Request to generate notes for a paper."""
-    paper_id: str
+    paper_id: str = Field(..., alias="paperId")
+
+    class Config:
+        populate_by_name = True
 
 
 class RegenerateNotesRequest(BaseModel):
     """Request to regenerate notes with modification."""
-    paper_id: str
-    modification_request: str
+    paper_id: str = Field(..., alias="paperId")
+    modification_request: str = Field(..., alias="modificationRequest")
+
+    class Config:
+        populate_by_name = True
 
 
-class NotesResponse(BaseModel):
+class GeneratedNotesResponse(BaseModel):
     """Response with generated notes."""
     paper_id: str
     notes: str
     version: int
 
 
-@router.post("/generate", response_model=NotesResponse)
-async def generate_notes(request: GenerateNotesRequest):
+# =============================================================================
+# CRUD Endpoints
+# =============================================================================
+
+@router.post("", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+async def create_note(
+    request: NoteCreate,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new note.
+
+    Supports cross-paper association via paperIds array.
     """
-    Generate reading notes for a paper.
+    try:
+        note = Note(
+            user_id=user_id,
+            title=request.title,
+            content=request.content,
+            tags=request.tags,
+            paper_ids=request.paperIds
+        )
 
-    Args:
-        request: GenerateNotesRequest with paper_id
+        db.add(note)
+        await db.flush()
+        await db.refresh(note)
 
-    Returns:
-        Generated notes with version info
+        logger.info("Note created", note_id=note.id, user_id=user_id)
+
+        return NoteResponse(
+            id=note.id,
+            user_id=note.user_id,
+            title=note.title,
+            content=note.content,
+            tags=note.tags,
+            paper_ids=note.paper_ids,
+            created_at=note.created_at.isoformat(),
+            updated_at=note.updated_at.isoformat()
+        )
+
+    except Exception as e:
+        logger.error("Failed to create note", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to create note: {str(e)}")
+        )
+
+
+@router.get("", response_model=NotesListResponse)
+async def list_notes(
+    paperId: Optional[str] = Query(None, description="Filter by paper ID"),
+    tag: Optional[str] = Query(None, description="Filter by tag"),
+    sortBy: str = Query("created_at", description="Sort field"),
+    order: str = Query("desc", description="Sort order (asc/desc)"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
+):
+    """List notes with optional filtering.
+
+    Supports filtering by paperId (notes associated with specific paper) and tag.
     """
-    import json
+    try:
+        # Build query
+        query = select(Note).where(Note.user_id == user_id)
 
+        # Filter by paperId (notes where paper_ids contains the paperId)
+        if paperId:
+            query = query.where(Note.paper_ids.contains([paperId]))
+
+        # Filter by tag
+        if tag:
+            query = query.where(Note.tags.contains([tag]))
+
+        # Get total count
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        # Apply sorting
+        order_func = desc if order == "desc" else asc
+        sort_column = getattr(Note, sortBy, Note.created_at)
+        query = query.order_by(order_func(sort_column))
+
+        # Apply pagination
+        query = query.offset(offset).limit(limit)
+
+        result = await db.execute(query)
+        notes = result.scalars().all()
+
+        return NotesListResponse(
+            notes=[
+                NoteResponse(
+                    id=n.id,
+                    user_id=n.user_id,
+                    title=n.title,
+                    content=n.content,
+                    tags=n.tags or [],
+                    paper_ids=n.paper_ids or [],
+                    created_at=n.created_at.isoformat(),
+                    updated_at=n.updated_at.isoformat()
+                )
+                for n in notes
+            ],
+            total=total
+        )
+
+    except Exception as e:
+        logger.error("Failed to list notes", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to list notes: {str(e)}")
+        )
+
+
+@router.get("/{note_id}", response_model=NoteResponse)
+async def get_note(
+    note_id: str,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a specific note by ID."""
+    try:
+        result = await db.execute(
+            select(Note).where(Note.id == note_id, Note.user_id == user_id)
+        )
+        note = result.scalar_one_or_none()
+
+        if not note:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Note not found")
+            )
+
+        return NoteResponse(
+            id=note.id,
+            user_id=note.user_id,
+            title=note.title,
+            content=note.content,
+            tags=note.tags or [],
+            paper_ids=note.paper_ids or [],
+            created_at=note.created_at.isoformat(),
+            updated_at=note.updated_at.isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get note", error=str(e), note_id=note_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to get note: {str(e)}")
+        )
+
+
+@router.put("/{note_id}", response_model=NoteResponse)
+async def update_note(
+    note_id: str,
+    request: NoteUpdate,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a note."""
+    try:
+        # Find note
+        result = await db.execute(
+            select(Note).where(Note.id == note_id, Note.user_id == user_id)
+        )
+        note = result.scalar_one_or_none()
+
+        if not note:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Note not found")
+            )
+
+        # Update fields
+        if request.title is not None:
+            note.title = request.title
+        if request.content is not None:
+            note.content = request.content
+        if request.tags is not None:
+            note.tags = request.tags
+        if request.paperIds is not None:
+            note.paper_ids = request.paperIds
+
+        await db.flush()
+        await db.refresh(note)
+
+        logger.info("Note updated", note_id=note_id, user_id=user_id)
+
+        return NoteResponse(
+            id=note.id,
+            user_id=note.user_id,
+            title=note.title,
+            content=note.content,
+            tags=note.tags or [],
+            paper_ids=note.paper_ids or [],
+            created_at=note.created_at.isoformat(),
+            updated_at=note.updated_at.isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to update note", error=str(e), note_id=note_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to update note: {str(e)}")
+        )
+
+
+@router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_note(
+    note_id: str,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a note."""
+    try:
+        # Find note
+        result = await db.execute(
+            select(Note).where(Note.id == note_id, Note.user_id == user_id)
+        )
+        note = result.scalar_one_or_none()
+
+        if not note:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Note not found")
+            )
+
+        await db.delete(note)
+        logger.info("Note deleted", note_id=note_id, user_id=user_id)
+
+        return None
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete note", error=str(e), note_id=note_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to delete note: {str(e)}")
+        )
+
+
+@router.get("/paper/{paper_id}", response_model=NotesListResponse)
+async def get_notes_by_paper(
+    paper_id: str,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get notes for a specific paper (legacy endpoint)."""
+    try:
+        query = select(Note).where(
+            Note.user_id == user_id,
+            Note.paper_ids.contains([paper_id])
+        ).order_by(desc(Note.created_at))
+
+        result = await db.execute(query)
+        notes = result.scalars().all()
+
+        return NotesListResponse(
+            notes=[
+                NoteResponse(
+                    id=n.id,
+                    user_id=n.user_id,
+                    title=n.title,
+                    content=n.content,
+                    tags=n.tags or [],
+                    paper_ids=n.paper_ids or [],
+                    created_at=n.created_at.isoformat(),
+                    updated_at=n.updated_at.isoformat()
+                )
+                for n in notes
+            ],
+            total=len(notes)
+        )
+
+    except Exception as e:
+        logger.error("Failed to get notes by paper", error=str(e), paper_id=paper_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to get notes: {str(e)}")
+        )
+
+
+# =============================================================================
+# AI-Generated Notes Endpoints
+# =============================================================================
+
+@router.post("/generate", response_model=GeneratedNotesResponse, status_code=status.HTTP_201_CREATED)
+async def generate_notes(
+    request: GenerateNotesRequest,
+    user_id: str = CurrentUserId
+):
+    """Generate reading notes for a paper using AI.
+
+    This uses the existing NotesGenerator to create AI-powered reading notes.
+    """
     try:
         # Fetch paper data
         row = await postgres_db.fetchrow(
@@ -56,11 +413,17 @@ async def generate_notes(request: GenerateNotesRequest):
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Paper not found")
+            )
 
         imrad_data = row["imrad_json"]
         if not imrad_data:
-            raise HTTPException(status_code=400, detail=Errors.validation("Paper not yet parsed"))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("Paper not yet parsed")
+            )
 
         # Parse imrad_json if it's a string
         if isinstance(imrad_data, str):
@@ -99,7 +462,7 @@ async def generate_notes(request: GenerateNotesRequest):
             version=new_version
         )
 
-        return NotesResponse(
+        return GeneratedNotesResponse(
             paper_id=request.paper_id,
             notes=notes,
             version=new_version
@@ -108,23 +471,19 @@ async def generate_notes(request: GenerateNotesRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to generate notes: {e}", paper_id=request.paper_id)
-        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
+        logger.error("Failed to generate notes", error=str(e), paper_id=request.paper_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to generate notes: {str(e)}")
+        )
 
 
-@router.post("/regenerate", response_model=NotesResponse)
-async def regenerate_notes(request: RegenerateNotesRequest):
-    """
-    Regenerate reading notes with modification request.
-
-    Args:
-        request: RegenerateNotesRequest with paper_id and modification_request
-
-    Returns:
-        Regenerated notes with version info
-    """
-    import json
-
+@router.post("/regenerate", response_model=GeneratedNotesResponse)
+async def regenerate_notes(
+    request: RegenerateNotesRequest,
+    user_id: str = CurrentUserId
+):
+    """Regenerate reading notes with modification request."""
     try:
         # Fetch paper data
         row = await postgres_db.fetchrow(
@@ -134,11 +493,17 @@ async def regenerate_notes(request: RegenerateNotesRequest):
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Paper not found")
+            )
 
         imrad_data = row["imrad_json"]
         if not imrad_data:
-            raise HTTPException(status_code=400, detail=Errors.validation("Paper not yet parsed"))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("Paper not yet parsed")
+            )
 
         # Parse imrad_json if it's a string
         if isinstance(imrad_data, str):
@@ -179,7 +544,7 @@ async def regenerate_notes(request: RegenerateNotesRequest):
             modification=request.modification_request[:50]
         )
 
-        return NotesResponse(
+        return GeneratedNotesResponse(
             paper_id=request.paper_id,
             notes=notes,
             version=new_version
@@ -188,59 +553,16 @@ async def regenerate_notes(request: RegenerateNotesRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to regenerate notes: {e}", paper_id=request.paper_id)
-        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
-
-
-@router.get("/{paper_id}")
-async def get_notes(paper_id: str):
-    """
-    Get reading notes for a paper.
-
-    Args:
-        paper_id: The paper ID
-
-    Returns:
-        Notes data if available
-    """
-    try:
-        row = await postgres_db.fetchrow(
-            """SELECT reading_notes, notes_version, status
-               FROM papers WHERE id = $1""",
-            paper_id
+        logger.error("Failed to regenerate notes", error=str(e), paper_id=request.paper_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to regenerate notes: {str(e)}")
         )
-
-        if not row:
-            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
-
-        return {
-            "paper_id": paper_id,
-            "notes": row["reading_notes"],
-            "version": row["notes_version"] or 0,
-            "has_notes": row["reading_notes"] is not None,
-            "status": row["status"]
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get notes: {e}", paper_id=paper_id)
-        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
 
 
 @router.get("/{paper_id}/export")
-async def export_notes(paper_id: str):
-    """
-    Export reading notes as Markdown.
-
-    Args:
-        paper_id: The paper ID
-
-    Returns:
-        Markdown formatted notes with metadata header
-    """
-    import json
-
+async def export_notes(paper_id: str, user_id: str = CurrentUserId):
+    """Export reading notes as Markdown."""
     try:
         row = await postgres_db.fetchrow(
             """SELECT title, authors, year, venue, reading_notes, notes_version, updated_at
@@ -249,10 +571,16 @@ async def export_notes(paper_id: str):
         )
 
         if not row:
-            raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Paper not found")
+            )
 
         if not row["reading_notes"]:
-            raise HTTPException(status_code=404, detail=Errors.not_found("Notes not yet generated"))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Notes not yet generated")
+            )
 
         # Prepare metadata for export
         paper_metadata = {
@@ -279,5 +607,8 @@ async def export_notes(paper_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to export notes: {e}", paper_id=paper_id)
-        raise HTTPException(status_code=500, detail=Errors.internal(str(e)))
+        logger.error("Failed to export notes", error=str(e), paper_id=paper_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to export notes: {str(e)}")
+        )
