@@ -23,10 +23,14 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select, update, delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.deps import get_current_user, postgres_db
-from app.services.auth_service import User, get_user_by_id, get_user_roles
+from app.database import get_db
+from app.deps import get_current_user
+from app.models import User, ApiKey, RefreshToken
+from app.services.auth_service import get_user_by_id
 from app.services.storage_service import get_storage_service
 from app.utils.security import get_password_hash, verify_password
 from app.utils.problem_detail import ProblemDetail, ErrorTypes, create_error
@@ -195,6 +199,7 @@ async def get_profile(
 async def update_profile(
     body: ProfileUpdateRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update user profile.
 
@@ -224,11 +229,10 @@ async def update_profile(
         updates["name"] = body.name
     if body.email:
         # Check email uniqueness
-        existing = await postgres_db.fetchrow(
-            "SELECT id FROM users WHERE email = $1 AND id != $2",
-            body.email,
-            current_user.id,
+        result = await db.execute(
+            select(User).where(User.email == body.email, User.id != current_user.id)
         )
+        existing = result.scalar_one_or_none()
         if existing:
             raise _create_error_response(
                 status_code=status.HTTP_409_CONFLICT,
@@ -243,15 +247,16 @@ async def update_profile(
 
     # Update user
     if updates:
-        set_clauses = ", ".join([f'"{k}" = ${i+2}' for i, k in enumerate(updates.keys())])
-        query = f'UPDATE users SET {set_clauses}, "updated_at" = $1 WHERE id = ${len(updates) + 2}'
-        values = [datetime.now(timezone.utc)] + list(updates.values()) + [current_user.id]
-        await postgres_db.execute(query, *values)
+        updates["updated_at"] = datetime.now(timezone.utc)
+        await db.execute(
+            update(User).where(User.id == current_user.id).values(**updates)
+        )
 
     logger.info("Profile updated", user_id=current_user.id, fields=list(updates.keys()))
 
     # Get updated user
-    updated_user = await get_user_by_id(current_user.id)
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    updated_user = result.scalar_one_or_none()
 
     return SuccessResponse(
         success=True,
@@ -268,6 +273,7 @@ async def update_profile(
 async def upload_avatar(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Upload avatar image.
 
@@ -317,11 +323,10 @@ async def upload_avatar(
     avatar_url = await storage.get_file_url(storage_key)
 
     # Update user avatar
-    await postgres_db.execute(
-        'UPDATE users SET avatar = $1, "updated_at" = $2 WHERE id = $3',
-        storage_key,
-        datetime.now(timezone.utc),
-        current_user.id,
+    await db.execute(
+        update(User)
+        .where(User.id == current_user.id)
+        .values(avatar=storage_key, updated_at=datetime.now(timezone.utc))
     )
 
     logger.info("Avatar uploaded", user_id=current_user.id, storage_key=storage_key)
@@ -335,6 +340,7 @@ async def upload_avatar(
 @router.get("/me/settings", response_model=SuccessResponse)
 async def get_settings(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get user settings.
 
@@ -342,13 +348,11 @@ async def get_settings(
         User settings JSON.
     """
     # Get user with settings
-    row = await postgres_db.fetchrow(
-        "SELECT settings FROM users WHERE id = $1",
-        current_user.id,
-    )
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
 
     # Default settings if null
-    settings_data = row.get("settings") if row else None
+    settings_data = user.settings if user and user.settings else None
     if not settings_data:
         settings_data = {
             "language": "zh",
@@ -366,6 +370,7 @@ async def get_settings(
 async def update_settings(
     body: SettingsUpdateRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update user settings.
 
@@ -376,12 +381,10 @@ async def update_settings(
         Updated settings.
     """
     # Get current settings
-    row = await postgres_db.fetchrow(
-        "SELECT settings FROM users WHERE id = $1",
-        current_user.id,
-    )
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
 
-    current_settings = row.get("settings") if row else {}
+    current_settings = user.settings if user else {}
     if not isinstance(current_settings, dict):
         current_settings = {}
 
@@ -404,11 +407,10 @@ async def update_settings(
         merged["theme"] = body.theme
 
     # Save settings
-    await postgres_db.execute(
-        'UPDATE users SET settings = $1, "updated_at" = $2 WHERE id = $3',
-        merged,
-        datetime.now(timezone.utc),
-        current_user.id,
+    await db.execute(
+        update(User)
+        .where(User.id == current_user.id)
+        .values(settings=merged, updated_at=datetime.now(timezone.utc))
     )
 
     logger.info("Settings updated", user_id=current_user.id, settings=merged)
@@ -423,6 +425,7 @@ async def update_settings(
 async def change_password(
     body: PasswordChangeRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Change user password.
 
@@ -438,12 +441,10 @@ async def change_password(
         400: Invalid current password
     """
     # Get user with password hash
-    row = await postgres_db.fetchrow(
-        "SELECT password_hash FROM users WHERE id = $1",
-        current_user.id,
-    )
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
 
-    if not row:
+    if not user:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -453,7 +454,7 @@ async def change_password(
         )
 
     # Verify current password
-    if not verify_password(body.current_password, row["password_hash"]):
+    if not verify_password(body.current_password, user.password_hash):
         raise _create_error_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             error_type=ErrorTypes.VALIDATION_ERROR,
@@ -466,18 +467,14 @@ async def change_password(
     new_hash = get_password_hash(body.new_password)
 
     # Update password
-    await postgres_db.execute(
-        'UPDATE users SET password_hash = $1, "updated_at" = $2 WHERE id = $3',
-        new_hash,
-        datetime.now(timezone.utc),
-        current_user.id,
+    await db.execute(
+        update(User)
+        .where(User.id == current_user.id)
+        .values(password_hash=new_hash, updated_at=datetime.now(timezone.utc))
     )
 
     # Invalidate all refresh tokens (security measure)
-    await postgres_db.execute(
-        "DELETE FROM refresh_tokens WHERE user_id = $1",
-        current_user.id,
-    )
+    await db.execute(delete(RefreshToken).where(RefreshToken.user_id == current_user.id))
 
     logger.info("Password changed", user_id=current_user.id)
 
@@ -490,29 +487,29 @@ async def change_password(
 @router.get("/me/api-keys", response_model=SuccessResponse)
 async def list_api_keys(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """List user's API keys.
 
     Returns:
         List of API keys (without the full key).
     """
-    rows = await postgres_db.fetch(
-        """SELECT id, name, prefix, created_at, last_used_at
-           FROM api_keys
-           WHERE user_id = $1
-           ORDER BY created_at DESC""",
-        current_user.id,
+    result = await db.execute(
+        select(ApiKey)
+        .where(ApiKey.user_id == current_user.id)
+        .order_by(ApiKey.created_at.desc())
     )
+    api_keys_objs = result.scalars().all()
 
     api_keys = [
         {
-            "id": row["id"],
-            "name": row["name"],
-            "prefix": row.get("prefix"),
-            "createdAt": row["created_at"].isoformat() if row.get("created_at") else None,
-            "lastUsedAt": row["last_used_at"].isoformat() if row.get("last_used_at") else None,
+            "id": key.id,
+            "name": key.name,
+            "prefix": key.prefix,
+            "createdAt": key.created_at.isoformat() if key.created_at else None,
+            "lastUsedAt": key.last_used_at.isoformat() if key.last_used_at else None,
         }
-        for row in rows
+        for key in api_keys_objs
     ]
 
     logger.info("API keys listed", user_id=current_user.id, count=len(api_keys))
@@ -527,6 +524,7 @@ async def list_api_keys(
 async def create_api_key(
     body: ApiKeyCreateRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create new API key.
 
@@ -550,16 +548,15 @@ async def create_api_key(
     key_id = str(uuid4())
     now = datetime.now(timezone.utc)
 
-    await postgres_db.execute(
-        """INSERT INTO api_keys (id, user_id, name, key_hash, prefix, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6)""",
-        key_id,
-        current_user.id,
-        body.name,
-        key_hash,
-        prefix,
-        now,
+    new_key = ApiKey(
+        id=key_id,
+        user_id=current_user.id,
+        name=body.name,
+        key_hash=key_hash,
+        prefix=prefix,
+        created_at=now,
     )
+    db.add(new_key)
 
     logger.info("API key created", user_id=current_user.id, key_id=key_id, name=body.name)
 
@@ -580,6 +577,7 @@ async def create_api_key(
 async def delete_api_key(
     key_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete API key.
 
@@ -593,13 +591,12 @@ async def delete_api_key(
         404: API key not found
     """
     # Verify ownership
-    row = await postgres_db.fetchrow(
-        "SELECT id FROM api_keys WHERE id = $1 AND user_id = $2",
-        key_id,
-        current_user.id,
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.id == key_id, ApiKey.user_id == current_user.id)
     )
+    key = result.scalar_one_or_none()
 
-    if not row:
+    if not key:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -609,10 +606,7 @@ async def delete_api_key(
         )
 
     # Delete key
-    await postgres_db.execute(
-        "DELETE FROM api_keys WHERE id = $1",
-        key_id,
-    )
+    await db.execute(delete(ApiKey).where(ApiKey.id == key_id))
 
     logger.info("API key deleted", user_id=current_user.id, key_id=key_id)
 

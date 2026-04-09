@@ -13,8 +13,9 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database import Base
 
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from app.models.orm_audit_log import AuditLog
     from app.models.token_usage_log import TokenUsageLog
     from app.models.reading_progress import ReadingProgress
+    from app.models.api_key import ApiKey
 
 
 class User(Base):
@@ -49,6 +51,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     avatar: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    settings: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -98,6 +101,9 @@ class User(Base):
     )
     reading_progress: Mapped[List["ReadingProgress"]] = relationship(
         "ReadingProgress", back_populates="user", cascade="all, delete-orphan"
+    )
+    api_keys: Mapped[List["ApiKey"]] = relationship(
+        "ApiKey", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

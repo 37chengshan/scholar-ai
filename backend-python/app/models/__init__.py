@@ -71,6 +71,9 @@ from app.models.token_usage_log import TokenUsageLog
 # User memory (long-term memory storage)
 from app.models.user_memory import UserMemory
 
+# API key
+from app.models.api_key import ApiKey
+
 
 # =============================================================================
 # Pydantic API Schemas (preserved from existing)
@@ -142,6 +145,7 @@ __all__ = [
     "AuditLog",
     "TokenUsageLog",
     "UserMemory",
+    "ApiKey",
     # Pydantic API Schemas
     "SessionBase",
     "SessionCreate",
