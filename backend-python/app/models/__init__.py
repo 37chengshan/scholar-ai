@@ -1,11 +1,77 @@
-"""Pydantic models for API request/response schemas.
+"""SQLAlchemy ORM models and Pydantic schemas for ScholarAI.
 
-Exports all models for easy importing:
-- Session models: SessionCreate, SessionUpdate, SessionResponse, SessionListResponse
-- ChatMessage models: ChatMessageCreate, ChatMessageResponse, ChatMessageListResponse, MessageRole
-- Note models: NoteCreate, NoteUpdate, NoteResponse, NoteListResponse
-- RAG models: RAGQueryRequest, RAGQueryResponse, Citation
+This module exports:
+- Base: SQLAlchemy declarative base for Alembic migrations
+- SQLAlchemy ORM models (User, Paper, etc.)
+- Pydantic schemas for API request/response (preserved from existing)
+
+Usage for Alembic:
+    from app.models import Base
+    target_metadata = Base.metadata
+
+Usage for ORM queries:
+    from app.models import User, Paper, ProcessingTask
+    from sqlalchemy import select
+    result = await db.execute(select(User).where(User.email == "..."))
+
+Usage for API schemas:
+    from app.models import SessionCreate, NoteCreate, etc.
 """
+
+from app.database import Base
+
+# =============================================================================
+# SQLAlchemy ORM Models
+# =============================================================================
+
+# User domain
+from app.models.user import User, Role, UserRole, RefreshToken, Permission
+
+# Paper domain
+from app.models.paper import Paper, PaperChunk
+
+# Processing
+from app.models.task import ProcessingTask
+
+# Query
+from app.models.query import Query
+
+# Note (ORM model with different name to avoid conflict)
+from app.models.orm_note import Note
+
+# Annotation
+from app.models.annotation import Annotation
+
+# Project
+from app.models.project import Project
+
+# Reading progress
+from app.models.reading_progress import ReadingProgress
+
+# Session and Chat (ORM models)
+from app.models.orm_session import Session
+from app.models.orm_chat_message import ChatMessage
+
+# Upload tracking
+from app.models.upload_history import UploadHistory
+from app.models.batch import PaperBatch
+
+# Config
+from app.models.config import Config
+
+# Knowledge graph
+from app.models.knowledge_map import KnowledgeMap
+
+# Audit (ORM model)
+from app.models.orm_audit_log import AuditLog
+
+# Token usage
+from app.models.token_usage_log import TokenUsageLog
+
+
+# =============================================================================
+# Pydantic API Schemas (preserved from existing)
+# =============================================================================
 
 from app.models.chat_message import (
     ChatMessageBase,
@@ -28,7 +94,7 @@ from app.models.chat import (
 )
 from app.models.note import (
     NoteBase,
-    NoteCreate,
+    NoteCreate as NoteCreateSchema,
     NoteListResponse,
     NoteResponse,
     NoteUpdate,
@@ -42,20 +108,47 @@ from app.models.session import (
     SessionUpdate,
 )
 
+
+# =============================================================================
+# Exports
+# =============================================================================
+
 __all__ = [
-    # Session models
+    # Base for Alembic
+    "Base",
+    # SQLAlchemy ORM Models
+    "User",
+    "Role",
+    "UserRole",
+    "RefreshToken",
+    "Permission",
+    "Paper",
+    "PaperChunk",
+    "ProcessingTask",
+    "Query",
+    "Note",
+    "Annotation",
+    "Project",
+    "ReadingProgress",
+    "Session",
+    "ChatMessage",
+    "UploadHistory",
+    "PaperBatch",
+    "Config",
+    "KnowledgeMap",
+    "AuditLog",
+    "TokenUsageLog",
+    # Pydantic API Schemas
     "SessionBase",
     "SessionCreate",
     "SessionUpdate",
     "SessionResponse",
     "SessionListResponse",
-    # ChatMessage models
     "ChatMessageBase",
     "ChatMessageCreate",
     "ChatMessageResponse",
     "ChatMessageListResponse",
     "MessageRole",
-    # Chat API models
     "ChatStreamRequest",
     "ChatConfirmRequest",
     "SSEEvent",
@@ -66,13 +159,11 @@ __all__ = [
     "ConfirmationRequiredEventData",
     "MessageEventData",
     "ErrorEventData",
-    # Note models
     "NoteBase",
-    "NoteCreate",
+    "NoteCreateSchema",
     "NoteUpdate",
     "NoteResponse",
     "NoteListResponse",
-    # RAG models
     "RAGQueryRequest",
     "RAGResponse",
     "Citation",
