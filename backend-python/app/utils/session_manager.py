@@ -2,14 +2,14 @@
 
 Provides Session lifecycle management:
 - Create sessions with 30-day expiration
-- Retrieve sessions (Redis cache → PostgreSQL fallback)
+- Retrieve sessions (Redis cache -> PostgreSQL fallback)
 - Update sessions with dual storage sync
 - Delete sessions from both stores
 - Cleanup expired sessions
 
 Redis cache structure:
-- session:{session_id} → {id, title, messages (recent 20), context}
-- user:{user_id}:active_sessions → [session_id1, session_id2, ...]
+- session:{session_id} -> {id, title, messages (recent 20), context}
+- user:{user_id}:active_sessions -> [session_id1, session_id2, ...]
 """
 
 from datetime import datetime, timedelta
@@ -17,7 +17,12 @@ from typing import Dict, List, Optional
 import json
 import uuid
 
-from app.core.database import postgres_db, redis_db
+from sqlalchemy import select, delete, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import redis_db
+from app.database import AsyncSessionLocal
+from app.models.orm_session import Session
 from app.models.session import SessionCreate, SessionUpdate, SessionResponse
 from app.utils.logger import logger
 
@@ -37,7 +42,6 @@ class SessionManager:
 
     def __init__(self):
         """Initialize SessionManager with database clients."""
-        self.db = postgres_db
         self.redis = redis_db
 
     async def create_session(
@@ -60,42 +64,35 @@ class SessionManager:
             now = datetime.utcnow()
             expires_at = now + timedelta(days=SESSION_EXPIRATION_DAYS)
 
-            # Insert into PostgreSQL using raw SQL
-            query = """
-                INSERT INTO sessions (
-                    id, user_id, title, status, metadata,
-                    message_count, tool_call_count,
-                    created_at, updated_at, last_activity_at, expires_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                RETURNING id, user_id, title, status, metadata,
-                    message_count, tool_call_count,
-                    created_at, updated_at, last_activity_at, expires_at
-            """
+            async with AsyncSessionLocal() as db:
+                # Create Session ORM object
+                session_obj = Session(
+                    id=session_id,
+                    user_id=user_id,
+                    title=title,
+                    status="active",
+                    session_metadata={},
+                    message_count=0,
+                    tool_call_count=0,
+                    created_at=now,
+                    updated_at=now,
+                    last_activity_at=now,
+                    expires_at=expires_at
+                )
 
-            row = await self.db.fetchrow(
-                query,
-                session_id,
-                user_id,
-                title,
-                "active",  # status
-                json.dumps({}),  # metadata
-                0,  # message_count
-                0,  # tool_call_count
-                now,  # created_at
-                now,  # updated_at
-                now,  # last_activity_at
-                expires_at
-            )
+                db.add(session_obj)
+                await db.commit()
+                await db.refresh(session_obj)
 
             # Sync to Redis cache
-            await self._sync_to_redis(row)
+            await self._sync_to_redis(session_obj)
 
             # Add to user's active sessions index
             await self._add_to_user_sessions(user_id, session_id)
 
             logger.info(f"Created session {session_id} for user {user_id}")
 
-            return self._row_to_response(row)
+            return self._orm_to_response(session_obj)
 
         except Exception as e:
             logger.error(f"Failed to create session: {e}")
@@ -103,7 +100,7 @@ class SessionManager:
 
     async def get_session(self, session_id: str) -> Optional[SessionResponse]:
         """
-        Retrieve session by ID (Redis cache → PostgreSQL fallback).
+        Retrieve session by ID (Redis cache -> PostgreSQL fallback).
 
         Args:
             session_id: Session UUID
@@ -118,26 +115,22 @@ class SessionManager:
                 logger.debug(f"Session {session_id} cache hit")
                 return SessionResponse.model_validate(cached)
 
-            # Fallback to PostgreSQL
-            query = """
-                SELECT id, user_id, title, status, metadata,
-                    message_count, tool_call_count,
-                    created_at, updated_at, last_activity_at, expires_at
-                FROM sessions
-                WHERE id = $1
-            """
+            # Fallback to PostgreSQL with SQLAlchemy
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Session).where(Session.id == session_id)
+                )
+                session_obj = result.scalar_one_or_none()
 
-            row = await self.db.fetchrow(query, session_id)
+                if not session_obj:
+                    logger.debug(f"Session {session_id} not found")
+                    return None
 
-            if not row:
-                logger.debug(f"Session {session_id} not found")
-                return None
+                # Sync to Redis cache for future requests
+                await self._sync_to_redis(session_obj)
 
-            # Sync to Redis cache for future requests
-            await self._sync_to_redis(row)
-
-            logger.debug(f"Session {session_id} retrieved from database")
-            return self._row_to_response(row)
+                logger.debug(f"Session {session_id} retrieved from database")
+                return self._orm_to_response(session_obj)
 
         except Exception as e:
             logger.error(f"Failed to get session {session_id}: {e}")
@@ -161,50 +154,37 @@ class SessionManager:
         try:
             now = datetime.utcnow()
 
-            # Build dynamic UPDATE query
-            update_fields = []
-            params = [session_id]
-            param_idx = 2
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Session).where(Session.id == session_id)
+                )
+                session_obj = result.scalar_one_or_none()
 
-            update_data = updates.model_dump(exclude_unset=True)
+                if not session_obj:
+                    logger.warning(f"Session {session_id} not found for update")
+                    return None
 
-            for field, value in update_data.items():
-                if field == "metadata":
-                    update_fields.append(f"{field} = ${param_idx}")
-                    params.append(json.dumps(value))
-                else:
-                    update_fields.append(f"{field} = ${param_idx}")
-                    params.append(value)
-                param_idx += 1
+                # Apply updates from SessionUpdate
+                update_data = updates.model_dump(exclude_unset=True)
 
-            # Always update timestamps
-            update_fields.append(f"updated_at = ${param_idx}")
-            params.append(now)
-            param_idx += 1
+                for field, value in update_data.items():
+                    if field == "metadata":
+                        setattr(session_obj, "session_metadata", value)
+                    else:
+                        setattr(session_obj, field, value)
 
-            update_fields.append(f"last_activity_at = ${param_idx}")
-            params.append(now)
+                # Always update timestamps
+                session_obj.updated_at = now
+                session_obj.last_activity_at = now
 
-            query = f"""
-                UPDATE sessions
-                SET {', '.join(update_fields)}
-                WHERE id = $1
-                RETURNING id, user_id, title, status, metadata,
-                    message_count, tool_call_count,
-                    created_at, updated_at, last_activity_at, expires_at
-            """
-
-            row = await self.db.fetchrow(query, *params)
-
-            if not row:
-                logger.warning(f"Session {session_id} not found for update")
-                return None
+                await db.commit()
+                await db.refresh(session_obj)
 
             # Sync to Redis cache
-            await self._sync_to_redis(row)
+            await self._sync_to_redis(session_obj)
 
             logger.info(f"Updated session {session_id}")
-            return self._row_to_response(row)
+            return self._orm_to_response(session_obj)
 
         except Exception as e:
             logger.error(f"Failed to update session {session_id}: {e}")
@@ -221,19 +201,24 @@ class SessionManager:
             True if deleted, False if not found
         """
         try:
-            # Get session to find user_id
-            query = "SELECT user_id FROM sessions WHERE id = $1"
-            row = await self.db.fetchrow(query, session_id)
+            async with AsyncSessionLocal() as db:
+                # Get session to find user_id
+                result = await db.execute(
+                    select(Session).where(Session.id == session_id)
+                )
+                session_obj = result.scalar_one_or_none()
 
-            if not row:
-                logger.warning(f"Session {session_id} not found for deletion")
-                return False
+                if not session_obj:
+                    logger.warning(f"Session {session_id} not found for deletion")
+                    return False
 
-            user_id = row["user_id"]
+                user_id = session_obj.user_id
 
-            # Delete from PostgreSQL (cascades to messages)
-            delete_query = "DELETE FROM sessions WHERE id = $1"
-            await self.db.execute(delete_query, session_id)
+                # Delete from PostgreSQL (cascades to messages via ORM relationship)
+                await db.execute(
+                    delete(Session).where(Session.id == session_id)
+                )
+                await db.commit()
 
             # Delete from Redis cache
             await self._delete_from_redis(session_id)
@@ -266,20 +251,17 @@ class SessionManager:
             List of sessions ordered by last activity
         """
         try:
-            query = """
-                SELECT id, user_id, title, status, metadata,
-                    message_count, tool_call_count,
-                    created_at, updated_at, last_activity_at, expires_at
-                FROM sessions
-                WHERE user_id = $1 AND status = $2
-                ORDER BY last_activity_at DESC
-                LIMIT $3
-            """
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Session)
+                    .where(and_(Session.user_id == user_id, Session.status == status))
+                    .order_by(Session.last_activity_at.desc())
+                    .limit(limit)
+                )
+                sessions = result.scalars().all()
 
-            rows = await self.db.fetch(query, user_id, status, limit)
-
-            logger.debug(f"Found {len(rows)} sessions for user {user_id}")
-            return [self._row_to_response(row) for row in rows]
+            logger.debug(f"Found {len(sessions)} sessions for user {user_id}")
+            return [self._orm_to_response(s) for s in sessions]
 
         except Exception as e:
             logger.error(f"Failed to list sessions for user {user_id}: {e}")
@@ -295,18 +277,17 @@ class SessionManager:
         try:
             now = datetime.utcnow()
 
-            # Find expired sessions
-            query = """
-                SELECT id, user_id FROM sessions
-                WHERE expires_at < $1
-            """
+            async with AsyncSessionLocal() as db:
+                # Find expired sessions
+                result = await db.execute(
+                    select(Session).where(Session.expires_at < now)
+                )
+                expired_sessions = result.scalars().all()
 
-            expired_sessions = await self.db.fetch(query, now)
-
-            deleted_count = 0
-            for session in expired_sessions:
-                await self.delete_session(session["id"])
-                deleted_count += 1
+                deleted_count = 0
+                for session_obj in expired_sessions:
+                    await self.delete_session(session_obj.id)
+                    deleted_count += 1
 
             logger.info(f"Cleaned up {deleted_count} expired sessions")
             return deleted_count
@@ -317,40 +298,40 @@ class SessionManager:
 
     # Private helper methods
 
-    def _row_to_response(self, row) -> SessionResponse:
-        """Convert database row to SessionResponse."""
+    def _orm_to_response(self, session_obj: Session) -> SessionResponse:
+        """Convert SQLAlchemy Session ORM object to SessionResponse."""
         return SessionResponse(
-            id=str(row["id"]),
-            user_id=str(row["user_id"]),
-            title=row["title"],
-            status=row["status"],
-            metadata=json.loads(row["metadata"]) if row["metadata"] else None,
-            message_count=row["message_count"],
-            tool_call_count=row["tool_call_count"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-            last_activity_at=row["last_activity_at"],
-            expires_at=row["expires_at"],
+            id=str(session_obj.id),
+            user_id=str(session_obj.user_id),
+            title=session_obj.title,
+            status=session_obj.status,
+            metadata=session_obj.session_metadata,
+            message_count=session_obj.message_count,
+            tool_call_count=session_obj.tool_call_count,
+            created_at=session_obj.created_at,
+            updated_at=session_obj.updated_at,
+            last_activity_at=session_obj.last_activity_at,
+            expires_at=session_obj.expires_at,
         )
 
-    async def _sync_to_redis(self, row) -> None:
+    async def _sync_to_redis(self, session_obj: Session) -> None:
         """Sync session data to Redis cache."""
         try:
-            cache_key = f"session:{row['id']}"
+            cache_key = f"session:{session_obj.id}"
 
             # Prepare session data
             session_data = {
-                "id": str(row["id"]),
-                "user_id": str(row["user_id"]),
-                "title": row["title"],
-                "status": row["status"],
-                "metadata": json.loads(row["metadata"]) if row["metadata"] else None,
-                "message_count": row["message_count"],
-                "tool_call_count": row["tool_call_count"],
-                "created_at": row["created_at"].isoformat(),
-                "updated_at": row["updated_at"].isoformat(),
-                "last_activity_at": row["last_activity_at"].isoformat(),
-                "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,
+                "id": str(session_obj.id),
+                "user_id": str(session_obj.user_id),
+                "title": session_obj.title,
+                "status": session_obj.status,
+                "metadata": session_obj.session_metadata,
+                "message_count": session_obj.message_count,
+                "tool_call_count": session_obj.tool_call_count,
+                "created_at": session_obj.created_at.isoformat(),
+                "updated_at": session_obj.updated_at.isoformat(),
+                "last_activity_at": session_obj.last_activity_at.isoformat(),
+                "expires_at": session_obj.expires_at.isoformat() if session_obj.expires_at else None,
             }
 
             # Save to Redis with TTL using the underlying client
@@ -361,7 +342,7 @@ class SessionManager:
                     json.dumps(session_data)
                 )
 
-            logger.debug(f"Synced session {row['id']} to Redis")
+            logger.debug(f"Synced session {session_obj.id} to Redis")
 
         except Exception as e:
             logger.error(f"Failed to sync session to Redis: {e}")
