@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { motion } from "motion/react";
 import { Grid, List, Search, Plus, HardDrive } from "lucide-react";
 import { KnowledgeBaseCard } from "../components/KnowledgeBaseCard";
 import { CreateKnowledgeBaseDialog } from "../components/CreateKnowledgeBaseDialog";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
 import { EmptyState } from "../components/EmptyState";
+import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -147,18 +149,19 @@ export function KnowledgeBaseList() {
   const storageTotal = "5GB";
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="relative min-h-screen bg-background">
+      <PaperTexture />
       {/* Top Toolbar */}
-      <div className="border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10">
+      <div className="magazine-toolbar sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-semibold text-foreground">知识库</h1>
+            <h1 className="magazine-toolbar-heading text-2xl">知识库</h1>
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <HardDrive className="h-4 w-4" />
               <span>存储 {storageUsed} / {storageTotal}</span>
             </div>
           </div>
-          <Button onClick={handleCreate} className="gap-2">
+          <Button onClick={handleCreate} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
             <Plus className="h-4 w-4" />
             创建知识库
           </Button>
@@ -167,7 +170,8 @@ export function KnowledgeBaseList() {
 
       {/* Filter Bar */}
       <div className="max-w-7xl mx-auto px-6 py-4">
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="magazine-card-warm rounded-lg px-4 py-3">
+          <div className="flex items-center gap-4 flex-wrap">
           <div className="w-48">
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
               <SelectTrigger>
@@ -215,6 +219,7 @@ export function KnowledgeBaseList() {
             </Button>
           </div>
         </div>
+        </div>
       </div>
 
       {/* Content Area */}
@@ -230,27 +235,29 @@ export function KnowledgeBaseList() {
             }}
           />
         ) : viewMode === "card" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } }}>
             {filtered.map((kb) => (
-              <KnowledgeBaseCard
-                key={kb.id}
-                id={kb.id}
-                name={kb.name}
-                description={kb.description}
-                paperCount={kb.paperCount}
-                chunkCount={kb.chunkCount}
-                entityCount={kb.entityCount}
-                updatedAt={kb.updatedAt}
-                category={kb.category}
-                onEnter={() => handleEnter(kb.id)}
-                onImport={() => handleImport(kb.id, kb.name)}
-                onEdit={() => handleEdit(kb.name)}
-                onDelete={() => handleDelete(kb.name)}
-              />
+              <motion.div key={kb.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } }}>
+                <KnowledgeBaseCard
+                  id={kb.id}
+                  name={kb.name}
+                  description={kb.description}
+                  paperCount={kb.paperCount}
+                  chunkCount={kb.chunkCount}
+                  entityCount={kb.entityCount}
+                  updatedAt={kb.updatedAt}
+                  category={kb.category}
+                  onEnter={() => handleEnter(kb.id)}
+                  onImport={() => handleImport(kb.id, kb.name)}
+                  onEdit={() => handleEdit(kb.name)}
+                  onDelete={() => handleDelete(kb.name)}
+                />
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         ) : (
-          <Table>
+          <div className="magazine-card-warm rounded-lg p-4">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>名称</TableHead>
@@ -326,6 +333,7 @@ export function KnowledgeBaseList() {
               ))}
             </TableBody>
           </Table>
+          </div>
         )}
       </div>
 
