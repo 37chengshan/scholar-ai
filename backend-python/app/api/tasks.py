@@ -1,6 +1,7 @@
 """Task management API routes.
 
 Migrated from Node.js tasks.ts - provides endpoints for PDF processing task management.
+Migrated to SQLAlchemy ORM from postgres_db.
 
 Endpoints:
 - GET /api/v1/tasks - List tasks for user's papers
@@ -16,8 +17,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy import select, func, update, delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_current_user, postgres_db
+from app.database import get_db
+from app.deps import get_current_user
+from app.models import ProcessingTask, Paper
 from app.services.auth_service import User
 from app.utils.problem_detail import ProblemDetail, ErrorTypes
 from app.utils.logger import logger
@@ -99,6 +104,7 @@ async def list_tasks(
     limit: int = 50,
     offset: int = 0,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """List tasks for user's papers.
 
@@ -114,56 +120,59 @@ async def list_tasks(
     instance = str(request.url.path)
     user_id = current_user.id
 
-    # Build query conditions
-    conditions = ["p.user_id = $1"]
-    params = [user_id]
-    param_idx = 2
+    # Build query with join
+    query = (
+        select(ProcessingTask, Paper.title)
+        .join(Paper, ProcessingTask.paper_id == Paper.id)
+        .where(Paper.user_id == user_id)
+    )
 
     if paperId:
-        conditions.append(f"pt.paper_id = ${param_idx}")
-        params.append(paperId)
-        param_idx += 1
+        query = query.where(ProcessingTask.paper_id == paperId)
 
     if status_filter:
-        conditions.append(f"pt.status = ${param_idx}")
-        params.append(status_filter)
-        param_idx += 1
+        query = query.where(ProcessingTask.status == status_filter)
 
-    where_sql = " AND ".join(conditions)
+    # Order by created_at desc and apply pagination
+    query = query.order_by(ProcessingTask.created_at.desc()).limit(limit).offset(offset)
 
-    # Query tasks with paper info
-    query = f"""
-        SELECT pt.id, pt.paper_id, pt.status, pt.storage_key, pt.error_message,
-               pt.attempts, pt.created_at, pt.updated_at, pt.completed_at,
-               p.title as paper_title
-        FROM processing_tasks pt
-        JOIN papers p ON pt.paper_id = p.id
-        WHERE {where_sql}
-        ORDER BY pt.created_at DESC
-        LIMIT ${param_idx} OFFSET ${param_idx + 1}
-    """
-    params.extend([limit, offset])
-
-    tasks = await postgres_db.fetch(query, *params)
+    result = await db.execute(query)
+    rows = result.all()
 
     # Get total count
-    count_query = f"""
-        SELECT COUNT(*) as count
-        FROM processing_tasks pt
-        JOIN papers p ON pt.paper_id = p.id
-        WHERE {where_sql}
-    """
-    count_params = params[:-2]  # Remove limit and offset
-    total_result = await postgres_db.fetchrow(count_query, *count_params)
-    total = total_result["count"] if total_result else 0
+    count_query = (
+        select(func.count(ProcessingTask.id))
+        .join(Paper, ProcessingTask.paper_id == Paper.id)
+        .where(Paper.user_id == user_id)
+    )
+
+    if paperId:
+        count_query = count_query.where(ProcessingTask.paper_id == paperId)
+
+    if status_filter:
+        count_query = count_query.where(ProcessingTask.status == status_filter)
+
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
 
     # Format response
     formatted_tasks = []
-    for task in tasks:
-        task_dict = dict(task)
-        stage_info = _get_stage_progress(task_dict["status"])
-        task_dict["currentStage"] = stage_info["stage"]
-        task_dict["progress"] = stage_info["progress"]
+    for task, paper_title in rows:
+        stage_info = _get_stage_progress(task.status)
+        task_dict = {
+            "id": task.id,
+            "paper_id": task.paper_id,
+            "status": task.status,
+            "storage_key": task.storage_key,
+            "error_message": task.error_message,
+            "attempts": task.attempts,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
+            "completed_at": task.completed_at,
+            "paper_title": paper_title,
+            "currentStage": stage_info["stage"],
+            "progress": stage_info["progress"],
+        }
         formatted_tasks.append(task_dict)
 
     return TaskResponse(
@@ -182,6 +191,7 @@ async def get_task(
     request: Request,
     task_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get task details.
 
@@ -195,18 +205,16 @@ async def get_task(
     user_id = current_user.id
 
     # Query task with user isolation
-    task = await postgres_db.fetchrow(
-        """
-        SELECT pt.*, p.title as paper_title, p.user_id
-        FROM processing_tasks pt
-        JOIN papers p ON pt.paper_id = p.id
-        WHERE pt.id = $1 AND p.user_id = $2
-        """,
-        task_id,
-        user_id,
+    query = (
+        select(ProcessingTask, Paper.title, Paper.user_id)
+        .join(Paper, ProcessingTask.paper_id == Paper.id)
+        .where(ProcessingTask.id == task_id, Paper.user_id == user_id)
     )
 
-    if not task:
+    result = await db.execute(query)
+    row = result.first()
+
+    if not row:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -215,10 +223,23 @@ async def get_task(
             instance=instance,
         )
 
-    task_dict = dict(task)
-    stage_info = _get_stage_progress(task_dict["status"])
-    task_dict["currentStage"] = stage_info["stage"]
-    task_dict["progress"] = stage_info["progress"]
+    task, paper_title, _ = row
+    stage_info = _get_stage_progress(task.status)
+
+    task_dict = {
+        "id": task.id,
+        "paper_id": task.paper_id,
+        "status": task.status,
+        "storage_key": task.storage_key,
+        "error_message": task.error_message,
+        "attempts": task.attempts,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "completed_at": task.completed_at,
+        "paper_title": paper_title,
+        "currentStage": stage_info["stage"],
+        "progress": stage_info["progress"],
+    }
 
     return TaskResponse(success=True, data=task_dict)
 
@@ -228,6 +249,7 @@ async def retry_task(
     request: Request,
     task_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Retry a failed task.
 
@@ -241,18 +263,16 @@ async def retry_task(
     user_id = current_user.id
 
     # Verify task exists and belongs to user's paper
-    task = await postgres_db.fetchrow(
-        """
-        SELECT pt.id, pt.status, pt.paper_id, p.user_id
-        FROM processing_tasks pt
-        JOIN papers p ON pt.paper_id = p.id
-        WHERE pt.id = $1 AND p.user_id = $2
-        """,
-        task_id,
-        user_id,
+    query = (
+        select(ProcessingTask.id, ProcessingTask.status, ProcessingTask.paper_id, Paper.user_id)
+        .join(Paper, ProcessingTask.paper_id == Paper.id)
+        .where(ProcessingTask.id == task_id, Paper.user_id == user_id)
     )
 
-    if not task:
+    result = await db.execute(query)
+    row = result.first()
+
+    if not row:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -261,7 +281,9 @@ async def retry_task(
             instance=instance,
         )
 
-    if task["status"] != "failed":
+    task_id_val, task_status, paper_id_val, _ = row
+
+    if task_status != "failed":
         raise _create_error_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             error_type=ErrorTypes.VALIDATION_ERROR,
@@ -273,33 +295,31 @@ async def retry_task(
     # Reset task status
     now = datetime.now(timezone.utc)
 
-    await postgres_db.execute(
-        """
-        UPDATE processing_tasks
-        SET status = 'pending',
-            error_message = NULL,
-            attempts = attempts + 1,
-            updated_at = $1
-        WHERE id = $2
-        """,
-        now,
-        task_id,
+    task_update_stmt = (
+        update(ProcessingTask)
+        .where(ProcessingTask.id == task_id)
+        .values(
+            status="pending",
+            error_message=None,
+            attempts=ProcessingTask.attempts + 1,
+            updated_at=now,
+        )
     )
+    await db.execute(task_update_stmt)
 
     # Reset paper status
-    await postgres_db.execute(
-        """
-        UPDATE papers SET status = 'pending', updated_at = $1 WHERE id = $2
-        """,
-        now,
-        task["paper_id"],
+    paper_update_stmt = (
+        update(Paper)
+        .where(Paper.id == paper_id_val)
+        .values(status="pending", updated_at=now)
     )
+    await db.execute(paper_update_stmt)
 
     logger.info(
         "Task retry triggered",
         user_id=user_id,
         task_id=task_id,
-        paper_id=task["paper_id"],
+        paper_id=paper_id_val,
     )
 
     return TaskResponse(
@@ -317,6 +337,7 @@ async def get_task_progress(
     request: Request,
     task_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get detailed task progress with stages.
 
@@ -330,18 +351,16 @@ async def get_task_progress(
     user_id = current_user.id
 
     # Query task with user isolation
-    task = await postgres_db.fetchrow(
-        """
-        SELECT pt.*, p.title as paper_title, p.page_count
-        FROM processing_tasks pt
-        JOIN papers p ON pt.paper_id = p.id
-        WHERE pt.id = $1 AND p.user_id = $2
-        """,
-        task_id,
-        user_id,
+    query = (
+        select(ProcessingTask, Paper.title, Paper.page_count)
+        .join(Paper, ProcessingTask.paper_id == Paper.id)
+        .where(ProcessingTask.id == task_id, Paper.user_id == user_id)
     )
 
-    if not task:
+    result = await db.execute(query)
+    row = result.first()
+
+    if not row:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -350,9 +369,11 @@ async def get_task_progress(
             instance=instance,
         )
 
+    task, paper_title, page_count = row
+
     # Get stages
     stages = _get_progress_stages()
-    current_stage_info = _get_stage_progress(task["status"])
+    current_stage_info = _get_stage_progress(task.status)
     current_stage = current_stage_info["stage"]
     overall_progress = current_stage_info["progress"]
 
@@ -389,19 +410,19 @@ async def get_task_progress(
     return TaskResponse(
         success=True,
         data={
-            "taskId": task["id"],
-            "paperId": task["paper_id"],
-            "paperTitle": task["paper_title"],
-            "status": task["status"],
+            "taskId": task.id,
+            "paperId": task.paper_id,
+            "paperTitle": paper_title,
+            "status": task.status,
             "progress": overall_progress,
             "currentStage": current_stage,
             "stages": formatted_stages,
-            "errorMessage": task["error_message"],
-            "attempts": task["attempts"],
-            "pageCount": task["page_count"],
-            "createdAt": task["created_at"].isoformat() if task["created_at"] else None,
-            "updatedAt": task["updated_at"].isoformat() if task["updated_at"] else None,
-            "completedAt": task["completed_at"].isoformat() if task["completed_at"] else None,
+            "errorMessage": task.error_message,
+            "attempts": task.attempts,
+            "pageCount": page_count,
+            "createdAt": task.created_at.isoformat() if task.created_at else None,
+            "updatedAt": task.updated_at.isoformat() if task.updated_at else None,
+            "completedAt": task.completed_at.isoformat() if task.completed_at else None,
         },
     )
 
@@ -411,6 +432,7 @@ async def cancel_task(
     request: Request,
     task_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Cancel a pending task.
 
@@ -424,18 +446,16 @@ async def cancel_task(
     user_id = current_user.id
 
     # Verify task exists and belongs to user's paper
-    task = await postgres_db.fetchrow(
-        """
-        SELECT pt.id, pt.status, pt.paper_id, p.user_id
-        FROM processing_tasks pt
-        JOIN papers p ON pt.paper_id = p.id
-        WHERE pt.id = $1 AND p.user_id = $2
-        """,
-        task_id,
-        user_id,
+    query = (
+        select(ProcessingTask.id, ProcessingTask.status, ProcessingTask.paper_id, Paper.user_id)
+        .join(Paper, ProcessingTask.paper_id == Paper.id)
+        .where(ProcessingTask.id == task_id, Paper.user_id == user_id)
     )
 
-    if not task:
+    result = await db.execute(query)
+    row = result.first()
+
+    if not row:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -444,7 +464,9 @@ async def cancel_task(
             instance=instance,
         )
 
-    if task["status"] != "pending":
+    task_id_val, task_status, paper_id_val, _ = row
+
+    if task_status != "pending":
         raise _create_error_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             error_type=ErrorTypes.VALIDATION_ERROR,
@@ -454,25 +476,22 @@ async def cancel_task(
         )
 
     # Delete task
-    await postgres_db.execute(
-        "DELETE FROM processing_tasks WHERE id = $1",
-        task_id,
-    )
+    delete_stmt = delete(ProcessingTask).where(ProcessingTask.id == task_id)
+    await db.execute(delete_stmt)
 
     # Update paper status
-    await postgres_db.execute(
-        """
-        UPDATE papers SET status = 'cancelled', updated_at = $1 WHERE id = $2
-        """,
-        datetime.now(timezone.utc),
-        task["paper_id"],
+    paper_update_stmt = (
+        update(Paper)
+        .where(Paper.id == paper_id_val)
+        .values(status="cancelled", updated_at=datetime.now(timezone.utc))
     )
+    await db.execute(paper_update_stmt)
 
     logger.info(
         "Task cancelled",
         user_id=user_id,
         task_id=task_id,
-        paper_id=task["paper_id"],
+        paper_id=paper_id_val,
     )
 
     return TaskResponse(
