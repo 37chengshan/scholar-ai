@@ -16,13 +16,16 @@ Usage:
 """
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional, Dict, List
 import uuid
 
 import redis.asyncio as redis
+from sqlalchemy import func, select
 
 from app.config import settings
-from app.core.database import get_db_connection
+from app.database import AsyncSessionLocal
+from app.models.token_usage_log import TokenUsageLog
 from app.utils.logger import logger
 
 
@@ -100,24 +103,20 @@ class TokenTracker:
             await r.expire(session_key, 86400 * 7)
 
         try:
-            async with get_db_connection() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO token_usage_logs 
-                    (id, user_id, session_id, model, input_tokens, output_tokens, 
-                     total_tokens, cost_cny, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    """,
-                    str(uuid.uuid4()),
-                    user_id,
-                    session_id,
-                    model,
-                    input_tokens,
-                    output_tokens,
-                    total_tokens,
-                    cost,
-                    datetime.now(timezone.utc).replace(tzinfo=None),
+            async with AsyncSessionLocal() as session:
+                log_entry = TokenUsageLog(
+                    id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    session_id=session_id,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
+                    cost_cny=Decimal(str(cost)),
+                    created_at=datetime.now(timezone.utc),
                 )
+                session.add(log_entry)
+                await session.commit()
         except Exception as e:
             logger.error("Failed to persist token usage to PostgreSQL", error=str(e))
 
@@ -208,27 +207,25 @@ class TokenTracker:
             month_end = datetime(year, month + 1, 1)
 
         try:
-            async with get_db_connection() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT 
-                        DATE(created_at) as date,
-                        SUM(total_tokens) as total_tokens,
-                        SUM(input_tokens) as input_tokens,
-                        SUM(output_tokens) as output_tokens,
-                        SUM(cost_cny) as total_cost,
-                        COUNT(*) as request_count
-                    FROM token_usage_logs
-                    WHERE user_id = $1 
-                      AND created_at >= $2 
-                      AND created_at < $3
-                    GROUP BY DATE(created_at)
-                    ORDER BY date
-                    """,
-                    user_id,
-                    month_start,
-                    month_end,
+            async with AsyncSessionLocal() as session:
+                # Query daily aggregation using SQLAlchemy
+                stmt = (
+                    select(
+                        func.date(TokenUsageLog.created_at).label("date"),
+                        func.sum(TokenUsageLog.total_tokens).label("total_tokens"),
+                        func.sum(TokenUsageLog.input_tokens).label("input_tokens"),
+                        func.sum(TokenUsageLog.output_tokens).label("output_tokens"),
+                        func.sum(TokenUsageLog.cost_cny).label("total_cost"),
+                        func.count().label("request_count"),
+                    )
+                    .where(TokenUsageLog.user_id == user_id)
+                    .where(TokenUsageLog.created_at >= month_start)
+                    .where(TokenUsageLog.created_at < month_end)
+                    .group_by(func.date(TokenUsageLog.created_at))
+                    .order_by(func.date(TokenUsageLog.created_at))
                 )
+                result = await session.execute(stmt)
+                rows = result.all()
 
                 total_tokens = 0
                 input_tokens = 0
@@ -238,18 +235,24 @@ class TokenTracker:
                 daily_breakdown: List[Dict] = []
 
                 for row in rows:
-                    total_tokens += row["total_tokens"] or 0
-                    input_tokens += row["input_tokens"] or 0
-                    output_tokens += row["output_tokens"] or 0
-                    total_cost += float(row["total_cost"] or 0)
-                    request_count += row["request_count"] or 0
+                    row_tokens = row.total_tokens or 0
+                    row_input = row.input_tokens or 0
+                    row_output = row.output_tokens or 0
+                    row_cost = float(row.total_cost or 0)
+                    row_count = row.request_count or 0
+
+                    total_tokens += row_tokens
+                    input_tokens += row_input
+                    output_tokens += row_output
+                    total_cost += row_cost
+                    request_count += row_count
 
                     daily_breakdown.append(
                         {
-                            "date": row["date"].isoformat(),
-                            "tokens": row["total_tokens"] or 0,
-                            "cost": float(row["total_cost"] or 0),
-                            "requests": row["request_count"] or 0,
+                            "date": row.date.isoformat(),
+                            "tokens": row_tokens,
+                            "cost": row_cost,
+                            "requests": row_count,
                         }
                     )
 
