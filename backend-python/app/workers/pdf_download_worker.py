@@ -5,10 +5,11 @@ Downloads PDFs from external sources with fallback and retry logic.
 import asyncio
 import httpx
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.utils.logger import logger
-from app.core.database import get_db_connection
+from app.database import AsyncSessionLocal
+from app.models.paper import Paper
 from app.core.storage import store_pdf
 
 PDF_DOWNLOAD_TIMEOUT = 60.0  # seconds
@@ -42,16 +43,27 @@ async def fetch_pdf_with_retry(url: str, timeout: float = PDF_DOWNLOAD_TIMEOUT) 
 
 
 async def update_paper_status(paper_id: str, status: str, error_msg: Optional[str] = None):
-    """Update paper status in database."""
-    async with get_db_connection() as conn:
-        await conn.execute(
-            """
-            UPDATE papers
-            SET status = $1, updated_at = $2, error_message = $3
-            WHERE id = $4
-            """,
-            status, datetime.utcnow(), error_msg, paper_id
-        )
+    """Update paper status in database.
+
+    Note: error_msg is logged but not stored in Paper model.
+    The ProcessingTask model has error_message field for detailed tracking.
+    """
+    async with AsyncSessionLocal() as db:
+        # Fetch and update the paper
+        from sqlalchemy import select
+        result = await db.execute(select(Paper).where(Paper.id == paper_id))
+        paper = result.scalar_one_or_none()
+
+        if paper:
+            paper.status = status
+            paper.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+            logger.info(f"Updated paper {paper_id} status to {status}")
+
+            if error_msg:
+                logger.error(f"Paper {paper_id} error: {error_msg}")
+        else:
+            logger.warning(f"Paper {paper_id} not found for status update")
 
 
 async def download_external_pdf(
