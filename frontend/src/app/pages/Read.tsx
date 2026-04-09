@@ -242,18 +242,17 @@ export function Read() {
       {/* Right: Notes */}
       <div className="w-80 border-l">
         <NotesEditor
-          content={paper.readingNotes || ''}
-          onSave={handleNotesSave}
-          paperId={id}
-          linkedPapers={linkedPapers}
-          onLinkPaper={() => setShowLinkPicker(!showLinkPicker)}
-          onUnlinkPaper={handleUnlinkPaper}
-          showLinkPicker={showLinkPicker}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchResults={searchResults}
-          searching={searching}
-          onLinkPaperSelect={handleLinkPaper}
+          content={(() => {
+            try {
+              return paper.readingNotes ? JSON.parse(paper.readingNotes) : { type: 'doc', content: [] };
+            } catch {
+              return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: paper.readingNotes || '' }] }] };
+            }
+          })()}
+          onChange={(json) => {
+            handleNotesSave(JSON.stringify(json));
+          }}
+          placeholder="添加阅读笔记..."
         />
       </div>
     </div>
