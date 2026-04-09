@@ -8,10 +8,13 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_internal_token, get_current_service
 from app.core.notes_generator import NotesGenerator
-from app.core.database import postgres_db
+from app.database import get_db
+from app.models.paper import Paper
 from app.utils.logger import logger
 from app.workers.pdf_download_worker import download_external_pdf
 from app.utils.problem_detail import Errors
@@ -187,6 +190,7 @@ async def internal_extract_entities(
 @router.post("/regenerate-notes")
 async def internal_regenerate_notes(
     request: RegenerateNotesRequest,
+    db: AsyncSession = Depends(get_db),
     service: dict = Depends(get_current_service)
 ):
     """笔记重新生成端点
@@ -195,6 +199,7 @@ async def internal_regenerate_notes(
 
     Args:
         request: RegenerateNotesRequest with paperId and modificationRequest
+        db: SQLAlchemy async session
         service: JWT payload from verify_internal_token
 
     Returns:
@@ -213,30 +218,29 @@ async def internal_regenerate_notes(
     )
 
     try:
-        # Fetch paper data from PostgreSQL
-        row = await postgres_db.fetchrow(
-            """SELECT title, authors, year, venue, imrad_json, reading_notes
-               FROM papers WHERE id = $1""",
-            request.paperId
+        # Fetch paper data using SQLAlchemy ORM
+        result = await db.execute(
+            select(Paper).where(Paper.id == request.paperId)
         )
+        paper = result.scalar_one_or_none()
 
-        if not row:
+        if not paper:
             raise HTTPException(status_code=404, detail=Errors.not_found("Paper not found"))
 
-        imrad_data = row["imrad_json"]
+        imrad_data = paper.imrad_json
         if not imrad_data:
             raise HTTPException(status_code=400, detail=Errors.validation("Paper not yet parsed"))
 
-        # Parse imrad_json if it's a string
+        # Parse imrad_json if it's a string (JSON field may store as string in some cases)
         if isinstance(imrad_data, str):
             imrad_data = json.loads(imrad_data)
 
         # Prepare paper metadata
         paper_metadata = {
-            "title": row["title"] or "Unknown",
-            "authors": row["authors"] if row["authors"] else [],
-            "year": row["year"] or "",
-            "venue": row["venue"] or ""
+            "title": paper.title or "Unknown",
+            "authors": paper.authors if paper.authors else [],
+            "year": str(paper.year) if paper.year else "",
+            "venue": paper.venue or ""
         }
 
         # Generate new notes with modification request
