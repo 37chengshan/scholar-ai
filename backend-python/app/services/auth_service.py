@@ -14,14 +14,27 @@ Usage:
         create_user_tokens,
         refresh_access_token,
         logout_user,
+        get_user_by_id,
+        get_user_by_email,
+        get_user_roles,
     )
+
+Migration Notes:
+    - Migrated from postgres_db (asyncpg) to SQLAlchemy ORM
+    - Functions accept optional db: AsyncSession parameter
+    - When db is None, creates a new session using AsyncSessionLocal
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from uuid import uuid4
 
-from app.core.database import postgres_db, redis_db
+from sqlalchemy import select, delete, insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import AsyncSessionLocal
+from app.core.database import redis_db
+from app.models import User as UserModel, Role, UserRole, RefreshToken
 from app.utils.security import (
     get_password_hash,
     verify_password,
@@ -34,8 +47,20 @@ from app.utils.logger import logger
 from app.utils.problem_detail import ProblemDetail, ErrorTypes
 
 
+# =============================================================================
+# Helper Classes and Functions
+# =============================================================================
+
 class User:
-    """User model for type hints."""
+    """User DTO (Data Transfer Object) for authentication.
+
+    This is a simple class used to transfer user data between
+    the auth service and API routes. It provides a clean interface
+    independent of the SQLAlchemy ORM model.
+
+    Note: This is intentionally kept separate from the ORM model
+    to avoid exposing database-specific details in the API layer.
+    """
 
     def __init__(
         self,
@@ -60,44 +85,100 @@ class User:
         self.roles = roles or []
 
 
-def _row_to_user(row: dict, roles: List[str] = None) -> User:
-    """Convert database row to User object."""
+def _orm_to_user(orm_user: UserModel, role_names: List[str] = None) -> User:
+    """Convert SQLAlchemy ORM User to DTO User.
+
+    Args:
+        orm_user: SQLAlchemy User model instance
+        role_names: List of role names for the user
+
+    Returns:
+        User DTO instance
+    """
     return User(
-        id=row["id"],
-        email=row["email"],
-        name=row["name"],
-        password_hash=row["password_hash"],
-        email_verified=row.get("email_verified", False),
-        avatar=row.get("avatar"),
-        created_at=row.get("created_at"),
-        updated_at=row.get("updated_at"),
-        roles=roles or [],
+        id=str(orm_user.id),
+        email=orm_user.email,
+        name=orm_user.name,
+        password_hash=orm_user.password_hash,
+        email_verified=orm_user.email_verified,
+        avatar=orm_user.avatar,
+        created_at=orm_user.created_at,
+        updated_at=orm_user.updated_at,
+        roles=role_names or [],
     )
 
 
-async def get_user_roles(user_id: str) -> List[str]:
+async def _get_session(db: Optional[AsyncSession]) -> AsyncSession:
+    """Get or create a database session.
+
+    If db is provided, returns it directly.
+    Otherwise, creates a new session using AsyncSessionLocal.
+
+    Args:
+        db: Optional existing session
+
+    Returns:
+        AsyncSession to use for database operations
+    """
+    if db is not None:
+        return db
+    return AsyncSessionLocal()
+
+
+# =============================================================================
+# Role Management
+# =============================================================================
+
+async def get_user_roles(
+    user_id: str,
+    db: Optional[AsyncSession] = None,
+) -> List[str]:
     """Get roles for a user.
 
     Args:
         user_id: User ID
+        db: Optional database session
 
     Returns:
         List of role names
     """
-    query = """
-        SELECT r.name
-        FROM roles r
-        JOIN user_roles ur ON r.id = ur.role_id
-        WHERE ur.user_id = $1
-    """
-    rows = await postgres_db.fetch(query, user_id)
-    return [row["name"] for row in rows]
+    session = await _get_session(db)
+    should_commit = db is None
 
+    try:
+        # Query roles through UserRole join
+        stmt = (
+            select(Role.name)
+            .join(UserRole, Role.id == UserRole.role_id)
+            .where(UserRole.user_id == user_id)
+        )
+        result = await session.execute(stmt)
+        role_names = [row[0] for row in result.all()]
+
+        if should_commit:
+            await session.commit()
+
+        return role_names
+
+    except Exception as e:
+        if should_commit:
+            await session.rollback()
+        logger.error("Failed to get user roles", user_id=user_id, error=str(e))
+        raise
+    finally:
+        if should_commit:
+            await session.close()
+
+
+# =============================================================================
+# User Registration
+# =============================================================================
 
 async def register_user(
     email: str,
     password: str,
     name: str,
+    db: Optional[AsyncSession] = None,
 ) -> User:
     """Register a new user.
 
@@ -105,121 +186,162 @@ async def register_user(
         email: User email
         password: Plain text password
         name: User display name
+        db: Optional database session for transaction control
 
     Returns:
-        Created User object
+        Created User DTO object
 
     Raises:
         ValueError: If email already exists or validation fails
     """
-    # Check if email already exists
-    existing = await postgres_db.fetchrow(
-        "SELECT id FROM users WHERE email = $1",
-        email
-    )
-    if existing:
-        raise ValueError("Email already registered")
+    session = await _get_session(db)
+    should_commit = db is None
 
-    # Validate inputs
-    if len(password) < 8:
-        raise ValueError("Password must be at least 8 characters")
-    if len(name) < 2:
-        raise ValueError("Name must be at least 2 characters")
+    try:
+        # Check if email already exists
+        stmt = select(UserModel.id).where(UserModel.email == email)
+        result = await session.execute(stmt)
+        existing = result.scalar_one_or_none()
 
-    # Create user
-    user_id = str(uuid4())
-    password_hash = get_password_hash(password)
-    now = datetime.now(timezone.utc)
+        if existing:
+            raise ValueError("Email already registered")
 
-    await postgres_db.execute(
-        """
-        INSERT INTO users (id, email, name, password_hash, email_verified, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        """,
-        user_id,
-        email,
-        name,
-        password_hash,
-        True,  # email_verified default True for MVP
-        now,
-        now,
-    )
+        # Validate inputs
+        if len(password) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(name) < 2:
+            raise ValueError("Name must be at least 2 characters")
 
-    # Assign default 'user' role
-    role_row = await postgres_db.fetchrow(
-        "SELECT id FROM roles WHERE name = $1",
-        "user"
-    )
-    if role_row:
-        await postgres_db.execute(
-            """
-            INSERT INTO user_roles (id, user_id, role_id)
-            VALUES ($1, $2, $3)
-            """,
-            str(uuid4()),
-            user_id,
-            role_row["id"],
+        # Create user
+        user_id = str(uuid4())
+        password_hash = get_password_hash(password)
+        now = datetime.now(timezone.utc)
+
+        new_user = UserModel(
+            id=user_id,
+            email=email,
+            name=name,
+            password_hash=password_hash,
+            email_verified=True,  # email_verified default True for MVP
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(new_user)
+
+        # Find 'user' role
+        role_stmt = select(Role).where(Role.name == "user")
+        role_result = await session.execute(role_stmt)
+        role = role_result.scalar_one_or_none()
+
+        if role:
+            # Assign default 'user' role
+            user_role = UserRole(
+                id=str(uuid4()),
+                user_id=user_id,
+                role_id=role.id,
+            )
+            session.add(user_role)
+
+        if should_commit:
+            await session.commit()
+
+        logger.info("User registered", user_id=user_id, email=email)
+
+        # Return user with roles
+        roles = await get_user_roles(user_id, session if not should_commit else None)
+        return User(
+            id=user_id,
+            email=email,
+            name=name,
+            password_hash=password_hash,
+            email_verified=True,
+            created_at=now,
+            updated_at=now,
+            roles=roles,
         )
 
-    logger.info("User registered", user_id=user_id, email=email)
+    except ValueError:
+        if should_commit:
+            await session.rollback()
+        raise
+    except Exception as e:
+        if should_commit:
+            await session.rollback()
+        logger.error("User registration failed", email=email, error=str(e))
+        raise ValueError("Registration failed") from e
+    finally:
+        if should_commit:
+            await session.close()
 
-    # Return user with roles
-    roles = await get_user_roles(user_id)
-    return User(
-        id=user_id,
-        email=email,
-        name=name,
-        password_hash=password_hash,
-        email_verified=True,
-        created_at=now,
-        updated_at=now,
-        roles=roles,
-    )
 
+# =============================================================================
+# User Authentication
+# =============================================================================
 
 async def authenticate_user(
     email: str,
     password: str,
+    db: Optional[AsyncSession] = None,
 ) -> Optional[User]:
     """Authenticate a user by email and password.
 
     Args:
         email: User email
         password: Plain text password
+        db: Optional database session
 
     Returns:
-        User object if authenticated, None otherwise
+        User DTO if authenticated, None otherwise
     """
-    # Find user by email
-    row = await postgres_db.fetchrow(
-        """
-        SELECT id, email, name, password_hash, email_verified, avatar, created_at, updated_at
-        FROM users
-        WHERE email = $1
-        """,
-        email
-    )
+    session = await _get_session(db)
+    should_commit = db is None
 
-    if not row:
-        logger.warning("User not found", email=email)
+    try:
+        # Find user by email
+        stmt = select(UserModel).where(UserModel.email == email)
+        result = await session.execute(stmt)
+        orm_user = result.scalar_one_or_none()
+
+        if not orm_user:
+            logger.warning("User not found", email=email)
+            return None
+
+        # Verify password
+        if not verify_password(password, orm_user.password_hash):
+            logger.warning("Invalid password", email=email)
+            return None
+
+        if should_commit:
+            await session.commit()
+
+        # Get user roles
+        roles = await get_user_roles(orm_user.id, session if not should_commit else None)
+
+        return _orm_to_user(orm_user, roles)
+
+    except Exception as e:
+        if should_commit:
+            await session.rollback()
+        logger.error("Authentication failed", email=email, error=str(e))
         return None
-
-    # Verify password
-    if not verify_password(password, row["password_hash"]):
-        logger.warning("Invalid password", email=email)
-        return None
-
-    # Get user roles
-    roles = await get_user_roles(row["id"])
-
-    return _row_to_user(dict(row), roles)
+    finally:
+        if should_commit:
+            await session.close()
 
 
-async def create_user_tokens(user: User) -> Dict[str, Any]:
+# =============================================================================
+# Token Management
+# =============================================================================
+
+async def create_user_tokens(
+    user: User,
+    db: Optional[AsyncSession] = None,
+) -> Dict[str, Any]:
     """Create access and refresh tokens for a user.
 
     Args:
-        user: User object
+        user: User DTO object
+        db: Optional database session
 
     Returns:
         Dictionary with access_token, refresh_token, and refresh_jti
@@ -245,19 +367,31 @@ async def create_user_tokens(user: User) -> Dict[str, Any]:
         )
 
     # Store refresh token in database
-    await postgres_db.execute(
-        """
-        INSERT INTO refresh_tokens (id, token, user_id, expires_at, created_at)
-        VALUES ($1, $2, $3, $4, $5)
-        """,
-        refresh_jti,
-        refresh_token,
-        user.id,
-        datetime.now(timezone.utc).replace(
-            day=datetime.now(timezone.utc).day + 7
-        ),
-        datetime.now(timezone.utc),
-    )
+    session = await _get_session(db)
+    should_commit = db is None
+
+    try:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        refresh_token_record = RefreshToken(
+            id=refresh_jti,
+            token_hash=refresh_token,  # Note: In production, should hash the token
+            user_id=user.id,
+            expires_at=expires_at,
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(refresh_token_record)
+
+        if should_commit:
+            await session.commit()
+
+    except Exception as e:
+        if should_commit:
+            await session.rollback()
+        logger.error("Failed to store refresh token", user_id=user.id, error=str(e))
+        # Continue anyway - Redis storage is the primary mechanism
+    finally:
+        if should_commit:
+            await session.close()
 
     return {
         "access_token": access_token,
@@ -268,11 +402,13 @@ async def create_user_tokens(user: User) -> Dict[str, Any]:
 
 async def refresh_access_token(
     refresh_token: str,
+    db: Optional[AsyncSession] = None,
 ) -> Optional[Dict[str, Any]]:
     """Refresh access token using refresh token.
 
     Args:
         refresh_token: Refresh token string
+        db: Optional database session
 
     Returns:
         New tokens dictionary or None if invalid
@@ -305,45 +441,58 @@ async def refresh_access_token(
                 raise ValueError("Token has been revoked or expired")
 
         # Get user from database
-        row = await postgres_db.fetchrow(
-            """
-            SELECT id, email, name, password_hash, email_verified, avatar, created_at, updated_at
-            FROM users
-            WHERE id = $1
-            """,
-            user_id
-        )
+        session = await _get_session(db)
+        should_commit = db is None
 
-        if not row:
-            raise ValueError("User not found")
+        try:
+            stmt = select(UserModel).where(UserModel.id == user_id)
+            result = await session.execute(stmt)
+            orm_user = result.scalar_one_or_none()
 
-        # Get user roles
-        roles = await get_user_roles(user_id)
-        user = _row_to_user(dict(row), roles)
+            if not orm_user:
+                raise ValueError("User not found")
 
-        # Create new tokens
-        new_tokens = await create_user_tokens(user)
+            # Get user roles
+            roles = await get_user_roles(user_id, session if not should_commit else None)
+            user = _orm_to_user(orm_user, roles)
 
-        # Blacklist old refresh token
-        if redis_client:
-            ttl = get_token_expiry_seconds(refresh_token)
-            await redis_client.set(
-                f"blacklist:{jti}",
-                "revoked",
-                ex=max(ttl, 1),
-            )
-            # Remove old refresh token from Redis
-            await redis_client.delete(f"refresh:{user_id}:{jti}")
+            # Create new tokens
+            new_tokens = await create_user_tokens(user, session if not should_commit else None)
 
-        # Delete old refresh token from database
-        await postgres_db.execute(
-            "DELETE FROM refresh_tokens WHERE id = $1",
-            jti,
-        )
+            # Blacklist old refresh token
+            if redis_client:
+                ttl = get_token_expiry_seconds(refresh_token)
+                await redis_client.set(
+                    f"blacklist:{jti}",
+                    "revoked",
+                    ex=max(ttl, 1),
+                )
+                # Remove old refresh token from Redis
+                await redis_client.delete(f"refresh:{user_id}:{jti}")
 
-        logger.info("Token refreshed", user_id=user_id)
+            # Delete old refresh token from database
+            delete_stmt = delete(RefreshToken).where(RefreshToken.id == jti)
+            await session.execute(delete_stmt)
 
-        return new_tokens
+            if should_commit:
+                await session.commit()
+
+            logger.info("Token refreshed", user_id=user_id)
+
+            return new_tokens
+
+        except ValueError:
+            if should_commit:
+                await session.rollback()
+            raise
+        except Exception as e:
+            if should_commit:
+                await session.rollback()
+            logger.error("Token refresh database error", error=str(e))
+            raise ValueError("Token refresh failed") from e
+        finally:
+            if should_commit:
+                await session.close()
 
     except ValueError:
         raise
@@ -355,12 +504,14 @@ async def refresh_access_token(
 async def logout_user(
     access_token: Optional[str],
     refresh_token: Optional[str],
+    db: Optional[AsyncSession] = None,
 ) -> None:
     """Logout user by blacklisting tokens.
 
     Args:
         access_token: Access token to blacklist
         refresh_token: Refresh token to blacklist
+        db: Optional database session
     """
     redis_client = redis_db.client
 
@@ -402,65 +553,117 @@ async def logout_user(
                         await redis_client.delete(f"refresh:{user_id}:{jti}")
 
                 # Delete from database
-                await postgres_db.execute(
-                    "DELETE FROM refresh_tokens WHERE id = $1",
-                    jti,
-                )
-                logger.info("Refresh token blacklisted", jti=jti)
+                session = await _get_session(db)
+                should_commit = db is None
+
+                try:
+                    delete_stmt = delete(RefreshToken).where(RefreshToken.id == jti)
+                    await session.execute(delete_stmt)
+
+                    if should_commit:
+                        await session.commit()
+
+                    logger.info("Refresh token blacklisted", jti=jti)
+
+                except Exception as e:
+                    if should_commit:
+                        await session.rollback()
+                    logger.warning("Failed to delete refresh token from db", error=str(e))
+                finally:
+                    if should_commit:
+                        await session.close()
 
         except Exception as e:
             logger.warning("Failed to blacklist refresh token", error=str(e))
 
 
-async def get_user_by_id(user_id: str) -> Optional[User]:
+# =============================================================================
+# User Retrieval
+# =============================================================================
+
+async def get_user_by_id(
+    user_id: str,
+    db: Optional[AsyncSession] = None,
+) -> Optional[User]:
     """Get user by ID.
 
     Args:
         user_id: User ID
+        db: Optional database session
 
     Returns:
-        User object or None if not found
+        User DTO or None if not found
     """
-    row = await postgres_db.fetchrow(
-        """
-        SELECT id, email, name, password_hash, email_verified, avatar, created_at, updated_at
-        FROM users
-        WHERE id = $1
-        """,
-        user_id
-    )
+    session = await _get_session(db)
+    should_commit = db is None
 
-    if not row:
+    try:
+        stmt = select(UserModel).where(UserModel.id == user_id)
+        result = await session.execute(stmt)
+        orm_user = result.scalar_one_or_none()
+
+        if not orm_user:
+            return None
+
+        if should_commit:
+            await session.commit()
+
+        roles = await get_user_roles(orm_user.id, session if not should_commit else None)
+        return _orm_to_user(orm_user, roles)
+
+    except Exception as e:
+        if should_commit:
+            await session.rollback()
+        logger.error("Failed to get user by id", user_id=user_id, error=str(e))
         return None
+    finally:
+        if should_commit:
+            await session.close()
 
-    roles = await get_user_roles(user_id)
-    return _row_to_user(dict(row), roles)
 
-
-async def get_user_by_email(email: str) -> Optional[User]:
+async def get_user_by_email(
+    email: str,
+    db: Optional[AsyncSession] = None,
+) -> Optional[User]:
     """Get user by email.
 
     Args:
         email: User email
+        db: Optional database session
 
     Returns:
-        User object or None if not found
+        User DTO or None if not found
     """
-    row = await postgres_db.fetchrow(
-        """
-        SELECT id, email, name, password_hash, email_verified, avatar, created_at, updated_at
-        FROM users
-        WHERE email = $1
-        """,
-        email
-    )
+    session = await _get_session(db)
+    should_commit = db is None
 
-    if not row:
+    try:
+        stmt = select(UserModel).where(UserModel.email == email)
+        result = await session.execute(stmt)
+        orm_user = result.scalar_one_or_none()
+
+        if not orm_user:
+            return None
+
+        if should_commit:
+            await session.commit()
+
+        roles = await get_user_roles(orm_user.id, session if not should_commit else None)
+        return _orm_to_user(orm_user, roles)
+
+    except Exception as e:
+        if should_commit:
+            await session.rollback()
+        logger.error("Failed to get user by email", email=email, error=str(e))
         return None
+    finally:
+        if should_commit:
+            await session.close()
 
-    roles = await get_user_roles(row["id"])
-    return _row_to_user(dict(row), roles)
 
+# =============================================================================
+# Exports
+# =============================================================================
 
 __all__ = [
     "User",
