@@ -1,7 +1,6 @@
-import { FileText, MoreHorizontal, BookOpen, StickyNote } from "lucide-react";
+import { FileText, MoreHorizontal, BookOpen, Layers, Network } from "lucide-react";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,29 +22,22 @@ interface PaperListItemProps {
   onNotes: () => void;
 }
 
-const statusConfig: Record<
-  string,
-  { label: string; variant: "default" | "secondary" | "destructive" | "outline"; color: string }
-> = {
+const statusConfig: Record<string, { label: string; className: string }> = {
   pending: {
     label: "待解析",
-    variant: "secondary",
-    color: "bg-gray-100 text-gray-600",
+    className: "status-badge status-badge--pending",
   },
   processing: {
     label: "解析中",
-    variant: "outline",
-    color: "bg-yellow-50 text-yellow-700 border-yellow-200",
+    className: "status-badge status-badge--processing",
   },
   completed: {
     label: "已完成",
-    variant: "default",
-    color: "bg-green-50 text-green-700 border-green-200",
+    className: "status-badge status-badge--completed",
   },
   failed: {
     label: "失败",
-    variant: "destructive",
-    color: "bg-red-50 text-red-700 border-red-200",
+    className: "status-badge status-badge--failed",
   },
 };
 
@@ -81,38 +73,38 @@ export function PaperListItem({
             </div>
 
             <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                📊 {chunkCount} 切片
+              {/* Chunk count with lucide icon */}
+              <span className="stat-item">
+                <Layers className="stat-item__icon" />
+                <span className="stat-item__value">{chunkCount}</span>
+                <span>切片</span>
               </span>
-              <Badge
-                variant={status.variant as any}
-                className={`text-xs ${status.color}`}
-              >
-                {parseStatus === "processing" && (
-                  <span className="mr-1 inline-block h-2 w-2 animate-pulse rounded-full bg-yellow-500" />
-                )}
+
+              {/* Status badge with colored dot */}
+              <span className={status.className}>
+                <span className="status-badge__dot" />
                 {status.label}
-              </Badge>
+              </span>
+
+              {/* Entity count with lucide icon */}
               {entityCount > 0 && (
-                <span className="flex items-center gap-1">
-                  🕸️ {entityCount} 实体
+                <span className="stat-item">
+                  <Network className="stat-item__icon" />
+                  <span className="stat-item__value">{entityCount}</span>
+                  <span>实体</span>
                 </span>
               )}
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <Button size="sm" variant="outline" onClick={onRead} className="gap-1.5">
+            <Button size="sm" variant="outline" onClick={onRead} className="gap-1.5 rounded-full">
               <BookOpen className="h-3.5 w-3.5" />
               阅读
             </Button>
-            <Button size="sm" variant="ghost" onClick={onNotes} className="gap-1.5">
-              <StickyNote className="h-3.5 w-3.5" />
-              笔记
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="更多操作">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -122,7 +114,7 @@ export function PaperListItem({
                   阅读
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onNotes}>
-                  <StickyNote className="mr-2 h-4 w-4" />
+                  <span className="mr-2 h-4 w-4 inline-block">📝</span>
                   笔记
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
