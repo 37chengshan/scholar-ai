@@ -16,6 +16,10 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeMermaid from 'rehype-mermaid';
+import 'katex/dist/katex.min.css';
 import { clsx } from 'clsx';
 
 import { CodeBlock } from './CodeBlock';
@@ -33,9 +37,14 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
       className
     )}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex, rehypeHighlight, rehypeMermaid]}
         components={{
+        // Mermaid diagram container styling
+        pre({ children }) {
+          return <div className="my-4 overflow-x-auto">{children}</div>;
+        },
+
         // Fenced code blocks → CodeBlock, inline code → <code>
         code({ className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || '');
