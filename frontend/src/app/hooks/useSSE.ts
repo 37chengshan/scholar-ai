@@ -30,6 +30,15 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { sseService, SSEEvent } from '@/services/sseService';
+import { ToolCall, PaperCitation, TokenUsage } from '@/types/chat';
+
+/**
+ * Confirmation request from agent
+ */
+interface ConfirmationState {
+  tool: string;
+  params: Record<string, unknown>;
+}
 
 /**
  * Hook return type
@@ -49,12 +58,22 @@ interface UseSSEReturn {
   cost: number;
   /** Total execution time in ms */
   totalTimeMs: number;
+  /** Structured tool calls array */
+  toolCalls: ToolCall[];
+  /** Confirmation request from agent */
+  confirmation: ConfirmationState | null;
+  /** Extracted citations */
+  citations: PaperCitation[];
+  /** Token usage for current message */
+  currentMessageTokens: TokenUsage | null;
   /** Connect to SSE endpoint */
   connect: (url: string) => void;
   /** Disconnect from SSE endpoint */
   disconnect: () => void;
   /** Clear all messages */
   clearMessages: () => void;
+  /** Reset confirmation state */
+  resetConfirmation: () => void;
 }
 
 /**
@@ -74,8 +93,16 @@ export function useSSE(): UseSSEReturn {
   const [cost, setCost] = useState(0);
   const [totalTimeMs, setTotalTimeMs] = useState(0);
 
+  // Structured tool event state (new for Phase 28-03)
+  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
+  const [citations, setCitations] = useState<PaperCitation[]>([]);
+  const [currentMessageTokens, setCurrentMessageTokens] = useState<TokenUsage | null>(null);
+
   // Ref for accumulated content (avoids stale closure issues)
   const accumulatedContent = useRef<string>('');
+  // Ref for tool call tracking (avoids stale closure in event handler)
+  const toolCallsRef = useRef<ToolCall[]>([]);
 
   /**
    * Connect to SSE endpoint
@@ -92,6 +119,13 @@ export function useSSE(): UseSSEReturn {
     setTotalTimeMs(0);
     accumulatedContent.current = '';
 
+    // Reset tool-specific state (new for Phase 28-03)
+    setToolCalls([]);
+    toolCallsRef.current = [];
+    setConfirmation(null);
+    setCitations([]);
+    setCurrentMessageTokens(null);
+
     sseService.connect(url, {
       onMessage: (event: SSEEvent) => {
         // Add message to list
@@ -100,6 +134,46 @@ export function useSSE(): UseSSEReturn {
         // Accumulate message content for streaming text
         if (event.type === 'message' && typeof event.content === 'string') {
           accumulatedContent.current += event.content;
+        }
+
+        // Handle tool_call events — create ToolCall entry with running status
+        if (event.type === 'tool_call') {
+          const toolCall: ToolCall = {
+            id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            tool: event.tool || 'unknown',
+            parameters: event.content?.parameters || event.content || {},
+            status: 'running',
+            startedAt: Date.now(),
+          };
+          toolCallsRef.current = [...toolCallsRef.current, toolCall];
+          setToolCalls(toolCallsRef.current);
+        }
+
+        // Handle tool_result events — update matching ToolCall with result and duration
+        if (event.type === 'tool_result') {
+          const toolName = event.tool || 'unknown';
+          const toolCallsCopy = [...toolCallsRef.current];
+          // Find the last running tool call with matching name
+          for (let i = toolCallsCopy.length - 1; i >= 0; i--) {
+            const tc = toolCallsCopy[i];
+            if (tc.tool === toolName && tc.status === 'running') {
+              tc.status = event.result?.success !== false ? 'success' : 'error';
+              tc.result = event.result?.data ?? event.result;
+              tc.completedAt = Date.now();
+              tc.duration = tc.completedAt - tc.startedAt;
+              break;
+            }
+          }
+          toolCallsRef.current = toolCallsCopy;
+          setToolCalls(toolCallsCopy);
+        }
+
+        // Handle confirmation_required events
+        if (event.type === 'confirmation_required') {
+          setConfirmation({
+            tool: event.content?.tool || event.tool || 'unknown',
+            params: event.content?.parameters || event.content || {},
+          });
         }
       },
       onError: (err: Error) => {
@@ -112,6 +186,12 @@ export function useSSE(): UseSSEReturn {
           setTokensUsed(data.tokens_used || 0);
           setCost(data.cost || 0);
           setTotalTimeMs(data.total_time_ms || 0);
+
+          // Set per-message token usage (new for Phase 28-03)
+          setCurrentMessageTokens({
+            tokensUsed: data.tokens_used || 0,
+            cost: data.cost || 0,
+          });
         }
       },
     });
@@ -134,6 +214,13 @@ export function useSSE(): UseSSEReturn {
   }, []);
 
   /**
+   * Reset confirmation state (new for Phase 28-03)
+   */
+  const resetConfirmation = useCallback(() => {
+    setConfirmation(null);
+  }, []);
+
+  /**
    * Cleanup on unmount
    */
   useEffect(() => {
@@ -150,9 +237,15 @@ export function useSSE(): UseSSEReturn {
     tokensUsed,
     cost,
     totalTimeMs,
+    // New for Phase 28-03
+    toolCalls,
+    confirmation,
+    citations,
+    currentMessageTokens,
     connect,
     disconnect,
     clearMessages,
+    resetConfirmation,
   };
 }
 
