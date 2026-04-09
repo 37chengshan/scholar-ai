@@ -18,8 +18,9 @@ Usage:
 
 from enum import Enum
 from typing import Any, Dict, Optional
-from datetime import datetime, timezone
 
+from app.database import AsyncSessionLocal
+from app.models import AuditLog
 from app.utils.logger import logger
 
 
@@ -132,41 +133,40 @@ class SafetyLayer:
         context: Dict[str, Any]
     ) -> None:
         """Log audit trail for write operations.
-        
-        Records tool execution to audit_log table for later review.
-        
+
+        Records tool execution to audit_logs table for later review.
+
         Args:
             tool_name: Name of the tool being executed
             context: Execution context (user_id, session_id, parameters, etc.)
         """
         try:
-            from app.core.database import get_db_connection
-            
             user_id = context.get("user_id")
             session_id = context.get("session_id")
             parameters = context.get("parameters", {})
-            
-            # Log to database
-            async with get_db_connection() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO audit_log (user_id, session_id, tool_name, parameters, created_at)
-                    VALUES ($1, $2, $3, $4, $5)
-                    """,
-                    user_id,
-                    session_id,
-                    tool_name,
-                    parameters,
-                    datetime.now(timezone.utc)
+
+            # Get permission level for risk_level
+            level = self.TOOL_PERMISSIONS.get(tool_name, PermissionLevel.READ)
+            risk_level = level.name.lower()
+
+            # Log to database using SQLAlchemy ORM
+            async with AsyncSessionLocal() as session:
+                audit_entry = AuditLog(
+                    user_id=user_id,
+                    tool=tool_name,
+                    risk_level=risk_level,
+                    params=parameters,
                 )
-            
+                session.add(audit_entry)
+                await session.commit()
+
             logger.info(
                 "Audit log created",
                 tool=tool_name,
                 user_id=user_id,
                 session_id=session_id
             )
-            
+
         except Exception as e:
             # Log error but don't fail the operation
             logger.error(

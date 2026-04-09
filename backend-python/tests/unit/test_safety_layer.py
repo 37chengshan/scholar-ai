@@ -128,16 +128,16 @@ class TestSafetyLayer:
             "parameters": {"title": "Test Note"}
         }
 
-        # Mock database connection
-        with patch('app.core.database.get_db_connection') as mock_db:
-            mock_conn = AsyncMock()
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        # Mock SQLAlchemy session
+        with patch('app.core.safety_layer.AsyncSessionLocal') as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_session_factory.return_value.__aenter__.return_value = mock_session
 
             await safety_layer.log_audit("create_note", context)
 
-            # Verify audit log was created
-            # The actual implementation will execute SQL to insert audit log
-            # For now, we just verify the method executes without error
+            # Verify session.add was called with an AuditLog object
+            mock_session.add.assert_called_once()
+            mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_unknown_tool_defaults_to_read(self, safety_layer):

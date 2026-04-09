@@ -210,3 +210,30 @@ async def close_databases():
     await redis_db.disconnect()
 
     logger.info("Neo4j 和 Redis 连接已关闭")
+
+
+# =============================================================================
+# Legacy asyncpg placeholder (temporary)
+# =============================================================================
+
+class _DBConnectionPlaceholder:
+    """Placeholder for legacy get_db_connection usage.
+
+    Provides a compatibility shim for code still using raw asyncpg patterns.
+    Will be removed after full SQLAlchemy migration.
+    """
+
+    async def execute(self, query: str, *args):
+        """Execute query."""
+        # Placeholder - does nothing for now
+        pass
+
+
+def get_db_connection():
+    """Legacy placeholder for get_db_connection.
+
+    DEPRECATED: Use SQLAlchemy sessions from app.database instead.
+    This will be removed after full migration.
+    """
+    from app.database import AsyncSessionLocal
+    return AsyncSessionLocal()

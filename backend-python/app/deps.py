@@ -21,7 +21,7 @@ from typing import AsyncGenerator, Optional
 
 # SQLAlchemy database session (PostgreSQL)
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_db as sqlalchemy_get_db
+from app.database import get_db as sqlalchemy_get_db, AsyncSessionLocal
 
 # Neo4j and Redis from core.database
 from app.core.database import (
@@ -49,9 +49,44 @@ from app.services.auth_service import User
 get_db = sqlalchemy_get_db
 
 
+# Temporary placeholder for backward compatibility with legacy asyncpg code
+# This will be removed once all files are migrated to SQLAlchemy
+class _PostgresDBPlaceholder:
+    """Placeholder for legacy postgres_db usage.
+
+    Provides a compatibility shim for code still using raw asyncpg patterns.
+    Will be removed after full SQLAlchemy migration.
+    """
+
+    async def fetchrow(self, query: str, *args):
+        """Execute query and return single row."""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(query, args)
+            row = result.fetchone()
+            return row._mapping if row else None
+
+    async def fetch(self, query: str, *args):
+        """Execute query and return all rows."""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(query, args)
+            rows = result.fetchall()
+            return [row._mapping for row in rows]
+
+    async def execute(self, query: str, *args):
+        """Execute query without returning results."""
+        async with AsyncSessionLocal() as session:
+            await session.execute(query, args)
+            await session.commit()
+
+
+postgres_db = _PostgresDBPlaceholder()
+
+
 __all__ = [
     # Database (SQLAlchemy)
     "get_db",
+    # Legacy placeholder (temporary)
+    "postgres_db",
     # Neo4j and Redis
     "get_neo4j",
     "get_redis",
