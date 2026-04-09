@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Grid, List, Search, Plus, HardDrive } from "lucide-react";
+import { Grid, List, Search, Plus } from "lucide-react";
 import { KnowledgeBaseCard } from "../components/KnowledgeBaseCard";
 import { CreateKnowledgeBaseDialog } from "../components/CreateKnowledgeBaseDialog";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
@@ -153,20 +153,40 @@ export function KnowledgeBaseList() {
   return (
     <div className="relative min-h-screen bg-background">
       <PaperTexture />
-      {/* Top Toolbar */}
+      {/* Top Toolbar — Magazine masthead layout */}
       <div className="magazine-toolbar sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="magazine-toolbar-heading text-2xl">知识库</h1>
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <HardDrive className="h-4 w-4" />
-              <span>存储 {storageUsed} / {storageTotal}</span>
+        <div className="max-w-7xl mx-auto px-6 py-5">
+          <div className="flex items-end justify-between">
+            <div>
+              <h1 className="font-serif text-3xl font-bold text-foreground tracking-tight">
+                知识库
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5 font-sans">
+                Knowledge Bases
+              </p>
             </div>
+            <Button onClick={handleCreate} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-5">
+              <Plus className="h-4 w-4" />
+              创建知识库
+            </Button>
           </div>
-          <Button onClick={handleCreate} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-            <Plus className="h-4 w-4" />
-            创建知识库
-          </Button>
+
+          {/* Storage progress bar */}
+          <div className="mt-4 flex items-center gap-3">
+            <div
+              className="storage-progress flex-1 max-w-xs"
+              role="progressbar"
+              aria-valuenow={24}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`存储使用量: ${storageUsed} / ${storageTotal}`}
+            >
+              <div className="storage-progress-fill" style={{ width: '24%' }} />
+            </div>
+            <span className="text-xs text-muted-foreground font-sans tabular-nums">
+              {storageUsed} / {storageTotal} · 24%
+            </span>
+          </div>
         </div>
       </div>
 
@@ -228,7 +248,6 @@ export function KnowledgeBaseList() {
       <div className="container-query max-w-7xl mx-auto px-6 pb-12">
         {filtered.length === 0 ? (
           <EmptyState
-            icon="📚"
             title="暂无知识库"
             description="创建您的第一个知识库，开始组织研究方向"
             action={{
@@ -261,75 +280,95 @@ export function KnowledgeBaseList() {
           <div className="magazine-card-warm rounded-lg p-4">
             <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>论文数</TableHead>
-                <TableHead>切片数</TableHead>
-                <TableHead>实体数</TableHead>
-                <TableHead>更新时间</TableHead>
-                <TableHead className="w-24">操作</TableHead>
+              <TableRow className="border-b-border/50">
+                <TableHead className="font-serif">名称</TableHead>
+                <TableHead className="text-right tabular-nums">论文</TableHead>
+                <TableHead className="text-right tabular-nums">切片</TableHead>
+                <TableHead className="text-right tabular-nums">实体</TableHead>
+                <TableHead className="text-right tabular-nums">更新</TableHead>
+                <TableHead className="w-24"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((kb) => (
                 <TableRow
                   key={kb.id}
-                  className="cursor-pointer hover:bg-muted/50"
+                  className="group/row cursor-pointer transition-colors hover:bg-primary/[0.04]"
                   onClick={() => handleEnter(kb.id)}
+                  role="link"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleEnter(kb.id); }}
                 >
                   <TableCell>
                     <div>
-                      <div className="font-medium">{kb.name}</div>
-                      <div className="text-sm text-muted-foreground line-clamp-1">
+                      <div className="font-medium font-serif group-hover/row:text-primary transition-colors">
+                        {kb.name}
+                      </div>
+                      <div className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
                         {kb.description}
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>{kb.paperCount}</TableCell>
-                  <TableCell>{kb.chunkCount.toLocaleString()}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-right tabular-nums font-medium">
+                    {kb.paperCount}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {kb.chunkCount.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
                     {kb.entityCount > 0 ? (
                       kb.entityCount.toLocaleString()
                     ) : (
-                      <span className="text-muted-foreground/60">未构建</span>
+                      <span className="text-muted-foreground/60">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{kb.updatedAt}</TableCell>
+                  <TableCell className="text-right text-muted-foreground tabular-nums text-sm">
+                    {kb.updatedAt}
+                  </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEnter(kb.id)}>
-                          <ArrowRight className="mr-2 h-4 w-4" />
-                          进入
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleImport(kb.id, kb.name)}>
-                          <Download className="mr-2 h-4 w-4" />
-                          导入
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleEdit(kb.name)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          编辑
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem>
-                          <Network className="mr-2 h-4 w-4" />
-                          构建图谱
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => handleDelete(kb.name)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex items-center gap-1">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 opacity-0 group-hover/row:opacity-100 transition-opacity"
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="更多操作"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEnter(kb.id)}>
+                            <ArrowRight className="mr-2 h-4 w-4" />
+                            进入
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleImport(kb.id, kb.name)}>
+                            <Download className="mr-2 h-4 w-4" />
+                            导入
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEdit(kb.name)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            编辑
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem>
+                            <Network className="mr-2 h-4 w-4" />
+                            构建图谱
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => handleDelete(kb.name)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            删除
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground/30 group-hover/row:text-primary/50 transition-colors flex-shrink-0" />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
