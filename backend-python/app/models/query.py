@@ -48,9 +48,8 @@ class Query(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="queries")
-    papers: Mapped[List["Paper"]] = relationship(
-        "Paper", back_populates="queries"
-    )
+    # Note: papers relationship removed - paper_ids is ARRAY(String) without FK constraint
+    # Access papers via paper_ids list instead of ORM relationship
 
     __table_args__ = (
         Index("idx_queries_created_at", "created_at"),

@@ -110,9 +110,7 @@ class Paper(Base):
     upload_history: Mapped[List["UploadHistory"]] = relationship(
         "UploadHistory", back_populates="paper"
     )
-    queries: Mapped[List["Query"]] = relationship(
-        "Query", back_populates="papers"
-    )
+    # Note: queries relationship removed - Query.paper_ids is ARRAY(String) without FK
     batch: Mapped[Optional["PaperBatch"]] = relationship(
         "PaperBatch", back_populates="papers"
     )
