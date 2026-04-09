@@ -240,3 +240,43 @@
     font-size: 1rem;
   }
 }
+
+/* Container query utilities for responsive component layouts */
+
+/* Enable container query context on parent */
+.container-query {
+  container-type: inline-size;
+  container-name: card-grid;
+}
+
+/* Card grid responsive via container queries (not viewport) */
+@container card-grid (min-width: 900px) {
+  .cq-grid-cols {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container card-grid (min-width: 600px) and (max-width: 899px) {
+  .cq-grid-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container card-grid (max-width: 599px) {
+  .cq-grid-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Paper list responsive via container queries */
+@container card-grid (min-width: 700px) {
+  .cq-paper-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container card-grid (max-width: 699px) {
+  .cq-paper-grid {
+    grid-template-columns: 1fr;
+  }
+}
