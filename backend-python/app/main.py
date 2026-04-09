@@ -69,6 +69,7 @@ from app.api import (
 from app.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
+from app.database import init_sqlalchemy_engine, close_sqlalchemy_engine
 from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker.factory import get_reranker_service
@@ -91,7 +92,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"🕸️  Neo4j: {settings.NEO4J_URI}")
     logger.info(f"⚡ Redis: {settings.REDIS_URL}")
 
-    # 初始化数据库连接
+    # 1. SQLAlchemy PostgreSQL (首先初始化)
+    try:
+        await init_sqlalchemy_engine()
+        logger.info("✅ SQLAlchemy PostgreSQL initialized")
+    except Exception as e:
+        logger.error(f"❌ SQLAlchemy initialization failed: {e}")
+        raise
+
+    # 2. Neo4j + Redis
     await init_databases()
 
     # Initialize Milvus
@@ -151,7 +160,12 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Error disconnecting Milvus", error=str(e))
 
+    # Neo4j + Redis
     await close_databases()
+
+    # SQLAlchemy PostgreSQL (最后关闭)
+    await close_sqlalchemy_engine()
+    logger.info("Database connections closed")
 
 
 app = FastAPI(
