@@ -21,6 +21,13 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/app/components/ui/select';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -66,6 +73,22 @@ function extractPreview(content: any, maxLength = 80): string {
   return cleaned.length > maxLength ? cleaned.slice(0, maxLength) + '...' : cleaned;
 }
 
+/**
+ * Highlight matching text in a string
+ */
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query.trim()) return text;
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const parts = text.split(regex);
+  return parts.map((part, i) =>
+    regex.test(part) ? (
+      <mark key={i} className="bg-yellow-200 text-inherit rounded px-0.5">{part}</mark>
+    ) : (
+      part
+    )
+  );
+}
+
 export function Notes() {
   const { notes, loading: notesLoading } = useNotes();
   const createNote = useCreateNote();
@@ -74,6 +97,7 @@ export function Notes() {
 
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState<string>('all');
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState<any>(null);
 
@@ -82,16 +106,34 @@ export function Notes() {
     [notes, selectedNoteId]
   );
 
+  // Collect all unique tags from notes
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    notes.forEach((note) => note.tags?.forEach((tag) => tagSet.add(tag)));
+    return Array.from(tagSet).sort();
+  }, [notes]);
+
   // Filter notes by search
   const filteredNotes = useMemo(() => {
-    if (!searchQuery.trim()) return notes;
-    const query = searchQuery.toLowerCase();
-    return notes.filter(
-      (note) =>
-        note.title.toLowerCase().includes(query) ||
-        extractPreview(note.content).toLowerCase().includes(query)
-    );
-  }, [notes, searchQuery]);
+    let result = notes;
+
+    // Tag filter
+    if (tagFilter !== 'all') {
+      result = result.filter((note) => note.tags?.includes(tagFilter));
+    }
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (note) =>
+          note.title.toLowerCase().includes(query) ||
+          extractPreview(note.content).toLowerCase().includes(query)
+      );
+    }
+
+    return result;
+  }, [notes, searchQuery, tagFilter]);
 
   // Auto-save handler
   const handleSave = useCallback(
@@ -235,6 +277,21 @@ export function Notes() {
               className="pl-8 h-8 text-xs"
             />
           </div>
+
+          {/* Tag Filter */}
+          {allTags.length > 0 && (
+            <Select value={tagFilter} onValueChange={setTagFilter}>
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue placeholder="全部标签" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部标签</SelectItem>
+                {allTags.map((tag) => (
+                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {/* Note List */}
@@ -267,7 +324,7 @@ export function Notes() {
                 >
                   <div className="flex items-start justify-between gap-1">
                     <h4 className="text-sm font-medium line-clamp-1 flex-1">
-                      {note.title || '未命名笔记'}
+                      {highlightText(note.title || '未命名笔记', searchQuery)}
                     </h4>
                     <button
                       className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
@@ -280,7 +337,7 @@ export function Notes() {
                     </button>
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                    {extractPreview(note.content) || '空笔记'}
+                    {highlightText(extractPreview(note.content) || '空笔记', searchQuery)}
                   </p>
                   <div className="flex items-center gap-2 mt-1.5">
                     <Clock className="w-2.5 h-2.5 text-muted-foreground/60" />
