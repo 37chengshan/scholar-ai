@@ -18,8 +18,10 @@ SSE Event Types:
 import json
 import time
 import uuid
+import asyncio
+from asyncio import Queue
 from datetime import datetime, timezone
-from typing import AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -219,9 +221,12 @@ async def chat_stream(
                     ):
                         yield replay_event
 
-                # Business event generator
+                # Business event generator with real-time SSE streaming
                 async def business_events() -> AsyncIterator[str]:
-                    """Generate business events from Agent execution."""
+                    """Generate business events from Agent execution with real-time streaming."""
+                    # Create event queue for real-time push
+                    event_queue: Queue[Tuple[str, dict]] = Queue()
+
                     # Save user message before execution
                     try:
                         await save_message(
@@ -238,119 +243,170 @@ async def chat_stream(
                         ).model_dump(),
                     )
 
-                    # Execute Agent
-                    result = await runner.execute(
-                        user_input=request.message,
-                        session_id=session_id,
-                        user_id=user_id,
-                        auto_confirm=auto_confirm,
-                    )
+                    # Define event callback to push events to queue
+                    async def event_callback(event_type: str, data: Dict[str, Any]):
+                        """Push real-time events to SSE queue."""
+                        await event_queue.put((event_type, data))
 
-                    # Handle confirmation required
-                    if result.get("needs_confirmation"):
-                        confirmation_id = str(uuid.uuid4())
+                    # Define agent execution task
+                    async def run_agent():
+                        """Execute agent and push completion signal."""
+                        try:
+                            result = await runner.execute(
+                                user_input=request.message,
+                                session_id=session_id,
+                                user_id=user_id,
+                                auto_confirm=auto_confirm,
+                                event_callback=event_callback,  # Real-time callback
+                            )
 
-                        yield await stream_sse_event(
-                            SSEEventType.CONFIRMATION_REQUIRED,
-                            ConfirmationRequiredEventData(
-                                type="confirmation_required",
-                                confirmation_id=confirmation_id,
-                                message=result.get(
-                                    "message",
-                                    "Agent wants to execute a dangerous operation",
-                                ),
-                                tool_name=result.get("tool_name", "unknown"),
-                                parameters=result.get("tool_parameters", {}),
-                            ).model_dump(),
-                        )
-                        return
+                            # Push final result signal
+                            await event_queue.put(("agent_complete", result))
 
-                    # Handle final message
-                    if result.get("success"):
-                        # Send tool calls history (optional)
-                        tool_calls = result.get("tool_calls", [])
-                        for tc in tool_calls:
-                            # Tool call event
+                        except Exception as e:
+                            logger.error("Agent execution error", error=str(e))
+                            await event_queue.put(("agent_error", {"error": str(e)}))
+
+                    # Start agent task in parallel
+                    agent_task = asyncio.create_task(run_agent())
+
+                    # Stream events from queue in real-time
+                    while True:
+                        event_type, event_data = await event_queue.get()
+
+                        # Handle real-time events
+                        if event_type == "thought":
+                            yield await stream_sse_event(
+                                SSEEventType.THOUGHT,
+                                ThoughtEventData(
+                                    type="thinking",
+                                    content=event_data.get("content", ""),
+                                ).model_dump(),
+                            )
+
+                        elif event_type == "tool_call":
                             yield await stream_sse_event(
                                 SSEEventType.TOOL_CALL,
                                 ToolCallEventData(
                                     type="tool_call",
-                                    tool=tc.get("tool", "unknown"),
-                                    parameters=tc.get("parameters", {}),
+                                    tool=event_data.get("tool", "unknown"),
+                                    parameters=event_data.get("parameters", {}),
                                 ).model_dump(),
                             )
 
-                            # Save tool call message
+                        elif event_type == "tool_result":
+                            yield await stream_sse_event(
+                                SSEEventType.TOOL_RESULT,
+                                ToolResultEventData(
+                                    type="tool_result",
+                                    tool=event_data.get("tool", "unknown"),
+                                    success=event_data.get("success", False),
+                                    data=event_data.get("data"),
+                                    error=event_data.get("error"),
+                                ).model_dump(),
+                            )
+
+                            # Save tool call message asynchronously
                             try:
                                 await save_message(
                                     session_id=session_id,
                                     role="tool",
-                                    content=json.dumps(tc.get("result", {})),
-                                    tool_name=tc.get("tool", "unknown"),
-                                    tool_params=tc.get("parameters", {}),
+                                    content=json.dumps(event_data),
+                                    tool_name=event_data.get("tool", "unknown"),
+                                    tool_params=event_data.get("parameters", {}),
                                 )
                             except Exception as e:
                                 logger.warning(
                                     "Failed to save tool message", error=str(e)
                                 )
 
-                            # Tool result event
-                            tool_result = tc.get("result", {})
+                        # Handle agent completion
+                        elif event_type == "agent_complete":
+                            result = event_data
+
+                            # Handle confirmation required
+                            if result.get("needs_confirmation"):
+                                confirmation_id = str(uuid.uuid4())
+
+                                yield await stream_sse_event(
+                                    SSEEventType.CONFIRMATION_REQUIRED,
+                                    ConfirmationRequiredEventData(
+                                        type="confirmation_required",
+                                        confirmation_id=confirmation_id,
+                                        message=result.get(
+                                            "message",
+                                            "Agent wants to execute a dangerous operation",
+                                        ),
+                                        tool_name=result.get("tool_name", "unknown"),
+                                        parameters=result.get("tool_parameters", {}),
+                                    ).model_dump(),
+                                )
+                                break
+
+                            # Handle final message
+                            if result.get("success"):
+                                # Send final message
+                                final_content = result.get("answer", "Task completed")
+                                yield await stream_sse_event(
+                                    SSEEventType.MESSAGE,
+                                    MessageEventData(
+                                        type="message", content=final_content
+                                    ).model_dump(),
+                                )
+
+                                # Save assistant message
+                                try:
+                                    await save_message(
+                                        session_id=session_id,
+                                        role="assistant",
+                                        content=final_content,
+                                    )
+                                except Exception as e:
+                                    logger.warning(
+                                        "Failed to save assistant message", error=str(e)
+                                    )
+
+                                # Send done event with token usage
+                                yield await stream_sse_event(
+                                    SSEEventType.DONE,
+                                    {
+                                        "type": "done",
+                                        "content": "[DONE]",
+                                        "tokens_used": result.get("tokens_used", 0),
+                                        "cost": result.get("cost", 0.0),
+                                        "iterations": result.get("iterations", 0),
+                                        "total_time_ms": result.get("total_time_ms", 0),
+                                    },
+                                )
+                            else:
+                                # Error case
+                                yield await stream_sse_event(
+                                    SSEEventType.ERROR,
+                                    ErrorEventData(
+                                        type="error",
+                                        error=result.get("error", "Unknown error"),
+                                        details={
+                                            "iterations": result.get("iterations", 0)
+                                        },
+                                    ).model_dump(),
+                                )
+
+                            break
+
+                        # Handle agent error
+                        elif event_type == "agent_error":
                             yield await stream_sse_event(
-                                SSEEventType.TOOL_RESULT,
-                                ToolResultEventData(
-                                    type="tool_result",
-                                    tool=tc.get("tool", "unknown"),
-                                    success=tool_result.get("success", False),
-                                    data=tool_result.get("data"),
-                                    error=tool_result.get("error"),
+                                SSEEventType.ERROR,
+                                ErrorEventData(
+                                    type="error",
+                                    error=event_data.get("error", "Unknown error"),
+                                    details=None,
                                 ).model_dump(),
                             )
+                            break
 
-                        # Send final message
-                        final_content = result.get("answer", "Task completed")
-                        yield await stream_sse_event(
-                            SSEEventType.MESSAGE,
-                            MessageEventData(
-                                type="message", content=final_content
-                            ).model_dump(),
-                        )
-
-                        # Save assistant message
-                        try:
-                            await save_message(
-                                session_id=session_id,
-                                role="assistant",
-                                content=final_content,
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                "Failed to save assistant message", error=str(e)
-                            )
-
-                        # Send done event with token usage
-                        yield await stream_sse_event(
-                            SSEEventType.DONE,
-                            {
-                                "type": "done",
-                                "content": "[DONE]",
-                                "tokens_used": result.get("tokens_used", 0),
-                                "cost": result.get("cost", 0.0),
-                                "iterations": result.get("iterations", 0),
-                                "total_time_ms": result.get("total_time_ms", 0),
-                            },
-                        )
-
-                    else:
-                        # Error case
-                        yield await stream_sse_event(
-                            SSEEventType.ERROR,
-                            ErrorEventData(
-                                type="error",
-                                error=result.get("error", "Unknown error"),
-                                details={"iterations": result.get("iterations", 0)},
-                            ).model_dump(),
-                        )
+                    # Ensure agent task completes
+                    await agent_task
 
                 # Stream with heartbeat
                 async for event in sse_manager.stream_with_heartbeat(

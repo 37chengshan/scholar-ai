@@ -163,6 +163,7 @@ class AgentRunner:
         context_manager: ContextManager,
         safety_layer: SafetyLayer,
         max_iterations: int = 10,
+        event_callback: Optional[Any] = None,
     ):
         """Initialize Agent Runner.
 
@@ -172,6 +173,7 @@ class AgentRunner:
             context_manager: Context manager instance
             safety_layer: Safety layer instance
             max_iterations: Maximum iterations before stopping
+            event_callback: Async callback for real-time SSE event emission
         """
         self.llm_client = llm_client
         self.tool_registry = tool_registry
@@ -184,6 +186,7 @@ class AgentRunner:
         self.total_tokens_used = 0
         self.total_cost = 0.0
         self.intent_classifier = IntentClassifier()  # Per D-22, D-23
+        self.event_callback = event_callback  # Real-time event push
 
     def get_ui_state(self) -> UIStateResult:
         """Get current UI state based on internal state.
@@ -196,6 +199,25 @@ class AgentRunner:
             UIStateResult (either AgentUIState or DoneState with success flag)
         """
         return self.current_state.to_ui_state()
+
+    async def _emit_event(self, event_type: str, data: Dict[str, Any]):
+        """Emit real-time SSE event via callback.
+
+        Args:
+            event_type: Event type (thought, tool_call, tool_result)
+            data: Event data payload
+
+        Note:
+            If event_callback is None, event is silently ignored.
+            This ensures backward compatibility.
+        """
+        if self.event_callback:
+            try:
+                await self.event_callback(event_type, data)
+            except Exception as e:
+                logger.warning(
+                    "Event emission failed", event_type=event_type, error=str(e)
+                )
 
     async def execute(
         self, user_input: str, session_id: str, user_id: str, auto_confirm: bool = False
@@ -294,6 +316,17 @@ class AgentRunner:
 
                 # THINKING: Call LLM
                 self.current_state = AgentState.THINKING
+
+                # Emit thinking event before LLM call
+                await self._emit_event(
+                    "thought",
+                    {
+                        "type": "thinking",
+                        "content": f"Iteration {self.iteration_count}: Analyzing request and determining next action...",
+                        "iteration": self.iteration_count,
+                    },
+                )
+
                 llm_response = await self._think(
                     system_prompt, messages, tools_schema, user_id, session_id
                 )
@@ -347,6 +380,17 @@ class AgentRunner:
 
                 logger.info("Tool selected", tool=tool_name, parameters=tool_parameters)
 
+                # Emit tool_call event before execution
+                await self._emit_event(
+                    "tool_call",
+                    {
+                        "type": "tool_call",
+                        "tool": tool_name,
+                        "parameters": tool_parameters,
+                        "iteration": self.iteration_count,
+                    },
+                )
+
                 # Check permission
                 permission_context = {
                     "user_id": user_id,
@@ -394,6 +438,19 @@ class AgentRunner:
 
                 logger.info(
                     "Tool executed", tool=tool_name, success=tool_result.get("success")
+                )
+
+                # Emit tool_result event after execution
+                await self._emit_event(
+                    "tool_result",
+                    {
+                        "type": "tool_result",
+                        "tool": tool_name,
+                        "success": tool_result.get("success"),
+                        "data": tool_result.get("data"),
+                        "error": tool_result.get("error"),
+                        "iteration": self.iteration_count,
+                    },
                 )
 
                 # Record tool call
