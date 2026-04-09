@@ -175,6 +175,26 @@ export function useSSE(): UseSSEReturn {
             params: event.content?.parameters || event.content || {},
           });
         }
+
+        // Handle citation events — Option A: Dedicated citation event
+        if (event.type === 'citation' || event.event === 'citation') {
+          const citationData = event.content || event.data;
+          if (citationData && Array.isArray(citationData)) {
+            const citations: PaperCitation[] = citationData.map((c: any) => ({
+              paper_id: c.paper_id || c.id || '',
+              title: c.title || 'Unknown',
+              authors: c.authors || [],
+              year: c.year || 0,
+              journal: c.journal,
+              page: c.page || 0,
+              snippet: c.snippet || c.content || '',
+              score: c.score || c.relevance || 0,
+              content_type: c.content_type || 'text',
+              chunk_id: c.chunk_id,
+            }));
+            setCitations(citations);
+          }
+        }
       },
       onError: (err: Error) => {
         setError(err.message);
@@ -192,6 +212,23 @@ export function useSSE(): UseSSEReturn {
             tokensUsed: data.tokens_used || 0,
             cost: data.cost || 0,
           });
+
+          // Option B: Citations in done event (fallback if no dedicated citation event)
+          if (data.citations && Array.isArray(data.citations)) {
+            const citations: PaperCitation[] = data.citations.map((c: any) => ({
+              paper_id: c.paper_id || c.id || '',
+              title: c.title || 'Unknown',
+              authors: c.authors || [],
+              year: c.year || 0,
+              journal: c.journal,
+              page: c.page || 0,
+              snippet: c.snippet || c.content || '',
+              score: c.score || c.relevance || 0,
+              content_type: c.content_type || 'text',
+              chunk_id: c.chunk_id,
+            }));
+            setCitations(citations);
+          }
         }
       },
     });
