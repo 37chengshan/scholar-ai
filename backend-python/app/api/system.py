@@ -6,13 +6,17 @@ Provides endpoints for system diagnostics:
 """
 
 import asyncio
+from datetime import datetime
 from typing import Dict, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import select, func, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db_connection
+from app.database import get_db
+from app.models import Paper
 from app.utils.logger import logger
 
 router = APIRouter()
@@ -40,16 +44,15 @@ class StorageResponse(BaseModel):
 # =============================================================================
 
 @router.get("/storage", response_model=StorageResponse)
-async def get_storage_info():
+async def get_storage_info(db: AsyncSession = Depends(get_db)):
     """Get storage usage metrics.
 
     Returns estimated storage usage for files and vector database.
     """
     try:
-        # Get paper count and file storage estimation
-        async with get_db_connection() as conn:
-            result = await conn.fetchval("SELECT COUNT(*) FROM papers")
-            paper_count = result or 0
+        # Get paper count using SQLAlchemy ORM
+        result = await db.execute(select(func.count()).select_from(Paper))
+        paper_count = result.scalar() or 0
 
         # Estimate file storage (2MB average per paper)
         avg_file_size = 2 * 1024 * 1024  # 2MB
@@ -146,8 +149,6 @@ async def stream_logs(request: Request):
         except Exception as e:
             logger.error("Log stream error", error=str(e))
 
-    from datetime import datetime
-
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -166,14 +167,15 @@ async def system_health():
     Returns status of all services.
     """
     from app.config import settings
+    from app.database import engine
 
     services_status = {}
 
-    # Check PostgreSQL
+    # Check PostgreSQL using SQLAlchemy engine
     try:
-        async with get_db_connection() as conn:
-            await conn.fetchval("SELECT 1")
-            services_status["postgres"] = {"status": "healthy"}
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        services_status["postgres"] = {"status": "healthy"}
     except Exception as e:
         services_status["postgres"] = {"status": "unhealthy", "error": str(e)}
 
@@ -221,5 +223,3 @@ async def system_health():
             "timestamp": datetime.now().isoformat()
         }
     }
-
-    from datetime import datetime
