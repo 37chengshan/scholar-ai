@@ -36,7 +36,7 @@ import {
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ToolCall, TOOL_DISPLAY_CONFIG } from '../../types/chat';
-import { Badge } from '../ui/badge';
+import { Badge } from './ui/badge';
 
 /**
  * Icon mapping from TOOL_DISPLAY_CONFIG icon names to lucide-react components
