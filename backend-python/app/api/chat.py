@@ -21,18 +21,21 @@ import uuid
 import asyncio
 from asyncio import Queue
 from datetime import datetime, timezone
-from typing import AsyncIterator, Dict, List, Optional, Tuple
+from typing import AsyncIterator, Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_runner import AgentRunner
 from app.core.tool_registry import ToolRegistry
 from app.core.safety_layer import SafetyLayer
 from app.core.context_manager import ContextManager
-from app.core.database import get_db_connection
+from app.database import AsyncSessionLocal, get_db
 from app.config import settings
 from app.utils.agent_init import initialize_agent_components
+from app.models import ChatMessage, Session
 from app.models.chat import (
     ChatStreamRequest,
     ChatConfirmRequest,
@@ -103,42 +106,41 @@ async def save_message(
     message_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    async with get_db_connection() as conn:
-        # Insert message
-        await conn.execute(
-            """
-            INSERT INTO chat_messages (id, session_id, role, content, tool_name, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            """,
-            message_id,
-            session_id,
-            role,
-            content,
-            tool_name,
-            created_at,
-        )
+    async with AsyncSessionLocal() as db:
+        try:
+            # Insert message using ORM
+            message = ChatMessage(
+                id=message_id,
+                session_id=session_id,
+                role=role,
+                content=content,
+                tool_name=tool_name,
+                tool_params=tool_params,
+            )
+            db.add(message)
 
-        # Update session stats
-        is_tool_call = role == "tool"
-        await conn.execute(
-            """
-            UPDATE sessions
-            SET 
-                message_count = message_count + 1,
-                tool_call_count = tool_call_count + CASE WHEN $2 THEN 1 ELSE 0 END,
-                last_activity_at = $3
-            WHERE id = $1
-            """,
-            session_id,
-            is_tool_call,
-            created_at,
-        )
+            # Update session stats using update statement
+            is_tool_call = role == "tool"
+            await db.execute(
+                update(Session)
+                .where(Session.id == session_id)
+                .values(
+                    message_count=Session.message_count + 1,
+                    tool_call_count=Session.tool_call_count + (1 if is_tool_call else 0),
+                    last_activity_at=created_at,
+                )
+            )
 
-    logger.debug(
-        "Message saved", message_id=message_id, session_id=session_id, role=role
-    )
+            await db.commit()
 
-    return message_id
+            logger.debug(
+                "Message saved", message_id=message_id, session_id=session_id, role=role
+            )
+
+            return message_id
+        except Exception:
+            await db.rollback()
+            raise
 
 
 # =============================================================================
@@ -551,7 +553,11 @@ async def confirm_action(request: ChatConfirmRequest, user_id: str = CurrentUser
 
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(
-    session_id: str, user_id: str = CurrentUserId, limit: int = 50, offset: int = 0
+    session_id: str,
+    user_id: str = CurrentUserId,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Retrieve chat history for a session.
@@ -588,29 +594,35 @@ async def get_session_messages(
                 ),
             )
 
-        # Retrieve messages from PostgreSQL chat_messages table
-        async with get_db_connection() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT id, session_id, role, content, tool_name, created_at
-                FROM chat_messages
-                WHERE session_id = $1
-                ORDER BY created_at DESC
-                LIMIT $2 OFFSET $3
-                """,
-                session_id,
-                limit,
-                offset,
-            )
+        # Retrieve messages using SQLAlchemy ORM
+        result = await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        messages = result.scalars().all()
 
-            messages = [dict(row) for row in rows]
+        # Convert ORM objects to dict for response
+        message_dicts = [
+            {
+                "id": msg.id,
+                "session_id": msg.session_id,
+                "role": msg.role,
+                "content": msg.content,
+                "tool_name": msg.tool_name,
+                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            }
+            for msg in messages
+        ]
 
         return {
             "success": True,
             "data": {
                 "session_id": session_id,
-                "messages": messages,
-                "total": len(messages),
+                "messages": message_dicts,
+                "total": len(message_dicts),
                 "limit": limit,
             },
         }
