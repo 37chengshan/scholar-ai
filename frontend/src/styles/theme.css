@@ -43,6 +43,37 @@
 
   /* Magazine landing page warm background color */
   --color-magazine-bg: #f4ece1;
+
+  /* === Magazine editorial tokens === */
+
+  /* Status colors */
+  --color-status-completed: #2d6a4f;
+  --color-status-completed-bg: #d8f3dc;
+  --color-status-processing: #b45309;
+  --color-status-processing-bg: #fef3c7;
+  --color-status-failed: #9b2226;
+  --color-status-failed-bg: #fee2e2;
+  --color-status-pending: #6b7280;
+  --color-status-pending-bg: #f3f4f6;
+
+  /* Magazine accent colors */
+  --color-accent-warm: #d35400;
+  --color-accent-cool: #2d6a4f;
+  --color-accent-ink: #2d241e;
+
+  /* Paper layers */
+  --color-paper-1: #ffffff;
+  --color-paper-2: #fdfaf6;
+  --color-paper-3: #f4ece1;
+
+  /* Divider lines */
+  --color-rule: rgba(45, 36, 30, 0.08);
+  --color-rule-strong: rgba(45, 36, 30, 0.15);
+
+  /* Paper shadows */
+  --shadow-paper: 0 1px 3px rgba(45, 36, 30, 0.06), 0 1px 2px rgba(45, 36, 30, 0.04);
+  --shadow-paper-hover: 0 4px 12px rgba(45, 36, 30, 0.08), 0 2px 4px rgba(45, 36, 30, 0.04);
+  --shadow-paper-active: 0 8px 24px rgba(45, 36, 30, 0.12), 0 4px 8px rgba(45, 36, 30, 0.06);
 }
 
 /* Base styles */
