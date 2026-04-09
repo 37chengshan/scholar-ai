@@ -1,5 +1,5 @@
-import { MoreHorizontal, ArrowRight, Download, Pencil, Copy, Trash2, Network } from "lucide-react";
-import { Card, CardContent, CardFooter, CardHeader } from "../components/ui/card";
+import { MoreHorizontal, Download, Pencil, Copy, Trash2, Network, Brain, FileText, Eye, TrendingUp, BookOpen, Layers } from "lucide-react";
+import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import {
   DropdownMenu,
@@ -8,7 +8,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
-import { Badge } from "../components/ui/badge";
 
 interface KnowledgeBaseCardProps {
   id: string;
@@ -25,12 +24,12 @@ interface KnowledgeBaseCardProps {
   onDelete: () => void;
 }
 
-const categoryIcons: Record<string, string> = {
-  "人工智能": "🤖",
-  "自然语言处理": "📝",
-  "计算机视觉": "👁️",
-  "机器学习": "📊",
-  "其他": "📚",
+const categoryConfig: Record<string, { icon: typeof Brain; accent: string; label: string }> = {
+  "人工智能": { icon: Brain, accent: "card-accent--ai", label: "AI" },
+  "自然语言处理": { icon: FileText, accent: "card-accent--nlp", label: "NLP" },
+  "计算机视觉": { icon: Eye, accent: "card-accent--cv", label: "CV" },
+  "机器学习": { icon: TrendingUp, accent: "card-accent--ml", label: "ML" },
+  "其他": { icon: BookOpen, accent: "card-accent--other", label: "Other" },
 };
 
 function formatCount(count: number): string {
@@ -38,6 +37,13 @@ function formatCount(count: number): string {
     return `${(count / 1000).toFixed(1)}k`;
   }
   return String(count);
+}
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  return `${month}月${day}日`;
 }
 
 export function KnowledgeBaseCard({
@@ -54,40 +60,52 @@ export function KnowledgeBaseCard({
   onEdit,
   onDelete,
 }: KnowledgeBaseCardProps) {
-  const icon = category ? (categoryIcons[category] || "🧠") : "🧠";
+  const config = category ? (categoryConfig[category] || categoryConfig["其他"]) : categoryConfig["其他"];
+  const Icon = config.icon;
 
   return (
     <Card
       data-kb-id={id}
-      className="magazine-card group relative flex flex-col gap-0 bg-white border border-border/50 transition-all duration-300 hover:border-primary/30 cursor-pointer"
+      className="group relative flex flex-col bg-paper-1 border border-border/50 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-paper-hover hover:-translate-y-1 hover:border-primary/20 cursor-pointer"
       onClick={(e) => {
-        // Don't navigate if clicking action buttons
         if ((e.target as HTMLElement).closest("button")) return;
         onEnter();
       }}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter') onEnter(); }}
     >
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
+      {/* Top accent bar */}
+      <div className={`card-accent ${config.accent}`} />
+
+      <CardHeader className="pb-2 pt-5">
+        <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
-            <span className="text-2xl flex-shrink-0 mt-0.5">{icon}</span>
+            {/* Category icon — circular background */}
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-muted/60 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+              <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+            </div>
             <div className="min-w-0">
               <h3 className="font-serif text-lg font-semibold leading-tight text-foreground group-hover:text-primary transition-colors truncate">
                 {name}
               </h3>
               {category && (
-                <Badge className="magazine-badge mt-1.5">
-                  {category}
-                </Badge>
+                <span className="category-chip mt-1.5 inline-flex">
+                  {config.label} · {category}
+                </span>
               )}
             </div>
           </div>
+
+          {/* More actions — hidden until hover */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 flex-shrink-0"
+                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => e.stopPropagation()}
+                aria-label="更多操作"
               >
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
@@ -96,6 +114,10 @@ export function KnowledgeBaseCard({
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
                 <Pencil className="mr-2 h-4 w-4" />
                 编辑
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onImport(); }}>
+                <Download className="mr-2 h-4 w-4" />
+                添加论文
               </DropdownMenuItem>
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); }}>
                 <Copy className="mr-2 h-4 w-4" />
@@ -119,52 +141,42 @@ export function KnowledgeBaseCard({
         </div>
       </CardHeader>
 
-      <CardContent className="pb-3 pt-0">
+      <CardContent className="pb-4 pt-0">
         <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
           {description}
         </p>
+      </CardContent>
 
-        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            📄 {paperCount} 篇论文
+      {/* Bottom divider + stats */}
+      <div className="px-6 pb-4 pt-0 border-t border-rule/50 mt-auto">
+        <div className="flex items-center gap-x-4 gap-y-1.5 py-2.5 text-xs">
+          <span className="stat-item">
+            <FileText className="stat-item__icon" />
+            <span className="stat-item__value">{paperCount}</span>
+            <span>论文</span>
           </span>
-          <span className="flex items-center gap-1">
-            🔍 {formatCount(chunkCount)} 切片
+          <span className="stat-item">
+            <Layers className="stat-item__icon" />
+            <span className="stat-item__value">{formatCount(chunkCount)}</span>
+            <span>切片</span>
           </span>
           {entityCount > 0 ? (
-            <span className="flex items-center gap-1">
-              🕸️ {formatCount(entityCount)} 实体
+            <span className="stat-item">
+              <Network className="stat-item__icon" />
+              <span className="stat-item__value">{formatCount(entityCount)}</span>
+              <span>实体</span>
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-muted-foreground/60">
-              🕸️ 未构建图谱
+            <span className="stat-item text-muted-foreground/50">
+              <Network className="stat-item__icon" />
+              <span>未构建图谱</span>
             </span>
           )}
         </div>
-
-        <p className="mt-3 text-xs text-muted-foreground/60">
-          {updatedAt} 更新
+        <p className="text-xs text-muted-foreground/50">
+          {formatDate(updatedAt)} 更新
         </p>
-      </CardContent>
-
-      <CardFooter className="pt-0 pb-4 px-6 flex items-center gap-2 border-t border-border/30">
-        <Button
-          size="sm"
-          onClick={(e) => { e.stopPropagation(); onEnter(); }}
-          className="flex-1"
-        >
-          <ArrowRight className="mr-1 h-3.5 w-3.5" />
-          进入
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={(e) => { e.stopPropagation(); onImport(); }}
-        >
-          <Download className="mr-1 h-3.5 w-3.5" />
-          导入
-        </Button>
-      </CardFooter>
+      </div>
     </Card>
   );
 }
