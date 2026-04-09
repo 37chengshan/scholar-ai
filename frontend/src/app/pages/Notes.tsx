@@ -27,6 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
+import { NoteFolderTree } from '@/app/components/NoteFolderTree';
+import type { NoteFolder } from '@/app/components/NoteFolderTree';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -100,6 +102,9 @@ export function Notes() {
   const [tagFilter, setTagFilter] = useState<string>('all');
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState<any>(null);
+  const [folders, setFolders] = useState<NoteFolder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [noteFolderMap] = useState<Record<string, string>>({});
 
   const selectedNote = useMemo(
     () => notes.find((n) => n.id === selectedNoteId) || null,
@@ -113,9 +118,14 @@ export function Notes() {
     return Array.from(tagSet).sort();
   }, [notes]);
 
-  // Filter notes by search
+  // Filter notes by search, tag, and folder
   const filteredNotes = useMemo(() => {
     let result = notes;
+
+    // Folder filter
+    if (selectedFolderId !== null) {
+      result = result.filter((note) => noteFolderMap[note.id] === selectedFolderId);
+    }
 
     // Tag filter
     if (tagFilter !== 'all') {
@@ -133,7 +143,7 @@ export function Notes() {
     }
 
     return result;
-  }, [notes, searchQuery, tagFilter]);
+  }, [notes, searchQuery, tagFilter, selectedFolderId, noteFolderMap]);
 
   // Auto-save handler
   const handleSave = useCallback(
@@ -207,6 +217,18 @@ export function Notes() {
       toast.error('删除失败');
     }
   }, [deleteNoteId, selectedNoteId, deleteNote]);
+
+  // Folder handlers
+  const handleCreateFolder = useCallback((name: string, parentId: string | null) => {
+    const newFolder: NoteFolder = {
+      id: `folder-${Date.now()}`,
+      name,
+      parentId,
+      noteCount: 0,
+    };
+    setFolders((prev) => [...prev, newFolder]);
+    toast.success(`文件夹「${name}」已创建`);
+  }, []);
 
   // Handle editor content change (from Tiptap)
   const handleEditorChange = useCallback((json: any) => {
@@ -292,6 +314,16 @@ export function Notes() {
               </SelectContent>
             </Select>
           )}
+        </div>
+
+        {/* Folder Tree */}
+        <div className="border-b border-border">
+          <NoteFolderTree
+            folders={folders}
+            selectedFolderId={selectedFolderId}
+            onSelectFolder={setSelectedFolderId}
+            onCreateFolder={handleCreateFolder}
+          />
         </div>
 
         {/* Note List */}
