@@ -6,12 +6,14 @@ Uses Milvus for vector storage (Phase 13 architecture).
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-import json
+
+from sqlalchemy import select
 
 from app.utils.logger import logger
 from app.core.bge_m3_service import BGEM3Service
 from app.core.milvus_service import MilvusService
-from app.core.database import get_db_connection
+from app.database import AsyncSessionLocal
+from app.models.user_memory import UserMemory
 
 
 @dataclass
@@ -53,10 +55,11 @@ class MemorySearch:
         """Initialize MemorySearch service.
 
         Args:
-            db_pool: Database connection pool
+            db_pool: Database connection pool (deprecated, SQLAlchemy used instead)
             embedding_service: BGE-M3 embedding service
             milvus_service: Milvus vector database service
         """
+        # db_pool is deprecated - SQLAlchemy AsyncSessionLocal is used instead
         self.db_pool = db_pool
         self.embedding_service = embedding_service
         self.milvus_service = milvus_service
@@ -115,37 +118,31 @@ class MemorySearch:
                 filter_expr=filter_expr,
             )
 
-            # Fetch full memory data from PostgreSQL
+            # Fetch full memory data from PostgreSQL using SQLAlchemy
             memories = []
             if results:
                 memory_ids = [r.get("id") for r in results]
 
-                async with get_db_connection() as conn:
-                    rows = await conn.fetch(
-                        """
-                        SELECT id, content, memory_type, metadata, created_at
-                        FROM user_memories
-                        WHERE id = ANY($1)
-                        """,
-                        memory_ids,
-                    )
+                async with AsyncSessionLocal() as session:
+                    # Query UserMemory records by IDs
+                    stmt = select(UserMemory).where(UserMemory.id.in_(memory_ids))
+                    result = await session.execute(stmt)
+                    rows = result.scalars().all()
 
                     # Create Memory objects with similarity scores
-                    row_map = {str(row["id"]): row for row in rows}
-                    for result in results:
-                        memory_id = result.get("id")
+                    row_map = {str(row.id): row for row in rows}
+                    for milvus_result in results:
+                        memory_id = milvus_result.get("id")
                         if memory_id in row_map:
                             row = row_map[memory_id]
                             memories.append(
                                 Memory(
-                                    id=str(row["id"]),
-                                    content=row["content"],
-                                    memory_type=row["memory_type"],
-                                    metadata=json.loads(row["metadata"])
-                                    if row["metadata"]
-                                    else None,
-                                    similarity=result.get("distance", 0.0),
-                                    created_at=str(row["created_at"]),
+                                    id=str(row.id),
+                                    content=row.content,
+                                    memory_type=row.memory_type,
+                                    metadata=row.extra_data,
+                                    similarity=milvus_result.get("distance", 0.0),
+                                    created_at=str(row.created_at),
                                 )
                             )
 
@@ -198,21 +195,18 @@ class MemorySearch:
 
             embedding = await self.embedding_service.encode(content)
 
-            # Insert into PostgreSQL
-            async with get_db_connection() as conn:
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO user_memories (user_id, content, memory_type, metadata)
-                    VALUES ($1, $2, $3, $4)
-                    RETURNING id
-                    """,
-                    user_id,
-                    content,
-                    memory_type,
-                    json.dumps(metadata) if metadata else None,
+            # Insert into PostgreSQL using SQLAlchemy
+            async with AsyncSessionLocal() as session:
+                user_memory = UserMemory(
+                    user_id=user_id,
+                    content=content,
+                    memory_type=memory_type,
+                    extra_data=metadata,
                 )
-
-                memory_id = str(row["id"])
+                session.add(user_memory)
+                await session.commit()
+                await session.refresh(user_memory)
+                memory_id = str(user_memory.id)
 
             # Insert into Milvus
             if not self.milvus_service:

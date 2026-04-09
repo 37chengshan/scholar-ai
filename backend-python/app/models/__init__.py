@@ -68,6 +68,9 @@ from app.models.orm_audit_log import AuditLog
 # Token usage
 from app.models.token_usage_log import TokenUsageLog
 
+# User memory (long-term memory storage)
+from app.models.user_memory import UserMemory
+
 
 # =============================================================================
 # Pydantic API Schemas (preserved from existing)
@@ -138,6 +141,7 @@ __all__ = [
     "KnowledgeMap",
     "AuditLog",
     "TokenUsageLog",
+    "UserMemory",
     # Pydantic API Schemas
     "SessionBase",
     "SessionCreate",
