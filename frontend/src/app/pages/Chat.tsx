@@ -260,6 +260,31 @@ export function Chat() {
     }
   }, [isConnected, disconnect]);
 
+  // Send confirmation response (approve/reject) to backend
+  const sendConfirmationResponse = useCallback(async (approved: boolean) => {
+    if (!confirmation) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/chat/confirmation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          sessionId: currentSession?.id,
+          tool: confirmation.tool,
+          approved,
+        }),
+      });
+      if (!response.ok) {
+        console.error('Failed to send confirmation response', { status: response.status });
+      }
+    } catch (error) {
+      console.error('Error sending confirmation response', { error });
+    } finally {
+      resetConfirmation();
+    }
+  }, [confirmation, currentSession, resetConfirmation]);
+
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleTimeString(isZh ? 'zh-CN' : 'en-US', {
@@ -547,12 +572,8 @@ export function Chat() {
         tool={confirmation?.tool || ''}
         params={confirmation?.params || {}}
         isOpen={confirmation !== null}
-        onApprove={() => {
-          resetConfirmation();
-        }}
-        onReject={() => {
-          resetConfirmation();
-        }}
+        onApprove={() => sendConfirmationResponse(true)}
+        onReject={() => sendConfirmationResponse(false)}
       />
       
       {/* Toggle Right Panel Button (when hidden) */}
