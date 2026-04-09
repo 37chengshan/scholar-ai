@@ -15,9 +15,13 @@ import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import select, and_, any_
+
 from app.api.search import search_arxiv, search_semantic_scholar
 from app.core.multimodal_search_service import get_multimodal_search_service
-from app.core.database import get_db_connection
+from app.database import AsyncSessionLocal
+from app.models.paper import Paper
+from app.models.orm_note import Note
 from app.utils.logger import logger
 
 
@@ -213,45 +217,46 @@ async def execute_list_papers(params: Dict[str, Any], **kwargs) -> Dict[str, Any
 
         logger.info("List papers initiated", user_id=user_id, filters=filter_dict)
 
-        async with get_db_connection() as conn:
-            # Build query - use Prisma's camelCase column names
-            query = """
-                SELECT id, title, authors, year, status, "createdAt"
-                FROM papers
-                WHERE "userId" = $1
-            """
-            query_params = [user_id]
+        async with AsyncSessionLocal() as db:
+            # Build query with SQLAlchemy ORM
+            # Select specific fields to optimize response
+            stmt = select(Paper).where(Paper.user_id == user_id)
 
             # Apply filters
             if "status" in filter_dict:
-                query += f" AND status = ${len(query_params) + 1}"
-                query_params.append(filter_dict["status"])
+                stmt = stmt.where(Paper.status == filter_dict["status"])
 
-            # Apply sorting - map sort field to actual column name
+            # Apply sorting
             sort_column_map = {
-                "created_at": "createdAt",
-                "year": "year",
-                "title": "title",
+                "created_at": Paper.created_at,
+                "year": Paper.year,
+                "title": Paper.title,
             }
-            sort_column = sort_column_map.get(sort, "createdAt")
-            query += f' ORDER BY "{sort_column}" DESC'
+            sort_column = sort_column_map.get(sort, Paper.created_at)
+            stmt = stmt.order_by(sort_column.desc())
 
             # Apply limit
-            query += f" LIMIT {limit}"
+            stmt = stmt.limit(limit)
 
-            rows = await conn.fetch(query, *query_params)
+            result = await db.execute(stmt)
+            papers = result.scalars().all()
 
-            papers = [dict(row) for row in rows]
-
-            # Convert datetime to ISO string for JSON serialization
-            # Map Prisma column names to API response format
+            # Convert to dict format for JSON serialization
+            papers_data = []
             for paper in papers:
-                if "createdAt" in paper:
-                    paper["createdAt"] = _serialize_datetime(paper["createdAt"])
+                paper_dict = {
+                    "id": paper.id,
+                    "title": paper.title,
+                    "authors": paper.authors,
+                    "year": paper.year,
+                    "status": paper.status,
+                    "createdAt": _serialize_datetime(paper.created_at),
+                }
+                papers_data.append(paper_dict)
 
-        logger.info("List papers completed", user_id=user_id, count=len(papers))
+        logger.info("List papers completed", user_id=user_id, count=len(papers_data))
 
-        return {"success": True, "data": {"papers": papers}, "error": None}
+        return {"success": True, "data": {"papers": papers_data}, "error": None}
 
     except Exception as e:
         logger.error("List papers failed", error=str(e), user_id=user_id)
@@ -283,34 +288,38 @@ async def execute_read_paper(params: Dict[str, Any], **kwargs) -> Dict[str, Any]
 
         logger.info("Read paper initiated", paper_id=paper_id, sections=sections)
 
-        async with get_db_connection() as conn:
-            # Build SELECT clause based on sections
-            select_fields = ["id"]
-            if "metadata" in sections:
-                select_fields.extend(["title", "authors", "year", "doi", "keywords"])
-            if "abstract" in sections:
-                select_fields.append("abstract")
-            if "content" in sections:
-                select_fields.append("content")
-            if "notes" in sections:
-                select_fields.append("reading_notes")
+        async with AsyncSessionLocal() as db:
+            # Build query with SQLAlchemy ORM
+            stmt = select(Paper).where(
+                and_(Paper.id == paper_id, Paper.user_id == user_id)
+            )
 
-            query = f"""
-                SELECT {", ".join(select_fields)}
-                FROM papers
-                WHERE id = $1 AND user_id = $2
-            """
+            result = await db.execute(stmt)
+            paper = result.scalar_one_or_none()
 
-            row = await conn.fetchrow(query, paper_id, user_id)
-
-            if not row:
+            if not paper:
                 return {
                     "success": False,
                     "error": "Paper not found or access denied",
                     "data": None,
                 }
 
-            paper_data = dict(row)
+            # Build response based on requested sections
+            paper_data = {"id": paper.id}
+            if "metadata" in sections:
+                paper_data.update({
+                    "title": paper.title,
+                    "authors": paper.authors,
+                    "year": paper.year,
+                    "doi": paper.doi,
+                    "keywords": paper.keywords,
+                })
+            if "abstract" in sections:
+                paper_data["abstract"] = paper.abstract
+            if "content" in sections:
+                paper_data["content"] = paper.content
+            if "notes" in sections:
+                paper_data["reading_notes"] = paper.reading_notes
 
         logger.info("Read paper completed", paper_id=paper_id)
 
@@ -343,35 +352,36 @@ async def execute_list_notes(params: Dict[str, Any], **kwargs) -> Dict[str, Any]
 
         logger.info("List notes initiated", user_id=user_id)
 
-        async with get_db_connection() as conn:
-            query = """
-                SELECT id, title, content, tags, paper_ids, created_at, updated_at
-                FROM notes
-                WHERE user_id = $1
-            """
-            query_params = [user_id]
+        async with AsyncSessionLocal() as db:
+            # Build query with SQLAlchemy ORM
+            stmt = select(Note).where(Note.user_id == user_id)
 
-            # Apply filters
+            # Apply filters - check if paper_id is in paper_ids array
             if "paper_id" in filter_dict:
-                query += f" AND $${len(query_params) + 1} = ANY(paper_ids)"
-                query_params.append(filter_dict["paper_id"])
+                stmt = stmt.where(filter_dict["paper_id"] == any_(Note.paper_ids))
 
-            query += f" ORDER BY created_at DESC LIMIT {limit}"
+            stmt = stmt.order_by(Note.created_at.desc()).limit(limit)
 
-            rows = await conn.fetch(query, *query_params)
+            result = await db.execute(stmt)
+            notes = result.scalars().all()
 
-            notes = [dict(row) for row in rows]
-
-            # Convert datetime fields to ISO strings
+            # Convert to dict format for JSON serialization
+            notes_data = []
             for note in notes:
-                if "created_at" in note:
-                    note["created_at"] = _serialize_datetime(note["created_at"])
-                if "updated_at" in note:
-                    note["updated_at"] = _serialize_datetime(note["updated_at"])
+                note_dict = {
+                    "id": note.id,
+                    "title": note.title,
+                    "content": note.content,
+                    "tags": note.tags,
+                    "paper_ids": note.paper_ids,
+                    "created_at": _serialize_datetime(note.created_at),
+                    "updated_at": _serialize_datetime(note.updated_at),
+                }
+                notes_data.append(note_dict)
 
-        logger.info("List notes completed", user_id=user_id, count=len(notes))
+        logger.info("List notes completed", user_id=user_id, count=len(notes_data))
 
-        return {"success": True, "data": {"notes": notes}, "error": None}
+        return {"success": True, "data": {"notes": notes_data}, "error": None}
 
     except Exception as e:
         logger.error("List notes failed", error=str(e), user_id=user_id)
@@ -399,31 +409,32 @@ async def execute_read_note(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
 
         logger.info("Read note initiated", note_id=note_id)
 
-        async with get_db_connection() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT id, title, content, tags, paper_ids, created_at, updated_at
-                FROM notes
-                WHERE id = $1 AND user_id = $2
-                """,
-                note_id,
-                user_id,
+        async with AsyncSessionLocal() as db:
+            # Build query with SQLAlchemy ORM
+            stmt = select(Note).where(
+                and_(Note.id == note_id, Note.user_id == user_id)
             )
 
-            if not row:
+            result = await db.execute(stmt)
+            note = result.scalar_one_or_none()
+
+            if not note:
                 return {
                     "success": False,
                     "error": "Note not found or access denied",
                     "data": None,
                 }
 
-            note_data = dict(row)
-
-            # Convert datetime to ISO string for JSON serialization
-            if note_data and "created_at" in note_data:
-                note_data["created_at"] = _serialize_datetime(note_data["created_at"])
-            if note_data and "updated_at" in note_data:
-                note_data["updated_at"] = _serialize_datetime(note_data["updated_at"])
+            # Convert to dict format for JSON serialization
+            note_data = {
+                "id": note.id,
+                "title": note.title,
+                "content": note.content,
+                "tags": note.tags,
+                "paper_ids": note.paper_ids,
+                "created_at": _serialize_datetime(note.created_at),
+                "updated_at": _serialize_datetime(note.updated_at),
+            }
 
         logger.info("Read note completed", note_id=note_id)
 
