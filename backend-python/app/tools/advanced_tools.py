@@ -12,6 +12,10 @@ Each tool returns: {success: bool, data: any, error: str?}
 import re
 from typing import Any, Dict, List
 
+from sqlalchemy import select
+
+from app.database import AsyncSessionLocal
+from app.models.paper import Paper
 from app.utils.logger import logger
 
 
@@ -29,35 +33,34 @@ async def execute_extract_references(params: Dict[str, Any], **kwargs) -> Dict[s
     Returns:
         {success: bool, data: {references: [...], format: str}, error: str?}
     """
-    import re
-    from app.core.database import get_db_connection
-    
     user_id = kwargs.get("user_id", "")
-    
+
     try:
         paper_ids = params.get("paper_ids", [])
         format_style = params.get("format", "apa")
-        
+
         if not paper_ids:
             return {"success": False, "error": "paper_ids is required", "data": None}
-        
+
         logger.info("Extracting references", paper_count=len(paper_ids), format=format_style)
-        
+
         all_references = []
-        
-        async with get_db_connection() as conn:
+
+        async with AsyncSessionLocal() as session:
             for paper_id in paper_ids:
-                # Verify user owns the paper
-                paper = await conn.fetchrow(
-                    "SELECT title, content FROM papers WHERE id = $1 AND user_id = $2",
-                    paper_id, user_id
+                # Verify user owns the paper using SQLAlchemy ORM
+                result = await session.execute(
+                    select(Paper.title, Paper.content)
+                    .where(Paper.id == paper_id)
+                    .where(Paper.user_id == user_id)
                 )
-                
+                paper = result.first()
+
                 if not paper:
                     continue
-                
+
                 # Extract references section from content
-                content = paper.get("content", "") or ""
+                content = paper.content or ""
                 references = _parse_references_section(content, format_style)
                 all_references.extend(references)
         

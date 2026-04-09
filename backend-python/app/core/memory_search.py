@@ -262,8 +262,8 @@ class MemorySearch:
 
             preferences = {}
             for memory in memories:
-                if memory.metadata and "key" in memory.metadata:
-                    preferences[memory.metadata["key"]] = memory.metadata.get("value")
+                if memory.extra_data and "key" in memory.extra_data:
+                    preferences[memory.extra_data["key"]] = memory.extra_data.get("value")
 
             return preferences
 

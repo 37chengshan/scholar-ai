@@ -20,82 +20,90 @@ from app.tools.advanced_tools import (
 @pytest.mark.asyncio
 class TestExtractReferences:
     """Tests for extract_references tool."""
-    
+
     async def test_extract_references_basic(self):
         """Test basic reference extraction."""
         params = {
             "paper_ids": ["paper-1"],
             "format": "apa"
         }
-        
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetchrow = AsyncMock(return_value={
-                "title": "Test Paper",
-                "content": "References\n[1] Author A. (2020). Title B. Journal C.\n[2] Author D. (2021). Title E. Journal F."
-            })
-            mock_db.return_value.__aenter__.return_value = mock_conn
-            
+
+        with patch("app.tools.advanced_tools.AsyncSessionLocal") as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_result = MagicMock()
+            mock_paper = MagicMock()
+            mock_paper.title = "Test Paper"
+            mock_paper.content = "References\n[1] Author A. (2020). Title B. Journal C.\n[2] Author D. (2021). Title E. Journal F."
+            mock_result.first = MagicMock(return_value=mock_paper)
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            mock_session_factory.return_value.__aenter__.return_value = mock_session
+
             result = await execute_extract_references(params, user_id="user-123")
-            
+
             assert result["success"] is True
             assert "references" in result["data"]
-    
+
     async def test_extract_references_empty_paper_ids(self):
         """Test empty paper_ids returns error."""
         params = {"paper_ids": [], "format": "apa"}
         result = await execute_extract_references(params)
         assert result["success"] is False
         assert "required" in result["error"].lower()
-    
+
     async def test_extract_references_bibtex_format(self):
         """Test BibTeX format output."""
         params = {
             "paper_ids": ["paper-1"],
             "format": "bibtex"
         }
-        
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetchrow = AsyncMock(return_value={
-                "title": "Test",
-                "content": "References\nSmith, J. (2020). Testing. Journal."
-            })
-            mock_db.return_value.__aenter__.return_value = mock_conn
-            
+
+        with patch("app.tools.advanced_tools.AsyncSessionLocal") as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_result = MagicMock()
+            mock_paper = MagicMock()
+            mock_paper.title = "Test"
+            mock_paper.content = "References\nSmith, J. (2020). Testing. Journal."
+            mock_result.first = MagicMock(return_value=mock_paper)
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            mock_session_factory.return_value.__aenter__.return_value = mock_session
+
             result = await execute_extract_references(params, user_id="user-123")
-            
+
             assert result["success"] is True
             assert result["data"]["format"] == "bibtex"
-    
+
     async def test_extract_references_paper_not_found(self):
         """Test handling when paper not found."""
         params = {"paper_ids": ["non-existent"], "format": "apa"}
-        
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetchrow = AsyncMock(return_value=None)
-            mock_db.return_value.__aenter__.return_value = mock_conn
-            
+
+        with patch("app.tools.advanced_tools.AsyncSessionLocal") as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_result = MagicMock()
+            mock_result.first = MagicMock(return_value=None)
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            mock_session_factory.return_value.__aenter__.return_value = mock_session
+
             result = await execute_extract_references(params, user_id="user-123")
-            
+
             assert result["success"] is True  # Continues with empty
             assert result["data"]["total_count"] == 0
-    
+
     async def test_extract_references_no_references_section(self):
         """Test paper without references section."""
         params = {"paper_ids": ["paper-1"], "format": "apa"}
-        
-        with patch("app.core.database.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetchrow = AsyncMock(return_value={
-                "title": "Test",
-                "content": "No references here."
-            })
-            mock_db.return_value.__aenter__.return_value = mock_conn
-            
+
+        with patch("app.tools.advanced_tools.AsyncSessionLocal") as mock_session_factory:
+            mock_session = AsyncMock()
+            mock_result = MagicMock()
+            mock_paper = MagicMock()
+            mock_paper.title = "Test"
+            mock_paper.content = "No references here."
+            mock_result.first = MagicMock(return_value=mock_paper)
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            mock_session_factory.return_value.__aenter__.return_value = mock_session
+
             result = await execute_extract_references(params, user_id="user-123")
-            
+
             assert result["success"] is True
             assert result["data"]["references"] == []
 
