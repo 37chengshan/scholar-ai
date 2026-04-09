@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { motion } from "motion/react";
 import { Upload, Link, BookOpen, FolderOpen, X, FileText, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import {
   Dialog,
@@ -171,7 +172,7 @@ export function ImportKnowledgeDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">
+          <DialogTitle className="font-serif text-xl font-semibold">
             导入论文到「{knowledgeBaseName}」
           </DialogTitle>
           <DialogDescription>
@@ -179,6 +180,7 @@ export function ImportKnowledgeDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }}>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="local">📄 本地 PDF</TabsTrigger>
@@ -338,7 +340,7 @@ export function ImportKnowledgeDialog({
 
         {/* 解析设置 */}
         <div className="mt-4 rounded-lg border border-border/50 p-4 bg-card">
-          <h4 className="text-sm font-semibold text-foreground mb-3">解析设置</h4>
+          <h4 className="font-serif text-sm font-semibold text-foreground mb-3">解析设置</h4>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label>解析引擎</Label>
@@ -452,6 +454,7 @@ export function ImportKnowledgeDialog({
             </div>
           </div>
         )}
+        </motion.div>
 
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={() => handleOpenChange(false)}>

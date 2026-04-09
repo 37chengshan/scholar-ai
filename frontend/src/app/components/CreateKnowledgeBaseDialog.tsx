@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "motion/react";
 import { Brain, Network, FileText, Image, Search, BarChart3 } from "lucide-react";
 import {
   Dialog,
@@ -134,7 +135,7 @@ export function CreateKnowledgeBaseDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+          <DialogTitle className="font-serif text-xl font-semibold flex items-center gap-2">
             <Brain className="h-5 w-5" />
             创建知识库
           </DialogTitle>
@@ -143,10 +144,11 @@ export function CreateKnowledgeBaseDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }}>
         <div className="flex flex-col gap-6 py-4">
           {/* 基础设置 */}
           <div className="flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-foreground">基础设置</h3>
+            <h3 className="font-serif text-sm font-semibold text-foreground">基础设置</h3>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="kb-name">
@@ -211,7 +213,7 @@ export function CreateKnowledgeBaseDialog({
 
           {/* 向量化配置 */}
           <div className="flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-foreground">向量化配置</h3>
+            <h3 className="font-serif text-sm font-semibold text-foreground">向量化配置</h3>
 
             <div className="flex flex-col gap-2">
               <Label>嵌入模型</Label>
@@ -256,7 +258,7 @@ export function CreateKnowledgeBaseDialog({
 
           {/* 增强功能 */}
           <div className="flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-foreground">增强功能</h3>
+            <h3 className="font-serif text-sm font-semibold text-foreground">增强功能</h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {enhancementFeatures.map((feature) => (
@@ -292,7 +294,7 @@ export function CreateKnowledgeBaseDialog({
 
           {/* 解析引擎 */}
           <div className="flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-foreground">解析引擎</h3>
+            <h3 className="font-serif text-sm font-semibold text-foreground">解析引擎</h3>
 
             <div className="flex flex-col gap-2">
               <Label>解析引擎</Label>
@@ -312,6 +314,7 @@ export function CreateKnowledgeBaseDialog({
             </div>
           </div>
         </div>
+        </motion.div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
