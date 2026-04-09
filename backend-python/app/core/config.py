@@ -109,6 +109,8 @@ class Settings(BaseSettings):
         "test-secret-key-for-development-only"  # Should be overridden in .env
     )
     JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
 
     # Semantic Scholar API
     S2_API_KEY: str = ""  # Optional API key for higher rate limits
