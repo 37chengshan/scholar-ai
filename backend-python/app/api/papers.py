@@ -1,6 +1,7 @@
 """Paper management API routes.
 
 Migrated from Node.js papers.ts - provides full CRUD operations for papers.
+Migrated to SQLAlchemy ORM from raw asyncpg queries.
 
 Endpoints:
 - GET /api/v1/papers - List papers with pagination and filters
@@ -25,8 +26,13 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select, func, update, delete, or_, and_, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.deps import get_current_user, postgres_db
+from app.deps import get_current_user
+from app.database import get_db
+from app.models import Paper, ProcessingTask, PaperChunk, UploadHistory, ReadingProgress
 from app.services.auth_service import User
 from app.utils.problem_detail import ProblemDetail, ErrorTypes
 from app.utils.logger import logger
@@ -135,6 +141,48 @@ def _get_processing_stage(status: str) -> str:
     return stage_names.get(status, status)
 
 
+def _format_paper_response(paper: Paper, task: Optional[ProcessingTask] = None) -> dict:
+    """Format paper for API response."""
+    paper_dict = {
+        "id": paper.id,
+        "title": paper.title,
+        "authors": paper.authors,
+        "year": paper.year,
+        "abstract": paper.abstract,
+        "doi": paper.doi,
+        "arxiv_id": paper.arxiv_id,
+        "pdf_url": paper.pdf_url,
+        "pdf_path": paper.pdf_path,
+        "content": paper.content,
+        "imrad_json": paper.imrad_json,
+        "status": paper.status,
+        "file_size": paper.file_size,
+        "page_count": paper.page_count,
+        "keywords": paper.keywords,
+        "venue": paper.venue,
+        "citations": paper.citations,
+        "created_at": paper.created_at.isoformat() if paper.created_at else None,
+        "updated_at": paper.updated_at.isoformat() if paper.updated_at else None,
+        "user_id": paper.user_id,
+        "storage_key": paper.storage_key,
+        "reading_notes": paper.reading_notes,
+        "notes_version": paper.notes_version,
+        "starred": paper.starred,
+        "project_id": paper.project_id,
+        "batch_id": paper.batch_id,
+        "upload_progress": paper.upload_progress,
+        "upload_status": paper.upload_status,
+        "uploaded_at": paper.uploaded_at.isoformat() if paper.uploaded_at else None,
+    }
+
+    processing_status = task.status if task else paper.status or "pending"
+    paper_dict["processingStatus"] = processing_status
+    paper_dict["progress"] = _get_progress_percent(processing_status)
+    paper_dict["processingError"] = task.error_message if task else None
+
+    return paper_dict
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -149,6 +197,7 @@ async def list_papers(
     dateFrom: Optional[str] = None,
     dateTo: Optional[str] = None,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """List papers with pagination and filters.
 
@@ -171,80 +220,117 @@ async def list_papers(
     limit = min(100, max(1, limit))
     offset = (page - 1) * limit
 
-    # Build where clause
-    where_clauses = [f"p.user_id = '{user_id}'"]
-    params = []
+    # Build base query with paper and processing task
+    query = (
+        select(Paper, ProcessingTask)
+        .outerjoin(ProcessingTask, Paper.id == ProcessingTask.paper_id)
+        .where(Paper.user_id == user_id)
+    )
 
-    # Starred filter
+    # Apply filters
     if starred is not None:
         if starred.lower() == "true":
-            where_clauses.append("p.starred = true")
+            query = query.where(Paper.starred == True)
         elif starred.lower() == "false":
-            where_clauses.append("p.starred = false")
+            query = query.where(Paper.starred == False)
 
     # Date range filter
     if dateFrom:
-        where_clauses.append(f"p.created_at >= '{dateFrom}'")
+        try:
+            date_from_dt = datetime.fromisoformat(dateFrom)
+            query = query.where(Paper.created_at >= date_from_dt)
+        except ValueError:
+            pass  # Invalid date format, ignore
+
     if dateTo:
-        where_clauses.append(f"p.created_at <= '{dateTo}'")
+        try:
+            date_to_dt = datetime.fromisoformat(dateTo)
+            query = query.where(Paper.created_at <= date_to_dt)
+        except ValueError:
+            pass  # Invalid date format, ignore
 
-    where_sql = " AND ".join(where_clauses)
+    # Handle readStatus filter with reading_progress join
+    if readStatus == "in-progress":
+        # Papers with reading_progress where current_page > 0 and < total_pages
+        query = query.join(ReadingProgress, Paper.id == ReadingProgress.paper_id)
+        query = query.where(ReadingProgress.user_id == user_id)
+        query = query.where(ReadingProgress.current_page > 0)
+        query = query.where(
+            ReadingProgress.current_page < func.coalesce(ReadingProgress.total_pages, 999999)
+        )
+    elif readStatus == "completed":
+        # Papers where current_page >= total_pages
+        query = query.join(ReadingProgress, Paper.id == ReadingProgress.paper_id)
+        query = query.where(ReadingProgress.user_id == user_id)
+        query = query.where(
+            ReadingProgress.current_page >= func.coalesce(ReadingProgress.total_pages, 0)
+        )
+    elif readStatus == "unread":
+        # Papers without reading_progress for this user
+        # Use a subquery to exclude papers with reading_progress
+        progress_subquery = select(ReadingProgress.paper_id).where(
+            ReadingProgress.user_id == user_id
+        ).distinct()
+        query = query.where(Paper.id.not_in(progress_subquery))
 
-    # Query papers with processing tasks
-    if readStatus in ("in-progress", "completed"):
-        # Complex query with reading progress join
-        if readStatus == "in-progress":
-            progress_condition = "rp.current_page > 0 AND rp.current_page < COALESCE(rp.total_pages, 999999)"
-        else:
-            progress_condition = "rp.current_page >= COALESCE(rp.total_pages, 0)"
+    # Order and paginate
+    query = query.order_by(Paper.created_at.desc())
+    query = query.offset(offset).limit(limit)
 
-        query = f"""
-            SELECT p.*,
-                   pt.status as processing_status,
-                   pt.error_message as processing_error,
-                   pt.updated_at as last_updated
-            FROM papers p
-            LEFT JOIN processing_tasks pt ON p.id = pt.paper_id
-            INNER JOIN reading_progress rp ON p.id = rp.paper_id
-            WHERE {where_sql}
-              AND rp.user_id = '{user_id}'
-              AND {progress_condition}
-            ORDER BY p.created_at DESC
-            LIMIT {limit} OFFSET {offset}
-        """
-    else:
-        # Standard query without reading progress join
-        if readStatus == "unread":
-            where_sql += " AND NOT EXISTS (SELECT 1 FROM reading_progress rp WHERE rp.paper_id = p.id AND rp.user_id = '{user_id}')"
+    result = await db.execute(query)
+    rows = result.all()
 
-        query = f"""
-            SELECT p.*,
-                   pt.status as processing_status,
-                   pt.error_message as processing_error,
-                   pt.updated_at as last_updated
-            FROM papers p
-            LEFT JOIN processing_tasks pt ON p.id = pt.paper_id
-            WHERE {where_sql}
-            ORDER BY p.created_at DESC
-            LIMIT {limit} OFFSET {offset}
-        """
-
-    papers = await postgres_db.fetch(query)
+    # Format papers
+    formatted_papers = []
+    for paper, task in rows:
+        paper_dict = _format_paper_response(paper, task)
+        formatted_papers.append(paper_dict)
 
     # Get total count
-    count_query = f"SELECT COUNT(*) as count FROM papers p WHERE {where_sql}"
-    total_result = await postgres_db.fetchrow(count_query)
-    total = total_result["count"] if total_result else 0
+    count_query = select(func.count(Paper.id)).where(Paper.user_id == user_id)
 
-    # Format response
-    formatted_papers = []
-    for paper in papers:
-        paper_dict = dict(paper)
-        processing_status = paper_dict.pop("processing_status", None) or paper_dict.get("status", "pending")
-        paper_dict["processingStatus"] = processing_status
-        paper_dict["progress"] = _get_progress_percent(processing_status)
-        paper_dict["processingError"] = paper_dict.pop("processing_error", None)
-        formatted_papers.append(paper_dict)
+    # Apply same filters for count
+    if starred is not None:
+        if starred.lower() == "true":
+            count_query = count_query.where(Paper.starred == True)
+        elif starred.lower() == "false":
+            count_query = count_query.where(Paper.starred == False)
+
+    if dateFrom:
+        try:
+            date_from_dt = datetime.fromisoformat(dateFrom)
+            count_query = count_query.where(Paper.created_at >= date_from_dt)
+        except ValueError:
+            pass
+
+    if dateTo:
+        try:
+            date_to_dt = datetime.fromisoformat(dateTo)
+            count_query = count_query.where(Paper.created_at <= date_to_dt)
+        except ValueError:
+            pass
+
+    if readStatus == "in-progress":
+        count_query = count_query.join(ReadingProgress, Paper.id == ReadingProgress.paper_id)
+        count_query = count_query.where(ReadingProgress.user_id == user_id)
+        count_query = count_query.where(ReadingProgress.current_page > 0)
+        count_query = count_query.where(
+            ReadingProgress.current_page < func.coalesce(ReadingProgress.total_pages, 999999)
+        )
+    elif readStatus == "completed":
+        count_query = count_query.join(ReadingProgress, Paper.id == ReadingProgress.paper_id)
+        count_query = count_query.where(ReadingProgress.user_id == user_id)
+        count_query = count_query.where(
+            ReadingProgress.current_page >= func.coalesce(ReadingProgress.total_pages, 0)
+        )
+    elif readStatus == "unread":
+        progress_subquery = select(ReadingProgress.paper_id).where(
+            ReadingProgress.user_id == user_id
+        ).distinct()
+        count_query = count_query.where(Paper.id.not_in(progress_subquery))
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
 
     total_pages = (total + limit - 1) // limit
 
@@ -267,6 +353,7 @@ async def search_papers(
     page: int = 1,
     limit: int = 20,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Search papers by title, authors, or abstract.
 
@@ -297,54 +384,50 @@ async def search_papers(
     offset = (page - 1) * limit
 
     # Build search query (case-insensitive)
-    search_term = q.replace("'", "''")  # Escape single quotes
+    search_term = f"%{q.lower()}%"
 
-    query = f"""
-        SELECT p.*,
-               pt.status as processing_status,
-               pt.error_message as processing_error,
-               pt.updated_at as last_updated
-        FROM papers p
-        LEFT JOIN processing_tasks pt ON p.id = pt.paper_id
-        WHERE p.user_id = '{user_id}'
-          AND (
-            LOWER(p.title) LIKE LOWER('%{search_term}%')
-            OR EXISTS (
-                SELECT 1 FROM unnest(p.authors) a WHERE LOWER(a) LIKE LOWER('%{search_term}%')
+    # Search in title, abstract, and authors array
+    query = (
+        select(Paper, ProcessingTask)
+        .outerjoin(ProcessingTask, Paper.id == ProcessingTask.paper_id)
+        .where(Paper.user_id == user_id)
+        .where(
+            or_(
+                func.lower(Paper.title).ilike(search_term),
+                func.lower(Paper.abstract).ilike(search_term),
+                # For array search, use raw SQL with unnest
+                text(f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{q.replace("'", "''")}%'))"),
             )
-            OR LOWER(p.abstract) LIKE LOWER('%{search_term}%')
-          )
-        ORDER BY p.created_at DESC
-        LIMIT {limit} OFFSET {offset}
-    """
+        )
+        .order_by(Paper.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
 
-    papers = await postgres_db.fetch(query)
-
-    # Get total count
-    count_query = f"""
-        SELECT COUNT(*) as count
-        FROM papers p
-        WHERE p.user_id = '{user_id}'
-          AND (
-            LOWER(p.title) LIKE LOWER('%{search_term}%')
-            OR EXISTS (
-                SELECT 1 FROM unnest(p.authors) a WHERE LOWER(a) LIKE LOWER('%{search_term}%')
-            )
-            OR LOWER(p.abstract) LIKE LOWER('%{search_term}%')
-          )
-    """
-    total_result = await postgres_db.fetchrow(count_query)
-    total = total_result["count"] if total_result else 0
+    result = await db.execute(query)
+    rows = result.all()
 
     # Format response
     formatted_papers = []
-    for paper in papers:
-        paper_dict = dict(paper)
-        processing_status = paper_dict.pop("processing_status", None) or paper_dict.get("status", "pending")
-        paper_dict["processingStatus"] = processing_status
-        paper_dict["progress"] = _get_progress_percent(processing_status)
-        paper_dict["processingError"] = paper_dict.pop("processing_error", None)
+    for paper, task in rows:
+        paper_dict = _format_paper_response(paper, task)
         formatted_papers.append(paper_dict)
+
+    # Get total count
+    count_query = (
+        select(func.count(Paper.id))
+        .where(Paper.user_id == user_id)
+        .where(
+            or_(
+                func.lower(Paper.title).ilike(search_term),
+                func.lower(Paper.abstract).ilike(search_term),
+                text(f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{q.replace("'", "''")}%'))"),
+            )
+        )
+    )
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
 
     total_pages = (total + limit - 1) // limit
 
@@ -374,6 +457,7 @@ async def create_paper(
     request: Request,
     body: PaperCreateRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Request upload URL for a new paper.
 
@@ -416,11 +500,12 @@ async def create_paper(
     title = filename.replace(".pdf", "").replace(".PDF", "")
 
     # Check for duplicate
-    existing = await postgres_db.fetchrow(
-        "SELECT id, status FROM papers WHERE user_id = $1 AND title = $2",
-        user_id,
-        title,
+    existing_query = select(Paper).where(
+        Paper.user_id == user_id,
+        Paper.title == title,
     )
+    existing_result = await db.execute(existing_query)
+    existing = existing_result.scalar_one_or_none()
 
     if existing:
         raise _create_error_response(
@@ -433,43 +518,36 @@ async def create_paper(
 
     # Generate storage key
     import os
-    from datetime import datetime
     storage_key = f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid4()}.pdf"
 
     # Create paper record
     paper_id = str(uuid4())
     now = datetime.now(timezone.utc)
 
-    await postgres_db.execute(
-        """
-        INSERT INTO papers (id, title, authors, status, user_id, storage_key, keywords, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        """,
-        paper_id,
-        title,
-        [],
-        "pending",
-        user_id,
-        storage_key,
-        [],
-        now,
-        now,
+    paper = Paper(
+        id=paper_id,
+        title=title,
+        authors=[],
+        status="pending",
+        user_id=user_id,
+        storage_key=storage_key,
+        keywords=[],
+        created_at=now,
+        updated_at=now,
     )
+    db.add(paper)
 
     # Create upload history record
     upload_history_id = str(uuid4())
-    await postgres_db.execute(
-        """
-        INSERT INTO upload_history (id, user_id, filename, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        """,
-        upload_history_id,
-        user_id,
-        filename,
-        "PROCESSING",
-        now,
-        now,
+    upload_history = UploadHistory(
+        id=upload_history_id,
+        user_id=user_id,
+        filename=filename,
+        status="PROCESSING",
+        created_at=now,
+        updated_at=now,
     )
+    db.add(upload_history)
 
     # Generate upload URL (for local storage, return local upload endpoint)
     use_local_storage = os.getenv("USE_LOCAL_STORAGE", "true").lower() == "true"
@@ -505,6 +583,7 @@ async def upload_webhook(
     request: Request,
     body: WebhookRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Confirm file upload and create processing task.
 
@@ -534,11 +613,12 @@ async def upload_webhook(
         )
 
     # Verify paper exists and belongs to user
-    paper = await postgres_db.fetchrow(
-        "SELECT id, batch_id FROM papers WHERE id = $1 AND user_id = $2",
-        paper_id,
-        user_id,
+    paper_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
     )
+    paper_result = await db.execute(paper_query)
+    paper = paper_result.scalar_one_or_none()
 
     if not paper:
         raise _create_error_response(
@@ -550,10 +630,11 @@ async def upload_webhook(
         )
 
     # Check if task already exists
-    existing_task = await postgres_db.fetchrow(
-        "SELECT id FROM processing_tasks WHERE paper_id = $1",
-        paper_id,
+    existing_task_query = select(ProcessingTask).where(
+        ProcessingTask.paper_id == paper_id,
     )
+    existing_task_result = await db.execute(existing_task_query)
+    existing_task = existing_task_result.scalar_one_or_none()
 
     if existing_task:
         raise _create_error_response(
@@ -568,34 +649,22 @@ async def upload_webhook(
     task_id = str(uuid4())
     now = datetime.now(timezone.utc)
 
-    await postgres_db.execute(
-        """
-        INSERT INTO processing_tasks (id, paper_id, status, storage_key, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        """,
-        task_id,
-        paper_id,
-        "pending",
-        storage_key,
-        now,
-        now,
+    task = ProcessingTask(
+        id=task_id,
+        paper_id=paper_id,
+        status="pending",
+        storage_key=storage_key,
+        created_at=now,
+        updated_at=now,
     )
+    db.add(task)
 
     # Update paper status
-    await postgres_db.execute(
-        """
-        UPDATE papers
-        SET status = 'processing',
-            upload_status = 'completed',
-            upload_progress = 100,
-            uploaded_at = $1,
-            updated_at = $2
-        WHERE id = $3
-        """,
-        now,
-        now,
-        paper_id,
-    )
+    paper.status = "processing"
+    paper.upload_status = "completed"
+    paper.upload_progress = 100
+    paper.uploaded_at = now
+    paper.updated_at = now
 
     logger.info(
         "Processing task created",
@@ -621,6 +690,7 @@ async def direct_upload(
     request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Direct file upload endpoint (for development and E2E tests).
 
@@ -686,11 +756,12 @@ async def direct_upload(
     title = filename.replace(".pdf", "").replace(".PDF", "")
 
     # Check for duplicates
-    existing = await postgres_db.fetchrow(
-        "SELECT id FROM papers WHERE user_id = $1 AND title = $2",
-        user_id,
-        title,
+    existing_query = select(Paper).where(
+        Paper.user_id == user_id,
+        Paper.title == title,
     )
+    existing_result = await db.execute(existing_query)
+    existing = existing_result.scalar_one_or_none()
 
     if existing:
         raise _create_error_response(
@@ -719,42 +790,35 @@ async def direct_upload(
     paper_id = str(uuid4())
     now = datetime.now(timezone.utc)
 
-    await postgres_db.execute(
-        """
-        INSERT INTO papers (id, title, authors, status, user_id, storage_key, file_size, keywords,
-                           upload_status, upload_progress, uploaded_at, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-        """,
-        paper_id,
-        title,
-        [],
-        "processing",
-        user_id,
-        storage_key,
-        file_size,
-        [],
-        "completed",
-        100,
-        now,
-        now,
-        now,
+    paper = Paper(
+        id=paper_id,
+        title=title,
+        authors=[],
+        status="processing",
+        user_id=user_id,
+        storage_key=storage_key,
+        file_size=file_size,
+        keywords=[],
+        upload_status="completed",
+        upload_progress=100,
+        uploaded_at=now,
+        created_at=now,
+        updated_at=now,
     )
+    db.add(paper)
 
     # Create processing task
     task_id = str(uuid4())
 
-    await postgres_db.execute(
-        """
-        INSERT INTO processing_tasks (id, paper_id, status, storage_key, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        """,
-        task_id,
-        paper_id,
-        "pending",
-        storage_key,
-        now,
-        now,
+    task = ProcessingTask(
+        id=task_id,
+        paper_id=paper_id,
+        status="pending",
+        storage_key=storage_key,
+        created_at=now,
+        updated_at=now,
     )
+    db.add(task)
 
     logger.info(
         "Direct upload completed",
@@ -781,6 +845,7 @@ async def get_paper(
     paper_id: str,
     includeChunks: Optional[bool] = False,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get paper details.
 
@@ -797,20 +862,17 @@ async def get_paper(
     user_id = current_user.id
 
     # Query paper with user isolation
-    paper = await postgres_db.fetchrow(
-        """
-        SELECT p.*,
-               pt.status as processing_status,
-               pt.error_message as processing_error
-        FROM papers p
-        LEFT JOIN processing_tasks pt ON p.id = pt.paper_id
-        WHERE p.id = $1 AND p.user_id = $2
-        """,
-        paper_id,
-        user_id,
+    query = (
+        select(Paper, ProcessingTask)
+        .outerjoin(ProcessingTask, Paper.id == ProcessingTask.paper_id)
+        .where(Paper.id == paper_id)
+        .where(Paper.user_id == user_id)
     )
 
-    if not paper:
+    result = await db.execute(query)
+    row = result.one_or_none()
+
+    if not row:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -819,24 +881,31 @@ async def get_paper(
             instance=instance,
         )
 
-    paper_dict = dict(paper)
-    processing_status = paper_dict.pop("processing_status", None) or paper_dict.get("status", "pending")
-    paper_dict["processingStatus"] = processing_status
-    paper_dict["progress"] = _get_progress_percent(processing_status)
-    paper_dict["processingError"] = paper_dict.pop("processing_error", None)
+    paper, task = row
+    paper_dict = _format_paper_response(paper, task)
 
     # Include chunks if requested
     if includeChunks:
-        chunks = await postgres_db.fetch(
-            """
-            SELECT id, content, section, page_start, page_end, is_table, is_figure
-            FROM paper_chunks
-            WHERE paper_id = $1
-            ORDER BY page_start, id
-            """,
-            paper_id,
+        chunks_query = (
+            select(PaperChunk)
+            .where(PaperChunk.paper_id == paper_id)
+            .order_by(PaperChunk.page_start, PaperChunk.id)
         )
-        paper_dict["chunks"] = [dict(c) for c in chunks]
+        chunks_result = await db.execute(chunks_query)
+        chunks = chunks_result.scalars().all()
+
+        paper_dict["chunks"] = [
+            {
+                "id": c.id,
+                "content": c.content,
+                "section": c.section,
+                "page_start": c.page_start,
+                "page_end": c.page_end,
+                "is_table": c.is_table,
+                "is_figure": c.is_figure,
+            }
+            for c in chunks
+        ]
 
     return {"success": True, "data": paper_dict}
 
@@ -846,6 +915,7 @@ async def get_paper_status(
     request: Request,
     paper_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get paper processing status.
 
@@ -859,22 +929,17 @@ async def get_paper_status(
     user_id = current_user.id
 
     # Query paper with processing task
-    paper = await postgres_db.fetchrow(
-        """
-        SELECT p.id, p.status, p.storage_key,
-               pt.status as task_status,
-               pt.error_message,
-               pt.updated_at,
-               pt.completed_at
-        FROM papers p
-        LEFT JOIN processing_tasks pt ON p.id = pt.paper_id
-        WHERE p.id = $1 AND p.user_id = $2
-        """,
-        paper_id,
-        user_id,
+    query = (
+        select(Paper, ProcessingTask)
+        .outerjoin(ProcessingTask, Paper.id == ProcessingTask.paper_id)
+        .where(Paper.id == paper_id)
+        .where(Paper.user_id == user_id)
     )
 
-    if not paper:
+    result = await db.execute(query)
+    row = result.one_or_none()
+
+    if not row:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -883,7 +948,9 @@ async def get_paper_status(
             instance=instance,
         )
 
-    processing_status = paper["task_status"] or paper["status"] or "pending"
+    paper, task = row
+
+    processing_status = task.status if task else paper.status or "pending"
     progress = _get_progress_percent(processing_status)
     stage = _get_processing_stage(processing_status)
 
@@ -894,10 +961,10 @@ async def get_paper_status(
             "status": processing_status,
             "progress": progress,
             "stage": stage,
-            "errorMessage": paper["error_message"],
-            "storageKey": paper["storage_key"],
-            "updatedAt": paper["updated_at"].isoformat() if paper["updated_at"] else None,
-            "completedAt": paper["completed_at"].isoformat() if paper["completed_at"] else None,
+            "errorMessage": task.error_message if task else None,
+            "storageKey": paper.storage_key,
+            "updatedAt": task.updated_at.isoformat() if task and task.updated_at else None,
+            "completedAt": task.completed_at.isoformat() if task and task.completed_at else None,
         },
     }
 
@@ -908,6 +975,7 @@ async def update_paper(
     paper_id: str,
     body: PaperUpdateRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update paper metadata.
 
@@ -930,13 +998,14 @@ async def update_paper(
     user_id = current_user.id
 
     # Verify paper exists and belongs to user
-    existing = await postgres_db.fetchrow(
-        "SELECT id FROM papers WHERE id = $1 AND user_id = $2",
-        paper_id,
-        user_id,
+    existing_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
     )
+    existing_result = await db.execute(existing_query)
+    paper = existing_result.scalar_one_or_none()
 
-    if not existing:
+    if not paper:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -945,79 +1014,35 @@ async def update_paper(
             instance=instance,
         )
 
-    # Build update query
-    updates = []
-    params = []
-    param_idx = 1
-
+    # Apply updates
     if body.title is not None:
-        updates.append(f"title = ${param_idx}")
-        params.append(body.title)
-        param_idx += 1
-
+        paper.title = body.title
     if body.authors is not None:
-        updates.append(f"authors = ${param_idx}")
-        params.append(body.authors)
-        param_idx += 1
-
+        paper.authors = body.authors
     if body.year is not None:
-        updates.append(f"year = ${param_idx}")
-        params.append(body.year)
-        param_idx += 1
-
+        paper.year = body.year
     if body.abstract is not None:
-        updates.append(f"abstract = ${param_idx}")
-        params.append(body.abstract)
-        param_idx += 1
-
+        paper.abstract = body.abstract
     if body.keywords is not None:
-        updates.append(f"keywords = ${param_idx}")
-        params.append(body.keywords)
-        param_idx += 1
-
+        paper.keywords = body.keywords
     if body.starred is not None:
-        updates.append(f"starred = ${param_idx}")
-        params.append(body.starred)
-        param_idx += 1
-
+        paper.starred = body.starred
     if body.projectId is not None:
-        updates.append(f"project_id = ${param_idx}")
-        params.append(body.projectId)
-        param_idx += 1
+        paper.project_id = body.projectId
 
-    if not updates:
-        # No updates, just return existing paper
-        paper = await postgres_db.fetchrow(
-            "SELECT * FROM papers WHERE id = $1",
-            paper_id,
-        )
-        return {"success": True, "data": dict(paper)}
+    paper.updated_at = datetime.now(timezone.utc)
 
-    # Add updated_at
-    updates.append(f"updated_at = ${param_idx}")
-    params.append(datetime.now(timezone.utc))
-    param_idx += 1
-
-    # Add paper_id to params
-    params.append(paper_id)
-
-    query = f"UPDATE papers SET {', '.join(updates)} WHERE id = ${param_idx}"
-    await postgres_db.execute(query, *params)
-
-    # Fetch updated paper
-    paper = await postgres_db.fetchrow(
-        "SELECT * FROM papers WHERE id = $1",
-        paper_id,
-    )
+    # Refresh to get updated data
+    await db.refresh(paper)
 
     logger.info(
         "Paper updated",
         user_id=user_id,
         paper_id=paper_id,
-        fields_updated=len(updates) - 1,  # Exclude updated_at
+        fields_updated=sum(1 for f in [body.title, body.authors, body.year, body.abstract, body.keywords, body.starred, body.projectId] if f is not None),
     )
 
-    return {"success": True, "data": dict(paper)}
+    return {"success": True, "data": _format_paper_response(paper)}
 
 
 @router.delete("/{paper_id}")
@@ -1025,6 +1050,7 @@ async def delete_paper(
     request: Request,
     paper_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a paper.
 
@@ -1038,11 +1064,12 @@ async def delete_paper(
     user_id = current_user.id
 
     # Verify paper exists and belongs to user
-    paper = await postgres_db.fetchrow(
-        "SELECT id, storage_key FROM papers WHERE id = $1 AND user_id = $2",
-        paper_id,
-        user_id,
+    paper_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
     )
+    paper_result = await db.execute(paper_query)
+    paper = paper_result.scalar_one_or_none()
 
     if not paper:
         raise _create_error_response(
@@ -1054,7 +1081,7 @@ async def delete_paper(
         )
 
     # Delete file from storage
-    storage_key = paper["storage_key"]
+    storage_key = paper.storage_key
     if storage_key:
         import os
         local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
@@ -1063,10 +1090,7 @@ async def delete_paper(
             os.remove(file_path)
 
     # Delete paper (cascade will delete related records)
-    await postgres_db.execute(
-        "DELETE FROM papers WHERE id = $1",
-        paper_id,
-    )
+    await db.delete(paper)
 
     logger.info(
         "Paper deleted",
@@ -1083,6 +1107,7 @@ async def toggle_starred(
     paper_id: str,
     body: StarredRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Toggle paper starred status.
 
@@ -1099,13 +1124,14 @@ async def toggle_starred(
     user_id = current_user.id
 
     # Verify paper exists and belongs to user
-    existing = await postgres_db.fetchrow(
-        "SELECT id FROM papers WHERE id = $1 AND user_id = $2",
-        paper_id,
-        user_id,
+    existing_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
     )
+    existing_result = await db.execute(existing_query)
+    paper = existing_result.scalar_one_or_none()
 
-    if not existing:
+    if not paper:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -1115,24 +1141,12 @@ async def toggle_starred(
         )
 
     # Update starred status
-    await postgres_db.execute(
-        """
-        UPDATE papers
-        SET starred = $1, updated_at = $2
-        WHERE id = $3
-        """,
-        body.starred,
-        datetime.now(timezone.utc),
-        paper_id,
-    )
+    paper.starred = body.starred
+    paper.updated_at = datetime.now(timezone.utc)
 
-    # Fetch updated paper
-    paper = await postgres_db.fetchrow(
-        "SELECT * FROM papers WHERE id = $1",
-        paper_id,
-    )
+    await db.refresh(paper)
 
-    return {"success": True, "data": dict(paper)}
+    return {"success": True, "data": _format_paper_response(paper)}
 
 
 @router.get("/{paper_id}/download")
@@ -1140,6 +1154,7 @@ async def download_paper(
     request: Request,
     paper_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Download paper PDF file.
 
@@ -1153,11 +1168,12 @@ async def download_paper(
     user_id = current_user.id
 
     # Query paper with user isolation
-    paper = await postgres_db.fetchrow(
-        "SELECT id, storage_key, title FROM papers WHERE id = $1 AND user_id = $2",
-        paper_id,
-        user_id,
+    paper_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
     )
+    paper_result = await db.execute(paper_query)
+    paper = paper_result.scalar_one_or_none()
 
     if not paper:
         raise _create_error_response(
@@ -1168,7 +1184,7 @@ async def download_paper(
             instance=instance,
         )
 
-    storage_key = paper["storage_key"]
+    storage_key = paper.storage_key
     if not storage_key:
         raise _create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1195,7 +1211,7 @@ async def download_paper(
     # Stream file
     from fastapi.responses import FileResponse
 
-    filename = f"{paper['title'] or 'paper'}.pdf"
+    filename = f"{paper.title or 'paper'}.pdf"
 
     return FileResponse(
         path=file_path,
@@ -1209,6 +1225,7 @@ async def get_paper_chunks(
     request: Request,
     paper_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get paper chunks for reading.
 
@@ -1222,11 +1239,12 @@ async def get_paper_chunks(
     user_id = current_user.id
 
     # Verify paper exists and belongs to user
-    paper = await postgres_db.fetchrow(
-        "SELECT id FROM papers WHERE id = $1 AND user_id = $2",
-        paper_id,
-        user_id,
+    paper_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
     )
+    paper_result = await db.execute(paper_query)
+    paper = paper_result.scalar_one_or_none()
 
     if not paper:
         raise _create_error_response(
@@ -1238,19 +1256,29 @@ async def get_paper_chunks(
         )
 
     # Query chunks
-    chunks = await postgres_db.fetch(
-        """
-        SELECT id, content, section, page_start, page_end, is_table, is_figure, created_at
-        FROM paper_chunks
-        WHERE paper_id = $1
-        ORDER BY page_start, id
-        """,
-        paper_id,
+    chunks_query = (
+        select(PaperChunk)
+        .where(PaperChunk.paper_id == paper_id)
+        .order_by(PaperChunk.page_start, PaperChunk.id)
     )
+    chunks_result = await db.execute(chunks_query)
+    chunks = chunks_result.scalars().all()
 
     return {
         "success": True,
-        "data": [dict(c) for c in chunks],
+        "data": [
+            {
+                "id": c.id,
+                "content": c.content,
+                "section": c.section,
+                "page_start": c.page_start,
+                "page_end": c.page_end,
+                "is_table": c.is_table,
+                "is_figure": c.is_figure,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+            }
+            for c in chunks
+        ],
     }
 
 
@@ -1259,6 +1287,7 @@ async def regenerate_chunks(
     request: Request,
     paper_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Trigger chunk regeneration for a paper.
 
@@ -1272,11 +1301,12 @@ async def regenerate_chunks(
     user_id = current_user.id
 
     # Verify paper exists and belongs to user
-    paper = await postgres_db.fetchrow(
-        "SELECT id, storage_key FROM papers WHERE id = $1 AND user_id = $2",
-        paper_id,
-        user_id,
+    paper_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
     )
+    paper_result = await db.execute(paper_query)
+    paper = paper_result.scalar_one_or_none()
 
     if not paper:
         raise _create_error_response(
@@ -1287,26 +1317,33 @@ async def regenerate_chunks(
             instance=instance,
         )
 
-    # Create a new processing task
-    task_id = str(uuid4())
+    # Check for existing task and update or create new
+    existing_task_query = select(ProcessingTask).where(
+        ProcessingTask.paper_id == paper_id,
+    )
+    existing_task_result = await db.execute(existing_task_query)
+    existing_task = existing_task_result.scalar_one_or_none()
+
     now = datetime.now(timezone.utc)
 
-    await postgres_db.execute(
-        """
-        INSERT INTO processing_tasks (id, paper_id, status, storage_key, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (paper_id) DO UPDATE SET
-            status = 'pending',
-            error_message = NULL,
-            updated_at = $5
-        """,
-        task_id,
-        paper_id,
-        "pending",
-        paper["storage_key"],
-        now,
-        now,
-    )
+    if existing_task:
+        # Update existing task
+        existing_task.status = "pending"
+        existing_task.error_message = None
+        existing_task.updated_at = now
+        task_id = existing_task.id
+    else:
+        # Create new task
+        task_id = str(uuid4())
+        task = ProcessingTask(
+            id=task_id,
+            paper_id=paper_id,
+            status="pending",
+            storage_key=paper.storage_key,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(task)
 
     logger.info(
         "Chunk regeneration triggered",
