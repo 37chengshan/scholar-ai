@@ -35,7 +35,7 @@ import { useSessions, ChatMessage } from '../hooks/useSessions';
 import { ThinkingProcess, ThinkingStep } from '../components/ThinkingProcess';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { ToolCallCard } from '../components/ToolCallCard';
-import { CitationsPanel } from '../components/CitationsPanel';
+import { CitationsPanel, renderContentWithCitations } from '../components/CitationsPanel';
 import { TokenMonitor } from '../components/TokenMonitor';
 import { ConfirmationDialog } from '../components/ConfirmationDialog';
 import { AgentStateSidebar, AgentUIState, ExecutionStep } from '../components/AgentStateSidebar';
@@ -260,6 +260,12 @@ export function Chat() {
     }
   }, [isConnected, disconnect]);
 
+  // Citation click handler — scroll to or highlight citation in CitationsPanel
+  const handleCitationClick = useCallback((index: number) => {
+    console.log('Citation clicked:', index);
+    // Future: scroll CitationsPanel to the clicked citation, expand if collapsed
+  }, []);
+
   // Send confirmation response (approve/reject) to backend
   const sendConfirmationResponse = useCallback(async (approved: boolean) => {
     if (!confirmation) return;
@@ -461,7 +467,11 @@ export function Chat() {
                       transition={{ duration: 0.05 }}
                     >
                       <div className="rounded-2xl px-4 py-3 bg-muted">
-                        <MarkdownRenderer content={streamingMessage} className="text-sm" />
+                        {citations.length > 0 ? (
+                          renderContentWithCitations(streamingMessage, handleCitationClick)
+                        ) : (
+                          <MarkdownRenderer content={streamingMessage} className="text-sm" />
+                        )}
                       </div>
                     </motion.div>
 
