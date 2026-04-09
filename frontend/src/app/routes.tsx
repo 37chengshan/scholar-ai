@@ -3,7 +3,6 @@ import { lazy, Suspense } from "react";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
 import { ForgotPassword } from "./pages/ForgotPassword";
-import { Register } from "./pages/Register";
 import { ResetPassword } from "./pages/ResetPassword";
 import { Layout } from "./components/Layout";
 import { LoadingFallback } from "./components/LoadingFallback";
@@ -11,11 +10,11 @@ import { useAuth } from "@/contexts/AuthContext";
 
 // Lazy load pages (Landing and Login are critical, keep as regular imports)
 const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
-const Library = lazy(() => import("./pages/Library").then(m => ({ default: m.Library })));
+const KnowledgeBaseList = lazy(() => import("./pages/KnowledgeBaseList").then(m => ({ default: m.KnowledgeBaseList })));
+const KnowledgeBaseDetail = lazy(() => import("./pages/KnowledgeBaseDetail").then(m => ({ default: m.KnowledgeBaseDetail })));
 const Search = lazy(() => import("./pages/Search").then(m => ({ default: m.Search })));
 const Read = lazy(() => import("./pages/Read").then(m => ({ default: m.Read })));
 const Chat = lazy(() => import("./pages/Chat").then(m => ({ default: m.Chat })));
-const Upload = lazy(() => import("./pages/Upload").then(m => ({ default: m.Upload })));
 const Settings = lazy(() => import("./pages/Settings").then(m => ({ default: m.Settings })));
 const Notes = lazy(() => import("./pages/Notes").then(m => ({ default: m.Notes })));
 
@@ -72,8 +71,16 @@ export const router = createBrowserRouter([
         element: <LazyRoute><ProtectedRoute><Dashboard /></ProtectedRoute></LazyRoute>,
       },
       {
+        path: "knowledge-bases",
+        element: <LazyRoute><ProtectedRoute><KnowledgeBaseList /></ProtectedRoute></LazyRoute>,
+      },
+      {
+        path: "knowledge-bases/:id",
+        element: <LazyRoute><ProtectedRoute><KnowledgeBaseDetail /></ProtectedRoute></LazyRoute>,
+      },
+      {
         path: "library",
-        element: <LazyRoute><ProtectedRoute><Library /></ProtectedRoute></LazyRoute>,
+        element: <Navigate to="/knowledge-bases" replace />,
       },
       {
         path: "search",
@@ -93,7 +100,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "upload",
-        element: <LazyRoute><ProtectedRoute><Upload /></ProtectedRoute></LazyRoute>,
+        element: <Navigate to="/knowledge-bases" replace />,
       },
       {
         path: "settings",
