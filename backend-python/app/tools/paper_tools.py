@@ -7,9 +7,19 @@ Tools:
 Each tool returns: {success: bool, data: any, error: str?}
 """
 
+import uuid
+import tempfile
+import httpx
+import asyncio
+from datetime import datetime, timezone
 from typing import Any, Dict
 
-from app.core.database import get_db_connection
+from sqlalchemy import select, update
+
+from app.database import AsyncSessionLocal
+from app.models import Paper, ProcessingTask
+from app.core.storage import ObjectStorage
+from app.workers.pdf_coordinator import get_pdf_coordinator
 from app.utils.logger import logger
 
 
@@ -37,69 +47,72 @@ async def execute_upload_paper(
     Returns:
         {success: bool, data: {paper_id: str}, error: str?}
     """
-    import uuid
-    import tempfile
-    import httpx
-    from app.core.storage import ObjectStorage
-    from app.workers.pdf_coordinator import get_pdf_coordinator
-    
     user_id = kwargs.get("user_id", "")
-    
+
     try:
         paper_url = params.get("paper_url")
         metadata = params.get("metadata", {})
-        
+
         if not paper_url:
             return {"success": False, "error": "paper_url is required", "data": None}
-        
+
         logger.info("Uploading paper from URL", paper_url=paper_url, user_id=user_id)
-        
+
         # 1. Download PDF from external URL
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.get(paper_url, follow_redirects=True)
             response.raise_for_status()
-        
+
         # 2. Save to temporary file
         with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
             tmp.write(response.content)
             tmp_path = tmp.name
-        
+
         # 3. Upload to object storage
         storage = ObjectStorage()
         paper_id = str(uuid.uuid4())
         storage_key = f"{user_id}/{paper_id}.pdf"
         await storage.upload_file(storage_key, tmp_path, content_type="application/pdf")
-        
+
         logger.info("PDF uploaded to storage", storage_key=storage_key)
-        
-        # 4. Create paper record in database
-        async with get_db_connection() as conn:
-            await conn.execute("""
-                INSERT INTO papers (id, user_id, title, authors, year, pdf_url, 
-                                   arxiv_id, doi, status, created_at, updated_at, storage_key)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW(), NOW(), $9)
-            """, paper_id, user_id, metadata.get("title", "Untitled"),
-                metadata.get("authors", []), metadata.get("year"),
-                paper_url, metadata.get("arxiv_id"), metadata.get("doi"),
-                storage_key)
-        
-        # 5. Create processing task
+
+        # 4. Create paper record in database using SQLAlchemy ORM
         task_id = str(uuid.uuid4())
-        async with get_db_connection() as conn:
-            await conn.execute("""
-                INSERT INTO processing_tasks (id, paper_id, status, storage_key, created_at, updated_at)
-                VALUES ($1, $2, 'pending', $3, NOW(), NOW())
-            """, task_id, paper_id, storage_key)
-        
-        # 6. Trigger PDF processing via PDFCoordinator
+        async with AsyncSessionLocal() as db:
+            # Create Paper instance
+            paper = Paper(
+                id=paper_id,
+                user_id=user_id,
+                title=metadata.get("title", "Untitled"),
+                authors=metadata.get("authors", []),
+                year=metadata.get("year"),
+                pdf_url=paper_url,
+                arxiv_id=metadata.get("arxiv_id"),
+                doi=metadata.get("doi"),
+                status="pending",
+                storage_key=storage_key,
+            )
+            db.add(paper)
+
+            # Create ProcessingTask instance
+            processing_task = ProcessingTask(
+                id=task_id,
+                paper_id=paper_id,
+                status="pending",
+                storage_key=storage_key,
+            )
+            db.add(processing_task)
+
+            await db.commit()
+
+        # 5. Trigger PDF processing via PDFCoordinator
         coordinator = get_pdf_coordinator()
         # Process in background (don't await to avoid blocking)
-        import asyncio
         asyncio.create_task(coordinator.process(task_id))
-        
-        logger.info("Paper uploaded and processing started", 
+
+        logger.info("Paper uploaded and processing started",
                    paper_id=paper_id, task_id=task_id, user_id=user_id)
-        
+
         return {
             "success": True,
             "data": {
@@ -110,7 +123,7 @@ async def execute_upload_paper(
             },
             "error": None
         }
-        
+
     except Exception as e:
         logger.error("upload_paper failed", error=str(e))
         return {"success": False, "error": str(e), "data": None}
@@ -140,19 +153,16 @@ async def execute_delete_paper(
 
         logger.info("Delete paper initiated", paper_id=paper_id, user_id=user_id)
 
-        async with get_db_connection() as conn:
-            # Soft delete (mark as deleted)
-            result = await conn.execute(
-                """
-                UPDATE papers
-                SET status = 'deleted', updated_at = NOW()
-                WHERE id = $1 AND user_id = $2
-                """,
-                paper_id,
-                user_id
+        async with AsyncSessionLocal() as db:
+            # Update paper status to deleted (soft delete)
+            result = await db.execute(
+                update(Paper)
+                .where(Paper.id == paper_id, Paper.user_id == user_id)
+                .values(status="deleted", updated_at=datetime.now(timezone.utc))
             )
+            await db.commit()
 
-            if result == "UPDATE 0":
+            if result.rowcount == 0:
                 return {
                     "success": False,
                     "error": "Paper not found or access denied",
