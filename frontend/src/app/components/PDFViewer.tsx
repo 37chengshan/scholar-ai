@@ -51,8 +51,8 @@ export function PDFViewer({ fileUrl, currentPage, onPageChange, initialPage = 1 
     }
   }, [pageNumber, numPages]);
 
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
+  const onDocumentLoadSuccess = ({ numPages: pages }: { numPages: number }) => {
+    setNumPages(pages);
   };
 
   const goToPage = (page: number) => {

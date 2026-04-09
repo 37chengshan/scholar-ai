@@ -16,7 +16,6 @@ import { useState, useCallback, useMemo } from 'react';
 import { useNotes, useCreateNote, useUpdateNote, useDeleteNote } from '@/hooks/useNotes';
 import type { Note } from '@/services/notesApi';
 import { NotesEditor } from '@/app/components/NotesEditor';
-import { PdfReferenceChip } from '@/app/components/PdfReferenceChip';
 import { useAutoSave } from '@/app/hooks/useAutoSave';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -67,60 +66,7 @@ function extractPreview(content: any, maxLength = 80): string {
   return cleaned.length > maxLength ? cleaned.slice(0, maxLength) + '...' : cleaned;
 }
 
-/**
- * Extract PDF references from Tiptap JSON and render as chips
- * (Used for rendering note previews with clickable PDF refs)
- */
-function _renderContentWithPdfRefs(content: any): React.ReactNode {
-  if (!content || !content.content) {
-    // Try to parse as string for legacy HTML content
-    if (typeof content === 'string') {
-      return <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: content }} />;
-    }
-    return null;
-  }
-
-  const texts: string[] = [];
-  function walk(nodes: any[]) {
-    for (const node of nodes) {
-      if (node.text) {
-        texts.push(node.text);
-      }
-      if (node.content) {
-        walk(node.content);
-      }
-    }
-  }
-  walk(content.content);
-
-  const fullText = texts.join(' ');
-  const pattern = /\[\[pdf:([^:]+):page:(\d+)\]\]/g;
-  const nodes: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
-  let keyIdx = 0;
-
-  while ((match = pattern.exec(fullText)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(fullText.slice(lastIndex, match.index));
-    }
-    const paperId = match[1];
-    const page = parseInt(match[2], 10);
-    nodes.push(
-      <PdfReferenceChip key={`pdf-ref-${keyIdx++}`} paperId={paperId} page={page} />
-    );
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < fullText.length) {
-    nodes.push(fullText.slice(lastIndex));
-  }
-
-  return <div className="prose prose-sm max-w-none">{nodes}</div>;
-}
-
 export function Notes() {
-  const navigate = useNavigate();
   const { notes, loading: notesLoading } = useNotes();
   const createNote = useCreateNote();
   const updateNote = useUpdateNote();
