@@ -8,6 +8,8 @@ Tests cover:
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+
 from app.tools.note_tools import (
     execute_create_note,
     execute_update_note,
@@ -28,24 +30,34 @@ class TestCreateNoteTool:
             "tags": ["research", "findings"]
         }
 
-        with patch("app.tools.note_tools.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock(return_value="note-123")
-            mock_conn.fetchrow = AsyncMock(return_value={
-                "id": "note-123",
-                "title": "My Research Notes",
-                "content": "Important findings from the paper...",
-                "tags": ["research", "findings"],
-                "paper_ids": [],
-                "created_at": "2024-01-01T00:00:00Z"
-            })
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        # Create a mock Note object
+        mock_note = MagicMock()
+        mock_note.id = "note-123"
+        mock_note.title = "My Research Notes"
+        mock_note.content = "Important findings from the paper..."
+        mock_note.tags = ["research", "findings"]
+        mock_note.paper_ids = []
+        mock_note.created_at = datetime(2024, 1, 1, 0, 0, 0)
+        mock_note.updated_at = datetime(2024, 1, 1, 0, 0, 0)
 
-            result = await execute_create_note(params, user_id="user-123")
+        # Mock the session
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
 
-            assert result["success"] is True
-            assert result["data"]["id"] == "note-123"
-            assert result["data"]["title"] == "My Research Notes"
+        with patch("app.tools.note_tools.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+
+            # Patch Note constructor to return our mock
+            with patch("app.tools.note_tools.Note") as mock_note_class:
+                mock_note_class.return_value = mock_note
+
+                result = await execute_create_note(params, user_id="user-123")
+
+                assert result["success"] is True
+                assert result["data"]["id"] == "note-123"
+                assert result["data"]["title"] == "My Research Notes"
 
     async def test_create_note_linked_to_paper(self):
         """Test creating a note linked to papers."""
@@ -56,22 +68,30 @@ class TestCreateNoteTool:
             "tags": ["summary"]
         }
 
-        with patch("app.tools.note_tools.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock()
-            mock_conn.fetchrow = AsyncMock(return_value={
-                "id": "note-456",
-                "title": "Paper Summary",
-                "content": "This paper proposes a new method...",
-                "paper_ids": ["paper-1", "paper-2"],
-                "tags": ["summary"]
-            })
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_note = MagicMock()
+        mock_note.id = "note-456"
+        mock_note.title = "Paper Summary"
+        mock_note.content = "This paper proposes a new method..."
+        mock_note.tags = ["summary"]
+        mock_note.paper_ids = ["paper-1", "paper-2"]
+        mock_note.created_at = datetime(2024, 1, 1, 0, 0, 0)
+        mock_note.updated_at = datetime(2024, 1, 1, 0, 0, 0)
 
-            result = await execute_create_note(params, user_id="user-123")
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
 
-            assert result["success"] is True
-            assert len(result["data"]["paper_ids"]) == 2
+        with patch("app.tools.note_tools.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
+
+            with patch("app.tools.note_tools.Note") as mock_note_class:
+                mock_note_class.return_value = mock_note
+
+                result = await execute_create_note(params, user_id="user-123")
+
+                assert result["success"] is True
+                assert len(result["data"]["paper_ids"]) == 2
 
     async def test_create_note_validates_required_fields(self):
         """Test create_note validates title and content are required."""
@@ -99,15 +119,27 @@ class TestUpdateNoteTool:
             }
         }
 
-        with patch("app.tools.note_tools.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock()
-            mock_conn.fetchrow = AsyncMock(return_value={
-                "id": "note-123",
-                "content": "Updated content with new insights...",
-                "updated_at": "2024-01-02T00:00:00Z"
-            })
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        # Create a mock Note object that will be fetched and updated
+        mock_note = MagicMock()
+        mock_note.id = "note-123"
+        mock_note.title = "Original Title"
+        mock_note.content = "Updated content with new insights..."
+        mock_note.tags = []
+        mock_note.paper_ids = []
+        mock_note.created_at = datetime(2024, 1, 1, 0, 0, 0)
+        mock_note.updated_at = datetime(2024, 1, 2, 0, 0, 0)
+
+        # Mock the execute result
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_note)
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        with patch("app.tools.note_tools.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             result = await execute_update_note(params, user_id="user-123")
 
@@ -123,14 +155,25 @@ class TestUpdateNoteTool:
             }
         }
 
-        with patch("app.tools.note_tools.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock()
-            mock_conn.fetchrow = AsyncMock(return_value={
-                "id": "note-123",
-                "tags": ["important", "review"]
-            })
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_note = MagicMock()
+        mock_note.id = "note-123"
+        mock_note.title = "Test Note"
+        mock_note.content = "Test content"
+        mock_note.tags = ["important", "review"]
+        mock_note.paper_ids = []
+        mock_note.created_at = datetime(2024, 1, 1, 0, 0, 0)
+        mock_note.updated_at = datetime(2024, 1, 2, 0, 0, 0)
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_note)
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        with patch("app.tools.note_tools.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             result = await execute_update_note(params, user_id="user-123")
 
@@ -143,10 +186,15 @@ class TestUpdateNoteTool:
             "updates": {"content": "New content"}
         }
 
-        with patch("app.tools.note_tools.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetchrow = AsyncMock(return_value=None)  # Note not found or not owned
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        # Mock result that returns None (note not found or not owned)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        with patch("app.tools.note_tools.AsyncSessionLocal") as mock_session_local:
+            mock_session_local.return_value.__aenter__.return_value = mock_session
 
             result = await execute_update_note(params, user_id="different-user")
 
