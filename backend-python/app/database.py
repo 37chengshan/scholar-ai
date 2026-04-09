@@ -25,7 +25,7 @@ Usage:
 
 from typing import AsyncGenerator
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
     AsyncSession,
@@ -175,6 +175,32 @@ def receive_checkin(dbapi_connection, connection_record):
 
 
 # =============================================================================
+# Lifecycle Management (for FastAPI lifespan)
+# =============================================================================
+
+async def init_sqlalchemy_engine() -> None:
+    """Initialize SQLAlchemy engine.
+
+    Called during application startup.
+    Engine is created lazily, but this ensures connection pool is ready.
+    """
+    # Engine is created at module load time
+    # This function validates the connection
+    async with engine.begin() as conn:
+        await conn.execute(text("SELECT 1"))
+    logger.info("SQLAlchemy engine initialized and connection verified")
+
+
+async def close_sqlalchemy_engine() -> None:
+    """Dispose SQLAlchemy engine.
+
+    Called during application shutdown.
+    """
+    await engine.dispose()
+    logger.info("SQLAlchemy engine disposed")
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -185,4 +211,6 @@ __all__ = [
     "get_db",
     "init_db",
     "drop_db",
+    "init_sqlalchemy_engine",
+    "close_sqlalchemy_engine",
 ]
