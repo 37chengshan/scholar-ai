@@ -171,7 +171,7 @@ export function KnowledgeBaseDetail() {
               value="qa"
               className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
                 activeTab === "qa"
-                  ? "border-zinc-900 text-zinc-900 bg-zinc-100"
+                  ? "border-primary text-primary bg-primary/5"
                   : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
               }`}
             >
