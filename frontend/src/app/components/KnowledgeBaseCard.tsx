@@ -66,7 +66,7 @@ export function KnowledgeBaseCard({
   return (
     <Card
       data-kb-id={id}
-      className="group relative flex flex-col bg-paper-1 border border-border/50 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-paper-hover hover:-translate-y-1 hover:border-primary/20 cursor-pointer"
+      className="group relative flex flex-col bg-white border-2 border-zinc-900 hover:border-primary transition-all shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] hover:shadow-[12px_12px_0px_0px_rgba(211,84,0,1)] rounded-none overflow-hidden cursor-pointer"
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("button")) return;
         onEnter();
@@ -82,59 +82,55 @@ export function KnowledgeBaseCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
             {/* Category icon — circular background */}
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-muted/60 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-              <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+              <Icon className="h-5 w-5 text-zinc-600 group-hover:text-primary transition-colors" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-serif text-lg font-semibold leading-tight text-foreground group-hover:text-primary transition-colors truncate">
+              <h3 className="font-serif text-lg font-semibold leading-tight text-zinc-900 group-hover:text-primary transition-colors truncate">
                 {name}
               </h3>
               {category && (
-                <span className="category-chip mt-1.5 inline-flex">
+                <span className="inline-flex px-2 py-1 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-wider border border-zinc-300 mt-1.5">
                   {config.label} · {category}
                 </span>
               )}
             </div>
           </div>
 
-          {/* More actions — hidden until hover */}
+          {/* More actions — visible on hover */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-orange-100"
                 onClick={(e) => e.stopPropagation()}
                 aria-label="更多操作"
               >
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-4 w-4 text-zinc-400 group-hover:text-zinc-900" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-                <Pencil className="mr-2 h-4 w-4" />
-                编辑
+            <DropdownMenuContent align="end" className="min-w-[160px] bg-white border-2 border-zinc-900 shadow-[4px_4px_0px_0px_rgba(24,24,27,1)]">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }} className="flex items-center gap-2 px-3 py-2 text-sm font-bold uppercase cursor-pointer outline-none hover:bg-orange-100 hover:text-primary">
+                <Pencil className="h-4 w-4" /> 编辑
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onImport(); }}>
-                <Download className="mr-2 h-4 w-4" />
-                添加论文
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onImport(); }} className="flex items-center gap-2 px-3 py-2 text-sm font-bold uppercase cursor-pointer outline-none hover:bg-orange-100 hover:text-primary">
+                <Download className="h-4 w-4" /> 导入论文
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); }}>
-                <Copy className="mr-2 h-4 w-4" />
-                复制
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); }} className="flex items-center gap-2 px-3 py-2 text-sm font-bold uppercase cursor-pointer outline-none hover:bg-orange-100 hover:text-primary">
+                <Copy className="h-4 w-4" /> 复制
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); }}>
-                <Network className="mr-2 h-4 w-4" />
-                构建图谱
+              <DropdownMenuSeparator className="h-px bg-zinc-200" />
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); }} className="flex items-center gap-2 px-3 py-2 text-sm font-bold uppercase cursor-pointer outline-none hover:bg-orange-100 hover:text-primary">
+                <Network className="h-4 w-4" /> 构建图谱
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="h-px bg-zinc-200" />
               <DropdownMenuItem
                 variant="destructive"
                 onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-bold uppercase cursor-pointer outline-none hover:bg-red-50 text-red-600"
               >
-                <Trash2 className="mr-2 h-4 w-4" />
-                删除
+                <Trash2 className="h-4 w-4" /> 删除
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -142,38 +138,38 @@ export function KnowledgeBaseCard({
       </CardHeader>
 
       <CardContent className="pb-4 pt-0">
-        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+        <p className="text-sm text-zinc-600 font-medium line-clamp-2 leading-relaxed">
           {description}
         </p>
       </CardContent>
 
       {/* Bottom divider + stats */}
-      <div className="px-6 pb-4 pt-0 border-t border-rule/50 mt-auto">
+      <div className="px-6 pb-4 pt-0 border-t-2 border-zinc-900 mt-auto">
         <div className="flex items-center gap-x-4 gap-y-1.5 py-2.5 text-xs">
-          <span className="stat-item">
-            <FileText className="stat-item__icon" />
-            <span className="stat-item__value">{paperCount}</span>
+          <span className="flex items-center gap-1.5 text-zinc-600">
+            <FileText className="w-3.5 h-3.5 opacity-50" />
+            <span className="font-bold text-zinc-900">{paperCount}</span>
             <span>论文</span>
           </span>
-          <span className="stat-item">
-            <Layers className="stat-item__icon" />
-            <span className="stat-item__value">{formatCount(chunkCount)}</span>
+          <span className="flex items-center gap-1.5 text-zinc-600">
+            <Layers className="w-3.5 h-3.5 opacity-50" />
+            <span className="font-bold text-zinc-900">{formatCount(chunkCount)}</span>
             <span>切片</span>
           </span>
           {entityCount > 0 ? (
-            <span className="stat-item">
-              <Network className="stat-item__icon" />
-              <span className="stat-item__value">{formatCount(entityCount)}</span>
+            <span className="flex items-center gap-1.5 text-zinc-600">
+              <Network className="w-3.5 h-3.5 opacity-50" />
+              <span className="font-bold text-zinc-900">{formatCount(entityCount)}</span>
               <span>实体</span>
             </span>
           ) : (
-            <span className="stat-item text-muted-foreground/50">
-              <Network className="stat-item__icon" />
+            <span className="flex items-center gap-1.5 text-zinc-400">
+              <Network className="w-3.5 h-3.5" />
               <span>未构建图谱</span>
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground/50">
+        <p className="text-xs text-zinc-400 font-medium">
           {formatDate(updatedAt)} 更新
         </p>
       </div>
