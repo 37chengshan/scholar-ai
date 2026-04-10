@@ -1,431 +1,306 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
-import { motion } from "motion/react";
+import { useState } from "react";
+import { useNavigate, useParams, useSearchParams, Link } from "react-router";
 import {
   ArrowLeft,
-  Brain,
-  Plus,
   Search,
-  Grid,
-  List as ListIcon,
+  UploadCloud,
   Link as LinkIcon,
-  ChevronDown,
   FileText,
-  BookOpen,
-  FolderOpen,
-  Bell,
+  MessageSquare,
+  Send,
+  Sparkles,
+  Database,
+  Loader2,
 } from "lucide-react";
-import { Tabs, TabsContent } from "../components/ui/tabs";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { PaperListItem } from "../components/PaperListItem";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
-import { EmptyState } from "../components/EmptyState";
 import { PaperTexture } from "../components/PaperTexture";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "../components/ui/breadcrumb";
-import { Badge } from "../components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
-import { toast } from "sonner";
 
+// Mock Data
+const MOCK_MESSAGES = [
+  { role: "assistant", content: "你好！我可以基于这个知识库回答问题。你想了解什么？" },
+];
 
-// Mock data for papers
-const MOCK_PAPERS = [
+const MOCK_RESULTS = [
   {
-    id: "paper-001",
-    title: "Attention Is All You Need",
-    authors: "Vaswani et al.",
-    year: "2017",
-    venue: "NeurIPS",
-    chunkCount: 128,
-    parseStatus: "completed" as const,
-    entityCount: 45,
+    id: 1,
+    score: 0.92,
+    file: "architecture_guidelines_v2.pdf",
+    content: "应用程序的核心基础依赖于事件驱动架构，强调松耦合和异步通信...",
   },
   {
-    id: "paper-002",
-    title: "RLHF: Training Language Models to Follow Instructions",
-    authors: "Ouyang et al.",
-    year: "2022",
-    venue: "arXiv",
-    chunkCount: 96,
-    parseStatus: "completed" as const,
-    entityCount: 32,
+    id: 2,
+    score: 0.85,
+    file: "system_design_doc.docx",
+    content: "设计微服务时，每个服务必须拥有自己的数据并避免共享数据库。优先使用基于 API 的通信或消息队列...",
   },
   {
-    id: "paper-003",
-    title: "Constitutional AI: Harmlessness from AI Feedback",
-    authors: "Bai et al.",
-    year: "2022",
-    venue: "arXiv",
-    chunkCount: 0,
-    parseStatus: "processing" as const,
-    entityCount: 0,
+    id: 3,
+    score: 0.78,
+    file: "https://wiki.internal/best-practices",
+    content: "服务到服务的调用应始终包含适当的超时，并实施断路器模式以防止级联故障...",
   },
 ];
 
 const MOCK_KB = {
   id: "kb-001",
   name: "大语言模型对齐研究",
-  type: "文本知识库",
+  embeddingModel: "BGE-M3",
+  parsingEngine: "Docling",
+  fileCount: 42,
+  chunkCount: 1045,
 };
-
-type ViewMode = "card" | "list";
 
 export function KnowledgeBaseDetail() {
   const navigate = useNavigate();
-  const { id: _kbId } = useParams<{ id: string }>();
+  const { id: kbId } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "papers");
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "retrieval");
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  // TODO: FE-04 — When real API data exceeds ~50 items, wrap this list with react-window's VariableSizeList
+  // Q&A State
+  const [messages, setMessages] = useState(MOCK_MESSAGES);
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Retrieval State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [results, setResults] = useState<typeof MOCK_RESULTS | null>(null);
 
   // Sync tab with URL
-  useEffect(() => {
-    const tab = searchParams.get("tab") || "papers";
-    setActiveTab(tab);
-  }, [searchParams]);
-
   const handleTabChange = (tab: string) => {
-    // Prevent switching to disabled tabs
-    if (tab === "graph" || tab === "compare") return;
     setActiveTab(tab);
     setSearchParams({ tab });
   };
 
-  const handleOpenImport = (_tab?: string) => {
-    setShowImportDialog(true);
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    setMessages([...messages, { role: "user", content: input }]);
+    setInput("");
+    setIsTyping(true);
+
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "根据内部文档，你应该实施断路器模式。它可以防止级联故障，提高整体系统韧性，正如我们的架构指南中所述。",
+        },
+      ]);
+      setIsTyping(false);
+    }, 1500);
   };
 
-  const handleRead = (paperId: string) => {
-    navigate(`/read/${paperId}`);
-  };
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
 
-  const handleNotes = (paperId: string) => {
-    navigate(`/notes?paper=${paperId}`);
+    setIsSearching(true);
+    setTimeout(() => {
+      setResults(MOCK_RESULTS);
+      setIsSearching(false);
+    }, 800);
   };
 
   return (
     <div className="relative min-h-screen bg-background">
       <PaperTexture />
-      {/* Breadcrumb Header */}
-      <div className="magazine-toolbar sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink
-                  href="/knowledge-bases"
-                  className="inline-flex items-center gap-1.5 text-muted-foreground 
-                             hover:text-primary transition-colors group"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate("/knowledge-bases");
-                  }}
-                >
-                  <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-                  <span className="text-sm">返回</span>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage className="font-serif flex items-center gap-2">
-                  <Brain className="h-4 w-4" />
-                  {MOCK_KB.name}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-              <BreadcrumbItem>
-                <Badge className="magazine-badge ml-1">
-                  {MOCK_KB.type}
-                </Badge>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="container-query max-w-7xl mx-auto px-6 pt-4">
-        <div className="magazine-card-warm rounded-lg px-4 py-3 mt-4">
-          <Tabs value={activeTab} onValueChange={handleTabChange}>
-          {/* Magazine-style tab bar */}
-          <div className="magazine-tabs">
-            <button
-              className={`magazine-tab ${activeTab === 'papers' ? 'magazine-tab--active' : ''}`}
-              onClick={() => handleTabChange('papers')}
+      <div className="space-y-8 pb-20 px-6 max-w-7xl mx-auto relative z-10">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b-4 border-zinc-900">
+          <div className="space-y-4">
+            <Link
+              to="/knowledge-bases"
+              className="inline-flex items-center gap-2 text-zinc-500 hover:text-primary transition-colors text-sm font-bold uppercase tracking-wider mb-2"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate("/knowledge-bases");
+              }}
             >
-              论文列表
-              <span className="ml-1.5 text-xs text-muted-foreground/60">{MOCK_PAPERS.length}</span>
-            </button>
-            <button
-              className={`magazine-tab ${activeTab === 'search' ? 'magazine-tab--active' : ''}`}
-              onClick={() => handleTabChange('search')}
-            >
-              知识检索
-            </button>
-            <button
-              className={`magazine-tab ${activeTab === 'qa' ? 'magazine-tab--active' : ''}`}
-              onClick={() => handleTabChange('qa')}
-            >
-              知识问答
-            </button>
-            <button
-              className={`magazine-tab ${activeTab === 'graph' ? 'magazine-tab--active' : 'magazine-tab--disabled'}`}
-              onClick={() => handleTabChange('graph')}
-              aria-disabled="true"
-              title="知识图谱功能开发中"
-            >
-              知识图谱
-              <span className="ml-1 text-[10px] bg-muted text-muted-foreground px-1 rounded">
-                开发中
+              <ArrowLeft className="w-4 h-4" />
+              返回知识库列表
+            </Link>
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl md:text-5xl font-black font-serif uppercase tracking-tight text-zinc-900 leading-none">
+                {MOCK_KB.name.split(" ")[0]} <span className="text-primary">{MOCK_KB.name.split(" ").slice(1).join(" ") || MOCK_KB.name}</span>
+              </h1>
+              <span className="bg-zinc-100 border border-zinc-300 px-3 py-1 font-mono text-sm text-zinc-600 shadow-[2px_2px_0px_0px_rgba(24,24,27,0.2)]">
+                {kbId}
               </span>
-            </button>
-            <button
-              className={`magazine-tab ${activeTab === 'compare' ? 'magazine-tab--active' : 'magazine-tab--disabled'}`}
-              onClick={() => handleTabChange('compare')}
-              aria-disabled="true"
-              title="对比分析功能开发中"
-            >
-              对比分析
-              <span className="ml-1 text-[10px] bg-muted text-muted-foreground px-1 rounded">
-                开发中
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm font-bold uppercase tracking-wider text-zinc-500 pt-2">
+              <span className="flex items-center gap-2">
+                <Database className="w-4 h-4" /> {MOCK_KB.embeddingModel} Model
               </span>
-            </button>
+              <span className="flex items-center gap-2 text-primary">★ {MOCK_KB.parsingEngine} Engine</span>
+              <span>{MOCK_KB.fileCount} Files</span>
+              <span>{MOCK_KB.chunkCount} Chunks</span>
+            </div>
           </div>
 
-          {/* 论文列表 Tab */}
-          <TabsContent value="papers" className="mt-6">
-            {/* Toolbar */}
-            <div className="magazine-card-warm rounded-lg p-3 mb-6">
-              <div className="flex items-center gap-3">
-                {/* Import dropdown button */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full">
-                      <Plus className="h-4 w-4" />
-                      导入论文
-                      <ChevronDown className="h-3 w-3 opacity-60" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48">
-                    <DropdownMenuItem onClick={() => handleOpenImport("local")}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      本地 PDF
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleOpenImport("url")}>
-                      <LinkIcon className="mr-2 h-4 w-4" />
-                      URL / DOI
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleOpenImport("arxiv")}>
-                      <BookOpen className="mr-2 h-4 w-4" />
-                      arXiv
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleOpenImport("batch")}>
-                      <FolderOpen className="mr-2 h-4 w-4" />
-                      批量导入
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+          <div className="flex items-center gap-4 shrink-0">
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="flex items-center gap-2 bg-zinc-900 hover:bg-primary text-white px-6 py-4 font-bold uppercase tracking-wide transition-all shadow-[4px_4px_0px_0px_rgba(24,24,27,0.5)] hover:shadow-[4px_4px_0px_0px_rgba(211,84,0,0.8)] hover:-translate-y-1 hover:-translate-x-1"
+            >
+              <UploadCloud className="w-5 h-5" />
+              导入来源
+            </button>
+          </div>
+        </div>
 
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="搜索论文..." className="pl-9" />
-                </div>
+        {/* Main Content Area with Tabs */}
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+          <TabsList className="flex border-b-2 border-zinc-200 bg-transparent h-auto p-0 gap-0 w-full justify-start">
+            <TabsTrigger
+              value="retrieval"
+              className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent data-[state=active]:bg-primary/5 ${
+                activeTab === "retrieval"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <Search className="w-4 h-4" /> Vector Search
+              </span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="qa"
+              className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                activeTab === "qa"
+                  ? "border-zinc-900 text-zinc-900 bg-zinc-100"
+                  : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <MessageSquare className="w-4 h-4" /> Agentic Q&A
+              </span>
+            </TabsTrigger>
+          </TabsList>
 
-                {/* View toggle — icon-only, compact grouped */}
-                <div className="flex items-center gap-0.5 border border-border/50 rounded-lg p-0.5 ml-auto">
-                  <Button
-                    variant={viewMode === "card" ? "default" : "ghost"}
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => setViewMode("card")}
-                    aria-pressed={viewMode === "card"}
-                  >
-                    <Grid className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant={viewMode === "list" ? "default" : "ghost"}
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => setViewMode("list")}
-                    aria-pressed={viewMode === "list"}
-                  >
-                    <ListIcon className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+          <TabsContent
+            value="retrieval"
+            className="mt-8 space-y-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500"
+          >
+            {/* Search Form */}
+            <form onSubmit={handleSearch} className="relative max-w-3xl">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Search className="h-6 w-6 text-zinc-400" />
               </div>
-            </div>
-
-            {/* Paper List */}
-            {MOCK_PAPERS.length === 0 ? (
-              <EmptyState
-                title="暂无论文"
-                description="导入论文开始构建您的知识库"
-                action={{
-                  label: "导入论文",
-                  onClick: () => handleOpenImport("local"),
-                }}
+              <input
+                type="text"
+                className="block w-full pl-12 pr-32 py-5 text-lg border-2 border-zinc-900 font-medium placeholder:text-zinc-400 focus:outline-none focus:ring-0 focus:border-primary shadow-[6px_6px_0px_0px_rgba(24,24,27,1)] transition-colors bg-white"
+                placeholder="Query vectorized chunks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
-            ) : viewMode === "list" ? (
-              <motion.div className="flex flex-col gap-3" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } }}>
-                {MOCK_PAPERS.map((paper) => (
-                  <motion.div key={paper.id} variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } }}>
-                    <PaperListItem
-                      id={paper.id}
-                      title={paper.title}
-                      authors={paper.authors}
-                      year={paper.year}
-                      venue={paper.venue}
-                      chunkCount={paper.chunkCount}
-                      parseStatus={paper.parseStatus}
-                      entityCount={paper.entityCount}
-                      onRead={() => handleRead(paper.id)}
-                      onNotes={() => handleNotes(paper.id)}
-                    />
-                  </motion.div>
+              <button
+                type="submit"
+                disabled={isSearching || !searchQuery.trim()}
+                className="absolute right-2 top-2 bottom-2 bg-primary hover:bg-zinc-900 text-white px-6 font-bold uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : "检索"}
+              </button>
+            </form>
+
+            {/* Results List */}
+            {results && (
+              <div className="space-y-6 max-w-4xl">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="h-px bg-zinc-300 flex-1"></div>
+                  <span className="text-zinc-500 font-bold uppercase tracking-widest text-sm px-4">
+                    Top {results.length} Segments Retrieved
+                  </span>
+                  <div className="h-px bg-zinc-300 flex-1"></div>
+                </div>
+
+                {results.map((result) => (
+                  <div
+                    key={result.id}
+                    className="bg-white border-2 border-zinc-200 p-6 relative hover:border-zinc-400 transition-colors group"
+                  >
+                    <div className="absolute -left-2 -top-2 bg-orange-100 text-orange-800 border-2 border-orange-200 font-mono text-xs px-2 py-1 font-bold shadow-sm">
+                      Relevance: {(result.score * 100).toFixed(1)}%
+                    </div>
+                    <p className="text-lg text-zinc-800 mt-4 leading-relaxed font-serif">
+                      "...{result.content}..."
+                    </p>
+                    <div className="mt-6 flex items-center gap-2 text-sm font-medium text-zinc-500 bg-zinc-50 p-3 border border-zinc-100">
+                      <FileText className="w-4 h-4 text-zinc-400" />
+                      <span className="truncate">{result.file}</span>
+                    </div>
+                  </div>
                 ))}
-              </motion.div>
-            ) : (
-              <motion.div className="grid grid-cols-1 md:grid-cols-2 cq-paper-grid gap-4" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } }}>
-                {MOCK_PAPERS.map((paper) => (
-                  <motion.div key={paper.id} variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } }}>
-                    <PaperListItem
-                      id={paper.id}
-                      title={paper.title}
-                      authors={paper.authors}
-                      year={paper.year}
-                      venue={paper.venue}
-                      chunkCount={paper.chunkCount}
-                      parseStatus={paper.parseStatus}
-                      entityCount={paper.entityCount}
-                      onRead={() => handleRead(paper.id)}
-                      onNotes={() => handleNotes(paper.id)}
-                    />
-                  </motion.div>
-                ))}
-              </motion.div>
+              </div>
             )}
           </TabsContent>
 
-          {/* 知识检索 Tab */}
-          <TabsContent value="search" className="mt-6">
-            <div className="magazine-card-warm rounded-lg p-8">
-              <div className="flex flex-col items-center justify-center py-8">
-                <div className="w-full max-w-2xl">
-                  <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input
-                      placeholder="输入检索问题，如：RLHF 和 DPO 方法有什么区别？"
-                      className="pl-12 py-6 text-base"
-                    />
+          <TabsContent
+            value="qa"
+            className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl"
+          >
+            <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] flex flex-col h-[600px]">
+              {/* Chat History */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {messages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[80%] p-5 text-base md:text-lg ${
+                        msg.role === "user"
+                          ? "bg-zinc-900 text-white font-medium ml-auto"
+                          : "bg-primary/5 text-zinc-900 border-2 border-primary/20 font-serif leading-relaxed"
+                      }`}
+                    >
+                      {msg.role === "assistant" && (
+                        <div className="flex items-center gap-2 mb-3 text-primary font-sans text-xs font-bold uppercase tracking-wider">
+                          <Sparkles className="w-4 h-4" /> Agent Output
+                        </div>
+                      )}
+                      {msg.content}
+                    </div>
                   </div>
-                  <p className="text-center text-sm text-muted-foreground mt-4">
-                    知识检索功能开发中 — 基于 PGVector 的跨论文语义检索
-                  </p>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* 知识问答 Tab */}
-          <TabsContent value="qa" className="mt-6">
-            <div className="magazine-card-warm rounded-lg p-8">
-              <div className="flex flex-col items-center justify-center py-8">
-                <div className="w-full max-w-2xl">
-                  <div className="relative">
-                    <Input
-                      placeholder="输入您的问题..."
-                      className="py-6 text-base pr-24"
-                    />
-                    <Button className="absolute right-2 top-1/2 -translate-y-1/2">
-                      发送
-                    </Button>
+                ))}
+                {isTyping && (
+                  <div className="flex justify-start">
+                    <div className="bg-primary/5 text-primary border-2 border-primary/20 p-5 flex items-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="font-bold uppercase tracking-widest text-xs">Synthesizing...</span>
+                    </div>
                   </div>
-                  <p className="text-center text-sm text-muted-foreground mt-4">
-                    知识问答功能开发中 — 基于知识库的 RAG 对话问答
-                  </p>
-                </div>
+                )}
               </div>
-            </div>
-          </TabsContent>
 
-          {/* 知识图谱 Tab */}
-          <TabsContent value="graph" className="mt-6">
-            <div className="magazine-card-warm rounded-lg p-8">
-              <div className="flex flex-col items-center justify-center py-12">
-                <EmptyState
-                  variant="graph"
-                  title="知识图谱"
-                  description="基于 Neo4j 的实体关系可视化，展示论文间的知识关联与引用网络。"
-                />
-                <div className="flex items-center gap-3 mt-4">
-                  <span className="text-xs text-muted-foreground/60 px-3 py-1.5 bg-muted/50 rounded-full">
-                    预计 2026 Q2 上线
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 rounded-full"
-                    type="button"
-                    onClick={() => toast.info("上线后将通知您")}
+              {/* Chat Input */}
+              <div className="border-t-2 border-zinc-900 p-4 bg-zinc-50">
+                <form onSubmit={handleSendMessage} className="relative flex items-center">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask a question about your knowledge base..."
+                    className="w-full bg-white border-2 border-zinc-300 pl-4 pr-16 py-4 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-secondary transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || isTyping}
+                    className="absolute right-2 p-2 bg-primary hover:bg-primary/80 text-white transition-colors disabled:opacity-50 disabled:hover:bg-primary outline-none"
                   >
-                    <Bell className="h-3.5 w-3.5" />
-                    上线通知我
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* 对比分析 Tab */}
-          <TabsContent value="compare" className="mt-6">
-            <div className="magazine-card-warm rounded-lg p-8">
-              <div className="flex flex-col items-center justify-center py-12">
-                <EmptyState
-                  variant="compare"
-                  title="对比分析"
-                  description="提取论文关键信息进行多维度对比分析，帮助您快速发现研究趋势与差异。"
-                />
-                <div className="flex items-center gap-3 mt-4">
-                  <span className="text-xs text-muted-foreground/60 px-3 py-1.5 bg-muted/50 rounded-full">
-                    预计 2026 Q2 上线
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 rounded-full"
-                    type="button"
-                    onClick={() => toast.info("上线后将通知您")}
-                  >
-                    <Bell className="h-3.5 w-3.5" />
-                    上线通知我
-                  </Button>
-                </div>
+                    <Send className="w-5 h-5" />
+                  </button>
+                </form>
               </div>
             </div>
           </TabsContent>
         </Tabs>
-        </div>
       </div>
 
-      {/* Import Dialog */}
+      {/* Import Dialog - uses existing ImportKnowledgeDialog component */}
       <ImportKnowledgeDialog
-        open={showImportDialog}
-        onOpenChange={setShowImportDialog}
+        open={isImportModalOpen}
+        onOpenChange={setIsImportModalOpen}
         knowledgeBaseId={MOCK_KB.id}
         knowledgeBaseName={MOCK_KB.name}
       />
