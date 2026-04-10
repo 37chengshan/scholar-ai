@@ -6,25 +6,30 @@
  * Features:
  * - Profile management (name, email, avatar)
  * - Language settings
- * - Security settings (password change)
+ * - Security settings (password change, logout)
  * - API key management
  */
 
 import { useState } from "react";
-import { Camera, Key, Lock, Save, User, RefreshCw, TerminalSquare, Cpu, Box, HardDrive, Wifi, Activity, Shield, Globe, Monitor } from "lucide-react";
+import { Camera, Key, Lock, Save, User, RefreshCw, TerminalSquare, Cpu, Box, HardDrive, Wifi, Activity, Shield, Globe, Monitor, LogOut } from "lucide-react";
 import { motion } from "motion/react";
 import { clsx } from "clsx";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useAuth } from "@/contexts/AuthContext";
 import { ProfileForm } from "../components/ProfileForm";
 import { APIKeyManager } from "../components/APIKeyManager";
 import { FontSizeSelector } from "../components/FontSizeSelector";
 import { SystemDiagnostics } from "../components/SystemDiagnostics";
+import { useNavigate } from "react-router";
+import toast from "react-hot-toast";
 
 export function Settings() {
   const [activeSection, setActiveSection] = useState("profile");
   const { fontSize, setFontSize } = useSettingsStore();
   const { language, setLanguage } = useLanguage();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   const isZh = language === "zh";
 
@@ -63,7 +68,22 @@ export function Settings() {
     vectorDB: isZh ? "向量数据库" : "Vector DB",
     blobStorage: isZh ? "文件存储 (PDFs)" : "Blob Storage (PDFs)",
     sysStream: isZh ? "系统流" : "System Stream",
-    selectToView: isZh ? "选择 API 集成、安全或语言\n以查看配置详情。" : "Select API Integrations, Security or Localization\nto view configurations."
+    selectToView: isZh ? "选择 API 集成、安全或语言\n以查看配置详情。" : "Select API Integrations, Security or Localization\nto view configurations.",
+    logout: isZh ? "登出" : "Logout",
+    logoutConfirm: isZh ? "确定要登出吗？" : "Are you sure you want to logout?",
+  };
+
+  const handleLogout = async () => {
+    if (confirm(t.logoutConfirm)) {
+      try {
+        await logout();
+        toast.success(isZh ? "已登出" : "Logged out successfully");
+        navigate("/login");
+      } catch (error) {
+        console.error("Logout failed:", error);
+        toast.error(isZh ? "登出失败" : "Logout failed");
+      }
+    }
   };
 
   return (
@@ -318,6 +338,33 @@ export function Settings() {
                       className="w-full bg-background border-b-2 border-border/50 rounded-t-sm px-3 py-3 text-[14px] font-mono tracking-[0.3em] focus:outline-none focus:border-primary transition-colors bg-transparent placeholder:text-muted-foreground/30"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Logout Section */}
+              <div className="bg-card border border-border/50 rounded-sm shadow-sm flex flex-col">
+                <div className="p-5 border-b border-border/50 flex justify-between items-center bg-muted/20">
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 bg-background border border-border/50 flex items-center justify-center rounded-sm">
+                      <LogOut className="w-3.5 h-3.5 text-destructive" />
+                    </div>
+                    <div>
+                      <h3 className="font-sans text-[11px] font-bold uppercase tracking-[0.2em]">{t.logout}</h3>
+                      <p className="text-[9px] font-mono text-muted-foreground mt-0.5">
+                        {isZh ? "结束当前会话" : "End your current session"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full bg-destructive/10 border border-destructive/20 text-destructive hover:bg-destructive hover:text-destructive-foreground px-4 py-3 rounded-sm transition-colors flex items-center justify-center gap-2 text-sm font-bold uppercase tracking-widest"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    {t.logout}
+                  </button>
                 </div>
               </div>
             </motion.div>
