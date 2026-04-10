@@ -360,6 +360,7 @@ export function Settings() {
                 <div className="p-6">
                   <button
                     onClick={handleLogout}
+                    data-testid="logout-button"
                     className="w-full bg-destructive/10 border border-destructive/20 text-destructive hover:bg-destructive hover:text-destructive-foreground px-4 py-3 rounded-sm transition-colors flex items-center justify-center gap-2 text-sm font-bold uppercase tracking-widest"
                   >
                     <LogOut className="w-4 h-4" />
