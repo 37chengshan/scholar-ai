@@ -7,8 +7,9 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
 import { usePapers } from "../../hooks/usePapers";
 import { useProjects } from "../../hooks/useProjects";
-import { useNotes } from "../../hooks/useNotes";
+import { useNotes, useCreateNote, useUpdateNote, useDeleteNote } from "../../hooks/useNotes";
 import * as papersApi from "../../services/papersApi";
+import type { Note } from "../../services/notesApi";
 import { toast } from "sonner";
 import { NotesList } from "../components/notes/NotesList";
 import { ViewToggle } from "../components/notes/ViewToggle";
@@ -34,6 +35,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
 
 export function Library() {
   const { language } = useLanguage();
@@ -102,6 +111,26 @@ export function Library() {
 
   // Notes hook (D-08: Notes integration in Library)
   const { notes, loading: notesLoading, error: notesError } = useNotes();
+  const createNoteMutation = useCreateNote();
+  const updateNoteMutation = useUpdateNote();
+  const deleteNoteMutation = useDeleteNote();
+
+  // Note creation dialog state
+  const [showCreateNoteDialog, setShowCreateNoteDialog] = useState(false);
+  const [newNoteTitle, setNewNoteTitle] = useState("");
+  const [newNoteContent, setNewNoteContent] = useState("");
+  const [newNoteTags, setNewNoteTags] = useState("");
+  const [creatingNote, setCreatingNote] = useState(false);
+
+  // Note detail dialog state
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [showNoteDetailDialog, setShowNoteDetailDialog] = useState(false);
+  const [editingNote, setEditingNote] = useState(false);
+  const [editNoteTitle, setEditNoteTitle] = useState("");
+  const [editNoteContent, setEditNoteContent] = useState("");
+  const [editNoteTags, setEditNoteTags] = useState("");
+  const [updatingNote, setUpdatingNote] = useState(false);
+  const [deletingNote, setDeletingNote] = useState(false);
 
   // Papers are now filtered on the backend, no need for client-side filtering
   const filteredPapers = papers;
@@ -352,6 +381,116 @@ export function Library() {
     setContextMenu(null);
   }, []);
 
+  // Handle create note
+  const handleCreateNote = useCallback(async () => {
+    if (!newNoteTitle.trim()) {
+      toast.error(isZh ? "请输入笔记标题" : "Please enter note title");
+      return;
+    }
+
+    if (!newNoteContent.trim()) {
+      toast.error(isZh ? "请输入笔记内容" : "Please enter note content");
+      return;
+    }
+
+    try {
+      setCreatingNote(true);
+
+      // Parse tags (comma-separated)
+      const tags = newNoteTags.trim()
+        ? newNoteTags.split(',').map(t => t.trim()).filter(t => t.length > 0)
+        : [];
+
+      // Create note
+      await createNoteMutation.mutateAsync({
+        title: newNoteTitle.trim(),
+        content: newNoteContent.trim(),
+        tags,
+        paperIds: [], // Optional - can be associated later
+      });
+
+      // Reset form and close dialog
+      setShowCreateNoteDialog(false);
+      setNewNoteTitle("");
+      setNewNoteContent("");
+      setNewNoteTags("");
+      toast.success(isZh ? "笔记创建成功" : "Note created successfully");
+    } catch (error: any) {
+      toast.error(isZh ? "创建失败" : "Failed to create note");
+      console.error('Create note error:', error);
+    } finally {
+      setCreatingNote(false);
+    }
+  }, [newNoteTitle, newNoteContent, newNoteTags, createNoteMutation, isZh]);
+
+  // Handle note click - show detail dialog
+  const handleNoteClick = useCallback((note: Note) => {
+    setSelectedNote(note);
+    setEditNoteTitle(note.title);
+    setEditNoteContent(note.content);
+    setEditNoteTags(note.tags.join(', '));
+    setEditingNote(false);
+    setShowNoteDetailDialog(true);
+  }, []);
+
+  // Handle update note
+  const handleUpdateNote = useCallback(async () => {
+    if (!selectedNote || !editNoteTitle.trim() || !editNoteContent.trim()) {
+      return;
+    }
+
+    try {
+      setUpdatingNote(true);
+
+      const tags = editNoteTags.trim()
+        ? editNoteTags.split(',').map(t => t.trim()).filter(t => t.length > 0)
+        : [];
+
+      await updateNoteMutation.mutateAsync({
+        id: selectedNote.id,
+        payload: {
+          title: editNoteTitle.trim(),
+          content: editNoteContent.trim(),
+          tags,
+        },
+      });
+
+      toast.success(isZh ? "笔记更新成功" : "Note updated successfully");
+      setEditingNote(false);
+      // Update selectedNote with new values
+      setSelectedNote({
+        ...selectedNote,
+        title: editNoteTitle.trim(),
+        content: editNoteContent.trim(),
+        tags,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      toast.error(isZh ? "更新失败" : "Failed to update note");
+      console.error('Update note error:', error);
+    } finally {
+      setUpdatingNote(false);
+    }
+  }, [selectedNote, editNoteTitle, editNoteContent, editNoteTags, updateNoteMutation, isZh]);
+
+  // Handle delete note
+  const handleDeleteNote = useCallback(async () => {
+    if (!selectedNote) return;
+
+    try {
+      setDeletingNote(true);
+      await deleteNoteMutation.mutateAsync(selectedNote.id);
+      toast.success(isZh ? "笔记已删除" : "Note deleted");
+      setShowNoteDetailDialog(false);
+      setSelectedNote(null);
+    } catch (error: any) {
+      toast.error(isZh ? "删除失败" : "Failed to delete note");
+      console.error('Delete note error:', error);
+    } finally {
+      setDeletingNote(false);
+    }
+  }, [selectedNote, deleteNoteMutation, isZh]);
+
   const t = {
     index: isZh ? "索引" : "Index",
     vol: isZh ? "第四卷" : "Vol. 4",
@@ -381,6 +520,25 @@ export function Library() {
     noNotes: isZh ? "暂无笔记" : "No notes yet",
     noNotesDesc: isZh ? "阅读论文时创建笔记来整理思路" : "Create notes while reading papers",
     createNote: isZh ? "创建笔记" : "Create Note",
+    noteTitle: isZh ? "笔记标题" : "Note Title",
+    noteContent: isZh ? "笔记内容" : "Note Content",
+    noteTags: isZh ? "标签（逗号分隔）" : "Tags (comma-separated)",
+    noteTitlePlaceholder: isZh ? "输入笔记标题..." : "Enter note title...",
+    noteContentPlaceholder: isZh ? "输入笔记内容..." : "Enter note content...",
+    noteTagsPlaceholder: isZh ? "例如：研究方法，数据分析" : "e.g., research-method, data-analysis",
+    create: isZh ? "创建" : "Create",
+    cancel: isZh ? "取消" : "Cancel",
+    creating: isZh ? "创建中..." : "Creating...",
+    noteDetails: isZh ? "笔记详情" : "Note Details",
+    edit: isZh ? "编辑" : "Edit",
+    save: isZh ? "保存" : "Save",
+    saving: isZh ? "保存中..." : "Saving...",
+    delete: isZh ? "删除" : "Delete",
+    deleteConfirm: isZh ? "确认删除此笔记？" : "Delete this note?",
+    linkedPapers: isZh ? "关联论文" : "Linked Papers",
+    noLinkedPapers: isZh ? "未关联论文" : "No linked papers",
+    createdAt: isZh ? "创建于" : "Created at",
+    updatedAt: isZh ? "更新于" : "Updated at",
     tagNames: isZh ? ["Transformer", "大语言模型", "视觉", "对齐", "RLHF", "智能体"] : ["Transformers", "LLM", "Vision", "Alignment", "RLHF", "Agents"],
     previous: isZh ? "上一页" : "Previous",
     next: isZh ? "下一页" : "Next",
@@ -592,7 +750,7 @@ export function Library() {
                 )}
                 {libraryView === 'notes' && (
                   <button
-                    onClick={() => navigate('/notes')}
+                    onClick={() => setShowCreateNoteDialog(true)}
                     className="text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm bg-primary text-primary-foreground shadow-sm flex items-center gap-1.5 hover:bg-primary/90"
                   >
                     <Plus className="w-3 h-3" />
@@ -822,7 +980,7 @@ export function Library() {
                 <h3 className="font-semibold text-lg mb-2">{t.noNotes}</h3>
                 <p className="text-muted-foreground text-sm mb-4">{t.noNotesDesc}</p>
                 <button
-                  onClick={() => navigate('/notes')}
+                  onClick={() => setShowCreateNoteDialog(true)}
                   className="text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-sm bg-primary text-primary-foreground shadow-sm"
                 >
                   {t.createNote}
@@ -833,6 +991,7 @@ export function Library() {
                 notes={notes}
                 viewMode={noteViewMode}
                 loading={notesLoading}
+                onNoteClick={handleNoteClick}
               />
             )
           )}
@@ -956,6 +1115,268 @@ export function Library() {
         onConfirm={confirmBatchAddToProject}
         isConfirming={isAddingToProject}
       />
+
+      {/* Create Note Dialog */}
+      <Dialog open={showCreateNoteDialog} onOpenChange={(open) => {
+        setShowCreateNoteDialog(open);
+        if (!open) {
+          // Reset form when dialog closes
+          setNewNoteTitle("");
+          setNewNoteContent("");
+          setNewNoteTags("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold">{t.createNote}</DialogTitle>
+            <DialogDescription className="text-base">
+              {isZh ? "创建一个新的阅读笔记，帮助整理和记录研究思路" : "Create a new reading note to organize your research thoughts"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 py-4">
+            {/* Title input */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold uppercase tracking-widest text-foreground">
+                {t.noteTitle}
+              </label>
+              <input
+                type="text"
+                value={newNoteTitle}
+                onChange={(e) => setNewNoteTitle(e.target.value)}
+                placeholder={t.noteTitlePlaceholder}
+                className="w-full bg-muted/50 border border-border/50 rounded-sm px-3 py-2 text-sm font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newNoteTitle.trim() && newNoteContent.trim()) {
+                    handleCreateNote();
+                  }
+                }}
+              />
+            </div>
+
+            {/* Content textarea */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold uppercase tracking-widest text-foreground">
+                {t.noteContent}
+              </label>
+              <textarea
+                value={newNoteContent}
+                onChange={(e) => setNewNoteContent(e.target.value)}
+                placeholder={t.noteContentPlaceholder}
+                className="w-full bg-muted/50 border border-border/50 rounded-sm px-3 py-2 text-sm font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all resize-none"
+                rows={6}
+              />
+            </div>
+
+            {/* Tags input */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold uppercase tracking-widest text-foreground">
+                {t.noteTags}
+              </label>
+              <input
+                type="text"
+                value={newNoteTags}
+                onChange={(e) => setNewNoteTags(e.target.value)}
+                placeholder={t.noteTagsPlaceholder}
+                className="w-full bg-muted/50 border border-border/50 rounded-sm px-3 py-2 text-sm font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:justify-end">
+            <button
+              onClick={() => setShowCreateNoteDialog(false)}
+              className="text-[9px] font-bold uppercase tracking-widest px-4 py-2 rounded-sm border border-border/50 text-foreground hover:bg-muted transition-colors"
+            >
+              {t.cancel}
+            </button>
+            <button
+              onClick={handleCreateNote}
+              disabled={creatingNote || !newNoteTitle.trim() || !newNoteContent.trim()}
+              className="text-[9px] font-bold uppercase tracking-widest px-4 py-2 rounded-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {creatingNote ? t.creating : t.create}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Note Detail Dialog */}
+      <Dialog open={showNoteDetailDialog} onOpenChange={(open) => {
+        setShowNoteDetailDialog(open);
+        if (!open) {
+          setSelectedNote(null);
+          setEditingNote(false);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold">
+              {editingNote ? (isZh ? "编辑笔记" : "Edit Note") : t.noteDetails}
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              {selectedNote && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>{t.createdAt}: {new Date(selectedNote.createdAt).toLocaleString()}</span>
+                  {selectedNote.updatedAt !== selectedNote.createdAt && (
+                    <span>• {t.updatedAt}: {new Date(selectedNote.updatedAt).toLocaleString()}</span>
+                  )}
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedNote && (
+            <div className="flex flex-col gap-4 py-4">
+              {/* Title */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-foreground">
+                  {t.noteTitle}
+                </label>
+                {editingNote ? (
+                  <input
+                    type="text"
+                    value={editNoteTitle}
+                    onChange={(e) => setEditNoteTitle(e.target.value)}
+                    className="w-full bg-muted/50 border border-border/50 rounded-sm px-3 py-2 text-sm font-sans focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all"
+                  />
+                ) : (
+                  <h3 className="text-lg font-semibold">{selectedNote.title}</h3>
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-foreground">
+                  {t.noteContent}
+                </label>
+                {editingNote ? (
+                  <textarea
+                    value={editNoteContent}
+                    onChange={(e) => setEditNoteContent(e.target.value)}
+                    className="w-full bg-muted/50 border border-border/50 rounded-sm px-3 py-2 text-sm font-sans focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all resize-none min-h-[200px]"
+                  />
+                ) : (
+                  <div className="text-sm whitespace-pre-wrap bg-muted/30 rounded-sm p-3 max-h-[300px] overflow-y-auto">
+                    {selectedNote.content}
+                  </div>
+                )}
+              </div>
+
+              {/* Tags */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-foreground">
+                  {t.noteTags}
+                </label>
+                {editingNote ? (
+                  <input
+                    type="text"
+                    value={editNoteTags}
+                    onChange={(e) => setEditNoteTags(e.target.value)}
+                    placeholder={t.noteTagsPlaceholder}
+                    className="w-full bg-muted/50 border border-border/50 rounded-sm px-3 py-2 text-sm font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all"
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {selectedNote.tags.length > 0 ? (
+                      selectedNote.tags.map(tag => (
+                        <span key={tag} className="text-xs bg-secondary px-2 py-1 rounded">
+                          #{tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Linked Papers */}
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold uppercase tracking-widest text-foreground">
+                  {t.linkedPapers}
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  {selectedNote.paperIds.length > 0 ? (
+                    selectedNote.paperIds.map(paperId => (
+                      <button
+                        key={paperId}
+                        onClick={() => {
+                          setShowNoteDetailDialog(false);
+                          navigate(`/read/${paperId}`);
+                        }}
+                        className="text-xs bg-muted px-2 py-1 rounded hover:bg-primary/10 transition-colors truncate max-w-[200px]"
+                      >
+                        {paperId.slice(0, 8)}...
+                      </button>
+                    ))
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{t.noLinkedPapers}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-2 sm:justify-between">
+            {/* Delete button (left side) */}
+            {editingNote && (
+              <button
+                onClick={handleDeleteNote}
+                disabled={deletingNote}
+                className="text-[9px] font-bold uppercase tracking-widest px-4 py-2 rounded-sm border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              >
+                {deletingNote ? (isZh ? "删除中..." : "Deleting...") : t.delete}
+              </button>
+            )}
+
+            {/* Right side buttons */}
+            <div className="flex gap-2">
+              {!editingNote ? (
+                <>
+                  <button
+                    onClick={() => setShowNoteDetailDialog(false)}
+                    className="text-[9px] font-bold uppercase tracking-widest px-4 py-2 rounded-sm border border-border/50 text-foreground hover:bg-muted transition-colors"
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    onClick={() => setEditingNote(true)}
+                    className="text-[9px] font-bold uppercase tracking-widest px-4 py-2 rounded-sm bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    {t.edit}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      setEditingNote(false);
+                      // Reset to original values
+                      if (selectedNote) {
+                        setEditNoteTitle(selectedNote.title);
+                        setEditNoteContent(selectedNote.content);
+                        setEditNoteTags(selectedNote.tags.join(', '));
+                      }
+                    }}
+                    className="text-[9px] font-bold uppercase tracking-widest px-4 py-2 rounded-sm border border-border/50 text-foreground hover:bg-muted transition-colors"
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    onClick={handleUpdateNote}
+                    disabled={updatingNote || !editNoteTitle.trim() || !editNoteContent.trim()}
+                    className="text-[9px] font-bold uppercase tracking-widest px-4 py-2 rounded-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {updatingNote ? t.saving : t.save}
+                  </button>
+                </>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

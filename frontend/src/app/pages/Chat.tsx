@@ -40,6 +40,7 @@ import { TokenMonitor } from '../components/TokenMonitor';
 import { ConfirmationDialog } from '../components/ConfirmationDialog';
 import { AgentStateSidebar, AgentUIState, ExecutionStep } from '../components/AgentStateSidebar';
 import { SSEEvent } from '@/services/sseService';
+import { API_BASE_URL } from '@/config/api';
 
 export function Chat() {
   const [input, setInput] = useState('');
@@ -135,10 +136,8 @@ export function Chat() {
 
       const message = encodeURIComponent(input.trim());
       
-      // Connect directly to Node.js backend to bypass Vite proxy
-      // This ensures cookies are sent with EventSource requests
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const url = `${apiUrl}/api/chat/stream?message=${message}&session_id=${sessionId}`;
+      // Connect to Python backend (SSE streaming)
+      const url = `${API_BASE_URL}/api/chat/stream?message=${message}&session_id=${sessionId}`;
       
       connect(url);
       setInput('');
@@ -270,8 +269,7 @@ export function Chat() {
   const sendConfirmationResponse = useCallback(async (approved: boolean) => {
     if (!confirmation) return;
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${apiUrl}/api/chat/confirmation`, {
+      const response = await fetch(`${API_BASE_URL}/api/chat/confirmation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

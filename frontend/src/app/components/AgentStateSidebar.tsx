@@ -263,14 +263,30 @@ export function AgentStateSidebar({
       )}
 
       {/* Empty state */}
-      {steps.length === 0 && (
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="text-center">
-            <Circle className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">
-              {t.readyForInput}
-            </p>
-          </div>
+{steps.length === 0 && (
+        <div className="flex-1 p-4">
+          {isRunning ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-8"
+            >
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-primary" />
+              <p className="text-sm font-medium text-foreground">
+                {isZh ? '正在思考中...' : 'Thinking...'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {isZh ? '这可能需要几秒钟' : 'This may take a few seconds'}
+              </p>
+            </motion.div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Circle className="w-8 h-8 mx-auto mb-3 opacity-30" />
+              <p className="text-xs">
+                {isZh ? '开始对话以查看执行步骤' : 'Start a conversation to see execution steps'}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

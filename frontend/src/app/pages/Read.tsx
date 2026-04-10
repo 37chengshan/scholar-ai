@@ -25,6 +25,8 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../com
 import * as papersApi from '@/services/papersApi';
 import * as annotationsApi from '@/services/annotationsApi';
 import type { Annotation } from '@/services/annotationsApi';
+import apiClient from '@/utils/apiClient';
+import { API_BASE_URL } from '@/config/api';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -102,13 +104,8 @@ export function Read() {
     setCurrentPage(page);
     // Save reading progress
     try {
-      await fetch(`/api/reading-progress/${id}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ currentPage: page }),
+      await apiClient.post(`/api/reading-progress/${id}`, {
+        currentPage: page,
       });
     } catch (error) {
       console.error('Failed to save reading progress:', error);
@@ -149,7 +146,7 @@ export function Read() {
     );
   }
 
-  const pdfUrl = `/api/papers/${id}/pdf`;
+  const pdfUrl = `${API_BASE_URL}/api/papers/${id}/pdf`;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">

@@ -39,51 +39,55 @@ router = APIRouter(tags=["Authentication"])
 # Request/Response Models
 # =============================================================================
 
+
 class RegisterRequest(BaseModel):
     """User registration request."""
+
     email: str
     password: str = Field(..., min_length=8)
     name: str = Field(..., min_length=2, max_length=50)
 
-    @field_validator('email')
+    @field_validator("email")
     @classmethod
     def email_valid(cls, v: str) -> str:
         """Validate email format."""
-        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', v):
-            raise ValueError('Invalid email format')
+        if not re.match(r"^[^@]+@[^@]+\.[^@]+$", v):
+            raise ValueError("Invalid email format")
         return v.lower()
 
-    @field_validator('password')
+    @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
         """Validate password has required complexity."""
         if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters')
+            raise ValueError("Password must be at least 8 characters")
         if not any(c.isupper() for c in v):
-            raise ValueError('Password must contain at least one uppercase letter')
+            raise ValueError("Password must contain at least one uppercase letter")
         if not any(c.islower() for c in v):
-            raise ValueError('Password must contain at least one lowercase letter')
+            raise ValueError("Password must contain at least one lowercase letter")
         if not any(c.isdigit() for c in v):
-            raise ValueError('Password must contain at least one number')
+            raise ValueError("Password must contain at least one number")
         return v
 
 
 class LoginRequest(BaseModel):
     """User login request."""
+
     email: str
     password: str
 
-    @field_validator('email')
+    @field_validator("email")
     @classmethod
     def email_valid(cls, v: str) -> str:
         """Validate email format."""
-        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', v):
-            raise ValueError('Invalid email format')
+        if not re.match(r"^[^@]+@[^@]+\.[^@]+$", v):
+            raise ValueError("Invalid email format")
         return v.lower()
 
 
 class UserResponse(BaseModel):
     """User data in responses."""
+
     id: str
     email: str
     name: str
@@ -98,12 +102,14 @@ class UserResponse(BaseModel):
 
 class AuthResponse(BaseModel):
     """Authentication success response."""
+
     success: bool = True
     data: dict
 
 
 class RefreshRequest(BaseModel):
     """Token refresh request (optional body, cookie preferred)."""
+
     refresh_token: Optional[str] = None
 
 
@@ -148,7 +154,10 @@ def _create_error_response(
 # Endpoints
 # =============================================================================
 
-@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED
+)
 async def register(
     request: Request,
     body: RegisterRequest,
@@ -185,12 +194,14 @@ async def register(
             success=True,
             data={
                 "user": {
-                    "id": user.id,
+                    "id": str(user.id),
                     "email": user.email,
                     "name": user.name,
                     "email_verified": user.email_verified,
                     "roles": user.roles,
-                    "created_at": user.created_at.isoformat() if user.created_at else None,
+                    "created_at": user.created_at.isoformat()
+                    if user.created_at
+                    else None,
                 },
                 "meta": {
                     "request_id": request_id,
@@ -271,10 +282,7 @@ async def login(
         key="refreshToken",
         value=tokens["refresh_token"],
         max_age=REFRESH_TOKEN_MAX_AGE,
-        path="/api/v1/auth/refresh",  # Only sent to refresh endpoint
-        httponly=COOKIE_SETTINGS["httponly"],
-        secure=COOKIE_SETTINGS["secure"],
-        samesite=COOKIE_SETTINGS["samesite"],
+        **COOKIE_SETTINGS,
     )
 
     logger.info(
@@ -288,7 +296,7 @@ async def login(
         success=True,
         data={
             "user": {
-                "id": user.id,
+                "id": str(user.id),
                 "email": user.email,
                 "name": user.name,
                 "email_verified": user.email_verified,
@@ -352,10 +360,7 @@ async def refresh_token(
             key="refreshToken",
             value=new_tokens["refresh_token"],
             max_age=REFRESH_TOKEN_MAX_AGE,
-            path="/api/v1/auth/refresh",
-            httponly=COOKIE_SETTINGS["httponly"],
-            secure=COOKIE_SETTINGS["secure"],
-            samesite=COOKIE_SETTINGS["samesite"],
+            **COOKIE_SETTINGS,
         )
 
         logger.info(
@@ -413,7 +418,7 @@ async def logout(
     )
     response.delete_cookie(
         key="refreshToken",
-        path="/api/v1/auth/refresh",
+        path=COOKIE_SETTINGS["path"],
     )
 
     logger.info(
@@ -453,13 +458,15 @@ async def get_me(
     return AuthResponse(
         success=True,
         data={
-            "id": current_user.id,
+            "id": str(current_user.id),
             "email": current_user.email,
             "name": current_user.name,
             "email_verified": current_user.email_verified,
             "avatar": current_user.avatar,
             "roles": current_user.roles,
-            "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
+            "created_at": current_user.created_at.isoformat()
+            if current_user.created_at
+            else None,
             "meta": {
                 "request_id": request_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),

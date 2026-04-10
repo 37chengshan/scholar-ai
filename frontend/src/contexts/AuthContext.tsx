@@ -91,7 +91,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const response = await authApi.login(email, password);
 
-    if (response.success && response.data) {
+    // authApi.login returns response.data which is the AuthResponse:
+    // { success: true, data: { user: {...}, meta: {...} } }
+    if (response.success && response.data?.user) {
       setUser(response.data.user);
       setProfile(response.data.user);
     } else {

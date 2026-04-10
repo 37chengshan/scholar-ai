@@ -51,6 +51,7 @@ from app.utils.problem_detail import ProblemDetail, ErrorTypes
 # Helper Classes and Functions
 # =============================================================================
 
+
 class User:
     """User DTO (Data Transfer Object) for authentication.
 
@@ -129,6 +130,7 @@ async def _get_session(db: Optional[AsyncSession]) -> AsyncSession:
 # Role Management
 # =============================================================================
 
+
 async def get_user_roles(
     user_id: str,
     db: Optional[AsyncSession] = None,
@@ -174,6 +176,7 @@ async def get_user_roles(
 # User Registration
 # =============================================================================
 
+
 async def register_user(
     email: str,
     password: str,
@@ -215,7 +218,8 @@ async def register_user(
         # Create user
         user_id = str(uuid4())
         password_hash = get_password_hash(password)
-        now = datetime.now(timezone.utc)
+        # Database uses TIMESTAMP WITHOUT TIME ZONE, so use naive datetime
+        now = datetime.now()
 
         new_user = UserModel(
             id=user_id,
@@ -278,6 +282,7 @@ async def register_user(
 # User Authentication
 # =============================================================================
 
+
 async def authenticate_user(
     email: str,
     password: str,
@@ -315,7 +320,9 @@ async def authenticate_user(
             await session.commit()
 
         # Get user roles
-        roles = await get_user_roles(orm_user.id, session if not should_commit else None)
+        roles = await get_user_roles(
+            orm_user.id, session if not should_commit else None
+        )
 
         return _orm_to_user(orm_user, roles)
 
@@ -333,6 +340,7 @@ async def authenticate_user(
 # Token Management
 # =============================================================================
 
+
 async def create_user_tokens(
     user: User,
     db: Optional[AsyncSession] = None,
@@ -347,12 +355,14 @@ async def create_user_tokens(
         Dictionary with access_token, refresh_token, and refresh_jti
     """
     # Create access token with user info
-    access_token = create_access_token({
-        "sub": user.id,
-        "email": user.email,
-        "roles": user.roles,
-        "jti": str(uuid4()),
-    })
+    access_token = create_access_token(
+        {
+            "sub": user.id,
+            "email": user.email,
+            "roles": user.roles,
+            "jti": str(uuid4()),
+        }
+    )
 
     # Create refresh token
     refresh_token, refresh_jti = create_refresh_token(user.id)
@@ -453,11 +463,15 @@ async def refresh_access_token(
                 raise ValueError("User not found")
 
             # Get user roles
-            roles = await get_user_roles(user_id, session if not should_commit else None)
+            roles = await get_user_roles(
+                user_id, session if not should_commit else None
+            )
             user = _orm_to_user(orm_user, roles)
 
             # Create new tokens
-            new_tokens = await create_user_tokens(user, session if not should_commit else None)
+            new_tokens = await create_user_tokens(
+                user, session if not should_commit else None
+            )
 
             # Blacklist old refresh token
             if redis_client:
@@ -519,6 +533,7 @@ async def logout_user(
     if access_token:
         try:
             from app.utils.security import decode_token_unsafe
+
             payload = decode_token_unsafe(access_token)
             if payload and "jti" in payload:
                 jti = payload["jti"]
@@ -568,7 +583,9 @@ async def logout_user(
                 except Exception as e:
                     if should_commit:
                         await session.rollback()
-                    logger.warning("Failed to delete refresh token from db", error=str(e))
+                    logger.warning(
+                        "Failed to delete refresh token from db", error=str(e)
+                    )
                 finally:
                     if should_commit:
                         await session.close()
@@ -580,6 +597,7 @@ async def logout_user(
 # =============================================================================
 # User Retrieval
 # =============================================================================
+
 
 async def get_user_by_id(
     user_id: str,
@@ -608,7 +626,9 @@ async def get_user_by_id(
         if should_commit:
             await session.commit()
 
-        roles = await get_user_roles(orm_user.id, session if not should_commit else None)
+        roles = await get_user_roles(
+            orm_user.id, session if not should_commit else None
+        )
         return _orm_to_user(orm_user, roles)
 
     except Exception as e:
@@ -648,7 +668,9 @@ async def get_user_by_email(
         if should_commit:
             await session.commit()
 
-        roles = await get_user_roles(orm_user.id, session if not should_commit else None)
+        roles = await get_user_roles(
+            orm_user.id, session if not should_commit else None
+        )
         return _orm_to_user(orm_user, roles)
 
     except Exception as e:

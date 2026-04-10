@@ -7,7 +7,7 @@
 
 /**
  * Get API base URL from environment or default
- * Development: http://localhost:4000
+ * Development: http://localhost:4000 (Node.js API Gateway)
  * Production: Configured via VITE_API_BASE_URL env var
  */
 export const getApiBaseUrl = (): string => {
@@ -18,9 +18,10 @@ export const getApiBaseUrl = (): string => {
     return envUrl;
   }
 
-  // Default to localhost for development
+  // Development: Use relative path to leverage Vite proxy
+  // Vite proxy will forward /api/* to http://localhost:8000
   if (import.meta.env.DEV) {
-    return 'http://localhost:4000';
+    return '';
   }
 
   // Production fallback (should be configured via env)

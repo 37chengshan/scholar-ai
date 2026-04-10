@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import * as authApi from "@/services/authApi";
 
 const SYSTEM_LOGS_EN = [
   "[SYS] Initializing Node 04 environment...",
@@ -29,8 +30,10 @@ export function Login() {
   const { language } = useLanguage();
   const { login, isAuthenticated, loading: authLoading } = useAuth();
   const [logs, setLogs] = useState<string[]>([]);
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -59,19 +62,23 @@ export function Login() {
     vectorDB: isZh ? "向量数据库" : "Vector DB",
     synced: isZh ? "已同步" : "Synced",
     terminal: isZh ? "终端输出" : "Terminal Output",
-    idReq: isZh ? "需要身份识别" : "Identification Required",
-    plsAuth: isZh ? "请进行身份验证以继续" : "Please authenticate to continue",
+    idReq: isZh ? (mode === "login" ? "需要身份识别" : "创建新账户") : (mode === "login" ? "Identification Required" : "Create Account"),
+    plsAuth: isZh ? (mode === "login" ? "请进行身份验证以继续" : "注册以使用ScholarAI智读系统") : (mode === "login" ? "Please authenticate to continue" : "Register to use ScholarAI Reading System"),
     userId: isZh ? "研究员 ID / 邮箱" : "Researcher ID / Email",
     passkey: isZh ? "访问密钥" : "Passkey",
     reset: isZh ? "重置" : "Reset",
     enterCreds: isZh ? "输入您的凭证" : "Enter your credentials",
     enterKey: isZh ? "输入密钥" : "Enter passkey",
-    connect: isZh ? "建立连接" : "Establish Connection",
+    connect: isZh ? (mode === "login" ? "建立连接" : "创建账户") : (mode === "login" ? "Establish Connection" : "Create Account"),
     sso: isZh ? "单点登录 (SSO)" : "SSO Login",
     requestAccess: isZh ? "申请访问权限" : "Request Access",
     statusText: isZh ? "节点: 04 • 状态: " : "Node: 04 • Status: ",
     active: isZh ? "活跃" : "Active",
-    ip: isZh ? " • IP: 已加密" : " • IP: Encrypted"
+    ip: isZh ? " • IP: 已加密" : " • IP: Encrypted",
+    name: isZh ? "姓名" : "Name",
+    enterName: isZh ? "输入您的姓名" : "Enter your name",
+    switchToRegister: isZh ? "没有账户？注册" : "Don't have an account? Register",
+    switchToLogin: isZh ? "已有账户？登录" : "Already have an account? Login",
   };
 
   // Simulate streaming logs for high-density tech feel
@@ -96,14 +103,34 @@ export function Login() {
 
     try {
       await login(email, password);
-      // Login successful - AuthContext has updated state
       navigate("/dashboard");
     } catch (err: any) {
-      // Error from Axios interceptor or API
-      // Backend returns RFC 7807 ProblemDetail format
-      const errorMessage = err.response?.data?.error?.detail
+      const errorData = err.response?.data;
+      const errorMessage = errorData?.detail?.detail
+        || errorData?.error?.detail
         || err.message
         || (isZh ? "登录失败" : "Login failed");
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
+
+    try {
+      await authApi.register(email, password, name);
+      await login(email, password);
+      navigate("/dashboard");
+    } catch (err: any) {
+      const errorData = err.response?.data;
+      const errorMessage = errorData?.detail?.detail
+        || errorData?.error?.detail
+        || err.message
+        || (isZh ? "注册失败" : "Registration failed");
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -227,11 +254,11 @@ export function Login() {
           </Badge>
         </div>
 
-        <motion.div 
+          <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          key={language}
+          key={`${language}-${mode}`}
           className="w-full max-w-sm flex flex-col gap-12"
         >
           <div className="flex flex-col gap-2">
@@ -242,10 +269,26 @@ export function Login() {
             <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-muted-foreground">{t.plsAuth}</p>
           </div>
 
-          <form onSubmit={handleLogin} className="flex flex-col gap-8">
+          <form onSubmit={mode === "login" ? handleLogin : handleRegister} className="flex flex-col gap-8">
             <div className="flex flex-col gap-8 relative group">
               <div className="absolute -left-4 top-0 w-0.5 h-full bg-primary/0 group-focus-within:bg-primary transition-colors duration-500" />
               
+              {mode === "register" && (
+                <div className="flex flex-col gap-2 group/input">
+                  <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
+                    {t.name}
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-serif focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
+                    placeholder={t.enterName}
+                    required
+                  />
+                </div>
+              )}
+
               <div className="flex flex-col gap-2 group/input">
                 <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                   {t.userId}
@@ -265,13 +308,15 @@ export function Login() {
                   <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                     {t.passkey}
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/forgot-password')}
-                    className="text-[9px] font-bold tracking-[0.2em] uppercase text-muted-foreground hover:text-primary transition-colors"
-                  >
-                    {isZh ? "忘记密码?" : "Forgot Password?"}
-                  </button>
+                  {mode === "login" && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/forgot-password')}
+                      className="text-[9px] font-bold tracking-[0.2em] uppercase text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      {isZh ? "忘记密码?" : "Forgot Password?"}
+                    </button>
+                  )}
                 </div>
                 <input
                   type="password"
@@ -312,6 +357,20 @@ export function Login() {
               </div>
             </div>
           </form>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMode(mode === "login" ? "register" : "login");
+              setError("");
+              setName("");
+              setEmail("");
+              setPassword("");
+            }}
+            className="text-[10px] font-bold tracking-[0.2em] uppercase text-primary hover:text-primary/80 transition-colors text-center w-full"
+          >
+            {mode === "login" ? t.switchToRegister : t.switchToLogin}
+          </button>
 
           <div className="text-[9px] font-mono text-muted-foreground text-center mt-4">
             {t.statusText}<span className="text-green-500">{t.active}</span>{t.ip}

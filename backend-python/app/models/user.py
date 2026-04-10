@@ -13,7 +13,15 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func, JSON
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    func,
+    JSON,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -51,12 +59,12 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     avatar: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    settings: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    # Match Prisma camelCase column names
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        "createdAt", DateTime(timezone=False), server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        "updatedAt", DateTime(timezone=False), server_default=func.now()
     )
 
     # Relationships - defined with lazy="dynamic" to avoid circular loading issues
@@ -144,16 +152,14 @@ class UserRole(Base):
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    role_id: Mapped[str] = mapped_column(ForeignKey("roles.id"))
+    user_id: Mapped[str] = mapped_column("userId", ForeignKey("users.id"))
+    role_id: Mapped[str] = mapped_column("roleId", ForeignKey("roles.id"))
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="roles")
     role: Mapped["Role"] = relationship("Role", back_populates="user_roles")
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "role_id", name="user_role_unique"),
-    )
+    __table_args__ = (UniqueConstraint("userId", "roleId", name="user_role_unique"),)
 
     def __repr__(self) -> str:
         return f"<UserRole(user_id={self.user_id}, role_id={self.role_id})>"
@@ -198,9 +204,7 @@ class Permission(Base):
     resource: Mapped[str] = mapped_column(String)
     action: Mapped[str] = mapped_column(String)
 
-    __table_args__ = (
-        UniqueConstraint("resource", "action", name="permission_unique"),
-    )
+    __table_args__ = (UniqueConstraint("resource", "action", name="permission_unique"),)
 
     def __repr__(self) -> str:
         return f"<Permission(resource={self.resource}, action={self.action})>"

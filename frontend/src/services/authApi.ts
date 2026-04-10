@@ -20,14 +20,22 @@ import type { LoginResponse, User } from '@/types';
  * POST /api/auth/login
  * Backend sets HttpOnly cookies (accessToken + refreshToken)
  *
+ * Note: Uses OAuth2 password flow (form-data: username=email, password)
+ *
  * @param email - User email
  * @param password - User password
  * @returns Login response with user data
  */
 export async function login(email: string, password: string): Promise<LoginResponse> {
-  const response = await apiClient.post<LoginResponse>('/api/auth/login', {
-    email,
-    password,
+  // OAuth2 password flow requires form-data with 'username' field
+  const formData = new URLSearchParams();
+  formData.append('username', email);
+  formData.append('password', password);
+
+  const response = await apiClient.post<LoginResponse>('/api/auth/login', formData, {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
   });
 
   return response.data;

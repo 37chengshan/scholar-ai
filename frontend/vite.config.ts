@@ -21,9 +21,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path.replace(/^\/api\/(?!v1)/, '/api/v1/'),
         cookiePathRewrite: {
           '*': '/',
         },

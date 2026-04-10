@@ -23,7 +23,8 @@ from app.models.query import Query as QueryModel
 from app.models.orm_session import Session
 from app.models.orm_chat_message import ChatMessage
 from app.utils.logger import logger
-from app.core.auth import CurrentUserId
+from app.middleware.auth import get_current_user
+from app.services.auth_service import User
 from app.utils.problem_detail import Errors
 
 router = APIRouter()
@@ -104,13 +105,14 @@ class ReadingStatsResponse(BaseModel):
 
 @router.get("/stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(
-    user_id: str = CurrentUserId,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get dashboard statistics.
 
     Returns counts for papers, queries, sessions, projects, and LLM tokens.
     """
+    user_id = str(current_user.id)
     try:
         # Run all aggregations
         total_papers_result = await db.execute(
@@ -187,13 +189,14 @@ async def get_dashboard_stats(
 @router.get("/trends", response_model=DashboardTrendsResponse)
 async def get_dashboard_trends(
     period: str = Query("weekly", pattern=r"^(weekly|monthly)$"),
-    user_id: str = CurrentUserId,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get time-series data for dashboard.
 
     Returns papers and queries counts grouped by day.
     """
+    user_id = str(current_user.id)
     try:
         days = 30 if period == "monthly" else 7
         since = datetime.now() - timedelta(days=days)
@@ -253,13 +256,14 @@ async def get_dashboard_trends(
 @router.get("/recent-papers", response_model=RecentPapersResponse)
 async def get_recent_papers(
     limit: int = Query(5, ge=1, le=20),
-    user_id: str = CurrentUserId,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get recently accessed papers.
 
     Returns papers sorted by last read time with progress info.
     """
+    user_id = str(current_user.id)
     try:
         # Get recent papers by reading progress
         result = await db.execute(
@@ -305,13 +309,14 @@ async def get_recent_papers(
 
 @router.get("/reading-stats", response_model=ReadingStatsResponse)
 async def get_reading_stats(
-    user_id: str = CurrentUserId,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get reading statistics.
 
     Returns totals and averages for reading progress.
     """
+    user_id = str(current_user.id)
     try:
         # Get all reading progress with paper page counts
         result = await db.execute(

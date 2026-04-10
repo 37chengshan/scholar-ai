@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import * as authApi from "@/services/authApi";
 
 export function Register() {
   const navigate = useNavigate();
@@ -74,24 +75,7 @@ export function Register() {
 
     try {
       // Call register API
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error?.detail || (isZh ? "注册失败" : "Registration failed"));
-      }
+      await authApi.register(email, password, name);
 
       // Auto-login after successful registration
       await login(email, password);

@@ -501,7 +501,6 @@ export function Upload() {
           </div>
         </div>
 </motion.div>
-      </div>
 
       {/* Delete Confirmation Dialog (Task 4) */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

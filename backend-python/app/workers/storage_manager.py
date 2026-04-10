@@ -118,10 +118,10 @@ class StorageManager:
                    status = 'processing',
                    "imradJson" = $3,
                    {title_update_clause},
-                   authors = COALESCE(NULLIF($5::text[], '{}'), authors),
+                   authors = COALESCE(NULLIF($5::text[], '{{}}'), authors),
                    abstract = COALESCE(NULLIF($6, ''), abstract),
                    doi = COALESCE(NULLIF($7, ''), doi),
-                   keywords = COALESCE(NULLIF($8::text[], '{}'), keywords),
+                   keywords = COALESCE(NULLIF($8::text[], '{{}}'), keywords),
                    "updatedAt" = NOW()
                WHERE id = $9""",
             ctx.parse_result.get("markdown", ""),
