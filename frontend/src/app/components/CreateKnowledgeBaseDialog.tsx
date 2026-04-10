@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { motion } from "motion/react";
-import { Brain, Network, FileText, Image, Search, BarChart3 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { Brain, Network, FileText, Image, Search, BarChart3, ChevronDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -97,6 +97,7 @@ export function CreateKnowledgeBaseDialog({
 }: CreateKnowledgeBaseDialogProps) {
   const [form, setForm] = useState<CreateKBData>(defaultData);
   const [errors, setErrors] = useState<{ name?: string; description?: string }>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const updateField = <K extends keyof CreateKBData>(key: K, value: CreateKBData[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -211,108 +212,130 @@ export function CreateKnowledgeBaseDialog({
 
           <Separator />
 
-          {/* 向量化配置 */}
-          <div className="flex flex-col gap-4">
-            <h3 className="font-serif text-sm font-semibold text-foreground">向量化配置</h3>
+          {/* Advanced Settings — Collapsible */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground 
+                       hover:text-foreground transition-colors w-full text-left py-2"
+          >
+            <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`} />
+            高级设置
+            <span className="text-xs text-muted-foreground/60 font-normal">（可选）</span>
+          </button>
 
-            <div className="flex flex-col gap-2">
-              <Label>嵌入模型</Label>
-              <Select
-                value={form.embeddingModel}
-                onValueChange={(v) => updateField("embeddingModel", v)}
+          <AnimatePresence>
+            {showAdvanced && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bge-m3">BGE-M3（推荐）</SelectItem>
-                  <SelectItem value="text-embedding-3-large">
-                    text-embedding-3-large
-                  </SelectItem>
-                  <SelectItem value="text-embedding-3-small">
-                    text-embedding-3-small
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                <div className="pt-2 space-y-6">
+                  {/* 向量化配置 */}
+                  <div className="flex flex-col gap-4">
+                    <h3 className="font-serif text-sm font-semibold text-foreground">向量化配置</h3>
 
-            <div className="flex flex-col gap-2">
-              <Label>切片策略</Label>
-              <Select
-                value={form.chunkStrategy}
-                onValueChange={(v) => updateField("chunkStrategy", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="by-paragraph">按段落切片（推荐）</SelectItem>
-                  <SelectItem value="fixed-length">固定长度切片</SelectItem>
-                  <SelectItem value="by-heading">按标题切片</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+                    <div className="flex flex-col gap-2">
+                      <Label>嵌入模型</Label>
+                      <Select
+                        value={form.embeddingModel}
+                        onValueChange={(v) => updateField("embeddingModel", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="bge-m3">BGE-M3（推荐）</SelectItem>
+                          <SelectItem value="text-embedding-3-large">
+                            text-embedding-3-large
+                          </SelectItem>
+                          <SelectItem value="text-embedding-3-small">
+                            text-embedding-3-small
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-          <Separator />
+                    <div className="flex flex-col gap-2">
+                      <Label>切片策略</Label>
+                      <Select
+                        value={form.chunkStrategy}
+                        onValueChange={(v) => updateField("chunkStrategy", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="by-paragraph">按段落切片（推荐）</SelectItem>
+                          <SelectItem value="fixed-length">固定长度切片</SelectItem>
+                          <SelectItem value="by-heading">按标题切片</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-          {/* 增强功能 */}
-          <div className="flex flex-col gap-4">
-            <h3 className="font-serif text-sm font-semibold text-foreground">增强功能</h3>
+                  <Separator />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {enhancementFeatures.map((feature) => (
-                <div
-                  key={feature.key}
-                  className="flex items-start gap-3 rounded-lg border border-border/50 p-3 bg-card"
-                >
-                  <Checkbox
-                    id={feature.key}
-                    checked={form[feature.key] as boolean}
-                    onCheckedChange={(checked) =>
-                      updateField(feature.key, checked as boolean)
-                    }
-                  />
-                  <div className="flex flex-col gap-0.5">
-                    <Label
-                      htmlFor={feature.key}
-                      className="flex items-center gap-1.5 text-sm font-medium cursor-pointer"
-                    >
-                      <feature.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                      {feature.label}
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      {feature.description}
-                    </p>
+                  {/* 增强功能 */}
+                  <div className="flex flex-col gap-4">
+                    <h3 className="font-serif text-sm font-semibold text-foreground">增强功能</h3>
+
+                    <div className="flex flex-col gap-2">
+                      {enhancementFeatures.map((feature) => (
+                        <label
+                          key={feature.key}
+                          className="flex items-center gap-3 py-2 px-3 rounded-lg 
+                                     hover:bg-muted/50 transition-colors cursor-pointer"
+                        >
+                          <Checkbox
+                            id={feature.key}
+                            checked={form[feature.key] as boolean}
+                            onCheckedChange={(checked) =>
+                              updateField(feature.key, checked as boolean)
+                            }
+                          />
+                          <feature.icon className="h-4 w-4 text-muted-foreground/60 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium">{feature.label}</span>
+                            <span className="text-xs text-muted-foreground/60 ml-2">
+                              {feature.description}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* 解析引擎 */}
+                  <div className="flex flex-col gap-4">
+                    <h3 className="font-serif text-sm font-semibold text-foreground">解析引擎</h3>
+
+                    <div className="flex flex-col gap-2">
+                      <Label>解析引擎</Label>
+                      <Select
+                        value={form.parseEngine}
+                        onValueChange={(v) => updateField("parseEngine", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="docling">Docling（推荐）</SelectItem>
+                          <SelectItem value="mineru">MinerU</SelectItem>
+                          <SelectItem value="simple-text">简单文本</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* 解析引擎 */}
-          <div className="flex flex-col gap-4">
-            <h3 className="font-serif text-sm font-semibold text-foreground">解析引擎</h3>
-
-            <div className="flex flex-col gap-2">
-              <Label>解析引擎</Label>
-              <Select
-                value={form.parseEngine}
-                onValueChange={(v) => updateField("parseEngine", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="docling">Docling（推荐）</SelectItem>
-                  <SelectItem value="mineru">MinerU</SelectItem>
-                  <SelectItem value="simple-text">简单文本</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
         </motion.div>
 

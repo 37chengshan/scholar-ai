@@ -10,13 +10,6 @@ import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -104,9 +97,11 @@ export function KnowledgeBaseList() {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [activeTag, setActiveTag] = useState("全部");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [importTarget, setImportTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const tags = ["全部", "人工智能", "计算机视觉", "自然语言处理", "机器学习"];
 
   // TODO: FE-04 — When real API data exceeds ~50 items, wrap this grid with react-window's VariableSizeGrid
 
@@ -117,7 +112,7 @@ export function KnowledgeBaseList() {
       kb.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       kb.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory =
-      categoryFilter === "all" || kb.category === categoryFilter;
+      activeTag === "全部" || kb.category === activeTag;
     return matchesSearch && matchesCategory;
   });
 
@@ -190,57 +185,55 @@ export function KnowledgeBaseList() {
         </div>
       </div>
 
-      {/* Filter Bar */}
+      {/* Filter Bar — tag pills, no magazine-card-warm wrapper */}
       <div className="max-w-7xl mx-auto px-6 py-4">
-        <div className="magazine-card-warm rounded-lg px-4 py-3">
-          <div className="flex items-center gap-4 flex-wrap">
-          <div className="w-48">
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="全部研究方向" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部研究方向</SelectItem>
-                <SelectItem value="人工智能">人工智能</SelectItem>
-                <SelectItem value="自然语言处理">自然语言处理</SelectItem>
-                <SelectItem value="计算机视觉">计算机视觉</SelectItem>
-                <SelectItem value="机器学习">机器学习</SelectItem>
-                <SelectItem value="其他">其他</SelectItem>
-              </SelectContent>
-            </Select>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Research direction tag pills */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {tags.map(tag => (
+              <button
+                key={tag}
+                className={`category-chip ${activeTag === tag ? 'active' : ''}`}
+                onClick={() => setActiveTag(tag)}
+                aria-current={activeTag === tag ? "page" : undefined}
+              >
+                {tag}
+              </button>
+            ))}
           </div>
 
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          {/* Search box — right aligned */}
+          <div className="relative ml-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
             <Input
-              placeholder="搜索知识库名称或描述..."
+              placeholder="搜索知识库..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
+              className="pl-9 w-56 bg-paper-1 border-border/50 focus:border-primary/30"
             />
           </div>
 
-          <div className="flex items-center gap-1 ml-auto">
+          {/* View toggle — icon-only, compact grouped */}
+          <div className="flex items-center gap-0.5 border border-border/50 rounded-lg p-0.5">
             <Button
-              variant={viewMode === "card" ? "default" : "outline"}
-              size="sm"
+              variant={viewMode === "card" ? "default" : "ghost"}
+              size="icon"
+              className="h-7 w-7"
               onClick={() => setViewMode("card")}
-              className="gap-1.5"
+              aria-pressed={viewMode === "card"}
             >
-              <Grid className="h-4 w-4" />
-              卡片
+              <Grid className="h-3.5 w-3.5" />
             </Button>
             <Button
-              variant={viewMode === "list" ? "default" : "outline"}
-              size="sm"
+              variant={viewMode === "list" ? "default" : "ghost"}
+              size="icon"
+              className="h-7 w-7"
               onClick={() => setViewMode("list")}
-              className="gap-1.5"
+              aria-pressed={viewMode === "list"}
             >
-              <List className="h-4 w-4" />
-              列表
+              <List className="h-3.5 w-3.5" />
             </Button>
           </div>
-        </div>
         </div>
       </div>
 

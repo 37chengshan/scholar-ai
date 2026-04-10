@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion } from "motion/react";
-import { Upload, Link, BookOpen, FolderOpen, X, FileText, CheckCircle, Loader2, AlertCircle } from "lucide-react";
+import { Upload, Link, BookOpen, FolderOpen, X, FileText, CheckCircle, Loader2, AlertCircle, Clock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -182,11 +182,23 @@ export function ImportKnowledgeDialog({
 
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }}>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="local">📄 本地 PDF</TabsTrigger>
-            <TabsTrigger value="url">🔗 URL/DOI</TabsTrigger>
-            <TabsTrigger value="arxiv">📚 arXiv</TabsTrigger>
-            <TabsTrigger value="batch">📁 批量导入</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-4 bg-paper-2">
+            <TabsTrigger value="local" className="data-[state=active]:bg-paper-1">
+              <FileText className="h-3.5 w-3.5 mr-1.5" />
+              本地 PDF
+            </TabsTrigger>
+            <TabsTrigger value="url" className="data-[state=active]:bg-paper-1">
+              <Link className="h-3.5 w-3.5 mr-1.5" />
+              URL / DOI
+            </TabsTrigger>
+            <TabsTrigger value="arxiv" className="data-[state=active]:bg-paper-1">
+              <BookOpen className="h-3.5 w-3.5 mr-1.5" />
+              arXiv
+            </TabsTrigger>
+            <TabsTrigger value="batch" className="data-[state=active]:bg-paper-1">
+              <FolderOpen className="h-3.5 w-3.5 mr-1.5" />
+              批量导入
+            </TabsTrigger>
           </TabsList>
 
           {/* 本地 PDF */}
@@ -428,9 +440,7 @@ export function ImportKnowledgeDialog({
                     <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
                   )}
                   {file.status === "pending" && (
-                    <span className="h-4 w-4 flex-shrink-0 text-muted-foreground">
-                      ⏳
-                    </span>
+                    <Clock className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
                   )}
                   {file.status === "failed" && (
                     <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />

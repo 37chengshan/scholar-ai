@@ -1,4 +1,4 @@
-import { FileText, MoreHorizontal, BookOpen, Layers, Network } from "lucide-react";
+import { FileText, MoreHorizontal, BookOpen, Layers, Network, StickyNote } from "lucide-react";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import {
@@ -114,7 +114,7 @@ export function PaperListItem({
                   阅读
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onNotes}>
-                  <span className="mr-2 h-4 w-4 inline-block">📝</span>
+                  <StickyNote className="mr-2 h-4 w-4" />
                   笔记
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

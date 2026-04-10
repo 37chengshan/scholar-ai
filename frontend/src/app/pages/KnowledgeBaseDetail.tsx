@@ -9,6 +9,10 @@ import {
   Grid,
   List as ListIcon,
   Link as LinkIcon,
+  ChevronDown,
+  FileText,
+  BookOpen,
+  FolderOpen,
 } from "lucide-react";
 import { Tabs, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
@@ -26,6 +30,13 @@ import {
   BreadcrumbSeparator,
 } from "../components/ui/breadcrumb";
 import { Badge } from "../components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 
 
 // Mock data for papers
@@ -196,46 +207,61 @@ export function KnowledgeBaseDetail() {
           <TabsContent value="papers" className="mt-6">
             {/* Toolbar */}
             <div className="magazine-card-warm rounded-lg p-3 mb-6">
-              <div className="flex items-center gap-4">
-                <Button
-                  onClick={() => handleOpenImport("local")}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  导入论文
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleOpenImport("url")}
-                  className="gap-2"
-                >
-                  <LinkIcon className="h-4 w-4" />
-                  从 URL 导入
-                </Button>
+              <div className="flex items-center gap-3">
+                {/* Import dropdown button */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full">
+                      <Plus className="h-4 w-4" />
+                      导入论文
+                      <ChevronDown className="h-3 w-3 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuItem onClick={() => handleOpenImport("local")}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      本地 PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleOpenImport("url")}>
+                      <LinkIcon className="mr-2 h-4 w-4" />
+                      URL / DOI
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleOpenImport("arxiv")}>
+                      <BookOpen className="mr-2 h-4 w-4" />
+                      arXiv
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleOpenImport("batch")}>
+                      <FolderOpen className="mr-2 h-4 w-4" />
+                      批量导入
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
                 <div className="relative flex-1 max-w-sm">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input placeholder="搜索论文..." className="pl-9" />
                 </div>
 
-                <div className="flex items-center gap-1 ml-auto">
+                {/* View toggle — icon-only, compact grouped */}
+                <div className="flex items-center gap-0.5 border border-border/50 rounded-lg p-0.5 ml-auto">
                   <Button
-                    variant={viewMode === "card" ? "default" : "outline"}
-                    size="sm"
+                    variant={viewMode === "card" ? "default" : "ghost"}
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={() => setViewMode("card")}
-                    className="gap-1.5"
+                    aria-pressed={viewMode === "card"}
                   >
-                    <Grid className="h-4 w-4" />
-                    卡片
+                    <Grid className="h-3.5 w-3.5" />
                   </Button>
                   <Button
-                    variant={viewMode === "list" ? "default" : "outline"}
-                    size="sm"
+                    variant={viewMode === "list" ? "default" : "ghost"}
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={() => setViewMode("list")}
-                    className="gap-1.5"
+                    aria-pressed={viewMode === "list"}
                   >
-                    <ListIcon className="h-4 w-4" />
-                    列表
+                    <ListIcon className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>

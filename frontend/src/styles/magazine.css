@@ -379,6 +379,12 @@
   color: var(--color-accent-warm);
 }
 
+.category-chip.active {
+  border-color: var(--color-accent-warm);
+  color: var(--color-accent-warm);
+  background: rgba(211, 84, 0, 0.05);
+}
+
 /* === Stat Item === */
 .stat-item {
   display: flex;
