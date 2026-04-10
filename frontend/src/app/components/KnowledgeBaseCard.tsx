@@ -73,7 +73,7 @@ export function KnowledgeBaseCard({
       }}
       role="link"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter') onEnter(); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEnter(); } }}
     >
       {/* Top accent bar */}
       <div className={`card-accent ${config.accent}`} />
