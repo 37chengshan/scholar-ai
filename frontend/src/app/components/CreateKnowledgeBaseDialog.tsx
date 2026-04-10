@@ -155,15 +155,21 @@ export function CreateKnowledgeBaseDialog({
               <Label htmlFor="kb-name">
                 知识库名称 <span className="text-destructive">*</span>
               </Label>
-              <Input
-                id="kb-name"
-                placeholder="请输入研究方向名称，如：大语言模型对齐研究"
-                value={form.name}
-                maxLength={50}
-                onChange={(e) => updateField("name", e.target.value)}
-              />
-              <div className="flex justify-end text-xs text-muted-foreground">
-                {form.name.length}/50
+              <div className="relative">
+                <Input
+                  id="kb-name"
+                  placeholder="请输入研究方向名称，如：大语言模型对齐研究"
+                  value={form.name}
+                  maxLength={50}
+                  onChange={(e) => updateField("name", e.target.value)}
+                  className="pr-16"
+                />
+                <span
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums
+                    ${form.name.length > 45 ? "text-destructive" : "text-muted-foreground/50"}`}
+                >
+                  {form.name.length}/50
+                </span>
               </div>
               {errors.name && (
                 <p className="text-xs text-destructive">{errors.name}</p>
@@ -174,16 +180,22 @@ export function CreateKnowledgeBaseDialog({
               <Label htmlFor="kb-desc">
                 知识库描述 <span className="text-destructive">*</span>
               </Label>
-              <Textarea
-                id="kb-desc"
-                placeholder="描述该知识库的研究方向和内容范围，这将帮助 AI 更好地理解上下文..."
-                value={form.description}
-                maxLength={200}
-                rows={3}
-                onChange={(e) => updateField("description", e.target.value)}
-              />
-              <div className="flex justify-end text-xs text-muted-foreground">
-                {form.description.length}/200
+              <div className="relative">
+                <Textarea
+                  id="kb-desc"
+                  placeholder="描述该知识库的研究方向和内容范围，这将帮助 AI 更好地理解上下文..."
+                  value={form.description}
+                  maxLength={200}
+                  rows={3}
+                  onChange={(e) => updateField("description", e.target.value)}
+                  className="pr-16"
+                />
+                <span
+                  className={`absolute right-3 bottom-2 text-xs tabular-nums
+                    ${form.description.length > 190 ? "text-destructive" : "text-muted-foreground/50"}`}
+                >
+                  {form.description.length}/200
+                </span>
               </div>
               {errors.description && (
                 <p className="text-xs text-destructive">{errors.description}</p>
