@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Grid, List, Search, Plus } from "lucide-react";
+import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown } from "lucide-react";
 import { KnowledgeBaseCard } from "../components/KnowledgeBaseCard";
 import { CreateKnowledgeBaseDialog } from "../components/CreateKnowledgeBaseDialog";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
@@ -9,6 +9,7 @@ import { EmptyState } from "../components/EmptyState";
 import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -24,6 +25,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { MoreHorizontal, ArrowRight, Download, Pencil, Trash2, Network } from "lucide-react";
 import { toast } from "sonner";
 
@@ -100,6 +108,9 @@ export function KnowledgeBaseList() {
   const [activeTag, setActiveTag] = useState("全部");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [importTarget, setImportTarget] = useState<{ id: string; name: string } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [sortBy, setSortBy] = useState<"updated" | "papers" | "name">("updated");
 
   const tags = ["全部", "人工智能", "计算机视觉", "自然语言处理", "机器学习"];
 
@@ -115,6 +126,24 @@ export function KnowledgeBaseList() {
       activeTag === "全部" || kb.category === activeTag;
     return matchesSearch && matchesCategory;
   });
+
+  // Sort filtered results
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "updated") return b.updatedAt.localeCompare(a.updatedAt);
+    if (sortBy === "papers") return b.paperCount - a.paperCount;
+    return a.name.localeCompare(b.name, "zh");
+  });
+
+  // Batch operations
+  const handleBatchDelete = () => {
+    toast.info(`批量删除 ${selectedIds.size} 个知识库（开发中）`);
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchExport = () => {
+    toast.info(`批量导出 ${selectedIds.size} 个知识库（开发中）`);
+    setSelectedIds(new Set());
+  };
 
   const handleCreate = () => {
     setShowCreateDialog(true);
@@ -202,6 +231,33 @@ export function KnowledgeBaseList() {
             ))}
           </div>
 
+          {/* Sort dropdown */}
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "updated" | "papers" | "name")}>
+            <SelectTrigger className="w-36 h-8 text-xs">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="updated">最近更新</SelectItem>
+              <SelectItem value="papers">论文最多</SelectItem>
+              <SelectItem value="name">名称 A-Z</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Batch mode toggle */}
+          <Button
+            variant={isBatchMode ? "default" : "outline"}
+            size="sm"
+            className="gap-1.5 h-8 text-xs"
+            onClick={() => {
+              setIsBatchMode(!isBatchMode);
+              if (isBatchMode) setSelectedIds(new Set());
+            }}
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+            批量
+          </Button>
+
           {/* Search box — right aligned */}
           <div className="relative ml-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
@@ -221,6 +277,7 @@ export function KnowledgeBaseList() {
               className="h-7 w-7"
               onClick={() => setViewMode("card")}
               aria-pressed={viewMode === "card"}
+              aria-label="卡片视图"
             >
               <Grid className="h-3.5 w-3.5" />
             </Button>
@@ -230,11 +287,32 @@ export function KnowledgeBaseList() {
               className="h-7 w-7"
               onClick={() => setViewMode("list")}
               aria-pressed={viewMode === "list"}
+              aria-label="列表视图"
             >
               <List className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
+
+        {/* Batch action bar */}
+        {isBatchMode && selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 mt-3 p-3 bg-muted/50 rounded-lg">
+            <span className="text-sm text-muted-foreground">
+              已选择 {selectedIds.size} 项
+            </span>
+            <Button variant="outline" size="sm" onClick={handleBatchDelete}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              删除
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleBatchExport}>
+              <Download className="h-3.5 w-3.5 mr-1.5" />
+              导出
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+              取消选择
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Content Area */}
@@ -250,8 +328,22 @@ export function KnowledgeBaseList() {
           />
         ) : viewMode === "card" ? (
           <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 cq-grid-cols gap-6" initial="hidden" animate="visible" variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } }}>
-            {filtered.map((kb) => (
-              <motion.div key={kb.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } }}>
+            {sorted.map((kb) => (
+              <motion.div key={kb.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } }} className="relative">
+                {isBatchMode && (
+                  <div className="absolute top-3 left-3 z-10" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds.has(kb.id)}
+                      onCheckedChange={(checked) => {
+                        const next = new Set(selectedIds);
+                        if (checked) next.add(kb.id);
+                        else next.delete(kb.id);
+                        setSelectedIds(next);
+                      }}
+                      className="bg-paper-1"
+                    />
+                  </div>
+                )}
                 <KnowledgeBaseCard
                   id={kb.id}
                   name={kb.name}
@@ -274,6 +366,20 @@ export function KnowledgeBaseList() {
             <Table>
             <TableHeader>
               <TableRow className="border-b-border/50">
+                {isBatchMode && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={selectedIds.size === sorted.length && sorted.length > 0}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedIds(new Set(sorted.map(kb => kb.id)));
+                        } else {
+                          setSelectedIds(new Set());
+                        }
+                      }}
+                    />
+                  </TableHead>
+                )}
                 <TableHead className="font-serif">名称</TableHead>
                 <TableHead className="text-right tabular-nums">论文</TableHead>
                 <TableHead className="text-right tabular-nums">切片</TableHead>
@@ -283,7 +389,7 @@ export function KnowledgeBaseList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((kb) => (
+              {sorted.map((kb) => (
                 <TableRow
                   key={kb.id}
                   className="group/row cursor-pointer transition-colors hover:bg-primary/[0.04]"
@@ -292,6 +398,19 @@ export function KnowledgeBaseList() {
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleEnter(kb.id); }}
                 >
+                  {isBatchMode && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(kb.id)}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(selectedIds);
+                          if (checked) next.add(kb.id);
+                          else next.delete(kb.id);
+                          setSelectedIds(next);
+                        }}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <div>
                       <div className="font-medium font-serif group-hover/row:text-primary transition-colors">
