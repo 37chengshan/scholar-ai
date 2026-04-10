@@ -13,6 +13,7 @@ import {
   FileText,
   BookOpen,
   FolderOpen,
+  Bell,
 } from "lucide-react";
 import { Tabs, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
@@ -37,6 +38,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
+import { toast } from "sonner";
 
 
 // Mock data for papers
@@ -127,14 +129,15 @@ export function KnowledgeBaseDetail() {
               <BreadcrumbItem>
                 <BreadcrumbLink
                   href="/knowledge-bases"
-                  className="flex items-center gap-1 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-muted-foreground 
+                             hover:text-primary transition-colors group"
                   onClick={(e) => {
                     e.preventDefault();
                     navigate("/knowledge-bases");
                   }}
                 >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  返回
+                  <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
+                  <span className="text-sm">返回</span>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
@@ -363,22 +366,56 @@ export function KnowledgeBaseDetail() {
           {/* 知识图谱 Tab */}
           <TabsContent value="graph" className="mt-6">
             <div className="magazine-card-warm rounded-lg p-8">
-              <EmptyState
-                variant="graph"
-                title="知识图谱"
-                description="基于 Neo4j 的实体关系可视化，展示论文间的知识关联与引用网络。"
-              />
+              <div className="flex flex-col items-center justify-center py-12">
+                <EmptyState
+                  variant="graph"
+                  title="知识图谱"
+                  description="基于 Neo4j 的实体关系可视化，展示论文间的知识关联与引用网络。"
+                />
+                <div className="flex items-center gap-3 mt-4">
+                  <span className="text-xs text-muted-foreground/60 px-3 py-1.5 bg-muted/50 rounded-full">
+                    预计 2026 Q2 上线
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 rounded-full"
+                    type="button"
+                    onClick={() => toast.info("上线后将通知您")}
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    上线通知我
+                  </Button>
+                </div>
+              </div>
             </div>
           </TabsContent>
 
           {/* 对比分析 Tab */}
           <TabsContent value="compare" className="mt-6">
             <div className="magazine-card-warm rounded-lg p-8">
-              <EmptyState
-                variant="compare"
-                title="对比分析"
-                description="提取论文关键信息进行多维度对比分析，帮助您快速发现研究趋势与差异。"
-              />
+              <div className="flex flex-col items-center justify-center py-12">
+                <EmptyState
+                  variant="compare"
+                  title="对比分析"
+                  description="提取论文关键信息进行多维度对比分析，帮助您快速发现研究趋势与差异。"
+                />
+                <div className="flex items-center gap-3 mt-4">
+                  <span className="text-xs text-muted-foreground/60 px-3 py-1.5 bg-muted/50 rounded-full">
+                    预计 2026 Q2 上线
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 rounded-full"
+                    type="button"
+                    onClick={() => toast.info("上线后将通知您")}
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    上线通知我
+                  </Button>
+                </div>
+              </div>
             </div>
           </TabsContent>
         </Tabs>
