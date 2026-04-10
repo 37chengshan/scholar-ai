@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion } from "motion/react";
-import { Upload, Link, BookOpen, FolderOpen, X, FileText, CheckCircle, Loader2, AlertCircle, Clock } from "lucide-react";
+import { Upload, Link, BookOpen, FolderOpen, X, FileText, CheckCircle, Loader2, AlertCircle, Clock, ChevronDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -260,6 +260,7 @@ export function ImportKnowledgeDialog({
                       )}
                       {!isImporting && file.status === "pending" && (
                         <button
+                          type="button"
                           onClick={() => removeFile(file.id)}
                           className="text-muted-foreground hover:text-destructive transition-colors"
                         >
@@ -350,70 +351,78 @@ export function ImportKnowledgeDialog({
           </TabsContent>
         </Tabs>
 
-        {/* 解析设置 */}
-        <div className="mt-4 rounded-lg border border-border/50 p-4 bg-card">
-          <h4 className="font-serif text-sm font-semibold text-foreground mb-3">解析设置</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>解析引擎</Label>
-              <Select value={parseEngine} onValueChange={setParseEngine}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="docling">Docling</SelectItem>
-                  <SelectItem value="mineru">MinerU</SelectItem>
-                </SelectContent>
-              </Select>
+        {/* 解析设置 — collapsible */}
+        <details className="group mt-4">
+          <summary className="flex items-center gap-2 text-sm font-medium text-muted-foreground 
+                              hover:text-foreground cursor-pointer list-none py-2 px-1
+                              transition-colors">
+            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+            解析设置
+            <span className="text-xs text-muted-foreground/60 font-normal">（可选）</span>
+          </summary>
+          <div className="mt-2 rounded-lg border border-border/50 p-4 bg-card">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>解析引擎</Label>
+                <Select value={parseEngine} onValueChange={setParseEngine}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="docling">Docling</SelectItem>
+                    <SelectItem value="mineru">MinerU</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>向量化模型</Label>
+                <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bge-m3">BGE-M3</SelectItem>
+                    <SelectItem value="text-embedding-3">
+                      text-embedding-3
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label>向量化模型</Label>
-              <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="bge-m3">BGE-M3</SelectItem>
-                  <SelectItem value="text-embedding-3">
-                    text-embedding-3
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex flex-wrap gap-4 mt-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="import-imrad"
+                  checked={enableImrad}
+                  onCheckedChange={(c) => setEnableImrad(c as boolean)}
+                />
+                <Label htmlFor="import-imrad" className="text-sm cursor-pointer">
+                  提取 IMRaD 结构
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="import-chunks"
+                  checked={enableChunks}
+                  onCheckedChange={(c) => setEnableChunks(c as boolean)}
+                />
+                <Label htmlFor="import-chunks" className="text-sm cursor-pointer">
+                  生成向量化切片
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="import-graph"
+                  checked={enableGraph}
+                  onCheckedChange={(c) => setEnableGraph(c as boolean)}
+                />
+                <Label htmlFor="import-graph" className="text-sm cursor-pointer">
+                  构建知识图谱实体
+                </Label>
+              </div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-4 mt-4">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="import-imrad"
-                checked={enableImrad}
-                onCheckedChange={(c) => setEnableImrad(c as boolean)}
-              />
-              <Label htmlFor="import-imrad" className="text-sm cursor-pointer">
-                提取 IMRaD 结构
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="import-chunks"
-                checked={enableChunks}
-                onCheckedChange={(c) => setEnableChunks(c as boolean)}
-              />
-              <Label htmlFor="import-chunks" className="text-sm cursor-pointer">
-                生成向量化切片
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="import-graph"
-                checked={enableGraph}
-                onCheckedChange={(c) => setEnableGraph(c as boolean)}
-              />
-              <Label htmlFor="import-graph" className="text-sm cursor-pointer">
-                构建知识图谱实体
-              </Label>
-            </div>
-          </div>
-        </div>
+        </details>
 
         {/* Import progress */}
         {isImporting && files.length > 0 && (
