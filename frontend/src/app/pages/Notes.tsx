@@ -276,13 +276,33 @@ export function Notes() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
-      {/* Left Sidebar — Note List */}
-      <div className="w-64 border-r border-border bg-muted/20 flex flex-col">
+    <div className="relative min-h-screen bg-background">
+      {/* Magazine Toolbar — Masthead Header */}
+      <div className="magazine-toolbar sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-5">
+          <div className="flex items-end justify-between">
+            <div>
+              <h1 className="font-serif text-3xl font-bold text-foreground tracking-tight">
+                笔记
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5 font-sans">
+                Notes
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content — Two-panel layout */}
+      <div className="flex h-[calc(100vh-10rem)] max-w-7xl mx-auto px-6">
+        {/* Left Sidebar — Note List */}
+        <div className="w-64 border-r border-zinc-300 bg-zinc-100 flex flex-col">
         {/* Sidebar Header */}
-        <div className="p-3 border-b border-border space-y-2">
+        <div className="p-3 border-b border-zinc-200 space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-sm">笔记</h2>
+            <h2 className="font-serif text-sm font-bold uppercase tracking-wider text-foreground">
+              笔记
+            </h2>
             <Button variant="default" size="sm" className="h-7 px-2" onClick={handleCreateNote}>
               <Plus className="w-3.5 h-3.5" />
               新建
@@ -296,28 +316,38 @@ export function Notes() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索笔记..."
-              className="pl-8 h-8 text-xs"
+              className="pl-8 h-8 text-xs border-2 border-zinc-300 bg-white focus:border-primary/30"
             />
           </div>
 
           {/* Tag Filter */}
           {allTags.length > 0 && (
-            <Select value={tagFilter} onValueChange={setTagFilter}>
-              <SelectTrigger className="h-7 text-xs">
-                <SelectValue placeholder="全部标签" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部标签</SelectItem>
-                {allTags.map((tag) => (
-                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-1">
+              <label className="font-serif text-xs font-bold uppercase tracking-wider text-zinc-500">
+                标签筛选
+              </label>
+              <Select value={tagFilter} onValueChange={setTagFilter}>
+                <SelectTrigger className="h-7 text-xs border-2 border-zinc-300 bg-white">
+                  <SelectValue placeholder="全部标签" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部标签</SelectItem>
+                  {allTags.map((tag) => (
+                    <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
 
         {/* Folder Tree */}
-        <div className="border-b border-border">
+        <div className="border-b border-zinc-200">
+          <div className="px-3 py-2 border-b border-zinc-200">
+            <h3 className="font-serif text-xs font-bold uppercase tracking-wider text-zinc-500">
+              文件夹
+            </h3>
+          </div>
           <NoteFolderTree
             folders={folders}
             selectedFolderId={selectedFolderId}
@@ -344,18 +374,19 @@ export function Notes() {
           )}
 
           {!notesLoading && filteredNotes.length > 0 && (
-            <div className="divide-y divide-border/50">
+            <div className="divide-y divide-zinc-200">
               {filteredNotes.map((note) => (
                 <div
                   key={note.id}
                   className={clsx(
-                    'group p-3 cursor-pointer transition-colors hover:bg-muted/50',
-                    selectedNoteId === note.id && 'bg-muted/80 border-l-2 border-l-accent'
+                    'group p-3 cursor-pointer transition-colors',
+                    'border-2 border-transparent hover:border-zinc-300',
+                    selectedNoteId === note.id && 'border-l-primary bg-primary/5'
                   )}
                   onClick={() => handleSelectNote(note)}
                 >
                   <div className="flex items-start justify-between gap-1">
-                    <h4 className="text-sm font-medium line-clamp-1 flex-1">
+                    <h4 className="font-serif text-sm font-medium line-clamp-1 flex-1">
                       {highlightText(note.title || '未命名笔记', searchQuery)}
                     </h4>
                     <button
@@ -368,16 +399,16 @@ export function Notes() {
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1 font-sans">
                     {highlightText(extractPreview(note.content) || '空笔记', searchQuery)}
                   </p>
                   <div className="flex items-center gap-2 mt-1.5">
                     <Clock className="w-2.5 h-2.5 text-muted-foreground/60" />
-                    <span className="text-[10px] text-muted-foreground/60">
+                    <span className="text-[10px] text-muted-foreground/60 font-sans">
                       {formatDate(note.updatedAt)}
                     </span>
                     {note.tags.length > 0 && (
-                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 rounded-none border-zinc-300 font-sans">
                         {note.tags[0]}
                       </Badge>
                     )}
@@ -394,13 +425,13 @@ export function Notes() {
         {selectedNote ? (
           <>
             {/* Editor Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-200 bg-white">
               <div>
-                <h3 className="font-medium text-sm">{selectedNote.title || '未命名笔记'}</h3>
+                <h3 className="font-serif font-medium text-sm">{selectedNote.title || '未命名笔记'}</h3>
                 {selectedNote.paperIds.length > 0 && (
                   <div className="flex items-center gap-1 mt-0.5">
                     <FileText className="w-3 h-3 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground font-sans">
                       关联 {selectedNote.paperIds.length} 篇论文
                     </span>
                   </div>
