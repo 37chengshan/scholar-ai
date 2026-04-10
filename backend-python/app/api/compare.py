@@ -2,6 +2,7 @@
 
 Provides comparison analysis across user-specified dimensions.
 """
+
 import json
 import os
 from typing import List, Optional, Dict, Any
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.logger import logger
 from app.database import get_db
-from app.core.auth import get_current_service
+from app.core.auth import CurrentUserId
 from app.utils.zhipu_client import get_llm_client
 from app.utils.problem_detail import Errors
 from app.models.paper import Paper, PaperChunk
@@ -22,35 +23,45 @@ router = APIRouter()
 
 # Valid dimensions for comparison
 VALID_DIMENSIONS = [
-    "title", "authors", "year", "abstract",
-    "method", "methodology", "approach",
-    "experiment", "experiments",
-    "results", "findings",
-    "dataset", "datasets", "data",
-    "metrics", "evaluation", "performance",
-    "limitations", "future_work",
-    "contribution", "innovation"
+    "title",
+    "authors",
+    "year",
+    "abstract",
+    "method",
+    "methodology",
+    "approach",
+    "experiment",
+    "experiments",
+    "results",
+    "findings",
+    "dataset",
+    "datasets",
+    "data",
+    "metrics",
+    "evaluation",
+    "performance",
+    "limitations",
+    "future_work",
+    "contribution",
+    "innovation",
 ]
 
 
 class CompareRequest(BaseModel):
     """Request model for paper comparison."""
+
     paper_ids: List[str] = Field(
-        ...,
-        min_items=2,
-        max_items=10,
-        description="Paper IDs to compare (2-10 papers)"
+        ..., min_items=2, max_items=10, description="Paper IDs to compare (2-10 papers)"
     )
     dimensions: List[str] = Field(
         default=["method", "results", "dataset", "metrics"],
-        description="Dimensions to compare across"
+        description="Dimensions to compare across",
     )
     include_abstract: bool = Field(
-        default=True,
-        description="Include abstract in comparison context"
+        default=True, description="Include abstract in comparison context"
     )
 
-    @validator('dimensions')
+    @validator("dimensions")
     def validate_dimensions(cls, v):
         """Validate dimension names."""
         invalid = [d for d in v if d.lower() not in VALID_DIMENSIONS]
@@ -62,6 +73,7 @@ class CompareRequest(BaseModel):
 
 class ComparisonResult(BaseModel):
     """Single paper comparison data."""
+
     paper_id: str
     title: str
     authors: List[str]
@@ -71,6 +83,7 @@ class ComparisonResult(BaseModel):
 
 class CompareResponse(BaseModel):
     """Response model for paper comparison."""
+
     paper_ids: List[str]
     dimensions: List[str]
     markdown_table: str
@@ -82,10 +95,14 @@ class CompareResponse(BaseModel):
 # Evolution Timeline Models
 # =============================================================================
 
+
 class TimelineEntry(BaseModel):
     """Single entry in evolution timeline."""
+
     year: int
-    version: str = Field(description="Version identifier (e.g., 'v1', 'v2', 'BERT-base')")
+    version: str = Field(
+        description="Version identifier (e.g., 'v1', 'v2', 'BERT-base')"
+    )
     paper_id: str
     paper_title: str
     key_changes: str = Field(description="Key improvements or changes in this version")
@@ -93,6 +110,7 @@ class TimelineEntry(BaseModel):
 
 class EvolutionTimeline(BaseModel):
     """Evolution timeline response."""
+
     method: str
     paper_count: int
     timeline: List[TimelineEntry]
@@ -101,24 +119,23 @@ class EvolutionTimeline(BaseModel):
 
 class EvolutionRequest(BaseModel):
     """Request for evolution timeline generation."""
+
     paper_ids: List[str] = Field(
         ...,
         min_items=2,
         max_items=20,
-        description="Paper IDs to analyze for evolution (2-20 papers)"
+        description="Paper IDs to analyze for evolution (2-20 papers)",
     )
     method_name: str = Field(
         ...,
         min_length=1,
         max_length=100,
-        description="Method name to identify versions (e.g., 'YOLO', 'BERT', 'ResNet')"
+        description="Method name to identify versions (e.g., 'YOLO', 'BERT', 'ResNet')",
     )
 
 
 async def fetch_papers_for_comparison(
-    paper_ids: List[str],
-    user_id: str,
-    db: AsyncSession
+    paper_ids: List[str], user_id: str, db: AsyncSession
 ) -> List[Dict[str, Any]]:
     """Fetch paper metadata and chunks for comparison.
 
@@ -136,19 +153,21 @@ async def fetch_papers_for_comparison(
     if missing_ids:
         raise HTTPException(
             status_code=404,
-            detail=Errors.not_found(f"Papers not found or not accessible: {list(missing_ids)}")
+            detail=Errors.not_found(
+                f"Papers not found or not accessible: {list(missing_ids)}"
+            ),
         )
 
     # Fetch chunks for each paper and build response
     papers = []
     for paper in papers_db:
         paper_dict = {
-            'id': paper.id,
-            'title': paper.title,
-            'authors': paper.authors,
-            'year': paper.year,
-            'abstract': paper.abstract,
-            'status': paper.status
+            "id": paper.id,
+            "title": paper.title,
+            "authors": paper.authors,
+            "year": paper.year,
+            "abstract": paper.abstract,
+            "status": paper.status,
         }
 
         # Fetch chunks for this paper
@@ -159,12 +178,8 @@ async def fetch_papers_for_comparison(
         )
         chunks = chunks_result.scalars().all()
 
-        paper_dict['chunks'] = [
-            {
-                'content': c.content,
-                'section': c.section,
-                'page': c.page_start
-            }
+        paper_dict["chunks"] = [
+            {"content": c.content, "section": c.section, "page": c.page_start}
             for c in chunks
         ]
         papers.append(paper_dict)
@@ -173,8 +188,7 @@ async def fetch_papers_for_comparison(
 
 
 async def analyze_papers_with_llm(
-    papers: List[Dict[str, Any]],
-    dimensions: List[str]
+    papers: List[Dict[str, Any]], dimensions: List[str]
 ) -> Dict[str, Any]:
     """Use LLM to analyze papers and extract comparison data.
 
@@ -183,17 +197,19 @@ async def analyze_papers_with_llm(
     # Build context from papers
     paper_contexts = []
     for paper in papers:
-        chunks_text = "\n\n".join([
-            f"[Section: {c.get('section', 'Unknown')}] {c['content'][:500]}"
-            for c in paper['chunks'][:10]  # Limit to first 10 chunks
-        ])
+        chunks_text = "\n\n".join(
+            [
+                f"[Section: {c.get('section', 'Unknown')}] {c['content'][:500]}"
+                for c in paper["chunks"][:10]  # Limit to first 10 chunks
+            ]
+        )
 
         context = f"""
-Paper ID: {paper['id']}
-Title: {paper['title']}
-Authors: {', '.join(paper['authors'])}
-Year: {paper['year']}
-Abstract: {paper.get('abstract', 'N/A')}
+Paper ID: {paper["id"]}
+Title: {paper["title"]}
+Authors: {", ".join(paper["authors"])}
+Year: {paper["year"]}
+Abstract: {paper.get("abstract", "N/A")}
 
 Content Excerpts:
 {chunks_text}
@@ -205,7 +221,7 @@ Content Excerpts:
     # Build prompt
     prompt = f"""Analyze and compare the following research papers across the specified dimensions.
 
-Dimensions to compare: {', '.join(dimensions)}
+Dimensions to compare: {", ".join(dimensions)}
 
 Papers:
 {all_context}
@@ -234,14 +250,17 @@ For each dimension, extract the most relevant information. If information is not
 
     try:
         llm_client = get_llm_client()
-        
+
         response = await llm_client.chat_completion(
             messages=[
-                {"role": "system", "content": "You are a research paper analysis assistant. Extract and compare information accurately."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are a research paper analysis assistant. Extract and compare information accurately.",
+                },
+                {"role": "user", "content": prompt},
             ],
             temperature=0.3,
-            max_tokens=4000
+            max_tokens=4000,
         )
 
         content = response.choices[0].message.content
@@ -253,7 +272,7 @@ For each dimension, extract the most relevant information. If information is not
         logger.error(f"LLM comparison failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=Errors.internal(f"Failed to generate comparison: {str(e)}")
+            detail=Errors.internal(f"Failed to generate comparison: {str(e)}"),
         )
 
 
@@ -273,7 +292,10 @@ def generate_markdown_table(comparison_data: Dict) -> str:
 
     for row in rows:
         # Truncate long cells
-        truncated = [str(cell)[:100] + "..." if len(str(cell)) > 100 else str(cell) for cell in row]
+        truncated = [
+            str(cell)[:100] + "..." if len(str(cell)) > 100 else str(cell)
+            for cell in row
+        ]
         lines.append("| " + " | ".join(truncated) + " |")
 
     return "\n".join(lines)
@@ -283,9 +305,9 @@ def generate_markdown_table(comparison_data: Dict) -> str:
 # Evolution Timeline Functions
 # =============================================================================
 
+
 async def extract_versions_with_llm(
-    papers: List[Dict[str, Any]],
-    method_name: str
+    papers: List[Dict[str, Any]], method_name: str
 ) -> List[Dict[str, Any]]:
     """Use LLM to extract version information from papers.
 
@@ -300,10 +322,10 @@ async def extract_versions_with_llm(
     paper_contexts = []
     for paper in papers:
         context = f"""
-Paper ID: {paper['id']}
-Title: {paper['title']}
-Year: {paper['year']}
-Abstract: {paper.get('abstract', 'N/A')[:500]}
+Paper ID: {paper["id"]}
+Title: {paper["title"]}
+Year: {paper["year"]}
+Abstract: {paper.get("abstract", "N/A")[:500]}
 """
         paper_contexts.append(context)
 
@@ -337,14 +359,17 @@ Include ALL papers in the response, even if version is unclear (use "unknown" or
 
     try:
         llm_client = get_llm_client()
-        
+
         response = await llm_client.chat_completion(
             messages=[
-                {"role": "system", "content": "You are a research analysis expert. Extract version information accurately from paper titles and abstracts."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are a research analysis expert. Extract version information accurately from paper titles and abstracts.",
+                },
+                {"role": "user", "content": prompt},
             ],
             temperature=0.2,
-            max_tokens=3000
+            max_tokens=3000,
         )
 
         content = response.choices[0].message.content
@@ -366,13 +391,12 @@ Include ALL papers in the response, even if version is unclear (use "unknown" or
         logger.error(f"LLM version extraction failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=Errors.internal(f"Failed to extract version information: {str(e)}")
+            detail=Errors.internal(f"Failed to extract version information: {str(e)}"),
         )
 
 
 def validate_timeline_with_citations(
-    timeline: List[Dict[str, Any]],
-    paper_ids: List[str]
+    timeline: List[Dict[str, Any]], paper_ids: List[str]
 ) -> List[Dict[str, Any]]:
     """Validate and correct timeline ordering using citation relationships.
 
@@ -390,7 +414,7 @@ def validate_timeline_with_citations(
     # Just verify that years are in ascending order
     # In Phase 5, this will use actual citation graph from Neo4j
 
-    validated_timeline = sorted(timeline, key=lambda x: x.get('year', 9999))
+    validated_timeline = sorted(timeline, key=lambda x: x.get("year", 9999))
 
     # Check for temporal inconsistencies
     inconsistencies = []
@@ -398,22 +422,24 @@ def validate_timeline_with_citations(
         current = validated_timeline[i]
         next_entry = validated_timeline[i + 1]
 
-        if current.get('year', 0) > next_entry.get('year', 0):
-            inconsistencies.append({
-                "paper_1": current.get('paper_id'),
-                "year_1": current.get('year'),
-                "paper_2": next_entry.get('paper_id'),
-                "year_2": next_entry.get('year'),
-                "issue": "Temporal inconsistency detected"
-            })
+        if current.get("year", 0) > next_entry.get("year", 0):
+            inconsistencies.append(
+                {
+                    "paper_1": current.get("paper_id"),
+                    "year_1": current.get("year"),
+                    "paper_2": next_entry.get("paper_id"),
+                    "year_2": next_entry.get("year"),
+                    "issue": "Temporal inconsistency detected",
+                }
+            )
 
     if inconsistencies:
         logger.warning(f"Timeline temporal inconsistencies: {inconsistencies}")
 
     # Add validation metadata to each entry
     for entry in validated_timeline:
-        entry['validated'] = True
-        entry['temporal_consistency'] = 'checked'
+        entry["validated"] = True
+        entry["temporal_consistency"] = "checked"
 
     return validated_timeline
 
@@ -426,14 +452,14 @@ def detect_evolution_pattern(timeline: List[Dict[str, Any]]) -> str:
     if not timeline:
         return "No evolution data available"
 
-    years = [entry.get('year') for entry in timeline if entry.get('year')]
-    versions = [entry.get('version', 'unknown') for entry in timeline]
+    years = [entry.get("year") for entry in timeline if entry.get("year")]
+    versions = [entry.get("version", "unknown") for entry in timeline]
 
     if len(years) < 2:
         return "Insufficient data to determine evolution pattern"
 
     year_span = max(years) - min(years)
-    version_count = len([v for v in versions if v != 'unknown'])
+    version_count = len([v for v in versions if v != "unknown"])
 
     patterns = []
 
@@ -446,15 +472,19 @@ def detect_evolution_pattern(timeline: List[Dict[str, Any]]) -> str:
         patterns.append(f"with {version_count} distinct versions")
 
     # Analyze key changes for common themes
-    all_changes = ' '.join([entry.get('key_changes', '') for entry in timeline]).lower()
+    all_changes = " ".join([entry.get("key_changes", "") for entry in timeline]).lower()
 
-    if any(term in all_changes for term in ['accuracy', 'performance', 'better', 'improve']):
+    if any(
+        term in all_changes for term in ["accuracy", "performance", "better", "improve"]
+    ):
         patterns.append("focusing on performance improvements")
 
-    if any(term in all_changes for term in ['speed', 'faster', 'efficient', 'lightweight']):
+    if any(
+        term in all_changes for term in ["speed", "faster", "efficient", "lightweight"]
+    ):
         patterns.append("with efficiency optimizations")
 
-    if any(term in all_changes for term in ['scale', 'larger', 'bigger', 'deep']):
+    if any(term in all_changes for term in ["scale", "larger", "bigger", "deep"]):
         patterns.append("scaling up model capacity")
 
     return f"Method evolved through {', '.join(patterns)}"
@@ -464,25 +494,22 @@ def detect_evolution_pattern(timeline: List[Dict[str, Any]]) -> str:
 async def compare_papers_endpoint(
     request: CompareRequest,
     db: AsyncSession = Depends(get_db),
-    service: dict = Depends(get_current_service)
+    user_id: str = CurrentUserId,
 ) -> Dict[str, Any]:
     """Compare multiple papers across specified dimensions.
 
     Args:
         request: Comparison request with paper IDs and dimensions
-        service: Authenticated service from JWT
+        user_id: Authenticated user ID from OAuth token
 
     Returns:
         Markdown table and structured comparison data
     """
-    # Get user_id from service token (passed from Node.js gateway)
-    user_id = service.get("user_id") or service.get("sub", "unknown")
-
     logger.info(
         f"Comparison request",
         paper_ids=request.paper_ids,
         dimensions=request.dimensions,
-        user_id=user_id
+        user_id=user_id,
     )
 
     # Fetch papers (validates ownership)
@@ -501,14 +528,10 @@ async def compare_papers_endpoint(
             paper_id=f.get("paper_id", ""),
             title=f.get("title", ""),
             authors=next(
-                (p["authors"] for p in papers if p["id"] == f.get("paper_id")),
-                []
+                (p["authors"] for p in papers if p["id"] == f.get("paper_id")), []
             ),
-            year=next(
-                (p["year"] for p in papers if p["id"] == f.get("paper_id")),
-                0
-            ),
-            findings=f.get("findings", {})
+            year=next((p["year"] for p in papers if p["id"] == f.get("paper_id")), 0),
+            findings=f.get("findings", {}),
         )
         for f in findings
     ]
@@ -518,7 +541,7 @@ async def compare_papers_endpoint(
         dimensions=request.dimensions,
         markdown_table=markdown_table,
         structured_data=structured_data,
-        summary=analysis.get("summary", "")
+        summary=analysis.get("summary", ""),
     )
 
 
@@ -526,7 +549,7 @@ async def compare_papers_endpoint(
 async def detect_evolution_timeline(
     request: EvolutionRequest,
     db: AsyncSession = Depends(get_db),
-    service: dict = Depends(get_current_service)
+    user_id: str = CurrentUserId,
 ) -> Dict[str, Any]:
     """Detect method evolution timeline from papers.
 
@@ -535,19 +558,16 @@ async def detect_evolution_timeline(
 
     Args:
         request: Evolution request with paper IDs and method name
-        service: Authenticated service from JWT
+        user_id: Authenticated user ID from OAuth token
 
     Returns:
         Evolution timeline with version information
     """
-    # Get user_id from service token (passed from Node.js gateway)
-    user_id = service.get("user_id") or service.get("sub", "unknown")
-
     logger.info(
         f"Evolution timeline request",
         method=request.method_name,
         paper_count=len(request.paper_ids),
-        user_id=user_id
+        user_id=user_id,
     )
 
     # Fetch papers using SQLAlchemy (validates ownership)
@@ -562,16 +582,18 @@ async def detect_evolution_timeline(
     if missing_ids:
         raise HTTPException(
             status_code=404,
-            detail=Errors.not_found(f"Papers not found or not accessible: {list(missing_ids)}")
+            detail=Errors.not_found(
+                f"Papers not found or not accessible: {list(missing_ids)}"
+            ),
         )
 
     papers = [
         {
-            'id': p.id,
-            'title': p.title,
-            'authors': p.authors,
-            'year': p.year,
-            'abstract': p.abstract
+            "id": p.id,
+            "title": p.title,
+            "authors": p.authors,
+            "year": p.year,
+            "abstract": p.abstract,
         }
         for p in papers_db
     ]
@@ -581,24 +603,25 @@ async def detect_evolution_timeline(
 
     # Validate timeline ordering
     validated_timeline = validate_timeline_with_citations(
-        version_data,
-        request.paper_ids
+        version_data, request.paper_ids
     )
 
     # Build timeline entries
     timeline_entries = []
     for entry in validated_timeline:
-        paper_id = entry.get('paper_id', '')
-        paper = next((p for p in papers if p['id'] == paper_id), None)
+        paper_id = entry.get("paper_id", "")
+        paper = next((p for p in papers if p["id"] == paper_id), None)
 
         if paper:
-            timeline_entries.append(TimelineEntry(
-                year=entry.get('year', paper.get('year', 0)),
-                version=entry.get('version', 'unknown'),
-                paper_id=paper_id,
-                paper_title=paper.get('title', 'Unknown'),
-                key_changes=entry.get('key_changes', 'No description available')
-            ))
+            timeline_entries.append(
+                TimelineEntry(
+                    year=entry.get("year", paper.get("year", 0)),
+                    version=entry.get("version", "unknown"),
+                    paper_id=paper_id,
+                    paper_title=paper.get("title", "Unknown"),
+                    key_changes=entry.get("key_changes", "No description available"),
+                )
+            )
 
     # Detect evolution pattern
     summary = detect_evolution_pattern(validated_timeline)
@@ -607,5 +630,5 @@ async def detect_evolution_timeline(
         method=request.method_name,
         paper_count=len(timeline_entries),
         timeline=timeline_entries,
-        summary=summary
+        summary=summary,
     )

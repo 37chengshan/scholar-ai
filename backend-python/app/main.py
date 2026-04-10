@@ -62,7 +62,6 @@ from app.api import (
     health,
     parse,
     rag,
-    internal,
     token_usage,
 )
 
@@ -183,10 +182,7 @@ app = FastAPI(
 app.add_middleware(RequestLoggingMiddleware)
 
 # CORS middleware (use unified config)
-app.add_middleware(
-    CORSMiddleware,
-    **get_cors_config()
-)
+app.add_middleware(CORSMiddleware, **get_cors_config())
 
 # Error handlers (RFC 7807 format)
 setup_error_handlers(app, include_generic=settings.ENVIRONMENT == "production")
@@ -209,8 +205,14 @@ app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 # Wave 3: Notes, Projects, Annotations, Reading Progress (27-04)
 app.include_router(notes.router, prefix="/api/v1/notes", tags=["notes"])
 app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
-app.include_router(annotations.router, prefix="/api/v1/annotations", tags=["annotations"])
-app.include_router(reading_progress.router, prefix="/api/v1/reading-progress", tags=["reading-progress"])
+app.include_router(
+    annotations.router, prefix="/api/v1/annotations", tags=["annotations"]
+)
+app.include_router(
+    reading_progress.router,
+    prefix="/api/v1/reading-progress",
+    tags=["reading-progress"],
+)
 
 # Wave 3: Dashboard, Search, System (27-04)
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
@@ -218,7 +220,11 @@ app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 
 # Wave 3: Semantic Scholar, Session, Chat (27-04)
-app.include_router(semantic_scholar.router, prefix="/api/v1/semantic-scholar", tags=["semantic-scholar"])
+app.include_router(
+    semantic_scholar.router,
+    prefix="/api/v1/semantic-scholar",
+    tags=["semantic-scholar"],
+)
 app.include_router(session.router, prefix="/api/v1/sessions", tags=["session"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
 
@@ -237,11 +243,10 @@ app.include_router(rag.router, prefix="/api/v1/queries", tags=["queries"])
 # PDF Parsing - Python-specific AI service
 app.include_router(parse.router, prefix="/parse", tags=["pdf-parsing"])
 
-# Internal API - Worker callbacks
-app.include_router(internal.router, prefix="/internal", tags=["internal"])
-
 # Token Usage - Monitoring
-app.include_router(token_usage.router, prefix="/api/v1/token-usage", tags=["token-usage"])
+app.include_router(
+    token_usage.router, prefix="/api/v1/token-usage", tags=["token-usage"]
+)
 
 # ============================================================================
 # Health Check - No auth required
@@ -253,6 +258,7 @@ app.include_router(health.router, prefix="/health", tags=["health"])
 # ============================================================================
 # Root Endpoint
 # ============================================================================
+
 
 @app.get("/")
 async def root():
