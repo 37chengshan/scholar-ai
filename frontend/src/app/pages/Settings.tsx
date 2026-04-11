@@ -28,7 +28,7 @@ export function Settings() {
   const [activeSection, setActiveSection] = useState("profile");
   const { fontSize, setFontSize } = useSettingsStore();
   const { language, setLanguage } = useLanguage();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const isZh = language === "zh";
@@ -105,8 +105,8 @@ export function Settings() {
           <div className="flex flex-col items-center gap-3 pb-6 border-b border-border/50">
             <div className="w-20 h-20 rounded-full border-2 border-background overflow-hidden relative cursor-pointer shadow-md group">
               <img
-                src="https://images.unsplash.com/photo-1631885628966-a14af9faaa9b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21hbiUyMHByb2ZpbGUlMjBwb3J0cmFpdHxlbnwxfHx8fDE3NzUxMDc0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080"
-                alt="Avatar"
+                src={user?.avatar || "/default-avatar.png"}
+                alt={user?.name || "User"}
                 className="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-all duration-700"
               />
               <div className="absolute inset-0 bg-primary/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
@@ -114,8 +114,8 @@ export function Settings() {
               </div>
             </div>
             <div className="text-center">
-              <div className="font-serif text-lg font-black leading-tight">Dr. E. Vance</div>
-              <div className="text-[9px] font-mono tracking-[0.2em] text-muted-foreground mt-1">ID: 994-XQ-12</div>
+              <div className="font-serif text-lg font-black leading-tight">{user?.name || "用户"}</div>
+              <div className="text-[9px] font-mono tracking-[0.2em] text-muted-foreground mt-1">ID: {user?.id || "—"}</div>
             </div>
           </div>
 
