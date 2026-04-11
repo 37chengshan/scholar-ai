@@ -214,6 +214,15 @@ app.include_router(
     tags=["reading-progress"],
 )
 
+# Wave 3: Knowledge Base (36-02)
+from app.api import knowledge_base
+
+app.include_router(
+    knowledge_base.router,
+    prefix="/api/v1/knowledge-bases",
+    tags=["knowledge-bases"],
+)
+
 # Wave 3: Dashboard, Search, System (27-04)
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
