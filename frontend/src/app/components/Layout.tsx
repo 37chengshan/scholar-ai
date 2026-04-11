@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, FileText, StickyNote, LogOut, Menu } from "lucide-react";
+import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, StickyNote, LogOut, Menu } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "./landing/Logo";
@@ -11,7 +11,6 @@ const navItemsEN = [
   { to: "/knowledge-bases", icon: BookOpen, label: "Knowledge" },
   { to: "/notes", icon: StickyNote, label: "Notes" },
   { to: "/search", icon: Search, label: "Discovery" },
-  { to: "/read", icon: FileText, label: "Reading" },
   { to: "/chat", icon: MessageSquare, label: "Terminal" },
 ];
 
@@ -20,7 +19,6 @@ const navItemsZH = [
   { to: "/knowledge-bases", icon: BookOpen, label: "知识库" },
   { to: "/notes", icon: StickyNote, label: "笔记" },
   { to: "/search", icon: Search, label: "检索" },
-  { to: "/read", icon: FileText, label: "阅读" },
   { to: "/chat", icon: MessageSquare, label: "终端对话" },
 ];
 
