@@ -297,17 +297,17 @@ export function Notes() {
       <div className="flex h-[calc(100vh-10rem)] max-w-7xl mx-auto px-6">
         {/* Left Sidebar — Note List */}
         <div className="w-64 border-r border-zinc-300 bg-zinc-100 flex flex-col">
-        {/* Sidebar Header */}
-        <div className="p-3 border-b border-zinc-200 space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="font-serif text-sm font-bold uppercase tracking-wider text-foreground">
-              笔记
-            </h2>
-            <Button variant="default" size="sm" className="h-7 px-2" onClick={handleCreateNote}>
-              <Plus className="w-3.5 h-3.5" />
-              新建
-            </Button>
-          </div>
+          {/* Sidebar Header */}
+          <div className="p-3 border-b border-zinc-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-sm font-bold uppercase tracking-wider text-foreground">
+                笔记
+              </h2>
+              <Button variant="default" size="sm" className="h-7 px-2" onClick={handleCreateNote}>
+                <Plus className="w-3.5 h-3.5" />
+                新建
+              </Button>
+            </div>
           {/* Search */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -316,38 +316,28 @@ export function Notes() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索笔记..."
-              className="pl-8 h-8 text-xs border-2 border-zinc-300 bg-white focus:border-primary/30"
+              className="pl-8 h-8 text-xs"
             />
           </div>
 
           {/* Tag Filter */}
           {allTags.length > 0 && (
-            <div className="space-y-1">
-              <label className="font-serif text-xs font-bold uppercase tracking-wider text-zinc-500">
-                标签筛选
-              </label>
-              <Select value={tagFilter} onValueChange={setTagFilter}>
-                <SelectTrigger className="h-7 text-xs border-2 border-zinc-300 bg-white">
-                  <SelectValue placeholder="全部标签" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部标签</SelectItem>
-                  {allTags.map((tag) => (
-                    <SelectItem key={tag} value={tag}>{tag}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={tagFilter} onValueChange={setTagFilter}>
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue placeholder="全部标签" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部标签</SelectItem>
+                {allTags.map((tag) => (
+                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
 
         {/* Folder Tree */}
-        <div className="border-b border-zinc-200">
-          <div className="px-3 py-2 border-b border-zinc-200">
-            <h3 className="font-serif text-xs font-bold uppercase tracking-wider text-zinc-500">
-              文件夹
-            </h3>
-          </div>
+        <div className="border-b border-border">
           <NoteFolderTree
             folders={folders}
             selectedFolderId={selectedFolderId}
@@ -374,19 +364,18 @@ export function Notes() {
           )}
 
           {!notesLoading && filteredNotes.length > 0 && (
-            <div className="divide-y divide-zinc-200">
+            <div className="divide-y divide-border/50">
               {filteredNotes.map((note) => (
                 <div
                   key={note.id}
                   className={clsx(
-                    'group p-3 cursor-pointer transition-colors',
-                    'border-2 border-transparent hover:border-zinc-300',
-                    selectedNoteId === note.id && 'border-l-primary bg-primary/5'
+                    'group p-3 cursor-pointer transition-colors hover:bg-muted/50',
+                    selectedNoteId === note.id && 'bg-muted/80 border-l-2 border-l-accent'
                   )}
                   onClick={() => handleSelectNote(note)}
                 >
                   <div className="flex items-start justify-between gap-1">
-                    <h4 className="font-serif text-sm font-medium line-clamp-1 flex-1">
+                    <h4 className="text-sm font-medium line-clamp-1 flex-1">
                       {highlightText(note.title || '未命名笔记', searchQuery)}
                     </h4>
                     <button
@@ -399,16 +388,16 @@ export function Notes() {
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1 font-sans">
+                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
                     {highlightText(extractPreview(note.content) || '空笔记', searchQuery)}
                   </p>
                   <div className="flex items-center gap-2 mt-1.5">
                     <Clock className="w-2.5 h-2.5 text-muted-foreground/60" />
-                    <span className="text-[10px] text-muted-foreground/60 font-sans">
+                    <span className="text-[10px] text-muted-foreground/60">
                       {formatDate(note.updatedAt)}
                     </span>
                     {note.tags.length > 0 && (
-                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 rounded-none border-zinc-300 font-sans">
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
                         {note.tags[0]}
                       </Badge>
                     )}
@@ -418,19 +407,20 @@ export function Notes() {
             </div>
           )}
         </div>
+      </div>
 
       {/* Right Main — Editor Area */}
       <div className="flex-1 flex flex-col bg-[#fdfaf6]">
         {selectedNote ? (
           <>
             {/* Editor Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-200 bg-white">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
               <div>
-                <h3 className="font-serif font-medium text-sm">{selectedNote.title || '未命名笔记'}</h3>
+                <h3 className="font-medium text-sm">{selectedNote.title || '未命名笔记'}</h3>
                 {selectedNote.paperIds.length > 0 && (
                   <div className="flex items-center gap-1 mt-0.5">
                     <FileText className="w-3 h-3 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground font-sans">
+                    <span className="text-xs text-muted-foreground">
                       关联 {selectedNote.paperIds.length} 篇论文
                     </span>
                   </div>
@@ -459,9 +449,9 @@ export function Notes() {
               新建笔记
             </Button>
           </div>
-)}
+        )}
+        </div>
       </div>
-    </div>
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteNoteId} onOpenChange={(open) => !open && setDeleteNoteId(null)}>
