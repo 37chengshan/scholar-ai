@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown } from "lucide-react";
+import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive } from "lucide-react";
 import { KnowledgeBaseCard } from "../components/KnowledgeBaseCard";
 import { CreateKnowledgeBaseDialog } from "../components/CreateKnowledgeBaseDialog";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
@@ -269,21 +269,25 @@ export function KnowledgeBaseList() {
 </div>
           </div>
           
-          {/* Storage progress bar */}
-          <div className="mt-4 flex items-center gap-3">
-            <div
-              className="storage-progress flex-1 max-w-xs"
-              role="progressbar"
-              aria-valuenow={24}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`存储使用量: ${storageUsed} / ${storageTotal}`}
-            >
-              <div className="storage-progress-fill" style={{ width: '24%' }} />
+          {/* Storage Status — Magazine card style */}
+          <div className="flex items-center gap-3 bg-white border-2 border-zinc-900 px-4 py-3 shadow-[4px_4px_0px_0px_rgba(24,24,27,1)]">
+            <HardDrive className="w-5 h-5 text-zinc-900" />
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+                <span className="text-zinc-900 font-sans">{storageUsed} / {storageTotal}</span>
+                <span className="text-primary font-mono">24%</span>
+              </div>
+              <div className="h-2 bg-zinc-200 border border-zinc-300 rounded-none overflow-hidden">
+                <div 
+                  className="h-full bg-primary transition-all duration-600"
+                  style={{ width: '24%' }}
+                  role="progressbar"
+                  aria-valuenow={24}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                />
+              </div>
             </div>
-            <span className="text-xs text-muted-foreground font-sans tabular-nums">
-              {storageUsed} / {storageTotal} · 24%
-            </span>
           </div>
         </div>
 
