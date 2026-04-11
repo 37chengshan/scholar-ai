@@ -15,21 +15,22 @@
  * - URL state persistence (search query, filters, page)
  */
 
-import { Search as SearchIcon, Globe, RefreshCw, BarChart2, Hash, Calendar, Users, TrendingUp } from "lucide-react";
+import { Search as SearchIcon, Globe, BarChart2, Hash, Calendar, Users, TrendingUp } from "lucide-react";
 import { clsx } from "clsx";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { motion } from "motion/react";
+import { useNavigate } from "react-router";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSearch } from "@/hooks/useSearch";
 import { useUrlState } from "../../hooks/useUrlState";
 import { SearchResultCard } from "../components/SearchResultCard";
 import { AuthorResultCard } from "../components/AuthorResultCard";
 import { SearchFilters } from "../components/SearchFilters";
-import * as papersApi from "@/services/papersApi";
 import * as searchApi from "@/services/searchApi";
-import { AuthorSearchResult } from "@/services/searchApi";
+import { AuthorSearchResult, AuthorPaper } from "@/services/searchApi";
 import toast from "react-hot-toast";
 import { NoSearchResultsState } from "../components/EmptyState";
+import { kbApi } from "@/services/kbApi";
 
 export function Search() {
   const { language } = useLanguage();
@@ -76,6 +77,17 @@ export function Search() {
   // Author search state (Phase 23)
   const [authorResults, setAuthorResults] = useState<AuthorSearchResult[]>([]);
   const [authorLoading, setAuthorLoading] = useState(false);
+  const [selectedAuthor, setSelectedAuthor] = useState<AuthorSearchResult | null>(null);
+  const [authorPapers, setAuthorPapers] = useState<AuthorPaper[]>([]);
+  const [loadingAuthorPapers, setLoadingAuthorPapers] = useState(false);
+  const [showAuthorPapersModal, setShowAuthorPapersModal] = useState(false);
+  const [importingPaperId, setImportingPaperId] = useState<string | null>(null);
+  const [showKBSelectModal, setShowKBSelectModal] = useState(false);
+  const [pendingImportPaper, setPendingImportPaper] = useState<any>(null);
+  const [knowledgeBases, setKnowledgeBases] = useState<any[]>([]);
+  const [loadingKBs, setLoadingKBs] = useState(false);
+
+  const navigate = useNavigate();
 
   const t = {
     sources: isZh ? "检索来源" : "Sources",
@@ -86,7 +98,6 @@ export function Search() {
     statusConn: isZh ? "已连接" : "Connected",
     statusLimit: isZh ? "频率限制" : "Rate Limited",
     statusDisconn: isZh ? "未连接" : "Disconnected",
-    refresh: isZh ? "刷新令牌" : "Refresh Tokens",
     query: isZh ? "查询" : "Query",
     placeholder: isZh ? "输入检索词，例如自主智能体、大模型..." : "Search for autonomous agents, LLMs...",
     prevPage: isZh ? "上一页" : "Prev",
@@ -107,27 +118,46 @@ export function Search() {
     searching: isZh ? "搜索中..." : "Searching...",
     noResults: isZh ? "未找到结果" : "No results found",
     startTyping: isZh ? "输入关键词开始搜索" : "Start typing to search",
-    importSuccess: isZh ? "论文已添加到您的库中" : "Paper added to your library",
+    importSuccess: isZh ? "论文导入任务已创建" : "Import task created",
     importError: isZh ? "导入失败" : "Import failed",
     authors: isZh ? "作者" : "Authors",
     authorResults: isZh ? "作者搜索结果" : "Author Results",
+    authorPapers: isZh ? "作者论文" : "Author Papers",
+    selectKB: isZh ? "选择知识库" : "Select Knowledge Base",
+    loading: isZh ? "加载中..." : "Loading...",
+    noKB: isZh ? "暂无知识库" : "No knowledge bases",
+    noPapers: isZh ? "未找到论文" : "No papers found",
+    citations: isZh ? "引用" : "Citations",
   };
 
   // Author search handler (Phase 23)
   const handleAuthorSearch = async (searchQuery: string) => {
-    if (searchQuery.length < 3) return;
+    if (searchQuery.length < 3) {
+      setAuthorResults([]);
+      return;
+    }
     setAuthorLoading(true);
     try {
       const response = await searchApi.searchAuthors(searchQuery);
       setAuthorResults(response.data);
-    } catch (error) {
-      console.error('Author search failed:', error);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error?.detail || '作者搜索失败');
+      setAuthorResults([]);
     } finally {
       setAuthorLoading(false);
     }
   };
 
-  // Trigger author search when query changes and author tab is active
+  // Auto-trigger author search when query changes and source is "authors"
+  useEffect(() => {
+    if (activeSource === "authors" && query.length >= 3) {
+      handleAuthorSearch(query);
+    } else if (activeSource === "authors" && query.length < 3) {
+      setAuthorResults([]);
+    }
+  }, [query, activeSource]);
+
+  // Trigger author search when source changes
   const handleSourceChange = (sourceId: string) => {
     setActiveSource(sourceId);
     if (sourceId === "authors" && query.length >= 3) {
@@ -141,37 +171,91 @@ export function Search() {
     { id: "authors", name: t.authors, status: t.statusConn, statusType: "Connected", results: authorResults.length },
   ];
 
-  const handleAddToLibrary = async (result: any) => {
-    // TODO: Backend endpoint for importing external papers without KB context
-    // Currently, backend only has KB-scoped import endpoints:
-    // - /api/v1/knowledge-bases/{kbId}/import-url
-    // - /api/v1/knowledge-bases/{kbId}/import-arxiv
-    // 
-    // For now, show message that user needs to select a KB first
-    toast.error(t.importError + ' (需要选择知识库)');
-    console.error('Import external paper requires KB context - backend endpoint missing');
-    
-    /* Future implementation when backend endpoint exists:
+  // Handle author click - show author's papers in modal
+  const handleAuthorClick = async (author: AuthorSearchResult) => {
     try {
-      await papersApi.createFromExternal({
-        source: result.source,
-        externalId: result.externalId || result.id,
-        title: result.title,
-        authors: result.authors,
-        year: result.year,
-        abstract: result.abstract,
-        pdfUrl: result.pdfUrl,
-      });
-      toast.success(t.importSuccess);
+      setSelectedAuthor(author);
+      setLoadingAuthorPapers(true);
+      setShowAuthorPapersModal(true);
+      
+      const papers = await searchApi.getAuthorPapers(author.authorId, 20, 0);
+      setAuthorPapers(papers.data);
     } catch (error: any) {
-      console.error('Failed to import paper:', error);
-      toast.error(error.response?.data?.error?.detail || t.importError);
+      toast.error(error.response?.data?.error?.detail || '获取作者论文失败');
+      setShowAuthorPapersModal(false);
+    } finally {
+      setLoadingAuthorPapers(false);
     }
-    */
   };
 
+  // Load knowledge bases for import selection
+  const loadKnowledgeBases = async () => {
+    setLoadingKBs(true);
+    try {
+      const response = await kbApi.list({ limit: 100 });
+      setKnowledgeBases(response.data.knowledgeBases || []);
+    } catch (error: any) {
+      toast.error('加载知识库列表失败');
+    } finally {
+      setLoadingKBs(false);
+    }
+  };
+
+  // Handle import paper - show KB selection modal
+  const handleAddToLibrary = async (result: any) => {
+    // Store the paper to import and show KB selection modal
+    setPendingImportPaper(result);
+    setShowKBSelectModal(true);
+    await loadKnowledgeBases();
+  };
+
+  // Import paper to selected KB
+  const handleImportToKB = async (kbId: string) => {
+    if (!pendingImportPaper) return;
+    
+    try {
+      setImportingPaperId(pendingImportPaper.id);
+      
+      // Determine import method based on source
+      let response;
+      if (pendingImportPaper.source === 'arxiv' && pendingImportPaper.externalId) {
+        // Extract arXiv ID from externalId (format: arXiv:XXXX.XXXXX)
+        const arxivId = pendingImportPaper.externalId.replace('arXiv:', '');
+        response = await kbApi.importFromArxiv(kbId, arxivId);
+      } else if (pendingImportPaper.pdfUrl) {
+        response = await kbApi.importFromUrl(kbId, pendingImportPaper.pdfUrl);
+      } else {
+        toast.error('无法导入：缺少 PDF URL 或 arXiv ID');
+        return;
+      }
+      
+      toast.success('论文导入任务已创建');
+      setShowKBSelectModal(false);
+      setPendingImportPaper(null);
+      
+      // Note: Backend import endpoints are stubs, so this will return "to be implemented"
+      // Future: Navigate to read page after import completes
+      // if (response.data.paperId) {
+      //   navigate(`/read/${response.data.paperId}`);
+      // }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error?.detail || '导入失败');
+    } finally {
+      setImportingPaperId(null);
+    }
+  };
+
+  // View paper - navigate to read page if local, show details if external
   const handleViewPaper = (paperId: string) => {
-    console.log('View paper:', paperId);
+    // Navigate to read page
+    navigate(`/read/${paperId}`);
+  };
+
+  // View external paper details (show info, offer import)
+  const handleViewExternalPaper = (result: any) => {
+    // For external papers, we can't view directly
+    // Offer to import instead
+    handleAddToLibrary(result);
   };
 
   return (
@@ -226,13 +310,6 @@ export function Search() {
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="p-4 border-t border-border/50 bg-background/80 backdrop-blur-md">
-          <button className="w-full border border-foreground/20 text-foreground py-2.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] hover:bg-muted transition-colors flex items-center justify-center gap-2 group shadow-sm bg-card">
-            <RefreshCw className="w-3 h-3 group-hover:rotate-180 transition-transform duration-500" />
-            {t.refresh}
-          </button>
         </div>
       </motion.div>
 
@@ -309,7 +386,7 @@ export function Search() {
                         <AuthorResultCard
                           key={author.authorId}
                           author={author}
-                          onClick={(a) => console.log('Selected author:', a)}
+                          onClick={handleAuthorClick}
                         />
                       ))}
                     </div>
@@ -327,7 +404,7 @@ export function Search() {
                     {results.internal.map((r) => (
                       <SearchResultCard
                         key={r.id}
-                        result={{ ...r, source: 'internal' }}
+                        result={{ ...r, source: 'internal', paperId: r.id }}
                         onViewPaper={handleViewPaper}
                       />
                     ))}
@@ -470,6 +547,121 @@ export function Search() {
           </button>
         </div>
       </motion.div>
+
+      {/* Author Papers Modal */}
+      {showAuthorPapersModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card border border-border rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden"
+          >
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <h3 className="font-serif font-bold text-lg">
+                {selectedAuthor?.name} 的论文 ({authorPapers.length})
+              </h3>
+              <button
+                onClick={() => setShowAuthorPapersModal(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto p-6 space-y-3 max-h-[60vh]">
+              {loadingAuthorPapers ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {t.searching}
+                  </div>
+                </div>
+              ) : authorPapers.length > 0 ? (
+                authorPapers.map((paper) => (
+                  <div key={paper.paperId} className="p-4 border border-border/50 rounded-sm hover:border-primary/50 transition-colors">
+                    <h4 className="font-semibold text-sm mb-2">{paper.title}</h4>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+                      {paper.year && <span>{paper.year}</span>}
+                      {paper.citationCount && <span>引用: {paper.citationCount}</span>}
+                    </div>
+                    <button
+                      onClick={() => {
+                        handleAddToLibrary({
+                          id: paper.paperId,
+                          title: paper.title,
+                          year: paper.year,
+                          source: 's2',
+                          externalId: paper.paperId,
+                        });
+                        setShowAuthorPapersModal(false);
+                      }}
+                      className="px-3 py-1 bg-primary text-primary-foreground rounded-sm text-[9px] font-bold uppercase tracking-[0.1em] hover:bg-primary/90 transition-colors"
+                    >
+                      {t.import}
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-sm text-muted-foreground">未找到论文</div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* KB Selection Modal for Import */}
+      {showKBSelectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card border border-border rounded-lg shadow-xl w-full max-w-md"
+          >
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <h3 className="font-serif font-bold text-lg">选择知识库导入</h3>
+              <button
+                onClick={() => {
+                  setShowKBSelectModal(false);
+                  setPendingImportPaper(null);
+                }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              {loadingKBs ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    加载中...
+                  </div>
+                </div>
+              ) : knowledgeBases.length > 0 ? (
+                knowledgeBases.map((kb) => (
+                  <button
+                    key={kb.id}
+                    onClick={() => handleImportToKB(kb.id)}
+                    disabled={importingPaperId !== null}
+                    className={clsx(
+                      "w-full p-4 border border-border/50 rounded-sm hover:border-primary/50 transition-colors text-left",
+                      importingPaperId !== null && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <div className="font-semibold text-sm mb-1">{kb.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {kb.paperCount || 0} 篇论文
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-4">
+                  暂无知识库，请先创建知识库
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

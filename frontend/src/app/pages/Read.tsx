@@ -26,7 +26,7 @@ import * as papersApi from '@/services/papersApi';
 import * as annotationsApi from '@/services/annotationsApi';
 import type { Annotation } from '@/services/annotationsApi';
 import apiClient from '@/utils/apiClient';
-import { API_BASE_URL } from '@/config/api';
+import { API_BASE_URL, API_PREFIX } from '@/config/api';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -50,7 +50,9 @@ export function Read() {
 
   const [paper, setPaper] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
   const [scale, setScale] = useState(1.0);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [rightTab, setRightTab] = useState('annotations');
@@ -76,41 +78,48 @@ export function Read() {
   useEffect(() => {
     async function loadPaper() {
       if (!id) {
-        console.error('No paper ID provided');
+        const errorMsg = isZh ? '未提供论文ID' : 'No paper ID provided';
+        setError(errorMsg);
+        toast.error(errorMsg);
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
+        setError(null);
         const data = await papersApi.get(id);
         setPaper(data);
 
         // Load annotations
         const annotationData = await annotationsApi.list(id);
         setAnnotations(annotationData);
-      } catch (error) {
+      } catch (error: any) {
+        const errorMsg = error?.message || (isZh ? '加载论文失败' : 'Failed to load paper');
         console.error('Failed to load paper:', error);
+        setError(errorMsg);
+        toast.error(errorMsg);
       } finally {
         setLoading(false);
       }
     }
 
     loadPaper();
-  }, [id]);
+  }, [id, isZh]);
 
   // Handle page change from PDF viewer
   const handlePageChange = useCallback(async (page: number) => {
     setCurrentPage(page);
     // Save reading progress
     try {
-      await apiClient.post(`/api/reading-progress/${id}`, {
+      await apiClient.post(`${API_PREFIX}/reading-progress/${id}`, {
         currentPage: page,
       });
-    } catch (error) {
-      console.error('Failed to save reading progress:', error);
+    } catch (error: any) {
+      // Don't block reading, just show a brief warning
+      toast.warning(isZh ? '阅读进度保存失败' : 'Failed to save reading progress');
     }
-  }, [id]);
+  }, [id, isZh]);
 
   const handleAnnotationCreated = async () => {
     if (!id) return;
@@ -118,13 +127,18 @@ export function Read() {
     setAnnotations(annotationData);
   };
 
+  // Handle total pages change from PDF viewer
+  const handleNumPagesChange = useCallback((numPages: number) => {
+    setTotalPages(numPages);
+  }, []);
+
   const handleNotesSave = async (content: string) => {
     if (!id) return;
     try {
       await papersApi.update(id, { readingNotes: content });
       toast.success(isZh ? '笔记已自动保存' : 'Note auto-saved');
-    } catch (error) {
-      console.error('Failed to save notes:', error);
+    } catch (error: any) {
+      toast.error(isZh ? '笔记保存失败' : 'Failed to save notes');
     }
   };
 
@@ -141,12 +155,21 @@ export function Read() {
   if (loading || !paper) {
     return (
       <div className="flex items-center justify-center h-full">
-        {isZh ? '加载中...' : 'Loading...'}
+        {error ? (
+          <div className="text-center">
+            <p className="text-destructive mb-4">{error}</p>
+            <Button onClick={() => navigate('/library')}>
+              {isZh ? '返回论文库' : 'Back to Library'}
+            </Button>
+          </div>
+        ) : (
+          isZh ? '加载中...' : 'Loading...'
+        )}
       </div>
     );
   }
 
-  const pdfUrl = `${API_BASE_URL}/api/papers/${id}/pdf`;
+  const pdfUrl = `${API_BASE_URL}${API_PREFIX}/papers/${id}/pdf`;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -170,7 +193,7 @@ export function Read() {
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-xs min-w-[64px] text-center tabular-nums">
-            {currentPage} / —
+            {currentPage} / {totalPages ?? (isZh ? '加载中' : '...')}
           </span>
           <Button
             variant="ghost"
@@ -277,6 +300,7 @@ export function Read() {
               fileUrl={pdfUrl}
               currentPage={currentPage}
               onPageChange={handlePageChange}
+              onNumPagesChange={handleNumPagesChange}
             />
           </div>
           {/* Thumbnail Strip at bottom */}

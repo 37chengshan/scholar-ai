@@ -154,11 +154,17 @@ export const kbApi = {
     return response.data;
   },
 
-  // === Search & Chat ===
+  // === Search & Query ===
 
-  /** Vector search in KB */
-  search: async (kbId: string, query: string, limit?: number): Promise<ApiResponse<{ results: KBSearchResult[], total: number }>> => {
-    const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/search`, { query, limit });
+  /** Vector search in KB - returns top-K chunks matching query */
+  search: async (kbId: string, query: string, topK?: number): Promise<ApiResponse<{ results: KBSearchResult[], total: number }>> => {
+    const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/search`, { query, topK });
+    return response.data;
+  },
+
+  /** Query KB for Q&A - returns answer with citations */
+  query: async (kbId: string, query: string, topK?: number): Promise<ApiResponse<{ answer: string, citations?: any[], sources?: any[], confidence: number }>> => {
+    const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/query`, { query, topK });
     return response.data;
   },
 };

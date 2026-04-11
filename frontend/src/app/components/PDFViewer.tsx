@@ -25,10 +25,11 @@ interface PDFViewerProps {
   fileUrl: string;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  onNumPagesChange?: (numPages: number) => void;
   initialPage?: number;
 }
 
-export function PDFViewer({ fileUrl, currentPage, onPageChange, initialPage = 1 }: PDFViewerProps) {
+export function PDFViewer({ fileUrl, currentPage, onPageChange, onNumPagesChange, initialPage = 1 }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState(initialPage);
   const [scale, setScale] = useState(1.0);
@@ -39,7 +40,7 @@ export function PDFViewer({ fileUrl, currentPage, onPageChange, initialPage = 1 
     if (currentPage !== undefined && currentPage !== pageNumber && currentPage >= 1 && currentPage <= numPages) {
       setPageNumber(currentPage);
     }
-  }, [currentPage]);
+  }, [currentPage, pageNumber, numPages]);
 
   // Smooth scroll to page when pageNumber changes
   useEffect(() => {
@@ -53,6 +54,7 @@ export function PDFViewer({ fileUrl, currentPage, onPageChange, initialPage = 1 
 
   const onDocumentLoadSuccess = ({ numPages: pages }: { numPages: number }) => {
     setNumPages(pages);
+    onNumPagesChange?.(pages); // Notify parent of total pages
   };
 
   const goToPage = (page: number) => {

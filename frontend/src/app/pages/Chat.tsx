@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus,
@@ -43,6 +44,7 @@ import { SSEEvent } from '@/services/sseService';
 import { API_BASE_URL } from '@/config/api';
 
 export function Chat() {
+  const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [streamingMessage, setStreamingMessage] = useState<string>('');
   const [agentEvents, setAgentEvents] = useState<SSEEvent[]>([]);
@@ -261,11 +263,16 @@ export function Chat() {
     }
   }, [isConnected, disconnect]);
 
-  // Citation click handler — scroll to or highlight citation in CitationsPanel
+  // Citation click handler — navigate to read page with specific page
   const handleCitationClick = useCallback((index: number) => {
-    console.log('Citation clicked:', index);
-    // Future: scroll CitationsPanel to the clicked citation, expand if collapsed
-  }, []);
+    // Get the citation at this index
+    const citation = citations[index];
+    if (citation) {
+      // Navigate to read page with the specific page number
+      const page = citation.page || 1;
+      navigate(`/read/${citation.paper_id}?page=${page}`);
+    }
+  }, [citations, navigate]);
 
   // Send confirmation response (approve/reject) to backend
   const sendConfirmationResponse = useCallback(async (approved: boolean) => {

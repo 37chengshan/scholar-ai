@@ -28,10 +28,8 @@ export function KnowledgeBaseDetail() {
   const [kb, setKB] = useState<KnowledgeBase | null>(null);
   const [loadingKB, setLoadingKB] = useState(true);
 
-  // Q&A State (local messages, chat API handled separately)
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>([
-    { role: "assistant", content: "你好！我可以基于这个知识库回答问题。你想了解什么？" },
-  ]);
+  // Q&A State (messages will be populated by real API)
+  const [messages, setMessages] = useState<{ role: string; content: string; citations?: any[]; isError?: boolean }[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
@@ -67,25 +65,52 @@ export function KnowledgeBaseDetail() {
     setSearchParams({ tab });
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || !kbId) return;
 
-    setMessages([...messages, { role: "user", content: input }]);
+    const userMessage = input.trim();
+    setMessages([...messages, { role: "user", content: userMessage }]);
     setInput("");
     setIsTyping(true);
 
-    // TODO: Implement KB chat API streaming
-    setTimeout(() => {
+    try {
+      // Call real KB query API
+      const response = await kbApi.query(kbId, userMessage);
+      
+      if (response.success && response.data) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: response.data.answer || "抱歉，我无法处理您的请求。",
+            citations: response.data.citations,
+          },
+        ]);
+      } else {
+        // Show error message to user
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "抱歉，问答功能暂未完全实现。请稍后再试。",
+          },
+        ]);
+        toast.error("问答请求失败");
+      }
+    } catch (err: any) {
+      // User-level error feedback
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "根据知识库内容分析，建议进一步探索相关主题。",
+          content: `错误: ${err.message || "网络请求失败"}`,
         },
       ]);
+      toast.error(err.message || "问答失败");
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleSearch = async (e: React.FormEvent) => {

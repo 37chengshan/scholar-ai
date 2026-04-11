@@ -159,10 +159,9 @@ export function KnowledgeBaseList() {
     }
   };
 
-  // Storage stats from API (fallback to placeholder if not available)
-  const storageUsed = "功能开发中";
-  const storageTotal = "";
-  const storagePercent = 0;
+  // Storage stats - placeholder until API endpoint implemented
+  // TODO: Implement GET /api/v1/knowledge-bases/storage-stats
+  const showStorageStats = false; // Disabled until backend endpoint available
 
   return (
     <div className="relative min-h-screen bg-background">
@@ -259,15 +258,17 @@ export function KnowledgeBaseList() {
 </div>
           </div>
           
-          {/* Storage Status — Show placeholder until API implemented */}
+          {/* Storage Status — Disabled until backend endpoint available */}
+          {showStorageStats && (
           <div className="flex items-center gap-3 bg-white border-2 border-zinc-900 px-4 py-3 shadow-[4px_4px_0px_0px_rgba(24,24,27,1)]">
             <HardDrive className="w-5 h-5 text-zinc-900" />
             <div className="flex-1">
               <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                {storageTotal ? `${storageUsed} / ${storageTotal}` : storageUsed}
+                Storage Stats
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Batch action bar */}

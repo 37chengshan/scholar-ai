@@ -736,8 +736,173 @@ async def batch_upload_to_kb(
 
 
 # =============================================================================
-# KB Search & Chat (Stub implementations)
+# KB Search & Query - Real implementations using existing services
 # =============================================================================
+
+
+class KBQueryRequest(BaseModel):
+    """Request for KB Q&A."""
+
+    query: str = Field(..., min_length=1)
+    topK: int = Field(default=10, ge=1, le=50)
+
+
+class KBQueryResponse(BaseModel):
+    """Response for KB Q&A."""
+
+    answer: str
+    citations: Optional[List[dict]] = None
+    sources: Optional[List[dict]] = None
+    confidence: float = 0.0
+
+
+@router.post("/{kb_id}/query", response_model=KBResponse)
+async def kb_query(
+    kb_id: str,
+    request: KBQueryRequest,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Knowledge base Q&A - uses existing RAG service with KB paper filter.
+
+    Per B-02: Real implementation replacing stub.
+    Uses MultimodalSearchService for retrieval + ZhipuLLM for generation.
+    """
+    try:
+        # Verify KB ownership and get papers
+        kb_result = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
+            )
+        )
+        kb = kb_result.scalar_one_or_none()
+
+        if not kb:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Knowledge base not found"),
+            )
+
+        # Get papers in this KB
+        paper_ids_result = await db.execute(
+            select(Paper.id).where(
+                Paper.knowledge_base_id == kb_id, Paper.user_id == user_id
+            )
+        )
+        paper_ids = [row[0] for row in paper_ids_result.fetchall()]
+
+        if not paper_ids:
+            return KBResponse(
+                success=True,
+                data={
+                    "answer": "知识库暂无论文，请先导入论文后再进行问答。",
+                    "citations": [],
+                    "sources": [],
+                    "confidence": 0.0,
+                },
+            )
+
+        # Use existing MultimodalSearchService (per D-15)
+        from app.core.multimodal_search_service import get_multimodal_search_service
+
+        service = get_multimodal_search_service()
+
+        # Execute search with KB paper filter
+        result = await service.search(
+            query=request.query,
+            paper_ids=paper_ids,
+            user_id=user_id,
+            top_k=request.topK,
+            use_reranker=True,
+        )
+
+        # Build context from top results
+        context_chunks = result.get("results", [])[:5]
+        context_text = "\n\n---\n\n".join(
+            [
+                f"[{i + 1}] {chunk.get('content_data', '')}"
+                for i, chunk in enumerate(context_chunks)
+            ]
+        )
+
+        # Use ZhipuAI for answer generation
+        from app.utils.zhipu_client import ZhipuLLMClient
+
+        llm_client = ZhipuLLMClient()
+
+        system_prompt = """You are a helpful research assistant. Answer the user's question based on the provided context from academic papers in the knowledge base.
+
+Instructions:
+1. Provide a clear, accurate answer based on the context
+2. Cite relevant parts using [1], [2], etc.
+3. If the context doesn't contain enough information, say so
+4. Keep the answer concise but comprehensive
+5. Use markdown formatting for better readability"""
+
+        user_message = f"""Context from papers in knowledge base '{kb.name}':
+{context_text}
+
+Question: {request.query}
+
+Please provide a comprehensive answer based on the context above."""
+
+        llm_response = await llm_client.chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            max_tokens=1024,
+            temperature=0.7,
+        )
+
+        # Extract answer
+        if hasattr(llm_response, "choices") and llm_response.choices:
+            answer = llm_response.choices[0].message.content
+        else:
+            answer = "无法生成回答"
+
+        # Format citations/sources
+        citations = []
+        for res in result.get("results", [])[:5]:
+            citations.append(
+                {
+                    "paper_id": res.get("paper_id"),
+                    "chunk_id": res.get("id"),
+                    "content_preview": res.get("content_data", "")[:200],
+                    "score": res.get("score", 0.0),
+                    "page": res.get("page_num"),
+                    "content_type": res.get("content_type"),
+                }
+            )
+
+        # Calculate confidence
+        confidence = 0.0
+        if citations:
+            confidence = min(
+                sum(c.get("score", 0.0) for c in citations[:3]) / len(citations[:3]),
+                1.0,
+            )
+
+        logger.info("KB query executed", kb_id=kb_id, query=request.query[:50])
+
+        return KBResponse(
+            success=True,
+            data={
+                "answer": answer,
+                "citations": citations,
+                "sources": citations,
+                "confidence": confidence,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("KB query error", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"KB query failed: {str(e)}"),
+        )
 
 
 @router.post("/{kb_id}/search", response_model=KBResponse)
@@ -747,29 +912,89 @@ async def kb_vector_search(
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
-    """Vector search within a knowledge base (stub - will use Milvus)."""
-    # Stub - will be implemented in future
-    return KBResponse(
-        success=True,
-        data={
-            "message": "KB search endpoint - to be implemented",
-            "query": request.query,
-        },
-    )
+    """Vector search within a knowledge base - real implementation.
 
+    Per B-02: Real implementation using MultimodalSearchService.
+    Returns top-K chunks matching query, filtered by KB papers.
+    """
+    try:
+        # Verify KB ownership
+        kb_result = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
+            )
+        )
+        kb = kb_result.scalar_one_or_none()
 
-@router.post("/{kb_id}/chat/stream")
-async def kb_chat_stream(
-    kb_id: str,
-    user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db),
-):
-    """SSE streaming for agentic Q&A within KB (stub - will use existing chat logic)."""
-    # Stub - will be implemented in future
-    return {
-        "success": True,
-        "data": {"message": "KB chat stream endpoint - to be implemented"},
-    }
+        if not kb:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Knowledge base not found"),
+            )
+
+        # Get papers in this KB
+        paper_ids_result = await db.execute(
+            select(Paper.id).where(
+                Paper.knowledge_base_id == kb_id, Paper.user_id == user_id
+            )
+        )
+        paper_ids = [row[0] for row in paper_ids_result.fetchall()]
+
+        if not paper_ids:
+            return KBResponse(
+                success=True,
+                data={"results": [], "total": 0, "query": request.query},
+            )
+
+        # Use existing MultimodalSearchService
+        from app.core.multimodal_search_service import get_multimodal_search_service
+
+        service = get_multimodal_search_service()
+
+        # Execute search
+        result = await service.search(
+            query=request.query,
+            paper_ids=paper_ids,
+            user_id=user_id,
+            top_k=request.topK,
+            use_reranker=True,
+        )
+
+        # Format results for KB response
+        results = []
+        for res in result.get("results", []):
+            results.append(
+                {
+                    "id": res.get("id"),
+                    "paperId": res.get("paper_id"),
+                    "content": res.get("content_data", ""),
+                    "section": res.get("section"),
+                    "page": res.get("page_num"),
+                    "score": res.get("score", 0.0),
+                    "contentType": res.get("content_type"),
+                }
+            )
+
+        logger.info(
+            "KB vector search executed",
+            kb_id=kb_id,
+            query=request.query[:50],
+            results_count=len(results),
+        )
+
+        return KBResponse(
+            success=True,
+            data={"results": results, "total": len(results), "query": request.query},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("KB search error", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"KB search failed: {str(e)}"),
+        )
 
 
 __all__ = ["router"]
