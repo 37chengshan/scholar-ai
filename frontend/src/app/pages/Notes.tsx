@@ -294,9 +294,9 @@ export function Notes() {
       </div>
 
       {/* Main Content — Two-panel layout */}
-      <div className="flex h-[calc(100vh-10rem)] max-w-7xl mx-auto px-6">
+      <div className="flex h-[calc(100vh-10rem)]">
         {/* Left Sidebar — Note List */}
-        <div className="w-64 border-r border-zinc-300 bg-zinc-100 flex flex-col">
+        <div className="w-64 border-r border-zinc-300 bg-zinc-100 flex flex-col shrink-0">
           {/* Sidebar Header */}
           <div className="p-3 border-b border-zinc-200 space-y-2">
             <div className="flex items-center justify-between">
@@ -409,9 +409,9 @@ export function Notes() {
         </div>
       </div>
 
-      {/* Right Main — Editor Area */}
-      <div className="flex-1 flex flex-col bg-[#fdfaf6]">
-        {selectedNote ? (
+{/* Right Main — Editor Area */}
+        <div className="flex-1 flex flex-col bg-[#fdfaf6] max-w-7xl mx-auto px-6">
+          {selectedNote ? (
           <>
             {/* Editor Header */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
