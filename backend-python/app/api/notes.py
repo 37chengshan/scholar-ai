@@ -114,6 +114,7 @@ class RegenerateNotesRequest(BaseModel):
 
 class GeneratedNotesResponse(BaseModel):
     """Response wrapper for generated notes."""
+
     success: bool = True
     data: dict
 
@@ -148,10 +149,7 @@ async def create_note(
 
         logger.info("Note created", note_id=note.id, user_id=user_id)
 
-        return NoteResponse(
-            success=True,
-            data=_format_note_response(note)
-        )
+        return NoteResponse(success=True, data=_format_note_response(note))
 
     except Exception as e:
         logger.error("Failed to create note", error=str(e))
@@ -198,7 +196,7 @@ async def list_notes(
         sort_column = getattr(Note, sortBy, Note.created_at)
         query = query.order_by(order_func(sort_column))
 
-# Apply pagination
+        # Apply pagination
         query = query.offset(offset).limit(limit)
 
         result = await db.execute(query)
@@ -211,7 +209,7 @@ async def list_notes(
                 "total": total,
                 "limit": limit,
                 "offset": offset,
-            }
+            },
         )
 
     except Exception as e:
@@ -236,13 +234,10 @@ async def get_note(
         if not note:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Note not found")
+                detail=Errors.not_found("Note not found"),
             )
 
-        return NoteResponse(
-            success=True,
-            data=_format_note_response(note)
-        )
+        return NoteResponse(success=True, data=_format_note_response(note))
 
     except HTTPException:
         raise
@@ -285,15 +280,12 @@ async def update_note(
         if request.paperIds is not None:
             note.paper_ids = request.paperIds
 
-await db.flush()
+        await db.flush()
         await db.refresh(note)
 
         logger.info("Note updated", note_id=note_id, user_id=user_id)
 
-        return NoteResponse(
-            success=True,
-            data=_format_note_response(note)
-        )
+        return NoteResponse(success=True, data=_format_note_response(note))
 
     except HTTPException:
         raise
@@ -350,7 +342,7 @@ async def get_notes_by_paper(
             .order_by(desc(Note.created_at))
         )
 
-result = await db.execute(query)
+        result = await db.execute(query)
         notes = result.scalars().all()
 
         return NotesListResponse(
@@ -358,7 +350,7 @@ result = await db.execute(query)
             data={
                 "notes": [_format_note_response(n) for n in notes],
                 "total": len(notes),
-            }
+            },
         )
 
     except Exception as e:
@@ -499,11 +491,11 @@ async def regenerate_notes(
         await db.flush()
         await db.refresh(paper)
 
-logger.info(
+        logger.info(
             "Notes regenerated",
             paper_id=request.paper_id,
             version=new_version,
-            modification=request.modification_request[:50]
+            modification=request.modification_request[:50],
         )
 
         return GeneratedNotesResponse(
@@ -512,7 +504,7 @@ logger.info(
                 "paperId": request.paper_id,
                 "notes": notes,
                 "version": new_version,
-            }
+            },
         )
 
     except HTTPException:
@@ -558,10 +550,9 @@ async def export_notes(
             "generated_at": paper.updated_at.isoformat() if paper.updated_at else "N/A",
         }
 
-# Generate Markdown with header
+        # Generate Markdown with header
         markdown = notes_generator.export_to_markdown(
-            notes=paper.reading_notes,
-            paper_metadata=paper_metadata
+            notes=paper.reading_notes, paper_metadata=paper_metadata
         )
 
         return {
@@ -571,7 +562,7 @@ async def export_notes(
                 "markdown": markdown,
                 "version": paper.notes_version or 0,
                 "filename": f"{paper_id}_notes.md",
-            }
+            },
         }
 
     except HTTPException:

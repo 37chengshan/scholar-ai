@@ -109,10 +109,7 @@ async def list_projects(
         result = await db.execute(query)
         rows = result.all()
 
-projects = [
-            _format_project_response(row[0], row[1] or 0)
-            for row in rows
-        ]
+        projects = [_format_project_response(row[0], row[1] or 0) for row in rows]
 
         return ProjectListResponse(success=True, data=projects)
 
@@ -358,7 +355,7 @@ async def assign_paper_to_project(
             user_id=user_id,
         )
 
-return {
+        return {
             "success": True,
             "data": {
                 "id": paper.id,

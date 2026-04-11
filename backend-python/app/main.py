@@ -30,6 +30,7 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 from contextlib import asynccontextmanager
+from typing import Optional, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -80,11 +81,71 @@ from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.error_handler import setup_error_handlers
 
 
+# ============================================================================
+# Lazy Initialization Helpers
+# ============================================================================
+
+
+async def get_app_milvus_service(app) -> Optional[Any]:
+    """Get or lazily initialize Milvus service."""
+    if app.state.milvus_service is None:
+        try:
+            logger.info("Initializing Milvus (lazy)...")
+            milvus_service = get_milvus_service()
+            milvus_service.connect()
+            milvus_service.create_collections()
+            app.state.milvus_service = milvus_service
+            logger.info("Milvus initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Milvus: {e}")
+            return None
+    return app.state.milvus_service
+
+
+async def get_app_reranker_service(app) -> Optional[Any]:
+    """Get or lazily initialize ReRanker service."""
+    if app.state.reranker_service is None:
+        try:
+            logger.info("Initializing ReRanker (lazy)...")
+            reranker_service = get_reranker_service()
+            reranker_service.load_model()
+            app.state.reranker_service = reranker_service
+            logger.info("ReRanker initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize ReRanker: {e}")
+            return None
+    return app.state.reranker_service
+
+
+async def get_app_embedding_service(app) -> Optional[Any]:
+    """Get or lazily initialize Embedding service."""
+    if app.state.embedding_service is None:
+        try:
+            logger.info("Initializing Embedding (lazy)...")
+            embedding_service = get_embedding_service()
+            embedding_service.load_model()
+            app.state.embedding_service = embedding_service
+            logger.info("Embedding initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Embedding: {e}")
+            return None
+    return app.state.embedding_service
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动
     setup_logging()
+
+    # Validate production settings
+    try:
+        settings.validate_production_settings()
+        logger.info("✅ Security settings validated")
+    except ValueError as e:
+        logger.error(f"❌ Security validation failed: {e}")
+        raise
+
     logger.info("🤖 ScholarAI AI Service starting...")
     logger.info(f"📚 Log level: {settings.LOG_LEVEL}")
     logger.info(f"🔗 Database: {settings.DATABASE_URL}")
@@ -102,49 +163,13 @@ async def lifespan(app: FastAPI):
     # 2. Neo4j + Redis
     await init_databases()
 
-    # Initialize Milvus
-    try:
-        logger.info("Initializing Milvus...")
-        milvus_service = get_milvus_service()
-        milvus_service.connect()
-        milvus_service.create_collections()
-        app.state.milvus_service = milvus_service
-        logger.info("Milvus initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize Milvus", error=str(e))
-        # Don't fail startup - Milvus is optional for basic functionality
-        app.state.milvus_service = None
-
-    # Initialize ReRanker
-    try:
-        logger.info("Initializing ReRanker...")
-        reranker_service = get_reranker_service()
-        reranker_service.load_model()
-        app.state.reranker_service = reranker_service
-        model_info = reranker_service.get_model_info()
-        logger.info("ReRanker model loaded", model=model_info.get("name", "unknown"))
-    except Exception as e:
-        logger.error("Failed to initialize ReRanker", error=str(e))
-        # Don't fail startup - ReRanker is optional for basic functionality
-        app.state.reranker_service = None
-
-    # Initialize Embedding Service (via factory)
-    try:
-        logger.info("Initializing Embedding Service...")
-        embedding_service = get_embedding_service()
-        embedding_service.load_model()
-        app.state.embedding_service = embedding_service
-        model_info = embedding_service.get_model_info()
-        logger.info(
-            "Embedding model loaded",
-            model=model_info.get("name", "unknown"),
-            type=model_info.get("type", "unknown"),
-            dimension=model_info.get("dimension", "unknown"),
-        )
-    except Exception as e:
-        logger.error("Failed to initialize Embedding Service", error=str(e))
-        # Don't fail startup - Embedding is optional for basic functionality
-        app.state.embedding_service = None
+    # Initialize AI services lazily (defer heavy model loading)
+    # Services will be initialized on first use via app.state getters
+    logger.info("AI services will be initialized on first use (lazy loading)")
+    app.state.milvus_service = None  # Lazy init
+    app.state.reranker_service = None  # Lazy init
+    app.state.embedding_service = None  # Lazy init
+    app.state.ai_services_initialized = False
 
     yield
 

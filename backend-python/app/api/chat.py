@@ -1,9 +1,17 @@
 """Chat API endpoints with SSE streaming.
 
 Provides endpoints for:
-- POST /api/chat/stream: SSE streaming chat with Agent
-- POST /api/chat/confirm: User confirmation for dangerous operations
-- GET /api/sessions/{session_id}/messages: Retrieve chat history
+- POST /api/v1/chat/stream: SSE streaming chat with Agent
+- POST /api/v1/chat/confirm: User confirmation for dangerous operations
+
+Note: Session messages endpoint moved to session.py:
+- GET /api/v1/sessions/{session_id}/messages: Retrieve chat history
+
+Per D-07: API layer handles request validation and response formatting.
+Business logic is delegated to:
+- MessageService: Message persistence
+- ChatOrchestrator: Agent execution and SSE streaming
+- SessionManager: Session CRUD
 
 SSE Event Types:
 - thought: Agent thinking process
@@ -16,38 +24,24 @@ SSE Event Types:
 """
 
 import json
-import time
-import uuid
 import asyncio
-from asyncio import Queue
-from datetime import datetime, timezone
-from typing import AsyncIterator, Any, Dict, List, Optional, Tuple
+from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.agent_runner import AgentRunner
-from app.core.tool_registry import ToolRegistry
-from app.core.safety_layer import SafetyLayer
-from app.core.context_manager import ContextManager
-from app.database import AsyncSessionLocal, get_db
+from app.database import get_db
 from app.config import settings
-from app.utils.agent_init import initialize_agent_components
-from app.models import ChatMessage, Session
 from app.models.chat import (
     ChatStreamRequest,
     ChatConfirmRequest,
-    SSEEvent,
     SSEEventType,
-    ThoughtEventData,
-    ToolCallEventData,
-    ToolResultEventData,
-    ConfirmationRequiredEventData,
-    MessageEventData,
     ErrorEventData,
 )
+from app.services.message_service import message_service
+from app.services.chat_orchestrator import chat_orchestrator
 from app.utils.session_manager import session_manager
 from app.utils.sse_manager import sse_manager
 from app.utils.logger import logger
@@ -57,98 +51,7 @@ from app.utils.problem_detail import Errors
 router = APIRouter()
 
 
-# =============================================================================
-# SSE Helper
-# =============================================================================
-
-
-async def stream_sse_event(event_type: str, data: dict) -> str:
-    """Format SSE event as string.
-
-    Args:
-        event_type: SSE event type (thought, tool_call, message, etc.)
-        data: Event data payload
-
-    Returns:
-        SSE formatted string: "event: {type}\\ndata: {json}\\n\\n"
-    """
-    event_str = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
-    return event_str
-
-
-# =============================================================================
-# Chat Stream Endpoint
-# =============================================================================
-
-
-async def save_message(
-    session_id: str,
-    role: str,
-    content: str,
-    tool_name: Optional[str] = None,
-    tool_params: Optional[Dict] = None,
-) -> str:
-    """Save chat message to PostgreSQL and update session stats.
-
-    Args:
-        session_id: Session UUID
-        role: Message role (user, assistant, tool, system)
-        content: Message content
-        tool_name: Tool name if role=tool
-        tool_params: Tool parameters if role=tool
-
-    Returns:
-        Message UUID
-
-    Raises:
-        Exception: If database insert fails
-    """
-    message_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    async with AsyncSessionLocal() as db:
-        try:
-            # Insert message using ORM
-            message = ChatMessage(
-                id=message_id,
-                session_id=session_id,
-                role=role,
-                content=content,
-                tool_name=tool_name,
-                tool_params=tool_params,
-            )
-            db.add(message)
-
-            # Update session stats using update statement
-            is_tool_call = role == "tool"
-            await db.execute(
-                update(Session)
-                .where(Session.id == session_id)
-                .values(
-                    message_count=Session.message_count + 1,
-                    tool_call_count=Session.tool_call_count + (1 if is_tool_call else 0),
-                    last_activity_at=created_at,
-                )
-            )
-
-            await db.commit()
-
-            logger.debug(
-                "Message saved", message_id=message_id, session_id=session_id, role=role
-            )
-
-            return message_id
-        except Exception:
-            await db.rollback()
-            raise
-
-
-# =============================================================================
-# SSE Helper
-# =============================================================================
-
-
-@router.post("/chat/stream")
+@router.post("/stream")
 async def chat_stream(
     request: ChatStreamRequest, http_request: Request, user_id: str = CurrentUserId
 ):
@@ -156,12 +59,11 @@ async def chat_stream(
     SSE streaming chat with Agent.
 
     Flow:
-    1. Get or create session
-    2. Initialize Agent Runner
-    3. Execute Agent loop with SSE events
-    4. Handle confirmation requests (pause execution)
-    5. Save messages to PostgreSQL after completion
-    6. Send heartbeat every 15s to maintain connection
+    1. Get or create session (SessionManager)
+    2. Save user message (MessageService)
+    3. Execute Agent with SSE streaming (ChatOrchestrator)
+    4. Save tool call and assistant messages (MessageService)
+    5. Handle confirmation requests (pause execution)
 
     SSE Events:
     - event: thought - Agent thinking process
@@ -180,7 +82,6 @@ async def chat_stream(
             message=request.message[:100],
         )
 
-        # Get or create session
         session = None
         if request.session_id:
             session = await session_manager.get_session(request.session_id)
@@ -199,118 +100,47 @@ async def chat_stream(
 
         session_id = session.id
 
-        # Initialize Agent components
-        runner, _, _, _ = initialize_agent_components()
-
-        # Get auto_confirm from context
         auto_confirm = False
         if request.context:
             auto_confirm = request.context.get("auto_confirm", False)
 
-        # SSE event generator with heartbeat and reconnection support
         async def event_generator() -> AsyncIterator[str]:
-            """Generate SSE events from Agent execution with heartbeat."""
+            """Generate SSE events from Agent execution with message persistence."""
             try:
-                # Check for Last-Event-ID header (reconnection)
                 last_event_id = None
                 if "last-event-id" in http_request.headers:
                     last_event_id = http_request.headers["last-event-id"]
 
-                # If reconnecting, replay missed events first
                 if last_event_id:
                     async for replay_event in sse_manager.handle_reconnect(
                         session_id, last_event_id
                     ):
                         yield replay_event
 
-                # Business event generator with real-time SSE streaming
                 async def business_events() -> AsyncIterator[str]:
-                    """Generate business events from Agent execution with real-time streaming."""
-                    # Create event queue for real-time push
-                    event_queue: Queue[Tuple[str, dict]] = Queue()
-
-                    # Save user message before execution
+                    """Generate business events with message persistence."""
                     try:
-                        await save_message(
-                            session_id=session_id, role="user", content=request.message
+                        await message_service.save_message(
+                            session_id=session_id,
+                            role="user",
+                            content=request.message,
                         )
                     except Exception as e:
                         logger.warning("Failed to save user message", error=str(e))
 
-                    # Send initial thought event
-                    yield await stream_sse_event(
-                        SSEEventType.THOUGHT,
-                        ThoughtEventData(
-                            type="thinking", content="Analyzing your request..."
-                        ).model_dump(),
-                    )
-
-                    # Define event callback to push events to queue
-                    async def event_callback(event_type: str, data: Dict[str, Any]):
-                        """Push real-time events to SSE queue."""
-                        await event_queue.put((event_type, data))
-
-                    # Define agent execution task
-                    async def run_agent():
-                        """Execute agent and push completion signal."""
-                        try:
-                            result = await runner.execute(
-                                user_input=request.message,
-                                session_id=session_id,
-                                user_id=user_id,
-                                auto_confirm=auto_confirm,
-                                event_callback=event_callback,  # Real-time callback
-                            )
-
-                            # Push final result signal
-                            await event_queue.put(("agent_complete", result))
-
-                        except Exception as e:
-                            logger.error("Agent execution error", error=str(e))
-                            await event_queue.put(("agent_error", {"error": str(e)}))
-
-                    # Start agent task in parallel
-                    agent_task = asyncio.create_task(run_agent())
-
-                    # Stream events from queue in real-time
-                    while True:
-                        event_type, event_data = await event_queue.get()
-
-                        # Handle real-time events
-                        if event_type == "thought":
-                            yield await stream_sse_event(
-                                SSEEventType.THOUGHT,
-                                ThoughtEventData(
-                                    type="thinking",
-                                    content=event_data.get("content", ""),
-                                ).model_dump(),
-                            )
-
-                        elif event_type == "tool_call":
-                            yield await stream_sse_event(
-                                SSEEventType.TOOL_CALL,
-                                ToolCallEventData(
-                                    type="tool_call",
-                                    tool=event_data.get("tool", "unknown"),
-                                    parameters=event_data.get("parameters", {}),
-                                ).model_dump(),
-                            )
-
-                        elif event_type == "tool_result":
-                            yield await stream_sse_event(
-                                SSEEventType.TOOL_RESULT,
-                                ToolResultEventData(
-                                    type="tool_result",
-                                    tool=event_data.get("tool", "unknown"),
-                                    success=event_data.get("success", False),
-                                    data=event_data.get("data"),
-                                    error=event_data.get("error"),
-                                ).model_dump(),
-                            )
-
-                            # Save tool call message asynchronously
+                    async for event in chat_orchestrator.execute_with_streaming(
+                        user_input=request.message,
+                        session_id=session_id,
+                        user_id=user_id,
+                        auto_confirm=auto_confirm,
+                    ):
+                        if event.startswith("event: tool_result"):
                             try:
-                                await save_message(
+                                data_start = event.find("data: ") + 6
+                                data_json = event[data_start : event.rfind("\n")]
+                                event_data = json.loads(data_json)
+
+                                await message_service.save_message(
                                     session_id=session_id,
                                     role="tool",
                                     content=json.dumps(event_data),
@@ -322,95 +152,24 @@ async def chat_stream(
                                     "Failed to save tool message", error=str(e)
                                 )
 
-                        # Handle agent completion
-                        elif event_type == "agent_complete":
-                            result = event_data
+                        elif event.startswith("event: message"):
+                            try:
+                                data_start = event.find("data: ") + 6
+                                data_json = event[data_start : event.rfind("\n")]
+                                event_data = json.loads(data_json)
 
-                            # Handle confirmation required
-                            if result.get("needs_confirmation"):
-                                confirmation_id = str(uuid.uuid4())
-
-                                yield await stream_sse_event(
-                                    SSEEventType.CONFIRMATION_REQUIRED,
-                                    ConfirmationRequiredEventData(
-                                        type="confirmation_required",
-                                        confirmation_id=confirmation_id,
-                                        message=result.get(
-                                            "message",
-                                            "Agent wants to execute a dangerous operation",
-                                        ),
-                                        tool_name=result.get("tool_name", "unknown"),
-                                        parameters=result.get("tool_parameters", {}),
-                                    ).model_dump(),
+                                await message_service.save_message(
+                                    session_id=session_id,
+                                    role="assistant",
+                                    content=event_data.get("content", ""),
                                 )
-                                break
-
-                            # Handle final message
-                            if result.get("success"):
-                                # Send final message
-                                final_content = result.get("answer", "Task completed")
-                                yield await stream_sse_event(
-                                    SSEEventType.MESSAGE,
-                                    MessageEventData(
-                                        type="message", content=final_content
-                                    ).model_dump(),
+                            except Exception as e:
+                                logger.warning(
+                                    "Failed to save assistant message", error=str(e)
                                 )
 
-                                # Save assistant message
-                                try:
-                                    await save_message(
-                                        session_id=session_id,
-                                        role="assistant",
-                                        content=final_content,
-                                    )
-                                except Exception as e:
-                                    logger.warning(
-                                        "Failed to save assistant message", error=str(e)
-                                    )
+                        yield event
 
-                                # Send done event with token usage
-                                yield await stream_sse_event(
-                                    SSEEventType.DONE,
-                                    {
-                                        "type": "done",
-                                        "content": "[DONE]",
-                                        "tokens_used": result.get("tokens_used", 0),
-                                        "cost": result.get("cost", 0.0),
-                                        "iterations": result.get("iterations", 0),
-                                        "total_time_ms": result.get("total_time_ms", 0),
-                                    },
-                                )
-                            else:
-                                # Error case
-                                yield await stream_sse_event(
-                                    SSEEventType.ERROR,
-                                    ErrorEventData(
-                                        type="error",
-                                        error=result.get("error", "Unknown error"),
-                                        details={
-                                            "iterations": result.get("iterations", 0)
-                                        },
-                                    ).model_dump(),
-                                )
-
-                            break
-
-                        # Handle agent error
-                        elif event_type == "agent_error":
-                            yield await stream_sse_event(
-                                SSEEventType.ERROR,
-                                ErrorEventData(
-                                    type="error",
-                                    error=event_data.get("error", "Unknown error"),
-                                    details=None,
-                                ).model_dump(),
-                            )
-                            break
-
-                    # Ensure agent task completes
-                    await agent_task
-
-                # Stream with heartbeat
                 async for event in sse_manager.stream_with_heartbeat(
                     session_id, business_events()
                 ):
@@ -418,15 +177,13 @@ async def chat_stream(
 
             except Exception as e:
                 logger.error("SSE stream error", error=str(e))
-
-                yield await stream_sse_event(
+                yield await chat_orchestrator.stream_sse_event(
                     SSEEventType.ERROR,
                     ErrorEventData(
                         type="error", error=str(e), details=None
                     ).model_dump(),
                 )
 
-        # Return SSE streaming response
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",
@@ -440,13 +197,10 @@ async def chat_stream(
 
     except Exception as e:
         logger.error("Chat stream initialization error", error=str(e))
-
-        # Capture error message for closure
         error_msg = str(e)
 
-        # Return error as SSE event
         async def error_stream():
-            yield await stream_sse_event(
+            yield await chat_orchestrator.stream_sse_event(
                 SSEEventType.ERROR,
                 ErrorEventData(
                     type="error", error=error_msg, details=None
@@ -465,7 +219,7 @@ async def chat_stream(
 # =============================================================================
 
 
-@router.post("/chat/confirm")
+@router.post("/confirm")
 async def confirm_action(request: ChatConfirmRequest, user_id: str = CurrentUserId):
     """
     User confirmation for dangerous operations.
@@ -543,96 +297,4 @@ async def confirm_action(request: ChatConfirmRequest, user_id: str = CurrentUser
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to process confirmation: {str(e)}"),
-        )
-
-
-# =============================================================================
-# Chat History Endpoint
-# =============================================================================
-
-
-@router.get("/sessions/{session_id}/messages")
-async def get_session_messages(
-    session_id: str,
-    user_id: str = CurrentUserId,
-    limit: int = 50,
-    offset: int = 0,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Retrieve chat history for a session.
-
-    Returns list of messages with:
-    - User messages
-    - Agent responses
-    - Tool call records
-
-    Args:
-        session_id: Session UUID
-        user_id: Authenticated user ID
-        limit: Maximum number of messages (default 50)
-
-    Returns:
-        List of ChatMessage objects
-    """
-    try:
-        # Get session
-        session = await session_manager.get_session(session_id)
-
-        if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found(f"Session {session_id} not found"),
-            )
-
-        # Verify ownership
-        if session.user_id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=Errors.forbidden(
-                    "You don't have permission to access this session"
-                ),
-            )
-
-        # Retrieve messages using SQLAlchemy ORM
-        result = await db.execute(
-            select(ChatMessage)
-            .where(ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
-        messages = result.scalars().all()
-
-        # Convert ORM objects to dict for response
-        message_dicts = [
-            {
-                "id": msg.id,
-                "session_id": msg.session_id,
-                "role": msg.role,
-                "content": msg.content,
-                "tool_name": msg.tool_name,
-                "created_at": msg.created_at.isoformat() if msg.created_at else None,
-            }
-            for msg in messages
-        ]
-
-        return {
-            "success": True,
-            "data": {
-                "session_id": session_id,
-                "messages": message_dicts,
-                "total": len(message_dicts),
-                "limit": limit,
-            },
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Get messages error", error=str(e), session_id=session_id)
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to get messages: {str(e)}"),
         )
