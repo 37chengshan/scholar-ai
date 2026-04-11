@@ -6,7 +6,7 @@ Per 13-03-PLAN D-34-D-36: Verify end-to-end functionality with 1024-dim embeddin
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
-from app.core.rag_service import retrieve_with_reranking
+from app.legacy.rag_service_deprecated import retrieve_with_reranking
 from app.core.milvus_service import get_milvus_service
 from app.core.bge_m3_service import get_bge_m3_service
 from app.core.reranker_service import get_reranker_service

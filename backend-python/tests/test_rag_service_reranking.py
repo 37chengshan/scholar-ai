@@ -8,7 +8,7 @@ Tests the retrieve_with_reranking function which:
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from app.core.rag_service import retrieve_with_reranking
+from app.legacy.rag_service_deprecated import retrieve_with_reranking
 
 
 class TestRerankingIntegration:

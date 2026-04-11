@@ -62,7 +62,29 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "info"
     PORT: int = 8000
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str = "development"  # development | staging | production
+
+    def validate_production_settings(self) -> None:
+        """Validate settings for production environment.
+
+        Raises ValueError if dangerous defaults are used in production.
+        """
+        if self.ENVIRONMENT == "production":
+            errors = []
+
+            if self.JWT_SECRET == "test-secret-key-for-development-only":
+                errors.append(
+                    "JWT_SECRET must not use development default in production"
+                )
+
+            if "*" in self.ALLOWED_HOSTS:
+                errors.append("ALLOWED_HOSTS must not be '*' in production")
+
+            if errors:
+                raise ValueError(
+                    "Production security validation failed:\n"
+                    + "\n".join(f"  - {e}" for e in errors)
+                )
 
     # =========================================================================
     # Database Configuration

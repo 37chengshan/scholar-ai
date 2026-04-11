@@ -60,7 +60,7 @@ class AgenticRetrievalOrchestrator:
         query: str,
         query_type: Optional[QueryType] = None,
         paper_ids: Optional[List[str]] = None,
-        user_id: str = "placeholder-user-id",
+        user_id: str = None,
         top_k_per_subquestion: int = 5,
     ) -> Dict[str, Any]:
         """Execute agentic retrieval with multi-round support.
@@ -69,12 +69,17 @@ class AgenticRetrievalOrchestrator:
             query: Original user query
             query_type: Query type (auto-detected if None)
             paper_ids: List of paper IDs to search
-            user_id: User ID for Milvus filtering (per D-35)
+            user_id: User ID for Milvus filtering (per D-35) - REQUIRED
             top_k_per_subquestion: Number of chunks per sub-question
 
         Returns:
             Dictionary with synthesized answer, sub-questions, sources, and metadata
+
+        Raises:
+            ValueError: If user_id is not provided
         """
+        if user_id is None:
+            raise ValueError("user_id is required for agentic retrieval")
         # Step 1: Decompose query into sub-questions
         logger.info(
             "Starting agentic retrieval",
@@ -118,10 +123,12 @@ class AgenticRetrievalOrchestrator:
                 top_k=top_k_per_subquestion,
             )
 
-            all_results.append({
-                "round": round_num,
-                "results": round_results,
-            })
+            all_results.append(
+                {
+                    "round": round_num,
+                    "results": round_results,
+                }
+            )
 
             rounds_executed = round_num
 
@@ -153,7 +160,10 @@ class AgenticRetrievalOrchestrator:
                 break
 
             # For evolution/cross_paper queries, refine sub-questions based on results
-            if query_type in ("evolution", "cross_paper") and round_num < self.max_rounds:
+            if (
+                query_type in ("evolution", "cross_paper")
+                and round_num < self.max_rounds
+            ):
                 sub_questions = await self._refine_subquestions(
                     sub_questions=sub_questions,
                     results=round_results,
@@ -198,7 +208,7 @@ class AgenticRetrievalOrchestrator:
         self,
         sub_questions: List[Dict[str, Any]],
         paper_ids: List[str],
-        user_id: str = "placeholder-user-id",
+        user_id: str,
         top_k: int = 5,
     ) -> List[Dict[str, Any]]:
         """Execute sub-questions in parallel using asyncio.gather with Milvus.
@@ -206,12 +216,13 @@ class AgenticRetrievalOrchestrator:
         Args:
             sub_questions: List of sub-question dictionaries
             paper_ids: Paper IDs to search
-            user_id: User ID for Milvus filtering (per D-35)
+            user_id: User ID for Milvus filtering - passed from execute_retrieval
             top_k: Number of chunks per sub-question
 
         Returns:
             List of result dictionaries
         """
+
         async def search_single(sub_q: Dict[str, Any]) -> Dict[str, Any]:
             """Search for a single sub-question using MultimodalSearchService."""
             try:
@@ -227,7 +238,7 @@ class AgenticRetrievalOrchestrator:
                     use_reranker=True,
                     content_types=["text"],  # Text-only for sub-questions
                 )
-                
+
                 # Extract chunks from results
                 chunks = result.get("results", [])
 
@@ -267,13 +278,15 @@ class AgenticRetrievalOrchestrator:
         for result in results:
             if isinstance(result, Exception):
                 logger.error("Sub-question task failed", error=str(result))
-                valid_results.append({
-                    "sub_question": "unknown",
-                    "chunks": [],
-                    "summary": f"Task failed: {str(result)}",
-                    "success": False,
-                    "error": str(result),
-                })
+                valid_results.append(
+                    {
+                        "sub_question": "unknown",
+                        "chunks": [],
+                        "summary": f"Task failed: {str(result)}",
+                        "success": False,
+                        "error": str(result),
+                    }
+                )
             else:
                 valid_results.append(result)
 
@@ -344,7 +357,7 @@ class AgenticRetrievalOrchestrator:
                 continue
 
             context_parts.append(
-                f"Sub-question {i+1}: {result.get('sub_question', 'N/A')}\n"
+                f"Sub-question {i + 1}: {result.get('sub_question', 'N/A')}\n"
                 f"Summary: {result.get('summary', 'N/A')[:300]}\n"
                 f"Sources: {len(chunks)} chunks found"
             )
@@ -357,9 +370,9 @@ class AgenticRetrievalOrchestrator:
         # Call LLM for synthesis
         try:
             from app.utils.zhipu_client import get_llm_client
-            
+
             llm_client = get_llm_client()
-            
+
             prompt = f"""Synthesize the following retrieval results into a coherent answer.
 
 Original query: {query}
@@ -377,11 +390,14 @@ Provide a concise synthesis that:
 
             response = await llm_client.chat_completion(
                 messages=[
-                    {"role": "system", "content": "You are a research synthesis assistant."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are a research synthesis assistant.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
-                max_tokens=800
+                max_tokens=800,
             )
 
             return response.choices[0].message.content
@@ -389,10 +405,13 @@ Provide a concise synthesis that:
         except Exception as e:
             logger.error("Synthesis failed", error=str(e))
             # Fallback: return simple concatenation
-            return "\n\n".join([
-                f"{r.get('sub_question')}: {r.get('summary', 'N/A')[:200]}"
-                for r in results if r.get('success', True)
-            ])
+            return "\n\n".join(
+                [
+                    f"{r.get('sub_question')}: {r.get('summary', 'N/A')[:200]}"
+                    for r in results
+                    if r.get("success", True)
+                ]
+            )
 
     async def _final_synthesis(
         self,
@@ -440,9 +459,9 @@ Provide a concise synthesis that:
         # Call LLM for final synthesis
         try:
             from app.utils.zhipu_client import get_llm_client
-            
+
             llm_client = get_llm_client()
-            
+
             if query_type == "evolution":
                 synthesis_instruction = """Provide a timeline-style synthesis showing:
 1. The progression/development across versions
@@ -473,11 +492,14 @@ Format your response with clear sections and bullet points where appropriate."""
 
             response = await llm_client.chat_completion(
                 messages=[
-                    {"role": "system", "content": "You are an expert research synthesis assistant."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are an expert research synthesis assistant.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
-                max_tokens=1500
+                max_tokens=1500,
             )
 
             return response.choices[0].message.content
@@ -512,7 +534,8 @@ Based on {len(all_results)} rounds of retrieval:
         """
         # Identify sub-questions with poor results
         poor_results = [
-            r for r in results
+            r
+            for r in results
             if not r.get("success", True) or len(r.get("chunks", [])) < 2
         ]
 
@@ -527,12 +550,14 @@ Based on {len(all_results)} rounds of retrieval:
             original_q = poor.get("sub_question", "")
 
             # Add alternative formulation
-            refined.append({
-                "question": f"Alternative perspective: {original_q}",
-                "query_type": "single",
-                "target_papers": poor.get("target_papers", []),
-                "rationale": f"Alternative approach to: {original_q}",
-            })
+            refined.append(
+                {
+                    "question": f"Alternative perspective: {original_q}",
+                    "query_type": "single",
+                    "target_papers": poor.get("target_papers", []),
+                    "rationale": f"Alternative approach to: {original_q}",
+                }
+            )
 
         # Limit to reasonable number
         if len(refined) > 7:
@@ -569,7 +594,7 @@ Based on {len(all_results)} rounds of retrieval:
             # Truncate content
             content_preview = content[:150] + "..." if len(content) > 150 else content
             summaries.append(
-                f"[Source {i+1} from {paper_id[:8]}... (score {similarity:.2f})]: {content_preview}"
+                f"[Source {i + 1} from {paper_id[:8]}... (score {similarity:.2f})]: {content_preview}"
             )
 
         return "\n".join(summaries)
@@ -598,14 +623,16 @@ Based on {len(all_results)} rounds of retrieval:
 
                     if chunk_id and chunk_id not in seen_chunks:
                         seen_chunks.add(chunk_id)
-                        sources.append({
-                            "chunk_id": chunk_id,
-                            "paper_id": chunk.get("paper_id"),
-                            "content_preview": chunk.get("content", "")[:300],
-                            "page": chunk.get("page"),
-                            "similarity": chunk.get("similarity"),
-                            "section": chunk.get("section"),
-                        })
+                        sources.append(
+                            {
+                                "chunk_id": chunk_id,
+                                "paper_id": chunk.get("paper_id"),
+                                "content_preview": chunk.get("content", "")[:300],
+                                "page": chunk.get("page"),
+                                "similarity": chunk.get("similarity"),
+                                "section": chunk.get("section"),
+                            }
+                        )
 
         # Sort by similarity
         sources.sort(key=lambda x: x.get("similarity", 0), reverse=True)

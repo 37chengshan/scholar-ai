@@ -623,8 +623,8 @@ class TestPaperQA2Integration:
     @pytest.mark.asyncio
     async def test_pgvector_store_search(self, mock_paper_chunks_db):
         """Should search PGVector store and return chunks."""
-        pytest.importorskip("app.core.rag_service", reason="RAG service not implemented")
-        from app.core.rag_service import PGVectorStore
+        pytest.importorskip("app.legacy.rag_service_deprecated", reason="RAG service not implemented")
+        from app.legacy.rag_service_deprecated import PGVectorStore
 
         mock_conn = AsyncMock()
         mock_conn.fetch.return_value = [
@@ -676,13 +676,13 @@ class TestRAGModelsPhase3:
 
     def test_rag_service_exists(self):
         """RAGService should exist."""
-        pytest.importorskip("app.core.rag_service", reason="RAG service not implemented")
-        from app.core.rag_service import RAGService
+        pytest.importorskip("app.legacy.rag_service_deprecated", reason="RAG service not implemented")
+        from app.legacy.rag_service_deprecated import RAGService
         assert RAGService is not None
 
     def test_pgvector_store_exists(self):
         """PGVectorStore should exist."""
-        pytest.importorskip("app.core.rag_service", reason="RAG service not implemented")
-        from app.core.rag_service import PGVectorStore
+        pytest.importorskip("app.legacy.rag_service_deprecated", reason="RAG service not implemented")
+        from app.legacy.rag_service_deprecated import PGVectorStore
         assert PGVectorStore is not None
 

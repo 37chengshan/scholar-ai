@@ -121,12 +121,24 @@ class RefreshRequest(BaseModel):
 ACCESS_TOKEN_MAX_AGE = 60 * 60  # 1 hour
 REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
 
-COOKIE_SETTINGS = {
-    "httponly": True,
-    "secure": False,  # Set to True in production (HTTPS)
-    "samesite": "lax",
-    "path": "/",
-}
+
+def get_cookie_settings() -> dict:
+    """Get cookie settings based on environment.
+
+    Returns:
+        Cookie settings dict with secure flag based on ENVIRONMENT
+    """
+    from app.config import settings
+
+    return {
+        "httponly": True,
+        "secure": settings.ENVIRONMENT == "production",  # HTTPS required in production
+        "samesite": "lax",
+        "path": "/",
+    }
+
+
+COOKIE_SETTINGS = get_cookie_settings()
 
 
 def _create_error_response(

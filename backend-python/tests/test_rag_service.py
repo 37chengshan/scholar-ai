@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from typing import List, Dict, Any
 
-from app.core.rag_service import retrieve_with_reranking, RAGService
+from app.legacy.rag_service_deprecated import retrieve_with_reranking, RAGService
 
 
 # Fixtures
@@ -226,7 +226,7 @@ class TestRAGServiceDeprecated:
         # The deprecation warning is already emitted on module import
         # This test just verifies the class exists and is marked deprecated
         import warnings
-        from app.core.rag_service import RAGService
+        from app.legacy.rag_service_deprecated import RAGService
 
         # Check that the class docstring contains deprecation notice
         docstring = RAGService.__doc__ or ""
@@ -248,7 +248,7 @@ class TestRAGServiceDeprecated:
 
                     with warnings.catch_warnings(record=True):
                         warnings.simplefilter("always")
-                        from app.core.rag_service import RAGService
+                        from app.legacy.rag_service_deprecated import RAGService
                         service = RAGService()
 
                         result = await service.query(
