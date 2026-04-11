@@ -19,6 +19,10 @@ export function Upload() {
   const { language } = useLanguage();
   const isZh = language === "zh";
   
+  // Feature availability flags - URL/DOI and Zotero not yet supported
+  const [urlUploadDisabled] = useState(true);
+  const [zoteroDisabled] = useState(true);
+  
   const [config, setConfig] = useState({
     parseMeta: true,
     genEmbed: true,
@@ -198,23 +202,29 @@ export function Upload() {
               </button>
               <button 
                 onClick={() => setActiveTab("url")}
+                disabled={urlUploadDisabled}
                 className={clsx(
                   "flex items-center gap-2.5 px-3 py-2 rounded-sm transition-colors group w-full text-left",
+                  urlUploadDisabled ? "opacity-50 cursor-not-allowed" : "",
                   activeTab === "url" ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "hover:bg-card border border-transparent hover:border-border/50 text-foreground/80 hover:text-primary"
                 )}
               >
                 <Link className="w-3.5 h-3.5" />
                 <span className="text-[10px] font-bold uppercase tracking-widest flex-1">{t.urlDoi}</span>
+                {urlUploadDisabled && <span className="text-[8px] text-muted-foreground">({isZh ? "暂不支持" : "Not available"})</span>}
               </button>
               <button 
                 onClick={() => setActiveTab("zotero")}
+                disabled={zoteroDisabled}
                 className={clsx(
                   "flex items-center gap-2.5 px-3 py-2 rounded-sm transition-colors group w-full text-left",
+                  zoteroDisabled ? "opacity-50 cursor-not-allowed" : "",
                   activeTab === "zotero" ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "hover:bg-card border border-transparent hover:border-border/50 text-foreground/80 hover:text-primary"
                 )}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span className="text-[10px] font-bold uppercase tracking-widest flex-1">{t.syncZotero}</span>
+                {zoteroDisabled && <span className="text-[8px] text-muted-foreground">({isZh ? "暂不支持" : "Not available"})</span>}
               </button>
             </div>
           </div>

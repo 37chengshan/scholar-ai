@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, StickyNote, LogOut, Menu } from "lucide-react";
+import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, StickyNote, LogOut, Menu, UploadCloud } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "./landing/Logo";
@@ -9,6 +9,7 @@ import { useState } from "react";
 const navItemsEN = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Overview" },
   { to: "/knowledge-bases", icon: BookOpen, label: "Knowledge" },
+  { to: "/upload", icon: UploadCloud, label: "Upload" },
   { to: "/notes", icon: StickyNote, label: "Notes" },
   { to: "/search", icon: Search, label: "Discovery" },
   { to: "/chat", icon: MessageSquare, label: "Terminal" },
@@ -17,6 +18,7 @@ const navItemsEN = [
 const navItemsZH = [
   { to: "/dashboard", icon: LayoutDashboard, label: "仪表盘" },
   { to: "/knowledge-bases", icon: BookOpen, label: "知识库" },
+  { to: "/upload", icon: UploadCloud, label: "上传" },
   { to: "/notes", icon: StickyNote, label: "笔记" },
   { to: "/search", icon: Search, label: "检索" },
   { to: "/chat", icon: MessageSquare, label: "终端对话" },

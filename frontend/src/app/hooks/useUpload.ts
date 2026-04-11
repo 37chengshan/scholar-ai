@@ -202,7 +202,8 @@ export function useUpload() {
         await new Promise((r) => setTimeout(r, 5000));
         attempts++;
       } catch (error) {
-        console.error('Status poll error:', error);
+        // Status polling error - continue polling silently
+        // User feedback happens on final success/failure/timeout
         // Continue polling even if one request fails
         await new Promise((r) => setTimeout(r, 5000));
         attempts++;
