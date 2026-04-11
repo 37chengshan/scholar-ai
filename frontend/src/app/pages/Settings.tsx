@@ -406,19 +406,24 @@ export function Settings() {
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between items-end">
                 <span className="text-[9px] font-bold uppercase tracking-widest text-foreground">{t.vectorDB}</span>
-                <span className="text-[9px] font-mono text-primary">1.2 GB / 5 GB</span>
+                {/* Note: Backend storage API not implemented - showing placeholder */}
+                <span className="text-[9px] font-mono text-muted-foreground">-- / --</span>
               </div>
               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-primary" style={{ width: "24%" }} />
+                {/* No data - empty progress bar */}
               </div>
 
               <div className="flex justify-between items-end mt-3">
                 <span className="text-[9px] font-bold uppercase tracking-widest text-foreground">{t.blobStorage}</span>
-                <span className="text-[9px] font-mono text-primary">14.5 GB / 50 GB</span>
+                {/* Note: Backend storage API not implemented - showing placeholder */}
+                <span className="text-[9px] font-mono text-muted-foreground">-- / --</span>
               </div>
               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-primary" style={{ width: "29%" }} />
+                {/* No data - empty progress bar */}
               </div>
+            </div>
+            <div className="text-[8px] font-mono text-muted-foreground mt-3 italic">
+              {isZh ? "系统存储监控功能暂未实现" : "System storage monitoring not yet implemented"}
             </div>
           </div>
 

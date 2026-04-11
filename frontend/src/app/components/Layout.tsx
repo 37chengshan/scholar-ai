@@ -26,7 +26,7 @@ const navItemsZH = [
 
 export function Layout() {
   const { language } = useLanguage();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
   const isZh = language === "zh";
   const navItems = isZh ? navItemsZH : navItemsEN;
@@ -106,19 +106,21 @@ export function Layout() {
              onClick={() => navigate('/settings')}
              className="flex items-center gap-3 cursor-pointer group"
            >
-            <div className="hidden lg:flex flex-col text-right justify-center">
-              <span className="text-[8px] font-bold tracking-[0.3em] uppercase text-primary leading-none mb-0.5">
-                {isZh ? "在线" : "Active"}
-              </span>
-              <span className="text-[11px] font-serif font-bold text-foreground leading-none">Dr. Vance</span>
-            </div>
-            <div className="w-7 h-7 rounded-full overflow-hidden border border-primary/20 p-0.5 shadow-sm group-hover:shadow-primary/20 transition-all duration-300">
-              <img
-                src="https://images.unsplash.com/photo-1631885628966-a14af9faaa9b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21hbiUyMHByb2ZpbGUlMjBwb3J0cmFpdHxlbnwxfHx8fDE3NzUxMDc0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080"
-                alt="Profile"
-                className="w-full h-full rounded-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
-              />
-            </div>
+<div className="hidden lg:flex flex-col text-right justify-center">
+               <span className="text-[8px] font-bold tracking-[0.3em] uppercase text-primary leading-none mb-0.5">
+                 {isZh ? "在线" : "Active"}
+               </span>
+               <span className="text-[11px] font-serif font-bold text-foreground leading-none">
+                 {user?.name || "用户"}
+               </span>
+             </div>
+             <div className="w-7 h-7 rounded-full overflow-hidden border border-primary/20 p-0.5 shadow-sm group-hover:shadow-primary/20 transition-all duration-300">
+               <img
+                 src={user?.avatar || "/default-avatar.png"}
+                 alt={user?.name || "User"}
+                 className="w-full h-full rounded-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
+               />
+             </div>
           </div>
 
           {/* Logout Button */}
@@ -181,29 +183,31 @@ export function Layout() {
               ))}
             </nav>
 
-            {/* User Profile */}
-            <div className="p-4 border-t border-[#f4ece1]">
-              <div
-                onClick={() => {
-                  handleNavClick('/settings');
-                }}
-                className="flex items-center gap-3 cursor-pointer hover:bg-muted p-2 rounded-sm"
-              >
-                <div className="w-8 h-8 rounded-full overflow-hidden border border-[#d35400]/20">
-                  <img
-                    src="https://images.unsplash.com/photo-1631885628966-a14af9faaa9b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21hbiUyMHByb2ZpbGUlMjBwb3J0cmFpdHxlbnwxfHx8fDE3NzUxMDc0OTl8MA&ixlib=rb-4.1.0&q=80&w=1080"
-                    alt="Profile"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-semibold">Dr. Vance</div>
-                  <div className="text-xs text-muted-foreground">
-                    {isZh ? "查看个人设置" : "View Settings"}
-                  </div>
-                </div>
-              </div>
-            </div>
+{/* User Profile */}
+             <div className="p-4 border-t border-[#f4ece1]">
+               <div
+                 onClick={() => {
+                   handleNavClick('/settings');
+                 }}
+                 className="flex items-center gap-3 cursor-pointer hover:bg-muted p-2 rounded-sm"
+               >
+                 <div className="w-8 h-8 rounded-full overflow-hidden border border-[#d35400]/20">
+                   <img
+                     src={user?.avatar || "/default-avatar.png"}
+                     alt={user?.name || "User"}
+                     className="w-full h-full object-cover"
+                   />
+                 </div>
+                 <div className="flex-1">
+                   <div className="text-sm font-semibold">
+                     {user?.name || "用户"}
+                   </div>
+                   <div className="text-xs text-muted-foreground">
+                     {isZh ? "查看个人设置" : "View Settings"}
+                   </div>
+                 </div>
+               </div>
+             </div>
           </div>
         </SheetContent>
       </Sheet>
