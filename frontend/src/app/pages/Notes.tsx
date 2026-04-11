@@ -418,7 +418,6 @@ export function Notes() {
             </div>
           )}
         </div>
-      </div>
 
       {/* Right Main — Editor Area */}
       <div className="flex-1 flex flex-col bg-[#fdfaf6]">
@@ -460,8 +459,9 @@ export function Notes() {
               新建笔记
             </Button>
           </div>
-        )}
+)}
       </div>
+    </div>
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteNoteId} onOpenChange={(open) => !open && setDeleteNoteId(null)}>
