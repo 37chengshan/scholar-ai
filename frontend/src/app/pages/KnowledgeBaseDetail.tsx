@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router";
 import {
   ArrowLeft,
   Search,
   UploadCloud,
-  Link as LinkIcon,
   FileText,
   MessageSquare,
   Send,
@@ -15,41 +14,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
 import { PaperTexture } from "../components/PaperTexture";
-
-// Mock Data
-const MOCK_MESSAGES = [
-  { role: "assistant", content: "你好！我可以基于这个知识库回答问题。你想了解什么？" },
-];
-
-const MOCK_RESULTS = [
-  {
-    id: 1,
-    score: 0.92,
-    file: "architecture_guidelines_v2.pdf",
-    content: "应用程序的核心基础依赖于事件驱动架构，强调松耦合和异步通信...",
-  },
-  {
-    id: 2,
-    score: 0.85,
-    file: "system_design_doc.docx",
-    content: "设计微服务时，每个服务必须拥有自己的数据并避免共享数据库。优先使用基于 API 的通信或消息队列...",
-  },
-  {
-    id: 3,
-    score: 0.78,
-    file: "https://wiki.internal/best-practices",
-    content: "服务到服务的调用应始终包含适当的超时，并实施断路器模式以防止级联故障...",
-  },
-];
-
-const MOCK_KB = {
-  id: "kb-001",
-  name: "大语言模型对齐研究",
-  embeddingModel: "BGE-M3",
-  parsingEngine: "Docling",
-  fileCount: 42,
-  chunkCount: 1045,
-};
+import { kbApi, KnowledgeBase, KBSearchResult } from "@/services/kbApi";
+import { toast } from "sonner";
 
 export function KnowledgeBaseDetail() {
   const navigate = useNavigate();
@@ -58,15 +24,42 @@ export function KnowledgeBaseDetail() {
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "retrieval");
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  // Q&A State
-  const [messages, setMessages] = useState(MOCK_MESSAGES);
+  // KB State
+  const [kb, setKB] = useState<KnowledgeBase | null>(null);
+  const [loadingKB, setLoadingKB] = useState(true);
+
+  // Q&A State (local messages, chat API handled separately)
+  const [messages, setMessages] = useState<{ role: string; content: string }[]>([
+    { role: "assistant", content: "你好！我可以基于这个知识库回答问题。你想了解什么？" },
+  ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
   // Retrieval State
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [results, setResults] = useState<typeof MOCK_RESULTS | null>(null);
+  const [results, setResults] = useState<KBSearchResult[] | null>(null);
+
+  // Fetch KB on mount
+  useEffect(() => {
+    if (kbId) {
+      setLoadingKB(true);
+      kbApi.get(kbId)
+        .then(res => {
+          if (res.success && res.data) {
+            setKB(res.data);
+          } else {
+            toast.error('获取知识库详情失败');
+          }
+        })
+        .catch(err => {
+          toast.error(err.message || '网络错误');
+        })
+        .finally(() => {
+          setLoadingKB(false);
+        });
+    }
+  }, [kbId]);
 
   // Sync tab with URL
   const handleTabChange = (tab: string) => {
@@ -82,28 +75,67 @@ export function KnowledgeBaseDetail() {
     setInput("");
     setIsTyping(true);
 
+    // TODO: Implement KB chat API streaming
     setTimeout(() => {
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "根据内部文档，你应该实施断路器模式。它可以防止级联故障，提高整体系统韧性，正如我们的架构指南中所述。",
+          content: "根据知识库内容分析，建议进一步探索相关主题。",
         },
       ]);
       setIsTyping(false);
     }, 1500);
   };
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim() || !kbId) return;
 
     setIsSearching(true);
-    setTimeout(() => {
-      setResults(MOCK_RESULTS);
+    try {
+      const res = await kbApi.search(kbId, searchQuery);
+      if (res.success && res.data) {
+        setResults(res.data.results);
+      } else {
+        toast.error('搜索失败');
+      }
+    } catch (err: any) {
+      toast.error(err.message || '搜索失败');
+    } finally {
       setIsSearching(false);
-    }, 800);
+    }
   };
+
+  // Loading state
+  if (loadingKB) {
+    return (
+      <div className="relative min-h-screen bg-background">
+        <PaperTexture />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
+  // Error state (KB not found)
+  if (!kb) {
+    return (
+      <div className="relative min-h-screen bg-background">
+        <PaperTexture />
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+          <div className="text-zinc-500 font-medium">知识库不存在或已删除</div>
+          <button
+            onClick={() => navigate("/knowledge-bases")}
+            className="bg-zinc-900 hover:bg-primary text-white px-6 py-3 font-bold uppercase tracking-wide"
+          >
+            返回列表
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-background">
@@ -125,7 +157,7 @@ export function KnowledgeBaseDetail() {
             </Link>
             <div className="flex items-center gap-4">
               <h1 className="text-4xl md:text-5xl font-black font-serif uppercase tracking-tight text-zinc-900 leading-none">
-                {MOCK_KB.name.split(" ")[0]} <span className="text-primary">{MOCK_KB.name.split(" ").slice(1).join(" ") || MOCK_KB.name}</span>
+                {kb.name.split(" ")[0]} <span className="text-primary">{kb.name.split(" ").slice(1).join(" ") || kb.name}</span>
               </h1>
               <span className="bg-zinc-100 border border-zinc-300 px-3 py-1 font-mono text-sm text-zinc-600 shadow-[2px_2px_0px_0px_rgba(24,24,27,0.2)]">
                 {kbId}
@@ -133,11 +165,11 @@ export function KnowledgeBaseDetail() {
             </div>
             <div className="flex flex-wrap gap-4 text-sm font-bold uppercase tracking-wider text-zinc-500 pt-2">
               <span className="flex items-center gap-2">
-                <Database className="w-4 h-4" /> {MOCK_KB.embeddingModel} Model
+                <Database className="w-4 h-4" /> {kb.embeddingModel} Model
               </span>
-              <span className="flex items-center gap-2 text-primary">★ {MOCK_KB.parsingEngine} Engine</span>
-              <span>{MOCK_KB.fileCount} Files</span>
-              <span>{MOCK_KB.chunkCount} Chunks</span>
+              <span className="flex items-center gap-2 text-primary">★ {kb.parseEngine} Engine</span>
+              <span>{kb.paperCount} Papers</span>
+              <span>{kb.chunkCount} Chunks</span>
             </div>
           </div>
 
@@ -176,7 +208,7 @@ export function KnowledgeBaseDetail() {
               }`}
             >
               <span className="flex items-center justify-center gap-2">
-                <MessageSquare className="w-4 h-4" /> Agentic Q&A
+                <MessageSquare className="w-4 w-4" /> Agentic Q&A
               </span>
             </TabsTrigger>
           </TabsList>
@@ -230,7 +262,7 @@ export function KnowledgeBaseDetail() {
                     </p>
                     <div className="mt-6 flex items-center gap-2 text-sm font-medium text-zinc-500 bg-zinc-50 p-3 border border-zinc-100">
                       <FileText className="w-4 h-4 text-zinc-400" />
-                      <span className="truncate">{result.file}</span>
+                      <span className="truncate">{result.paperId}</span>
                     </div>
                   </div>
                 ))}
@@ -301,8 +333,8 @@ export function KnowledgeBaseDetail() {
       <ImportKnowledgeDialog
         open={isImportModalOpen}
         onOpenChange={setIsImportModalOpen}
-        knowledgeBaseId={MOCK_KB.id}
-        knowledgeBaseName={MOCK_KB.name}
+        knowledgeBaseId={kb.id}
+        knowledgeBaseName={kb.name}
       />
     </div>
   );
