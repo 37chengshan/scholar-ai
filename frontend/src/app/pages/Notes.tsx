@@ -279,7 +279,7 @@ export function Notes() {
     <div className="relative min-h-screen bg-background">
       {/* Magazine Toolbar — Masthead Header */}
       <div className="magazine-toolbar sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-5">
+        <div className="px-6 py-5">
           <div className="flex items-end justify-between">
             <div>
               <h1 className="font-serif text-3xl font-bold text-foreground tracking-tight">
