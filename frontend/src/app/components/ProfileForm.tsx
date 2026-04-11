@@ -18,7 +18,7 @@ export function ProfileForm() {
   const [profile, setProfile] = useState<{
     name?: string;
     email?: string;
-    avatar?: string;
+    avatar?: string | null;
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

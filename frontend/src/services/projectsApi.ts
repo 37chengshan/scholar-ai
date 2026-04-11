@@ -26,7 +26,7 @@ export interface Project {
 /**
  * Get user's projects
  *
- * GET /api/projects
+ * GET /api/v1/projects
  * Returns list of user's projects with paper counts
  *
  * @returns Projects list
@@ -35,7 +35,7 @@ export async function list(): Promise<Project[]> {
   const response = await apiClient.get<{
     success: boolean;
     data: Project[];
-  }>('/api/projects');
+  }>('/api/v1/projects');
 
   return response.data.data;
 }
@@ -43,7 +43,7 @@ export async function list(): Promise<Project[]> {
 /**
  * Create new project
  *
- * POST /api/projects
+ * POST /api/v1/projects
  * Creates a new project with name and optional color
  *
  * @param name - Project name
@@ -54,7 +54,7 @@ export async function create(name: string, color?: string): Promise<Project> {
   const response = await apiClient.post<{
     success: boolean;
     data: Project;
-  }>('/api/projects', {
+  }>('/api/v1/projects', {
     name,
     color,
   });
@@ -65,7 +65,7 @@ export async function create(name: string, color?: string): Promise<Project> {
 /**
  * Update project
  *
- * PATCH /api/projects/:id
+ * PATCH /api/v1/projects/:id
  * Updates project name or color
  *
  * @param id - Project ID
@@ -76,7 +76,7 @@ export async function update(id: string, data: { name?: string; color?: string }
   const response = await apiClient.patch<{
     success: boolean;
     data: Project;
-  }>(`/api/projects/${id}`, data);
+  }>(`/api/v1/projects/${id}`, data);
 
   return response.data.data;
 }
@@ -84,19 +84,19 @@ export async function update(id: string, data: { name?: string; color?: string }
 /**
  * Delete project
  *
- * DELETE /api/projects/:id
+ * DELETE /api/v1/projects/:id
  * Removes project (papers remain, projectId set to null)
  *
  * @param id - Project ID
  */
 export async function deleteProject(id: string): Promise<void> {
-  await apiClient.delete(`/api/projects/${id}`);
+  await apiClient.delete(`/api/v1/projects/${id}`);
 }
 
 /**
  * Assign paper to project
  *
- * PATCH /api/projects/paper/:paperId
+ * PATCH /api/v1/projects/paper/:paperId
  * Sets paper's projectId (or null to remove)
  *
  * @param paperId - Paper ID
@@ -115,7 +115,7 @@ export async function assignPaper(paperId: string, projectId: string | null): Pr
       title: string;
       projectId: string | null;
     };
-  }>(`/api/projects/paper/${paperId}`, {
+  }>(`/api/v1/projects/paper/${paperId}`, {
     projectId,
   });
 

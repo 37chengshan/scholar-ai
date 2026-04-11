@@ -363,7 +363,7 @@ export function NoteList({
                               {note.papers && note.papers.length > 0 && (
                                 <DropdownMenuItem onClick={(e) => {
                                   e.stopPropagation();
-                                  handlePaperClick(note.papers[0].id, e);
+                                  handlePaperClick(note.papers![0].id, e);
                                 }}>
                                   <ExternalLink className="w-3.5 h-3.5 mr-2" />
                                   {t.openPaper}

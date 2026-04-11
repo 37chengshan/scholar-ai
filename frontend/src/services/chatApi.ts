@@ -15,7 +15,7 @@ import type { Session, Message } from '@/types';
 /**
  * Create new chat session
  *
- * POST /api/sessions
+ * POST /api/v1/sessions
  * Creates a new conversation session
  *
  * @returns Created session
@@ -24,7 +24,7 @@ export async function createSession(): Promise<Session> {
   const response = await apiClient.post<{
     success: boolean;
     data: Session;
-  }>('/api/sessions');
+  }>('/api/v1/sessions');
 
   return response.data.data;
 }
@@ -32,7 +32,7 @@ export async function createSession(): Promise<Session> {
 /**
  * Get user's chat sessions
  *
- * GET /api/sessions
+ * GET /api/v1/sessions
  * Returns all user's sessions (active + expired)
  *
  * @returns Sessions list
@@ -41,7 +41,7 @@ export async function getSessions(): Promise<Session[]> {
   const response = await apiClient.get<{
     success: boolean;
     data: Session[];
-  }>('/api/sessions');
+  }>('/api/v1/sessions');
 
   return response.data.data;
 }
@@ -49,7 +49,7 @@ export async function getSessions(): Promise<Session[]> {
 /**
  * Get session messages
  *
- * GET /api/sessions/:id/messages
+ * GET /api/v1/sessions/:id/messages
  * Returns all messages in a session
  *
  * @param sessionId - Session ID
@@ -59,7 +59,7 @@ export async function getMessages(sessionId: string): Promise<Message[]> {
   const response = await apiClient.get<{
     success: boolean;
     data: Message[];
-  }>(`/api/sessions/${sessionId}/messages`);
+  }>(`/api/v1/sessions/${sessionId}/messages`);
 
   return response.data.data;
 }
@@ -67,7 +67,7 @@ export async function getMessages(sessionId: string): Promise<Message[]> {
 /**
  * Send message to session
  *
- * POST /api/sessions/:id/messages
+ * POST /api/v1/sessions/:id/messages
  * Creates user message and triggers AI response
  *
  * Note: Phase 15 will implement SSE streaming for real-time responses
@@ -83,7 +83,7 @@ export async function sendMessage(
   const response = await apiClient.post<{
     success: boolean;
     data: Message;
-  }>(`/api/sessions/${sessionId}/messages`, {
+  }>(`/api/v1/sessions/${sessionId}/messages`, {
     content,
   });
 
@@ -93,19 +93,19 @@ export async function sendMessage(
 /**
  * Delete session
  *
- * DELETE /api/sessions/:id
+ * DELETE /api/v1/sessions/:id
  * Removes session and all messages
  *
  * @param sessionId - Session ID
  */
 export async function deleteSession(sessionId: string): Promise<void> {
-  await apiClient.delete(`/api/sessions/${sessionId}`);
+  await apiClient.delete(`/api/v1/sessions/${sessionId}`);
 }
 
 /**
  * Update session title
  *
- * PATCH /api/sessions/:id
+ * PATCH /api/v1/sessions/:id
  * Updates session metadata (e.g., title)
  *
  * @param sessionId - Session ID
@@ -119,7 +119,7 @@ export async function updateSession(
   const response = await apiClient.patch<{
     success: boolean;
     data: Session;
-  }>(`/api/sessions/${sessionId}`, {
+  }>(`/api/v1/sessions/${sessionId}`, {
     title,
   });
 

@@ -13,7 +13,7 @@ import type { QueryParams, QueryResult } from '@/types';
 /**
  * Submit RAG query
  *
- * POST /api/rag/query
+ * POST /api/v1/rag/query
  * Searches papers and generates AI answer with citations
  *
  * @param params - Query parameters
@@ -23,7 +23,7 @@ export async function query(params: QueryParams): Promise<QueryResult> {
   const response = await apiClient.post<{
     success: boolean;
     data: QueryResult;
-  }>('/api/rag/query', {
+  }>('/api/v1/rag/query', {
     query: params.query,
     paperIds: params.paperIds,
     topK: params.topK || 5,
@@ -36,7 +36,7 @@ export async function query(params: QueryParams): Promise<QueryResult> {
 /**
  * Query single paper
  *
- * POST /api/rag/query (with paperIds=[singleId])
+ * POST /api/v1/rag/query (with paperIds=[singleId])
  * Searches within a single paper
  *
  * @param paperId - Paper ID
@@ -46,11 +46,11 @@ export async function query(params: QueryParams): Promise<QueryResult> {
  */
 export async function queryPaper(
   paperId: string,
-  query: string,
+  queryText: string,
   topK?: number
 ): Promise<QueryResult> {
   return query({
-    query,
+    query: queryText,
     paperIds: [paperId],
     topK: topK || 5,
     queryType: 'single',
@@ -60,7 +60,7 @@ export async function queryPaper(
 /**
  * Cross-paper comparison query
  *
- * POST /api/rag/query (with queryType='cross_paper')
+ * POST /api/v1/rag/query (with queryType='cross_paper')
  * Compares findings across multiple papers
  *
  * @param paperIds - Array of paper IDs
@@ -69,10 +69,10 @@ export async function queryPaper(
  */
 export async function crossPaperQuery(
   paperIds: string[],
-  query: string
+  queryText: string
 ): Promise<QueryResult> {
   return query({
-    query,
+    query: queryText,
     paperIds,
     topK: 10,
     queryType: 'cross_paper',
@@ -82,7 +82,7 @@ export async function crossPaperQuery(
 /**
  * Research evolution query
  *
- * POST /api/rag/query (with queryType='evolution')
+ * POST /api/v1/rag/query (with queryType='evolution')
  * Traces research evolution across papers
  *
  * @param query - Evolution query (e.g., "How has X evolved?")
@@ -90,11 +90,11 @@ export async function crossPaperQuery(
  * @returns Query result with evolution timeline
  */
 export async function evolutionQuery(
-  query: string,
+  queryText: string,
   paperIds?: string[]
 ): Promise<QueryResult> {
   return query({
-    query,
+    query: queryText,
     paperIds,
     topK: 15,
     queryType: 'evolution',

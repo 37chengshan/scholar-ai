@@ -32,7 +32,7 @@ export async function login(email: string, password: string): Promise<LoginRespo
   formData.append('username', email);
   formData.append('password', password);
 
-  const response = await apiClient.post<LoginResponse>('/api/auth/login', formData, {
+  const response = await apiClient.post<LoginResponse>('/api/v1/auth/login', formData, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
@@ -48,7 +48,7 @@ export async function login(email: string, password: string): Promise<LoginRespo
  * Backend clears cookies and invalidates tokens
  */
 export async function logout(): Promise<void> {
-  await apiClient.post('/api/auth/logout');
+  await apiClient.post('/api/v1/auth/logout');
 }
 
 /**
@@ -61,7 +61,7 @@ export async function logout(): Promise<void> {
  * Manual calls are rarely needed.
  */
 export async function refresh(): Promise<void> {
-  await apiClient.post('/api/auth/refresh');
+  await apiClient.post('/api/v1/auth/refresh');
 }
 
 /**
@@ -76,7 +76,7 @@ export async function me(): Promise<User> {
   const response = await apiClient.get<{
     success: boolean;
     data: User;
-  }>('/api/auth/me');
+  }>('/api/v1/auth/me');
 
   return response.data.data;
 }
@@ -99,7 +99,7 @@ export async function register(
   const response = await apiClient.post<{
     success: boolean;
     data: User;
-  }>('/api/auth/register', {
+  }>('/api/v1/auth/register', {
     email,
     password,
     name,
@@ -117,7 +117,7 @@ export async function register(
  * @param email - User email
  */
 export async function forgotPassword(email: string): Promise<void> {
-  await apiClient.post('/api/auth/forgot-password', { email });
+  await apiClient.post('/api/v1/auth/forgot-password', { email });
 }
 
 /**
@@ -130,7 +130,7 @@ export async function forgotPassword(email: string): Promise<void> {
  * @param password - New password (min 8 chars)
  */
 export async function resetPassword(token: string, password: string): Promise<void> {
-  await apiClient.post('/api/auth/reset-password', {
+  await apiClient.post('/api/v1/auth/reset-password', {
     token,
     password,
   });

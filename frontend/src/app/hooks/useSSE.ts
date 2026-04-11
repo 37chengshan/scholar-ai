@@ -66,8 +66,8 @@ interface UseSSEReturn {
   citations: PaperCitation[];
   /** Token usage for current message */
   currentMessageTokens: TokenUsage | null;
-  /** Connect to SSE endpoint */
-  connect: (url: string) => void;
+  /** Connect to SSE endpoint with POST body */
+  connect: (url: string, body?: Record<string, unknown>) => void;
   /** Disconnect from SSE endpoint */
   disconnect: () => void;
   /** Clear all messages */
@@ -105,11 +105,12 @@ export function useSSE(): UseSSEReturn {
   const toolCallsRef = useRef<ToolCall[]>([]);
 
   /**
-   * Connect to SSE endpoint
+   * Connect to SSE endpoint using POST
    *
    * @param url - SSE endpoint URL
+   * @param body - POST body (message, session_id, etc.)
    */
-  const connect = useCallback((url: string) => {
+  const connect = useCallback((url: string, body?: Record<string, unknown>) => {
     // Reset state
     setIsConnected(true);
     setError(null);
@@ -119,7 +120,7 @@ export function useSSE(): UseSSEReturn {
     setTotalTimeMs(0);
     accumulatedContent.current = '';
 
-    // Reset tool-specific state (new for Phase 28-03)
+    // Reset tool-specific state
     setToolCalls([]);
     toolCallsRef.current = [];
     setConfirmation(null);
@@ -136,7 +137,7 @@ export function useSSE(): UseSSEReturn {
           accumulatedContent.current += event.content;
         }
 
-        // Handle tool_call events — create ToolCall entry with running status
+        // Handle tool_call events
         if (event.type === 'tool_call') {
           const toolCall: ToolCall = {
             id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -149,11 +150,10 @@ export function useSSE(): UseSSEReturn {
           setToolCalls(toolCallsRef.current);
         }
 
-        // Handle tool_result events — update matching ToolCall with result and duration
+        // Handle tool_result events
         if (event.type === 'tool_result') {
           const toolName = event.tool || 'unknown';
           const toolCallsCopy = [...toolCallsRef.current];
-          // Find the last running tool call with matching name
           for (let i = toolCallsCopy.length - 1; i >= 0; i--) {
             const tc = toolCallsCopy[i];
             if (tc.tool === toolName && tc.status === 'running') {
@@ -176,7 +176,7 @@ export function useSSE(): UseSSEReturn {
           });
         }
 
-        // Handle citation events — Option A: Dedicated citation event
+        // Handle citation events
         if (event.type === 'citation' || event.event === 'citation') {
           const citationData = event.content || event.data;
           if (citationData && Array.isArray(citationData)) {
@@ -207,13 +207,11 @@ export function useSSE(): UseSSEReturn {
           setCost(data.cost || 0);
           setTotalTimeMs(data.total_time_ms || 0);
 
-          // Set per-message token usage (new for Phase 28-03)
           setCurrentMessageTokens({
             tokensUsed: data.tokens_used || 0,
             cost: data.cost || 0,
           });
 
-          // Option B: Citations in done event (fallback if no dedicated citation event)
           if (data.citations && Array.isArray(data.citations)) {
             const citations: PaperCitation[] = data.citations.map((c: any) => ({
               paper_id: c.paper_id || c.id || '',
@@ -231,7 +229,7 @@ export function useSSE(): UseSSEReturn {
           }
         }
       },
-    });
+    }, body);
   }, []);
 
   /**

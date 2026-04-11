@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { clsx } from "clsx";
-import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Calendar, Tag, ChevronLeft, ChevronRight, Plus, X, Trash2, CheckSquare, Square, Grid, List, StickyNote } from "lucide-react";
+import { FileText, Folder, Star, Filter, Search, Clock, SortDesc, Tag, Plus, X, Trash2, CheckSquare, Square, Grid, List, StickyNote } from "lucide-react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
-import { Badge } from "../components/ui/badge";
 import { usePapers } from "../../hooks/usePapers";
 import { useProjects } from "../../hooks/useProjects";
 import { useNotes, useCreateNote, useUpdateNote, useDeleteNote } from "../../hooks/useNotes";
+import { useUrlState, useUrlStateOptional } from "../../hooks/useUrlState";
 import * as papersApi from "../../services/papersApi";
 import type { Note } from "../../services/notesApi";
 import { toast } from "sonner";
@@ -49,11 +49,21 @@ export function Library() {
   const isZh = language === "zh";
   const navigate = useNavigate();
 
-  // Search state with debounce
-  const [searchQuery, setSearchQuery] = useState("");
+  // URL-synchronized state (persisted across refresh/navigation)
+  const [searchQuery, setSearchQuery] = useUrlState<string>('search', '');
+  const [compactMode, setCompactMode] = useUrlState<boolean>('compact', true);
+  const [libraryView, setLibraryView] = useUrlState<'papers' | 'notes'>('view', 'papers' as 'papers' | 'notes');
+  const [noteViewMode, setNoteViewMode] = useUrlState<'time' | 'paper' | 'tag'>('noteView', 'time' as 'time' | 'paper' | 'tag');
+  const [pageFromUrl, setPageFromUrl] = useUrlState<number>('page', 1);
+  
+  // Optional filter state from URL (can be undefined)
+  const [starredFilter, setStarredFilter] = useUrlStateOptional<boolean>('starred');
+  const [readStatusFilter, setReadStatusFilter] = useUrlStateOptional<'unread' | 'in-progress' | 'completed'>('readStatus');
+  const [timeRangeFilter, setTimeRangeFilter] = useUrlStateOptional<'7d' | '30d' | '90d' | 'all'>('timeRange');
+
+  // Debounced search for API calls
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // Debounce search input (300ms)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -61,53 +71,50 @@ export function Library() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Batch selection state
+  // Batch selection state (not URL-synced - ephemeral)
   const [selectedPapers, setSelectedPapers] = useState<Set<string>>(new Set());
   const [batchMode, setBatchMode] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [singleDeletePaperId, setSingleDeletePaperId] = useState<string | null>(null);
 
-  // Compact mode state (D-01: default to compact)
-  const [compactMode, setCompactMode] = useState(true);
-
-  // Library view mode (D-08: Papers vs Notes integration)
-  const [libraryView, setLibraryView] = useState<'papers' | 'notes'>('papers');
-
-  // Notes view mode (D-09: Multi-view toggle for notes)
-  const [noteViewMode, setNoteViewMode] = useState<'time' | 'paper' | 'tag'>('time');
-
   // Batch project dialog state
   const [showProjectDialog, setShowProjectDialog] = useState(false);
   const [batchAddProjectId, setBatchAddProjectId] = useState<string | null>(null);
   const [isAddingToProject, setIsAddingToProject] = useState(false);
 
-  // Filter state for LibraryFilters (must be defined before use)
-  const [libraryFilters, setLibraryFilters] = useState<{
-    starred?: boolean;
-    author?: string;
-    projectId?: string;
-    readingStatus?: 'unread' | 'in-progress' | 'completed';
-    timeRange?: '7d' | '30d' | '90d' | 'all';
-  }>({});
+  // Library filters object (derived from URL state)
+  const libraryFilters = {
+    starred: starredFilter,
+    readingStatus: readStatusFilter,
+    timeRange: timeRangeFilter,
+  };
 
-  // Use the usePapers hook with filters
-  const { papers, total, page, totalPages, loading, error, setPage, refetch, updatePaperLocal } = usePapers({
+  // Handle filter changes from LibraryFilters component
+  const handleFilterChange = useCallback((newFilters: Partial<typeof libraryFilters>) => {
+    if (newFilters.starred !== undefined) setStarredFilter(newFilters.starred);
+    if (newFilters.readingStatus !== undefined) setReadStatusFilter(newFilters.readingStatus);
+    if (newFilters.timeRange !== undefined) setTimeRangeFilter(newFilters.timeRange);
+  }, [setStarredFilter, setReadStatusFilter, setTimeRangeFilter]);
+
+  // Use the usePapers hook with filters and URL page
+  const { papers, total, totalPages, loading, error, refetch, updatePaperLocal } = usePapers({
     limit: 20,
+    page: pageFromUrl,
     search: debouncedSearch || undefined,
-    starred: libraryFilters.starred,
-    readStatus: libraryFilters.readingStatus,
-    dateFrom: libraryFilters.timeRange && libraryFilters.timeRange !== 'all' 
+    starred: starredFilter,
+    readStatus: readStatusFilter,
+    dateFrom: timeRangeFilter && timeRangeFilter !== 'all' 
       ? new Date(Date.now() - (
-          libraryFilters.timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 :
-          libraryFilters.timeRange === '30d' ? 30 * 24 * 60 * 60 * 1000 :
+          timeRangeFilter === '7d' ? 7 * 24 * 60 * 60 * 1000 :
+          timeRangeFilter === '30d' ? 30 * 24 * 60 * 60 * 1000 :
           90 * 24 * 60 * 60 * 1000
         )).toISOString()
       : undefined,
   });
 
   // Projects hook (must be defined before handleBatchAddToProject)
-  const { projects, loading: projectsLoading, createProject, deleteProject } = useProjects();
+  const { projects, loading: projectsLoading, createProject } = useProjects();
 
   // Notes hook (D-08: Notes integration in Library)
   const { notes, loading: notesLoading, error: notesError } = useNotes();
@@ -941,19 +948,19 @@ export function Library() {
                       <PaginationContent>
                         <PaginationItem>
                           <PaginationPrevious
-                            onClick={() => page > 1 && setPage(page - 1)}
-                            className={page <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            onClick={() => pageFromUrl > 1 && setPageFromUrl(pageFromUrl - 1)}
+                            className={pageFromUrl <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
                           />
                         </PaginationItem>
                         <PaginationItem>
                           <PaginationLink isActive>
-                            {t.pageOf} {page} {t.pageOfTotal} {totalPages} {t.pageTotal}
+                            {t.pageOf} {pageFromUrl} {t.pageOfTotal} {totalPages} {t.pageTotal}
                           </PaginationLink>
                         </PaginationItem>
                         <PaginationItem>
                           <PaginationNext
-                            onClick={() => page < totalPages && setPage(page + 1)}
-                            className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            onClick={() => pageFromUrl < totalPages && setPageFromUrl(pageFromUrl + 1)}
+                            className={pageFromUrl >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
                           />
                         </PaginationItem>
                       </PaginationContent>
@@ -1016,7 +1023,7 @@ export function Library() {
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
 
           {/* LibraryFilters Component */}
-          <LibraryFilters filters={libraryFilters} onFilterChange={setLibraryFilters} />
+          <LibraryFilters filters={libraryFilters} onFilterChange={handleFilterChange} />
 
           {/* Sorting */}
           <div className="flex flex-col gap-3">

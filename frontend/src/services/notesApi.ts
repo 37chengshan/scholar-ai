@@ -70,7 +70,7 @@ export interface UpdateNotePayload {
  * @returns Notes array
  */
 export async function getNotes(params?: GetNotesParams): Promise<Note[]> {
-  const response = await apiClient.get<Note[]>('/api/notes', {
+  const response = await apiClient.get<Note[]>('/api/v1/notes', {
     params: {
       paperId: params?.paperId,
       tag: params?.tag,
@@ -94,7 +94,7 @@ export async function getNotes(params?: GetNotesParams): Promise<Note[]> {
  * @returns Note details
  */
 export async function getNote(id: string): Promise<Note> {
-  const response = await apiClient.get<Note>(`/api/notes/${id}`);
+  const response = await apiClient.get<Note>(`/api/v1/notes/${id}`);
   return response.data;
 }
 
@@ -108,7 +108,7 @@ export async function getNote(id: string): Promise<Note> {
  * @returns Created note
  */
 export async function createNote(payload: CreateNotePayload): Promise<Note> {
-  const response = await apiClient.post<Note>('/api/notes', payload);
+  const response = await apiClient.post<Note>('/api/v1/notes', payload);
   return response.data;
 }
 
@@ -123,7 +123,7 @@ export async function createNote(payload: CreateNotePayload): Promise<Note> {
  * @returns Updated note
  */
 export async function updateNote(id: string, payload: UpdateNotePayload): Promise<Note> {
-  const response = await apiClient.put<Note>(`/api/notes/${id}`, payload);
+  const response = await apiClient.put<Note>(`/api/v1/notes/${id}`, payload);
   return response.data;
 }
 
@@ -136,7 +136,7 @@ export async function updateNote(id: string, payload: UpdateNotePayload): Promis
  * @param id - Note ID
  */
 export async function deleteNote(id: string): Promise<void> {
-  await apiClient.delete(`/api/notes/${id}`);
+  await apiClient.delete(`/api/v1/notes/${id}`);
 }
 
 /**
@@ -149,6 +149,6 @@ export async function deleteNote(id: string): Promise<void> {
  * @returns Notes array
  */
 export async function getNotesByPaper(paperId: string): Promise<Note[]> {
-  const response = await apiClient.get<Note[]>(`/api/notes/paper/${paperId}`);
+  const response = await apiClient.get<Note[]>(`/api/v1/notes/paper/${paperId}`);
   return response.data;
 }

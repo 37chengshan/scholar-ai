@@ -15,7 +15,7 @@ import { Camera, Key, Lock, Save, User, RefreshCw, TerminalSquare, Cpu, Box, Har
 import { motion } from "motion/react";
 import { clsx } from "clsx";
 import { useLanguage } from "../contexts/LanguageContext";
-import { useSettingsStore } from "../stores/settingsStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProfileForm } from "../components/ProfileForm";
 import { APIKeyManager } from "../components/APIKeyManager";

@@ -11,7 +11,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
 import { useKnowledgeBases } from "../hooks/useKnowledgeBases";
-import { KnowledgeBase } from "@/services/kbApi";
+import { useUrlState } from "../../hooks/useUrlState";
 import {
   Table,
   TableBody,
@@ -37,23 +37,24 @@ import {
 import { MoreHorizontal, ArrowRight, Download, Pencil, Trash2, Network } from "lucide-react";
 import { toast } from "sonner";
 
-type ViewMode = "card" | "list";
-
 export function KnowledgeBaseList() {
   const navigate = useNavigate();
-  const [viewMode, setViewMode] = useState<ViewMode>("card");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeTag, setActiveTag] = useState("全部");
+  
+  // URL-synchronized state (persisted across refresh/navigation)
+  const [viewMode, setViewMode] = useUrlState<'card' | 'list'>('view', 'card' as 'card' | 'list');
+  const [searchQuery, setSearchQuery] = useUrlState<string>('search', '');
+  const [activeTag, setActiveTag] = useUrlState<string>('tag', '全部');
+  const [sortBy, setSortBy] = useUrlState<'updated' | 'papers' | 'name'>('sort', 'updated' as 'updated' | 'papers' | 'name');
+  
+  // Ephemeral state (not URL-synced)
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [importTarget, setImportTarget] = useState<{ id: string; name: string } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBatchMode, setIsBatchMode] = useState(false);
-  const [sortBy, setSortBy] = useState<"updated" | "papers" | "name">("updated");
 
   // API integration - use real data
   const {
     knowledgeBases,
-    total,
     loading,
     error,
     refetch,

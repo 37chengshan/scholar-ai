@@ -9,6 +9,7 @@
  * - Loading and error states
  * - Pagination support (page navigation)
  * - Filter support (year range, sources, sort)
+ * - URL state synchronization support (initialQuery, initialPage)
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -41,19 +42,27 @@ export interface SearchFilters {
   sortBy?: 'relevance' | 'date';
 }
 
+export interface UseSearchOptions {
+  debounceMs?: number;
+  filters?: SearchFilters;
+  initialQuery?: string;
+  initialPage?: number;
+}
+
 const PAGE_SIZE = 20;
 
 /**
  * useSearch hook with debounce and filters
  *
- * @param debounceMs - Debounce delay in milliseconds (default: 300ms per D-11)
- * @param filters - Search filters (sources, year range, sort)
+ * @param options - Hook options including debounceMs, filters, initialQuery, initialPage
  * @returns Search state and handlers
  */
-export function useSearch(debounceMs: number = 300, filters?: SearchFilters) {
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [page, setPage] = useState(0);
+export function useSearch(options: UseSearchOptions = {}) {
+  const { debounceMs = 300, filters, initialQuery = '', initialPage = 0 } = options;
+  
+  const [query, setQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+  const [page, setPage] = useState(initialPage);
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

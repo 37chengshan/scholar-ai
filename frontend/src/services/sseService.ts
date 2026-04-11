@@ -2,8 +2,9 @@
  * SSE Service with Auto-Reconnect
  *
  * Manages Server-Sent Events connections with:
+ * - POST-based streaming (fetch API)
  * - Automatic reconnection with exponential backoff (3 retries)
- * - Heartbeat monitoring (15s timeout)
+ * - Heartbeat monitoring (60s timeout)
  * - Last-Event-ID support for resumption
  * - Proper cleanup on disconnect
  *
@@ -28,6 +29,7 @@ export type SSEEventType =
   | 'message'
   | 'done'
   | 'heartbeat'
+  | 'error'
   | 'citation';
 
 /**
@@ -37,10 +39,10 @@ export interface SSEEvent {
   type: SSEEventType;
   content: any;
   timestamp?: string;
-  tool?: string; // For tool_call/tool_result
-  result?: any; // For tool_result
-  event?: string; // Raw SSE event name
-  data?: any; // Raw SSE event data
+  tool?: string;
+  result?: any;
+  event?: string;
+  data?: any;
 }
 
 /**
@@ -57,260 +59,225 @@ export interface SSEHandlers {
  */
 interface SSEConfig {
   maxReconnects: number;
-  heartbeatTimeout: number; // ms
-  reconnectBaseDelay: number; // ms
+  heartbeatTimeout: number;
+  reconnectBaseDelay: number;
 }
 
 const DEFAULT_CONFIG: SSEConfig = {
   maxReconnects: 3,
-  heartbeatTimeout: 60000, // 60s - Python agent may take time to respond
-  reconnectBaseDelay: 1000, // 1s base for exponential backoff
+  heartbeatTimeout: 60000,
+  reconnectBaseDelay: 1000,
 };
 
 /**
  * SSE Service Class
  *
- * Manages EventSource connections with automatic reconnection
- * and heartbeat monitoring.
- *
- * Usage:
- * ```typescript
- * const sseService = new SSEService();
- *
- * sseService.connect('/api/chat/stream?message=hello', {
- *   onMessage: (event) => console.log('Event:', event),
- *   onError: (err) => console.error('Error:', err),
- *   onDone: () => console.log('Stream complete'),
- * });
- *
- * // Later...
- * sseService.disconnect();
- * ```
+ * Uses fetch + streaming for POST-based SSE connections.
  */
 export class SSEService {
-  private eventSource: EventSource | null = null;
+  private abortController: AbortController | null = null;
   private reconnectAttempts = 0;
   private config: SSEConfig;
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   private lastEventId: string | null = null;
   private currentUrl: string = '';
   private currentHandlers: SSEHandlers | null = null;
-  private isDisconnecting: boolean = false; // Flag to prevent reconnect on intentional disconnect
+  private currentBody: Record<string, unknown> | null = null;
+  private isDisconnecting: boolean = false;
 
   constructor(config: Partial<SSEConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
   /**
-   * Connect to SSE endpoint
-   *
-   * @param url - SSE endpoint URL
-   * @param handlers - Event handlers (onMessage, onError, onDone)
+   * Connect to SSE endpoint using POST
    */
-  connect(url: string, handlers: SSEHandlers): void {
-    // Disconnect any existing connection
+  connect(url: string, handlers: SSEHandlers, body?: Record<string, unknown>): void {
     this.disconnect();
-
-    // Reset disconnecting flag for new connection
     this.isDisconnecting = false;
-
-    // Store for reconnection
     this.currentUrl = url;
     this.currentHandlers = handlers;
+    this.currentBody = body || {};
 
-    // Build URL with Last-Event-ID for resumption
-    const eventSourceUrl = this.lastEventId
-      ? `${url}${url.includes('?') ? '&' : '?'}last_event_id=${this.lastEventId}`
-      : url;
-
-    // Create EventSource with credentials for Cookie-based auth
-    this.eventSource = new EventSource(eventSourceUrl, {
-      withCredentials: true,
-    });
-
-    // Reset reconnect attempts on new connection
-    this.reconnectAttempts = 0;
-
-    // Set up event handlers
-    this.setupEventHandlers(handlers);
-
-    // Start heartbeat monitoring
-    this.startHeartbeatMonitor();
+    this.startStreaming();
   }
 
   /**
-   * Set up EventSource event handlers
-   * 
-   * IMPORTANT: EventSource API behavior:
-   * - onmessage only listens to default events (no "event:" field)
-   * - addEventListener('type', ...) listens to named events ("event: type")
-   * 
-   * Python backend sends: "event: message\ndata: {...}"
-   * So we MUST use addEventListener, not onmessage!
+   * Start streaming using fetch API
    */
-  private setupEventHandlers(handlers: SSEHandlers): void {
-    if (!this.eventSource) return;
+  private async startStreaming(): Promise<void> {
+    if (!this.currentHandlers) return;
 
-    // Generic event handler for all named events
-    const handleEvent = (eventType: string, e: MessageEvent) => {
-      this.resetHeartbeat();
+    this.abortController = new AbortController();
+    this.reconnectAttempts = 0;
 
-      try {
-        const event: SSEEvent = JSON.parse(e.data);
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      };
 
-        // Store Last-Event-ID for reconnection
-        if (e.lastEventId) {
-          this.lastEventId = e.lastEventId;
-        }
-
-        console.log('[SSE] Received event:', eventType, event);
-
-        // Handle different event types
-        if (eventType === 'done') {
-          this.isDisconnecting = true; // Prevent reconnect
-          handlers.onDone({
-            tokens_used: event.tokens_used || event.content?.tokens_used || 0,
-            cost: event.cost || event.content?.cost || 0,
-            iterations: event.iterations || event.content?.iterations || 0,
-            total_time_ms: event.total_time_ms || event.content?.total_time_ms || 0
-          });
-          this.disconnect();
-        } else if (eventType === 'heartbeat') {
-          // Heartbeat received, connection is alive
-          // Already reset heartbeat timer above
-        } else {
-          // Forward to handler
-          handlers.onMessage(event);
-        }
-      } catch (err) {
-        console.error('[SSE] Failed to parse event:', err, e.data);
+      if (this.lastEventId) {
+        headers['Last-Event-ID'] = this.lastEventId;
       }
-    };
 
-    // Listen to all named event types from Python backend
-    // Python sends: "event: thought\ndata: {...}"
-    const eventTypes: SSEEventType[] = [
-      'thought',
-      'tool_call',
-      'tool_result',
-      'confirmation_required',
-      'message',
-      'error',
-      'done',
-      'heartbeat'
-    ];
-
-    eventTypes.forEach(type => {
-      this.eventSource!.addEventListener(type, (e: MessageEvent) => {
-        handleEvent(type, e);
-      });
-    });
-
-    // Handle errors (connection drops, etc.)
-    this.eventSource.onerror = (event: Event) => {
-      const readyState = this.eventSource?.readyState;
-      
-      console.error('[SSE] Connection error', {
-        readyState,
-        readyStateText: readyState === EventSource.CONNECTING ? 'CONNECTING' : 
-                        readyState === EventSource.OPEN ? 'OPEN' : 
-                        readyState === EventSource.CLOSED ? 'CLOSED' : 'UNKNOWN',
-        isDisconnecting: this.isDisconnecting
+      const response = await fetch(this.currentUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(this.currentBody),
+        credentials: 'include',
+        signal: this.abortController.signal,
       });
 
-      // Don't reconnect if intentionally disconnecting
-      if (this.isDisconnecting) {
-        console.log('[SSE] Skipping reconnect - intentionally disconnecting');
-        return;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Don't reconnect if still connecting (readyState 0)
-      // This can happen when the connection is being established
-      if (readyState === EventSource.CONNECTING) {
-        console.log('[SSE] Still connecting, waiting...');
+      this.startHeartbeatMonitor();
+      await this.processStream(response);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('[SSE] Stream aborted (intentional disconnect)');
         return;
       }
+      console.error('[SSE] Connection error:', error);
+      if (!this.isDisconnecting) {
+        this.handleReconnect();
+      }
+    }
+  }
 
-      // Check if connection is closed
-      if (readyState === EventSource.CLOSED) {
-        console.log('[SSE] Connection closed, not reconnecting');
-        if (this.currentHandlers) {
-          this.currentHandlers.onError(new Error('Connection closed'));
+  /**
+   * Process SSE stream line by line
+   */
+  private async processStream(response: Response): Promise<void> {
+    if (!this.currentHandlers) return;
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      this.currentHandlers.onError(new Error('No response body'));
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          this.processLine(line);
         }
-        return;
       }
 
-      // Attempt reconnection
-      this.handleReconnect();
-    };
+      if (buffer) {
+        this.processLine(buffer);
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        this.currentHandlers.onError(error);
+      }
+    }
+  }
 
-    // Connection opened
-    this.eventSource.onopen = () => {
-      console.log('[SSE] Connection established');
-      this.reconnectAttempts = 0;
-    };
+  /**
+   * Process a single SSE line
+   */
+  private processLine(line: string): void {
+    if (!this.currentHandlers) return;
+
+    this.resetHeartbeat();
+
+    if (line.startsWith('event:')) {
+      const eventType = line.slice(7).trim();
+      this.currentEventType = eventType;
+    } else if (line.startsWith('data:')) {
+      const dataStr = line.slice(5).trim();
+      if (dataStr && this.currentEventType) {
+        this.handleEvent(this.currentEventType, dataStr);
+        this.currentEventType = null;
+      }
+    } else if (line.startsWith('id:')) {
+      this.lastEventId = line.slice(3).trim();
+    }
+  }
+
+  private currentEventType: string | null = null;
+
+  /**
+   * Handle a parsed SSE event
+   */
+  private handleEvent(eventType: string, dataStr: string): void {
+    if (!this.currentHandlers) return;
+
+    try {
+      const event: SSEEvent = JSON.parse(dataStr);
+      console.log('[SSE] Received event:', eventType, event);
+
+      if (eventType === 'done') {
+        this.isDisconnecting = true;
+        const tokensUsed = (event as any).tokens_used || (event as any).content?.tokens_used || 0;
+        const cost = (event as any).cost || (event as any).content?.cost || 0;
+        const iterations = (event as any).iterations || (event as any).content?.iterations || 0;
+        const total_time_ms = (event as any).total_time_ms || (event as any).content?.total_time_ms || 0;
+        this.currentHandlers.onDone({
+          tokens_used: tokensUsed,
+          cost,
+          iterations,
+          total_time_ms,
+        });
+        this.disconnect();
+      } else if (eventType === 'heartbeat') {
+        // Keepalive
+      } else {
+        this.currentHandlers.onMessage(event);
+      }
+    } catch (err) {
+      console.error('[SSE] Failed to parse event:', err, dataStr);
+    }
   }
 
   /**
    * Handle reconnection with exponential backoff
    */
   private handleReconnect(): void {
-    // Don't reconnect if intentionally disconnecting
-    if (this.isDisconnecting) {
-      console.log('[SSE] Skipping reconnect - intentionally disconnecting');
-      return;
-    }
+    if (this.isDisconnecting) return;
 
     if (this.reconnectAttempts < this.config.maxReconnects) {
-      // Calculate delay with exponential backoff: 1s, 2s, 4s
       const delay = this.config.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts);
+      console.log(`[SSE] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${this.config.maxReconnects})`);
 
-      console.log(
-        `[SSE] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${this.config.maxReconnects})`
-      );
-
-      // Close existing connection
-      if (this.eventSource) {
-        this.eventSource.close();
-        this.eventSource = null;
-      }
-
-      // Schedule reconnection
       setTimeout(() => {
         this.reconnectAttempts++;
-
-        if (this.currentUrl && this.currentHandlers) {
-          this.connect(this.currentUrl, this.currentHandlers);
-        }
+        this.startStreaming();
       }, delay);
     } else {
-      // Max reconnection attempts reached
       console.error('[SSE] Max reconnection attempts reached');
-
-      if (this.currentHandlers) {
-        this.currentHandlers.onError(new Error('Max reconnection attempts reached'));
-      }
-
+      this.currentHandlers?.onError(new Error('Max reconnection attempts reached'));
       this.disconnect();
     }
   }
 
   /**
    * Start heartbeat monitoring
-   *
-   * If no event received within heartbeatTimeout, trigger reconnection
    */
   private startHeartbeatMonitor(): void {
     this.heartbeatTimer = setTimeout(() => {
-      console.warn('[SSE] Heartbeat timeout - no event received');
-      this.handleReconnect();
+      console.warn('[SSE] Heartbeat timeout');
+      if (!this.isDisconnecting) {
+        this.handleReconnect();
+      }
     }, this.config.heartbeatTimeout);
   }
 
   /**
    * Reset heartbeat timer
-   *
-   * Called when any event is received
    */
   private resetHeartbeat(): void {
     if (this.heartbeatTimer) {
@@ -321,36 +288,31 @@ export class SSEService {
 
   /**
    * Disconnect from SSE endpoint
-   *
-   * Cleans up EventSource and timers
    */
   disconnect(): void {
-    // Set flag to prevent reconnect
     this.isDisconnecting = true;
 
-    // Close EventSource
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
     }
 
-    // Clear heartbeat timer
     if (this.heartbeatTimer) {
       clearTimeout(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
 
-    // Reset state
     this.reconnectAttempts = 0;
     this.currentUrl = '';
     this.currentHandlers = null;
+    this.currentBody = null;
   }
 
   /**
    * Check if currently connected
    */
   isConnected(): boolean {
-    return this.eventSource !== null && this.eventSource.readyState === EventSource.OPEN;
+    return this.abortController !== null && !this.isDisconnecting;
   }
 
   /**
@@ -362,6 +324,6 @@ export class SSEService {
 }
 
 /**
- * Singleton instance for global use
+ * Singleton instance
  */
 export const sseService = new SSEService();

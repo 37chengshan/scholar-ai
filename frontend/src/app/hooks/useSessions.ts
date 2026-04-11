@@ -56,7 +56,7 @@ export function useSessions(): UseSessionsReturn {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get('/api/sessions?limit=50&status=active');
+      const response = await apiClient.get('/api/v1/sessions?limit=50&status=active');
       const data = response.data.data || response.data;
       console.log('[useSessions] Loaded sessions:', data);
       setSessions(data.sessions || []);
@@ -75,7 +75,7 @@ export function useSessions(): UseSessionsReturn {
 
   const loadSessionMessages = useCallback(async (sessionId: string) => {
     try {
-      const response = await apiClient.get(`/api/sessions/${sessionId}/messages?limit=100`);
+      const response = await apiClient.get(`/api/v1/sessions/${sessionId}/messages?limit=100`);
       const data = response.data.data || response.data;
       console.log('[useSessions] Loaded messages:', data);
       const msgs = (data.messages || []).reverse();
@@ -89,7 +89,7 @@ export function useSessions(): UseSessionsReturn {
   const createSession = useCallback(async (title?: string): Promise<ChatSession | null> => {
     setError(null);
     try {
-      const response = await apiClient.post('/api/sessions', {
+      const response = await apiClient.post('/api/v1/sessions', {
         title: title || '新对话',
         status: 'active'
       });
@@ -116,7 +116,7 @@ export function useSessions(): UseSessionsReturn {
 
   const deleteSession = useCallback(async (sessionId: string): Promise<boolean> => {
     try {
-      await apiClient.delete(`/api/sessions/${sessionId}`);
+      await apiClient.delete(`/api/v1/sessions/${sessionId}`);
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       if (currentSession?.id === sessionId) {
         setCurrentSession(null);
@@ -141,7 +141,7 @@ export function useSessions(): UseSessionsReturn {
     if (!currentSession) return;
     
     try {
-      const response = await apiClient.patch(`/api/sessions/${currentSession.id}`, updates);
+      const response = await apiClient.patch(`/api/v1/sessions/${currentSession.id}`, updates);
       const updated = response.data.data || response.data;
       setCurrentSession(updated);
       setSessions(prev => prev.map(s => s.id === updated.id ? updated : s));

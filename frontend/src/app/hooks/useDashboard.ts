@@ -67,6 +67,8 @@ export function useDashboard(userId?: string) {
         setLoading(true);
         setError(null);
         
+        if (!userId) return;
+        
         const data = await usersApi.getStats(userId);
         
         const monthlyUsage = await usersApi.getMonthlyTokenUsage();

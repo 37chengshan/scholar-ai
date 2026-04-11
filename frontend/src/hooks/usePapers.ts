@@ -22,6 +22,7 @@ import type { PaperWithProgress, PapersQueryParams } from '@/types';
  */
 interface UsePapersOptions {
   limit?: number;
+  page?: number;
   search?: string;
   starred?: boolean;
   readStatus?: 'unread' | 'in-progress' | 'completed';
@@ -54,11 +55,14 @@ interface UsePapersReturn {
  * @returns Papers state and actions
  */
 export function usePapers(options: UsePapersOptions = {}): UsePapersReturn {
-  const { limit = 20, search, starred, readStatus, dateFrom, dateTo } = options;
+  const { limit = 20, page: externalPage, search, starred, readStatus, dateFrom, dateTo } = options;
   const { user } = useAuth();
 
-  // Local state for page
-  const [page, setPage] = useState(1);
+  // Local state for page (can be controlled externally)
+  const [internalPage, setInternalPage] = useState(1);
+  
+  // Use external page if provided, otherwise use internal state
+  const page = externalPage ?? internalPage;
 
   // React Query hook for papers
   const { data, isLoading, error, refetch } = useQuery({
@@ -112,12 +116,14 @@ export function usePapers(options: UsePapersOptions = {}): UsePapersReturn {
     console.log('Optimistic update:', paperId, updates);
   }, []);
 
-  /**
-   * Handle page change
+/**
+ * Handle page change (only used when page is not externally controlled)
    */
   const handleSetPage = useCallback((newPage: number) => {
-    setPage(newPage);
-  }, []);
+    if (externalPage === undefined) {
+      setInternalPage(newPage);
+    }
+  }, [externalPage]);
 
   /**
    * Manual refetch

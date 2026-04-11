@@ -52,7 +52,7 @@ export async function list(paperId: string): Promise<Annotation[]> {
   const response = await apiClient.get<{
     success: boolean;
     data: Annotation[];
-  }>(`/api/annotations/${paperId}`);
+  }>(`/api/v1/annotations/${paperId}`);
 
   return response.data.data;
 }
@@ -70,7 +70,7 @@ export async function create(data: CreateAnnotationData): Promise<Annotation> {
   const response = await apiClient.post<{
     success: boolean;
     data: Annotation;
-  }>('/api/annotations', data);
+  }>('/api/v1/annotations', data);
 
   return response.data.data;
 }
@@ -89,7 +89,7 @@ export async function update(id: string, data: UpdateAnnotationData): Promise<An
   const response = await apiClient.patch<{
     success: boolean;
     data: Annotation;
-  }>(`/api/annotations/${id}`, data);
+  }>(`/api/v1/annotations/${id}`, data);
 
   return response.data.data;
 }
@@ -103,5 +103,5 @@ export async function update(id: string, data: UpdateAnnotationData): Promise<An
  * @param id - Annotation ID
  */
 export async function deleteAnnotation(id: string): Promise<void> {
-  await apiClient.delete(`/api/annotations/${id}`);
+  await apiClient.delete(`/api/v1/annotations/${id}`);
 }

@@ -113,7 +113,7 @@ export function Chat() {
   const handleSend = useCallback(async () => {
     if (!input.trim() || isConnected || sending) return;
 
-    setSending(true); // 防止重复发送
+    setSending(true);
     
     try {
       let sessionId = currentSession?.id;
@@ -134,12 +134,14 @@ export function Chat() {
       
       addMessage(userMessage);
 
-      const message = encodeURIComponent(input.trim());
+      // POST to SSE endpoint (backend expects ChatStreamRequest)
+      const url = `${API_BASE_URL}/api/v1/chat/stream`;
+      const body = {
+        message: input.trim(),
+        session_id: sessionId,
+      };
       
-      // Connect to Python backend (SSE streaming)
-      const url = `${API_BASE_URL}/api/chat/stream?message=${message}&session_id=${sessionId}`;
-      
-      connect(url);
+      connect(url, body);
       setInput('');
     } catch (error) {
       console.error('Send message failed:', error);
@@ -269,7 +271,7 @@ export function Chat() {
   const sendConfirmationResponse = useCallback(async (approved: boolean) => {
     if (!confirmation) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat/confirmation`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/chat/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
