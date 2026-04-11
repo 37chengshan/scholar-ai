@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive } from "lucide-react";
+import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive, Loader2 } from "lucide-react";
 import { KnowledgeBaseCard } from "../components/KnowledgeBaseCard";
 import { CreateKnowledgeBaseDialog } from "../components/CreateKnowledgeBaseDialog";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
@@ -10,6 +10,8 @@ import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
+import { useKnowledgeBases } from "../hooks/useKnowledgeBases";
+import { KnowledgeBase } from "@/services/kbApi";
 import {
   Table,
   TableBody,
@@ -35,70 +37,6 @@ import {
 import { MoreHorizontal, ArrowRight, Download, Pencil, Trash2, Network } from "lucide-react";
 import { toast } from "sonner";
 
-interface KnowledgeBase {
-  id: string;
-  name: string;
-  description: string;
-  paperCount: number;
-  chunkCount: number;
-  entityCount: number;
-  updatedAt: string;
-  category: string;
-}
-
-const MOCK_KNOWLEDGE_BASES: KnowledgeBase[] = [
-  {
-    id: "kb-001",
-    name: "大语言模型对齐研究",
-    description: "研究 LLM 对齐方法，包括 RLHF、DPO、Constitutional AI 等主流对齐技术及其比较分析",
-    paperCount: 12,
-    chunkCount: 3200,
-    entityCount: 156,
-    updatedAt: "2026-04-09",
-    category: "人工智能",
-  },
-  {
-    id: "kb-002",
-    name: "多模态学习综述",
-    description: "视觉-语言模型最新进展，包括 CLIP、BLIP、Flamingo 等多模态架构的对比研究",
-    paperCount: 8,
-    chunkCount: 1800,
-    entityCount: 89,
-    updatedAt: "2026-03-15",
-    category: "计算机视觉",
-  },
-  {
-    id: "kb-003",
-    name: "Agent 框架对比",
-    description: "智能体架构对比分析，包括 ReAct、AutoGPT、LangChain 等框架的设计模式和最佳实践",
-    paperCount: 5,
-    chunkCount: 960,
-    entityCount: 42,
-    updatedAt: "2026-02-20",
-    category: "人工智能",
-  },
-  {
-    id: "kb-004",
-    name: "毕业论文文献整理",
-    description: "博士论文相关文献，涵盖知识图谱、RAG 系统、信息抽取等核心研究方向",
-    paperCount: 23,
-    chunkCount: 5100,
-    entityCount: 234,
-    updatedAt: "2026-04-01",
-    category: "自然语言处理",
-  },
-  {
-    id: "kb-005",
-    name: "课程阅读材料",
-    description: "研究生课程推荐阅读材料，包括深度学习基础、强化学习入门等经典论文",
-    paperCount: 15,
-    chunkCount: 2400,
-    entityCount: 0,
-    updatedAt: "2026-01-10",
-    category: "机器学习",
-  },
-];
-
 type ViewMode = "card" | "list";
 
 export function KnowledgeBaseList() {
@@ -112,32 +50,38 @@ export function KnowledgeBaseList() {
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [sortBy, setSortBy] = useState<"updated" | "papers" | "name">("updated");
 
+  // API integration - use real data
+  const {
+    knowledgeBases,
+    total,
+    loading,
+    error,
+    refetch,
+    createKB,
+    deleteKB,
+  } = useKnowledgeBases({
+    search: searchQuery,
+    category: activeTag === "全部" ? undefined : activeTag,
+    sortBy,
+  });
+
   const tags = ["全部", "人工智能", "计算机视觉", "自然语言处理", "机器学习"];
 
   // TODO: FE-04 — When real API data exceeds ~50 items, wrap this grid with react-window's VariableSizeGrid
 
-  // Filter knowledge bases
-  const filtered = MOCK_KNOWLEDGE_BASES.filter((kb) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      kb.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      kb.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory =
-      activeTag === "全部" || kb.category === activeTag;
-    return matchesSearch && matchesCategory;
-  });
-
-  // Sort filtered results
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === "updated") return b.updatedAt.localeCompare(a.updatedAt);
-    if (sortBy === "papers") return b.paperCount - a.paperCount;
-    return a.name.localeCompare(b.name, "zh");
-  });
+  // Use API data directly (backend handles search/category/sort filtering)
+  const sorted = knowledgeBases;
 
   // Batch operations
-  const handleBatchDelete = () => {
-    toast.info(`批量删除 ${selectedIds.size} 个知识库（开发中）`);
-    setSelectedIds(new Set());
+  const handleBatchDelete = async () => {
+    try {
+      const ids = Array.from(selectedIds);
+      // TODO: Implement batch delete API call
+      toast.info(`批量删除 ${ids.length} 个知识库（开发中）`);
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      toast.error(err.message || '批量删除失败');
+    }
   };
 
   const handleBatchExport = () => {
@@ -149,9 +93,14 @@ export function KnowledgeBaseList() {
     setShowCreateDialog(true);
   };
 
-  const handleCreateSubmit = (data: any) => {
-    toast.success(`知识库「${data.name}」创建成功`);
-    setShowCreateDialog(false);
+  const handleCreateSubmit = async (data: any) => {
+    try {
+      await createKB(data);
+      toast.success(`知识库「${data.name}」创建成功`);
+      setShowCreateDialog(false);
+    } catch (err: any) {
+      toast.error(err.message || '创建失败');
+    }
   };
 
   const handleEnter = (id: string) => {
@@ -166,8 +115,13 @@ export function KnowledgeBaseList() {
     toast.info(`编辑「${name}」功能开发中`);
   };
 
-  const handleDelete = (name: string) => {
-    toast.info(`删除「${name}」功能开发中`);
+  const handleDelete = async (id: string, name: string) => {
+    try {
+      await deleteKB(id);
+      toast.success(`知识库「${name}」已删除`);
+    } catch (err: any) {
+      toast.error(err.message || '删除失败');
+    }
   };
 
   // Storage mock
@@ -314,7 +268,21 @@ export function KnowledgeBaseList() {
 
       {/* Content Area */}
       <div className="container-query max-w-7xl mx-auto px-6 pb-12">
-        {filtered.length === 0 ? (
+        {loading && (
+          <div className="text-center py-12 flex items-center justify-center gap-3">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <span className="text-zinc-500 font-medium">加载中...</span>
+          </div>
+        )}
+        {error && (
+          <div className="text-center py-12">
+            <div className="text-red-500 font-medium mb-4">{error}</div>
+            <Button variant="outline" onClick={refetch}>
+              重试
+            </Button>
+          </div>
+        )}
+        {!loading && !error && sorted.length === 0 ? (
           <EmptyState
             title="暂无知识库"
             description="创建您的第一个知识库，开始组织研究方向"
@@ -323,7 +291,7 @@ export function KnowledgeBaseList() {
               onClick: handleCreate,
             }}
           />
-        ) : viewMode === "card" ? (
+        ) : !loading && !error && viewMode === "card" ? (
           <motion.div 
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 cq-grid-cols gap-8" 
             initial="hidden" 
@@ -362,7 +330,7 @@ export function KnowledgeBaseList() {
                   onEnter={() => handleEnter(kb.id)}
                   onImport={() => handleImport(kb.id, kb.name)}
                   onEdit={() => handleEdit(kb.name)}
-                  onDelete={() => handleDelete(kb.name)}
+                  onDelete={() => handleDelete(kb.id, kb.name)}
                 />
               </motion.div>
             ))}
@@ -478,7 +446,7 @@ export function KnowledgeBaseList() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             variant="destructive"
-                            onClick={() => handleDelete(kb.name)}
+                            onClick={() => handleDelete(kb.id, kb.name)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             删除
