@@ -127,10 +127,10 @@ class SearchResult(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    """External search response format."""
+    """External search response format (unified wrapper)."""
 
-    results: List[SearchResult]
-    total: int = 0
+    success: bool = True
+    data: Dict[str, Any]
 
 
 # =============================================================================
@@ -156,13 +156,10 @@ class LibrarySearchResult(BaseModel):
 
 
 class LibrarySearchResponse(BaseModel):
-    """Library hybrid search response."""
+    """Library hybrid search response (unified wrapper)."""
 
-    query: str = Field(..., description="Search query")
-    paper_count: int = Field(..., description="Number of papers searched")
-    result_count: int = Field(..., description="Number of results returned")
-    weights: Dict[str, float] = Field(..., description="Fusion weights used")
-    results: List[LibrarySearchResult] = Field(..., description="Search results")
+    success: bool = True
+    data: Dict[str, Any]
 
 
 # =============================================================================
@@ -185,14 +182,10 @@ class FusionSearchRequest(BaseModel):
 
 
 class FusionSearchResponse(BaseModel):
-    """Fusion search response with merged results."""
+    """Fusion search response with merged results (unified wrapper)."""
 
-    query: str = Field(..., description="Original search query")
-    results: List[SearchResult] = Field(..., description="Merged and ranked results")
-    sources: Dict[str, Dict[str, Any]] = Field(
-        ..., description="Per-source status {count, success, error?}"
-    )
-    warnings: List[str] = Field(default=[], description="Warnings for failed sources")
+    success: bool = True
+    data: Dict[str, Any]
 
 
 # =============================================================================
@@ -377,7 +370,7 @@ async def search_arxiv(
     cached = await get_search_cache(cache_key)
     if cached:
         logger.info("arXiv search cache hit", query=query, limit=limit)
-        return cached
+        return SearchResponse(success=True, data=cached)
 
     logger.info("arXiv search cache miss", query=query, limit=limit)
 
@@ -401,7 +394,7 @@ async def search_arxiv(
             if response.status_code == 429:
                 logger.warning("arXiv API rate limited", query=query, status_code=429)
                 _arxiv_rate_limiter.record_failure()
-                return {"results": [], "total": 0}
+                return SearchResponse(success=True, data={"results": [], "total": 0})
 
             response.raise_for_status()
             _arxiv_rate_limiter.record_success()
@@ -485,7 +478,7 @@ async def search_arxiv(
             total=total,
         )
 
-        return result_data
+        return SearchResponse(success=True, data=result_data)
 
     except httpx.HTTPStatusError as e:
         logger.error(
@@ -495,7 +488,7 @@ async def search_arxiv(
             error=str(e),
         )
         _arxiv_rate_limiter.record_failure()
-        return {"results": [], "total": 0}
+        return SearchResponse(success=True, data={"results": [], "total": 0})
     except Exception as e:
         logger.error(
             "arXiv search failed",
@@ -503,7 +496,7 @@ async def search_arxiv(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return {"results": [], "total": 0}
+        return SearchResponse(success=True, data={"results": [], "total": 0})
 
 
 @router.get("/semantic-scholar", response_model=SearchResponse)
@@ -523,7 +516,7 @@ async def search_semantic_scholar(
     cached = await get_search_cache(cache_key)
     if cached:
         logger.info("Semantic Scholar search cache hit", query=query, limit=limit)
-        return cached
+        return SearchResponse(success=True, data=cached)
 
     logger.info("Semantic Scholar search cache miss", query=query, limit=limit)
 
@@ -551,7 +544,7 @@ async def search_semantic_scholar(
                     "Semantic Scholar API rate limited", query=query, status_code=429
                 )
                 _s2_rate_limiter.record_failure()
-                return {"results": [], "total": 0}
+                return SearchResponse(success=True, data={"results": [], "total": 0})
 
             response.raise_for_status()
             _s2_rate_limiter.record_success()
@@ -605,7 +598,7 @@ async def search_semantic_scholar(
             total=total,
         )
 
-        return result_data
+        return SearchResponse(success=True, data=result_data)
 
     except httpx.HTTPStatusError as e:
         logger.error(
@@ -615,7 +608,7 @@ async def search_semantic_scholar(
             error=str(e),
         )
         _s2_rate_limiter.record_failure()
-        return {"results": [], "total": 0}
+        return SearchResponse(success=True, data={"results": [], "total": 0})
     except Exception as e:
         logger.error(
             "Semantic Scholar search failed",
@@ -623,10 +616,10 @@ async def search_semantic_scholar(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return {"results": [], "total": 0}
+        return SearchResponse(success=True, data={"results": [], "total": 0})
 
 
-@router.get("/doi/{doi:path}", response_model=SearchResult)
+@router.get("/doi/{doi:path}")
 async def resolve_doi(doi: str):
     """Resolve DOI to paper metadata via CrossRef API.
 
@@ -634,7 +627,7 @@ async def resolve_doi(doi: str):
         doi: DOI identifier (e.g., "10.1038/nature12373")
 
     Returns:
-        SearchResult with paper metadata (title, authors, year, abstract)
+        SearchResponse with paper metadata (title, authors, year, abstract)
 
     Raises:
         HTTPException: 404 if DOI not found
@@ -642,11 +635,12 @@ async def resolve_doi(doi: str):
     Example:
         GET /search/doi/10.1038/nature12373
         Returns: {
-            "id": "10.1038/nature12373",
-            "title": "The DNA sequence...",
-            "authors": ["John Doe"],
-            "year": 2001,
-            ...
+            "success": true,
+            "data": {
+                "id": "10.1038/nature12373",
+                "title": "The DNA sequence...",
+                ...
+            }
         }
     """
     from app.core.crossref_service import CrossRefService
@@ -655,7 +649,7 @@ async def resolve_doi(doi: str):
     redis_client = await get_redis_client()
 
     result = await service.resolve_doi(doi, redis_client)
-    return SearchResult(**result)
+    return {"success": True, "data": result}
 
 
 # =============================================================================
@@ -698,13 +692,16 @@ async def search_library(
     # If no paper_ids provided, search would return empty
     if not paper_ids:
         logger.warning("No paper_ids provided for library search")
-        return {
-            "query": q,
-            "paper_count": 0,
-            "result_count": 0,
-            "weights": {"dense": 1.0, "sparse": 0.0},
-            "results": [],
-        }
+        return LibrarySearchResponse(
+            success=True,
+            data={
+                "query": q,
+                "paperCount": 0,
+                "resultCount": 0,
+                "weights": {"dense": 1.0, "sparse": 0.0},
+                "results": [],
+            },
+        )
 
     try:
         # Use MultimodalSearchService for unified search
@@ -742,13 +739,28 @@ async def search_library(
             results_found=len(library_results),
         )
 
-        return {
-            "query": q,
-            "paper_count": len(paper_ids),
-            "result_count": len(library_results),
-            "weights": {"dense": 1.0, "sparse": 0.0},  # Milvus-only now
-            "results": library_results,
-        }
+        return LibrarySearchResponse(
+            success=True,
+            data={
+                "query": q,
+                "paperCount": len(paper_ids),
+                "resultCount": len(library_results),
+                "weights": {"dense": 1.0, "sparse": 0.0},
+                "results": [
+                    {
+                        "id": r.id,
+                        "paperId": r.paper_id,
+                        "content": r.content,
+                        "section": r.section,
+                        "page": r.page,
+                        "rrfScore": r.rrf_score,
+                        "denseScore": r.dense_score,
+                        "sparseScore": r.sparse_score,
+                    }
+                    for r in library_results
+                ],
+            },
+        )
 
     except Exception as e:
         logger.error("Library search failed", error=str(e), query=q[:50])
@@ -791,7 +803,7 @@ async def search_unified(
     cached = await get_search_cache(cache_key)
     if cached:
         logger.info("Unified search cache hit", query=query, limit=limit)
-        return cached
+        return SearchResponse(success=True, data=cached)
 
     logger.info(
         "Unified search initiated",
@@ -815,14 +827,18 @@ async def search_unified(
     if isinstance(results[0], Exception):
         logger.warning(f"arXiv search failed: {results[0]}")
     else:
-        arxiv_list = results[0].get("results", [])
-        arxiv_total = results[0].get("total", 0)
+        # Handle SearchResponse wrapper
+        arxiv_data = results[0].data if hasattr(results[0], "data") else results[0]
+        arxiv_list = arxiv_data.get("results", [])
+        arxiv_total = arxiv_data.get("total", 0)
 
     if isinstance(results[1], Exception):
         logger.warning(f"Semantic Scholar search failed: {results[1]}")
     else:
-        s2_list = results[1].get("results", [])
-        s2_total = results[1].get("total", 0)
+        # Handle SearchResponse wrapper
+        s2_data = results[1].data if hasattr(results[1], "data") else results[1]
+        s2_list = s2_data.get("results", [])
+        s2_total = s2_data.get("total", 0)
 
     # Merge and deduplicate
     all_results = arxiv_list + s2_list
@@ -855,7 +871,7 @@ async def search_unified(
         returned_results=len(result_data["results"]),
     )
 
-    return result_data
+    return SearchResponse(success=True, data=result_data)
 
 
 # =============================================================================
@@ -892,23 +908,10 @@ class ClusterResult(BaseModel):
 
 
 class MultimodalSearchResponse(BaseModel):
-    """Multimodal search response model."""
+    """Multimodal search response model (unified wrapper)."""
 
-    query: str = Field(..., description="Search query")
-    intent: str = Field(
-        ...,
-        description="Detected modality intent (default, image_weighted, table_weighted)",
-    )
-    query_intent: Optional[str] = Field(
-        None,
-        description="Detected query intent (question, compare, summary, evolution)",
-    )
-    weights: Dict[str, float] = Field(..., description="Modality weights applied")
-    clusters: Optional[List[ClusterResult]] = Field(
-        None, description="Page clusters if enabled"
-    )
-    results: List[Dict[str, Any]] = Field(..., description="Search results")
-    total_count: int = Field(..., description="Total number of results")
+    success: bool = True
+    data: Dict[str, Any]
 
 
 # =============================================================================
@@ -996,7 +999,27 @@ async def multimodal_search(
                 )
                 # Continue without clustering
 
-        return MultimodalSearchResponse(**result)
+        return MultimodalSearchResponse(
+            success=True,
+            data={
+                "query": result.get("query", request.query),
+                "intent": result.get("intent", "default"),
+                "queryIntent": result.get("query_intent"),
+                "weights": result.get("weights", {}),
+                "clusters": [
+                    {
+                        "clusterId": c.cluster_id,
+                        "pages": list(c.pages),
+                        "results": c.results,
+                    }
+                    for c in result.get("clusters", [])
+                ]
+                if "clusters" in result
+                else None,
+                "results": result.get("results", []),
+                "totalCount": result.get("total_count", len(result.get("results", []))),
+            },
+        )
 
     except Exception as e:
         logger.error("Multimodal search failed", error=str(e), query=request.query[:50])
@@ -1128,8 +1151,11 @@ async def fusion_search(
             if source_name == "library":
                 source_results = result  # Already List[SearchResult]
             else:
-                # External search returns {"results": [...]}
-                source_results = result.get("results", [])
+                # External search returns SearchResponse with data wrapper
+                if hasattr(result, "data"):
+                    source_results = result.data.get("results", [])
+                else:
+                    source_results = result.get("results", [])
 
             # Mark external results
             for r in source_results:
@@ -1167,8 +1193,25 @@ async def fusion_search(
     )
 
     return FusionSearchResponse(
-        query=request.query,
-        results=scored_results[: request.limit],
-        sources=sources_status,
-        warnings=warnings,
+        success=True,
+        data={
+            "query": request.query,
+            "results": [
+                {
+                    "id": r.id,
+                    "title": r.title,
+                    "authors": r.authors,
+                    "year": r.year,
+                    "abstract": r.abstract,
+                    "source": r.source,
+                    "pdfUrl": r.pdfUrl,
+                    "url": r.url,
+                    "citationCount": r.citationCount,
+                    "arxivId": r.arxivId,
+                }
+                for r in scored_results[: request.limit]
+            ],
+            "sources": sources_status,
+            "warnings": warnings,
+        },
     )

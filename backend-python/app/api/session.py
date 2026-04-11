@@ -8,15 +8,14 @@ Provides RESTful endpoints for Session CRUD operations:
 - DELETE /api/sessions/{session_id}: Delete session
 """
 
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 
 from app.models.session import (
     SessionCreate,
     SessionUpdate,
-    SessionResponse,
-    SessionListResponse,
 )
 from app.utils.session_manager import session_manager
 from app.utils.logger import logger
@@ -27,20 +26,63 @@ router = APIRouter()
 
 
 # =============================================================================
+# Response Models
+# =============================================================================
+
+
+class SessionResponse(BaseModel):
+    """Response wrapper for session endpoints."""
+
+    success: bool = True
+    data: Dict[str, Any]
+
+
+class SessionListResponse(BaseModel):
+    """Response wrapper for sessions list."""
+
+    success: bool = True
+    data: Dict[str, Any]
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _format_session_response(session) -> dict:
+    """Format session for API response with camelCase fields."""
+    return {
+        "id": session.id,
+        "userId": session.user_id,
+        "title": session.title,
+        "status": session.status,
+        "metadata": session.session_metadata
+        if hasattr(session, "session_metadata")
+        else session.metadata,
+        "messageCount": session.message_count,
+        "toolCallCount": session.tool_call_count,
+        "createdAt": session.created_at.isoformat() if session.created_at else None,
+        "updatedAt": session.updated_at.isoformat() if session.updated_at else None,
+        "lastActivityAt": session.last_activity_at.isoformat()
+        if session.last_activity_at
+        else None,
+        "expiresAt": session.expires_at.isoformat() if session.expires_at else None,
+    }
+
+
+# =============================================================================
 # Session CRUD Endpoints
 # =============================================================================
+
 
 @router.post(
     "/sessions",
     response_model=SessionResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new session",
-    description="Create a new conversation session with optional title. Session expires after 30 days."
+    description="Create a new conversation session with optional title. Session expires after 30 days.",
 )
-async def create_session(
-    session_data: SessionCreate,
-    user_id: str = CurrentUserId
-):
+async def create_session(session_data: SessionCreate, user_id: str = CurrentUserId):
     """
     Create a new session.
 
@@ -52,19 +94,22 @@ async def create_session(
         Created session with all fields
     """
     try:
-        session = await session_manager.create_session(
+session = await session_manager.create_session(
             user_id=user_id,
             title=session_data.title
         )
 
         logger.info(f"Created session {session.id} via API")
-        return session
+        return SessionResponse(
+            success=True,
+            data=_format_session_response(session)
+        )
 
     except Exception as e:
         logger.error(f"Failed to create session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to create session: {str(e)}")
+            detail=Errors.internal(f"Failed to create session: {str(e)}"),
         )
 
 
@@ -72,12 +117,10 @@ async def create_session(
     "/sessions",
     response_model=SessionListResponse,
     summary="List user's sessions",
-    description="List all active sessions for the authenticated user, ordered by last activity."
+    description="List all active sessions for the authenticated user, ordered by last activity.",
 )
 async def list_sessions(
-    limit: int = 20,
-    status: str = "active",
-    user_id: str = CurrentUserId
+    limit: int = 20, status: str = "active", user_id: str = CurrentUserId
 ):
     """
     List user's sessions.
@@ -94,19 +137,22 @@ async def list_sessions(
         if limit < 1 or limit > 100:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=Errors.validation("Limit must be between 1 and 100")
+                detail=Errors.validation("Limit must be between 1 and 100"),
             )
 
-        sessions = await session_manager.list_user_sessions(
+sessions = await session_manager.list_user_sessions(
             user_id=user_id,
             limit=limit,
             status=status
         )
 
         return SessionListResponse(
-            sessions=sessions,
-            total=len(sessions),
-            limit=limit
+            success=True,
+            data={
+                "sessions": [_format_session_response(s) for s in sessions],
+                "total": len(sessions),
+                "limit": limit,
+            }
         )
 
     except HTTPException:
@@ -115,7 +161,7 @@ async def list_sessions(
         logger.error(f"Failed to list sessions: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to list sessions: {str(e)}")
+            detail=Errors.internal(f"Failed to list sessions: {str(e)}"),
         )
 
 
@@ -123,12 +169,9 @@ async def list_sessions(
     "/sessions/{session_id}",
     response_model=SessionResponse,
     summary="Get a specific session",
-    description="Retrieve session details by ID. Returns 404 if session not found or not owned by user."
+    description="Retrieve session details by ID. Returns 404 if session not found or not owned by user.",
 )
-async def get_session(
-    session_id: str,
-    user_id: str = CurrentUserId
-):
+async def get_session(session_id: str, user_id: str = CurrentUserId):
     """
     Get a specific session by ID.
 
@@ -148,17 +191,20 @@ async def get_session(
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found(f"Session {session_id} not found")
+                detail=Errors.not_found(f"Session {session_id} not found"),
             )
 
-        # Verify ownership
+# Verify ownership
         if session.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=Errors.forbidden("You don't have permission to access this session")
             )
 
-        return session
+        return SessionResponse(
+            success=True,
+            data=_format_session_response(session)
+        )
 
     except HTTPException:
         raise
@@ -166,7 +212,7 @@ async def get_session(
         logger.error(f"Failed to get session {session_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to get session: {str(e)}")
+            detail=Errors.internal(f"Failed to get session: {str(e)}"),
         )
 
 
@@ -174,12 +220,10 @@ async def get_session(
     "/sessions/{session_id}",
     response_model=SessionResponse,
     summary="Update a session",
-    description="Update session fields (title, status, metadata). Returns 404 if session not found."
+    description="Update session fields (title, status, metadata). Returns 404 if session not found.",
 )
 async def update_session(
-    session_id: str,
-    updates: SessionUpdate,
-    user_id: str = CurrentUserId
+    session_id: str, updates: SessionUpdate, user_id: str = CurrentUserId
 ):
     """
     Update a session.
@@ -201,20 +245,25 @@ async def update_session(
         if not existing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found(f"Session {session_id} not found")
+                detail=Errors.not_found(f"Session {session_id} not found"),
             )
 
         if existing.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=Errors.forbidden("You don't have permission to update this session")
+                detail=Errors.forbidden(
+                    "You don't have permission to update this session"
+                ),
             )
 
         # Update session
         updated = await session_manager.update_session(session_id, updates)
 
         logger.info(f"Updated session {session_id} via API")
-        return updated
+        return SessionResponse(
+            success=True,
+            data=_format_session_response(updated)
+        )
 
     except HTTPException:
         raise
@@ -222,7 +271,7 @@ async def update_session(
         logger.error(f"Failed to update session {session_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to update session: {str(e)}")
+            detail=Errors.internal(f"Failed to update session: {str(e)}"),
         )
 
 
@@ -230,12 +279,9 @@ async def update_session(
     "/sessions/{session_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a session",
-    description="Delete a session and all its messages. This action cannot be undone."
+    description="Delete a session and all its messages. This action cannot be undone.",
 )
-async def delete_session(
-    session_id: str,
-    user_id: str = CurrentUserId
-):
+async def delete_session(session_id: str, user_id: str = CurrentUserId):
     """
     Delete a session.
 
@@ -255,13 +301,15 @@ async def delete_session(
         if not existing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found(f"Session {session_id} not found")
+                detail=Errors.not_found(f"Session {session_id} not found"),
             )
 
         if existing.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=Errors.forbidden("You don't have permission to delete this session")
+                detail=Errors.forbidden(
+                    "You don't have permission to delete this session"
+                ),
             )
 
         # Delete session
@@ -270,7 +318,7 @@ async def delete_session(
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=Errors.internal("Failed to delete session")
+                detail=Errors.internal("Failed to delete session"),
             )
 
         logger.info(f"Deleted session {session_id} via API")
@@ -282,5 +330,5 @@ async def delete_session(
         logger.error(f"Failed to delete session {session_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to delete session: {str(e)}")
+            detail=Errors.internal(f"Failed to delete session: {str(e)}"),
         )

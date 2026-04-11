@@ -33,40 +33,56 @@ router = APIRouter()
 # Request/Response Models
 # =============================================================================
 
+
 class ProjectCreate(BaseModel):
     """Request to create a project."""
+
     name: str = Field(..., min_length=1, max_length=200)
     color: Optional[str] = Field("#3B82F6", pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
 class ProjectUpdate(BaseModel):
     """Request to update a project."""
+
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     color: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
 class ProjectResponse(BaseModel):
-    """Response for a single project."""
-    id: str
-    user_id: str
-    name: str
-    color: str
-    paper_count: int = 0
-    created_at: str
-    updated_at: str
+    """Response wrapper for project endpoints."""
 
-    class Config:
-        from_attributes = True
+    success: bool = True
+    data: dict
 
 
 class ProjectListResponse(BaseModel):
     """Response for projects list."""
+
     success: bool = True
-    data: List[ProjectResponse]
+    data: List[dict]
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _format_project_response(project: Project, paper_count: int = 0) -> dict:
+    """Format project for API response with camelCase fields."""
+    return {
+        "id": project.id,
+        "userId": project.user_id,
+        "name": project.name,
+        "color": project.color,
+        "paperCount": paper_count,
+        "createdAt": project.created_at.isoformat() if project.created_at else None,
+        "updatedAt": project.updated_at.isoformat() if project.updated_at else None,
+    }
 
 
 class PaperProjectUpdate(BaseModel):
     """Request to assign paper to project."""
+
     projectId: Optional[str] = None
 
 
@@ -74,10 +90,10 @@ class PaperProjectUpdate(BaseModel):
 # CRUD Endpoints
 # =============================================================================
 
+
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
-    user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db)
+    user_id: str = CurrentUserId, db: AsyncSession = Depends(get_db)
 ):
     """List user's projects with paper counts."""
     try:
@@ -93,16 +109,8 @@ async def list_projects(
         result = await db.execute(query)
         rows = result.all()
 
-        projects = [
-            ProjectResponse(
-                id=row[0].id,
-                user_id=row[0].user_id,
-                name=row[0].name,
-                color=row[0].color,
-                paper_count=row[1] or 0,
-                created_at=row[0].created_at.isoformat(),
-                updated_at=row[0].updated_at.isoformat()
-            )
+projects = [
+            _format_project_response(row[0], row[1] or 0)
             for row in rows
         ]
 
@@ -112,7 +120,7 @@ async def list_projects(
         logger.error("Failed to list projects", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to list projects: {str(e)}")
+            detail=Errors.internal(f"Failed to list projects: {str(e)}"),
         )
 
 
@@ -120,7 +128,7 @@ async def list_projects(
 async def create_project(
     request: ProjectCreate,
     user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a new project."""
     try:
@@ -133,38 +141,33 @@ async def create_project(
             id=str(uuid.uuid4()),
             user_id=user_id,
             name=request.name.strip(),
-            color=color
+            color=color,
         )
 
         db.add(project)
         await db.flush()
         await db.refresh(project)
 
-        logger.info("Project created", project_id=project.id, user_id=user_id, name=request.name)
+        logger.info(
+            "Project created", project_id=project.id, user_id=user_id, name=request.name
+        )
 
         return ProjectResponse(
-            id=project.id,
-            user_id=project.user_id,
-            name=project.name,
-            color=project.color,
-            paper_count=0,
-            created_at=project.created_at.isoformat(),
-            updated_at=project.updated_at.isoformat()
+            success=True,
+            data=_format_project_response(project, 0),
         )
 
     except Exception as e:
         logger.error("Failed to create project", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to create project: {str(e)}")
+            detail=Errors.internal(f"Failed to create project: {str(e)}"),
         )
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
-    project_id: str,
-    user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db)
+    project_id: str, user_id: str = CurrentUserId, db: AsyncSession = Depends(get_db)
 ):
     """Get a specific project with paper count."""
     try:
@@ -182,19 +185,14 @@ async def get_project(
         if not row:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Project not found")
+                detail=Errors.not_found("Project not found"),
             )
 
         project, paper_count = row
 
         return ProjectResponse(
-            id=project.id,
-            user_id=project.user_id,
-            name=project.name,
-            color=project.color,
-            paper_count=paper_count or 0,
-            created_at=project.created_at.isoformat(),
-            updated_at=project.updated_at.isoformat()
+            success=True,
+            data=_format_project_response(project, paper_count or 0),
         )
 
     except HTTPException:
@@ -203,7 +201,7 @@ async def get_project(
         logger.error("Failed to get project", error=str(e), project_id=project_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to get project: {str(e)}")
+            detail=Errors.internal(f"Failed to get project: {str(e)}"),
         )
 
 
@@ -212,7 +210,7 @@ async def update_project(
     project_id: str,
     request: ProjectUpdate,
     user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Update a project."""
     try:
@@ -220,7 +218,9 @@ async def update_project(
         if request.name is None and request.color is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=Errors.validation("At least one field (name or color) is required")
+                detail=Errors.validation(
+                    "At least one field (name or color) is required"
+                ),
             )
 
         # Find project
@@ -232,7 +232,7 @@ async def update_project(
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Project not found")
+                detail=Errors.not_found("Project not found"),
             )
 
         # Update fields
@@ -254,13 +254,8 @@ async def update_project(
         logger.info("Project updated", project_id=project_id, user_id=user_id)
 
         return ProjectResponse(
-            id=project.id,
-            user_id=project.user_id,
-            name=project.name,
-            color=project.color,
-            paper_count=paper_count,
-            created_at=project.created_at.isoformat(),
-            updated_at=project.updated_at.isoformat()
+            success=True,
+            data=_format_project_response(project, paper_count),
         )
 
     except HTTPException:
@@ -269,15 +264,13 @@ async def update_project(
         logger.error("Failed to update project", error=str(e), project_id=project_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to update project: {str(e)}")
+            detail=Errors.internal(f"Failed to update project: {str(e)}"),
         )
 
 
 @router.delete("/{project_id}")
 async def delete_project(
-    project_id: str,
-    user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db)
+    project_id: str, user_id: str = CurrentUserId, db: AsyncSession = Depends(get_db)
 ):
     """Delete a project.
 
@@ -293,7 +286,7 @@ async def delete_project(
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Project not found")
+                detail=Errors.not_found("Project not found"),
             )
 
         # Delete project (papers will have projectId set to null via database)
@@ -309,7 +302,7 @@ async def delete_project(
         logger.error("Failed to delete project", error=str(e), project_id=project_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to delete project: {str(e)}")
+            detail=Errors.internal(f"Failed to delete project: {str(e)}"),
         )
 
 
@@ -318,7 +311,7 @@ async def assign_paper_to_project(
     paper_id: str,
     request: PaperProjectUpdate,
     user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Assign paper to a project.
 
@@ -334,15 +327,14 @@ async def assign_paper_to_project(
         if not paper:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Paper not found")
+                detail=Errors.not_found("Paper not found"),
             )
 
         # If projectId provided, verify project exists and belongs to user
         if request.projectId:
             project_result = await db.execute(
                 select(Project).where(
-                    Project.id == request.projectId,
-                    Project.user_id == user_id
+                    Project.id == request.projectId, Project.user_id == user_id
                 )
             )
             project = project_result.scalar_one_or_none()
@@ -350,7 +342,7 @@ async def assign_paper_to_project(
             if not project:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=Errors.not_found("Project not found")
+                    detail=Errors.not_found("Project not found"),
                 )
 
         # Update paper's project
@@ -363,23 +355,25 @@ async def assign_paper_to_project(
             "Paper assigned to project",
             paper_id=paper_id,
             project_id=request.projectId or "none",
-            user_id=user_id
+            user_id=user_id,
         )
 
-        return {
+return {
             "success": True,
             "data": {
                 "id": paper.id,
                 "title": paper.title,
-                "project_id": paper.project_id
-            }
+                "projectId": paper.project_id,
+            },
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Failed to assign paper to project", error=str(e), paper_id=paper_id)
+        logger.error(
+            "Failed to assign paper to project", error=str(e), paper_id=paper_id
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to assign paper: {str(e)}")
+            detail=Errors.internal(f"Failed to assign paper: {str(e)}"),
         )
