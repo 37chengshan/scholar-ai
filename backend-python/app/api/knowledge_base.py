@@ -665,8 +665,12 @@ async def upload_pdf_to_kb(
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload a PDF to a knowledge base (stub - will use existing upload logic)."""
-    # Stub - will be implemented in future
+    """Upload a PDF to a knowledge base.
+
+    Per D-08: Paper inherits KB config (embeddingModel, parseEngine, etc.).
+    No config fields in request - KB config is used for processing.
+    """
+    # Stub - will fetch KB and use kb.embedding_model, kb.parse_engine, etc. for processing
     return KBResponse(
         success=True,
         data={"message": "Upload endpoint - to be implemented", "kbId": kb_id},
@@ -680,8 +684,12 @@ async def import_from_url(
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
-    """Import paper from URL/DOI (stub - will use existing import logic)."""
-    # Stub - will be implemented in future
+    """Import paper from URL/DOI.
+
+    Per D-08: Paper inherits KB config. Request contains only url field.
+    Processing uses KB's stored embedding_model, parse_engine, etc.
+    """
+    # Stub - will fetch KB and use kb config for processing
     return KBResponse(
         success=True,
         data={"message": "Import URL endpoint - to be implemented", "url": request.url},
@@ -695,8 +703,12 @@ async def import_from_arxiv(
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
-    """Import paper from arXiv (stub - will use existing arXiv logic)."""
-    # Stub - will be implemented in future
+    """Import paper from arXiv.
+
+    Per D-08: Paper inherits KB config. Request contains only arxivId field.
+    Processing uses KB's stored embedding_model, parse_engine, etc.
+    """
+    # Stub - will fetch KB and use kb config for processing
     return KBResponse(
         success=True,
         data={
@@ -712,8 +724,11 @@ async def batch_upload_to_kb(
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
-    """Batch upload PDFs to a knowledge base (stub)."""
-    # Stub - will be implemented in future
+    """Batch upload PDFs to a knowledge base.
+
+    Per D-08: All papers inherit KB config. No config fields in request.
+    """
+    # Stub - will fetch KB and use kb config for all paper processing
     return KBResponse(
         success=True,
         data={"message": "Batch upload endpoint - to be implemented", "kbId": kb_id},
