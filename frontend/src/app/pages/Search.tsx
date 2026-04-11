@@ -233,11 +233,10 @@ export function Search() {
       setShowKBSelectModal(false);
       setPendingImportPaper(null);
       
-      // Note: Backend import endpoints are stubs, so this will return "to be implemented"
-      // Future: Navigate to read page after import completes
-      // if (response.data.paperId) {
-      //   navigate(`/read/${response.data.paperId}`);
-      // }
+      // Navigate to read page after import (B-01: 搜索到阅读闭环)
+      if (response.data && response.data.paperId) {
+        navigate(`/read/${response.data.paperId}`);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error?.detail || '导入失败');
     } finally {

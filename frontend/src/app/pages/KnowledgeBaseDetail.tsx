@@ -277,7 +277,12 @@ export function KnowledgeBaseDetail() {
                 {results.map((result) => (
                   <div
                     key={result.id}
-                    className="bg-white border-2 border-zinc-200 p-6 relative hover:border-zinc-400 transition-colors group"
+                    className="bg-white border-2 border-zinc-200 p-6 relative hover:border-zinc-400 transition-colors group cursor-pointer"
+                    onClick={() => {
+                      // B-02: KB检索结果点击跳转到阅读页
+                      const page = result.page || 1;
+                      navigate(`/read/${result.paperId}?page=${page}`);
+                    }}
                   >
                     <div className="absolute -left-2 -top-2 bg-orange-100 text-orange-800 border-2 border-orange-200 font-mono text-xs px-2 py-1 font-bold shadow-sm">
                       Relevance: {(result.score * 100).toFixed(1)}%
@@ -288,6 +293,10 @@ export function KnowledgeBaseDetail() {
                     <div className="mt-6 flex items-center gap-2 text-sm font-medium text-zinc-500 bg-zinc-50 p-3 border border-zinc-100">
                       <FileText className="w-4 h-4 text-zinc-400" />
                       <span className="truncate">{result.paperId}</span>
+                      {result.page && <span className="text-primary">第{result.page}页</span>}
+                    </div>
+                    <div className="mt-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity font-bold uppercase tracking-wider">
+                      点击查看 →
                     </div>
                   </div>
                 ))}
@@ -317,6 +326,44 @@ export function KnowledgeBaseDetail() {
                         </div>
                       )}
                       {msg.content}
+                      
+                      {/* B-02: KB问答引用显示和跳转 */}
+                      {msg.role === "assistant" && msg.citations && msg.citations.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-primary/20">
+                          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                            引用来源 ({msg.citations.length})
+                          </div>
+                          <div className="space-y-2">
+                            {msg.citations.map((citation: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-2 text-xs cursor-pointer hover:text-primary transition-colors group"
+                                onClick={() => {
+                                  // 点击引用跳转到阅读页
+                                  const page = citation.page || 1;
+                                  navigate(`/read/${citation.paperId}?page=${page}`);
+                                }}
+                              >
+                                <FileText className="w-3 h-3 text-muted-foreground" />
+                                <span className="text-muted-foreground group-hover:text-primary">
+                                  [{idx + 1}]
+                                </span>
+                                <span className="truncate">
+                                  {citation.paperTitle || citation.paperId}
+                                </span>
+                                {citation.page && (
+                                  <span className="text-primary font-bold">
+                                    第{citation.page}页
+                                  </span>
+                                )}
+                                <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                  →
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
