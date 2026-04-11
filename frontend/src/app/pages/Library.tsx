@@ -169,7 +169,6 @@ export function Library() {
       // Revert on error
       updatePaperLocal(paperId, { starred: currentStarred });
       toast.error(isZh ? "操作失败" : "Failed to update starred status");
-      console.error('Failed to toggle star:', error);
     }
   }, [isZh, updatePaperLocal]);
 
@@ -228,7 +227,6 @@ export function Library() {
       refetch();
     } catch (error: any) {
       toast.error(isZh ? "批量操作失败" : "Batch operation failed");
-      console.error('Batch star failed:', error);
     }
   }, [selectedPapers, papers, isZh, refetch]);
 
@@ -424,7 +422,6 @@ export function Library() {
       toast.success(isZh ? "笔记创建成功" : "Note created successfully");
     } catch (error: any) {
       toast.error(isZh ? "创建失败" : "Failed to create note");
-      console.error('Create note error:', error);
     } finally {
       setCreatingNote(false);
     }
@@ -474,7 +471,6 @@ export function Library() {
       });
     } catch (error: any) {
       toast.error(isZh ? "更新失败" : "Failed to update note");
-      console.error('Update note error:', error);
     } finally {
       setUpdatingNote(false);
     }
@@ -492,7 +488,6 @@ export function Library() {
       setSelectedNote(null);
     } catch (error: any) {
       toast.error(isZh ? "删除失败" : "Failed to delete note");
-      console.error('Delete note error:', error);
     } finally {
       setDeletingNote(false);
     }

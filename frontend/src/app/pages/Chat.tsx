@@ -42,6 +42,7 @@ import { ConfirmationDialog } from '../components/ConfirmationDialog';
 import { AgentStateSidebar, AgentUIState, ExecutionStep } from '../components/AgentStateSidebar';
 import { SSEEvent } from '@/services/sseService';
 import { API_BASE_URL } from '@/config/api';
+import { toast } from 'sonner';
 
 export function Chat() {
   const navigate = useNavigate();
@@ -146,7 +147,7 @@ export function Chat() {
       connect(url, body);
       setInput('');
     } catch (error) {
-      console.error('Send message failed:', error);
+      toast.error(isZh ? '发送消息失败' : 'Failed to send message');
     } finally {
       setSending(false);
     }
@@ -289,10 +290,10 @@ export function Chat() {
         }),
       });
       if (!response.ok) {
-        console.error('Failed to send confirmation response', { status: response.status });
+        toast.error(isZh ? '确认响应发送失败' : 'Failed to send confirmation response');
       }
     } catch (error) {
-      console.error('Error sending confirmation response', { error });
+      toast.error(isZh ? '确认响应发送失败' : 'Failed to send confirmation response');
     } finally {
       resetConfirmation();
     }

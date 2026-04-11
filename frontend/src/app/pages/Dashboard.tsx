@@ -66,7 +66,6 @@ async function fetchRecentPapers() {
           setRecentPapers(response.data.data);
         }
       } catch (err) {
-        console.error('Failed to fetch recent papers:', err);
       } finally {
         setRecentPapersLoading(false);
       }
@@ -101,7 +100,6 @@ async function fetchRecentPapers() {
           setRecentSessions(sorted);
         }
       } catch (err) {
-        console.error('Failed to fetch recent sessions:', err);
       } finally {
         setRecentSessionsLoading(false);
       }

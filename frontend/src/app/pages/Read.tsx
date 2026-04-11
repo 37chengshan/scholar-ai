@@ -96,7 +96,6 @@ export function Read() {
         setAnnotations(annotationData);
       } catch (error: any) {
         const errorMsg = error?.message || (isZh ? '加载论文失败' : 'Failed to load paper');
-        console.error('Failed to load paper:', error);
         setError(errorMsg);
         toast.error(errorMsg);
       } finally {

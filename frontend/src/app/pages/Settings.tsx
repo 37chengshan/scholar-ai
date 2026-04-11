@@ -80,7 +80,6 @@ export function Settings() {
         toast.success(isZh ? "已登出" : "Logged out successfully");
         navigate("/login");
       } catch (error) {
-        console.error("Logout failed:", error);
         toast.error(isZh ? "登出失败" : "Logout failed");
       }
     }
