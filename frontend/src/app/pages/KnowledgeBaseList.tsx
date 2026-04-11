@@ -193,32 +193,15 @@ export function KnowledgeBaseList() {
             
             {/* Search input */}
             <div className="relative w-full sm:w-96">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-5 h-5" />
-              <Input
-                type="text"
-                placeholder="搜索知识库..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border-2 border-zinc-300 pl-10 pr-4 py-3 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-secondary focus:ring-0 transition-colors"
-              />
-            </div>
-            
-            {/* Storage progress bar */}
-            <div className="flex items-center gap-3">
-              <div
-                className="storage-progress flex-1 max-w-xs"
-                role="progressbar"
-                aria-valuenow={24}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={`存储使用量: ${storageUsed} / ${storageTotal}`}
-              >
-                <div className="storage-progress-fill" style={{ width: '24%' }} />
-              </div>
-              <span className="text-xs text-muted-foreground font-sans tabular-nums">
-                {storageUsed} / {storageTotal} · 24%
-              </span>
-            </div>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-5 h-5" />
+            <Input
+              type="text"
+              placeholder="搜索知识库..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white border-2 border-zinc-300 pl-10 pr-4 py-3 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-secondary focus:ring-0 transition-colors"
+            />
+          </div>
           
           {/* Category chip filters */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -283,6 +266,23 @@ export function KnowledgeBaseList() {
             >
               <List className="h-3.5 w-3.5" />
             </Button>
+          </div>
+          
+          {/* Storage progress bar */}
+          <div className="flex items-center gap-3 mt-4">
+            <div
+              className="storage-progress flex-1 max-w-xs"
+              role="progressbar"
+              aria-valuenow={24}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`存储使用量: ${storageUsed} / ${storageTotal}`}
+            >
+              <div className="storage-progress-fill" style={{ width: '24%' }} />
+            </div>
+            <span className="text-xs text-muted-foreground font-sans tabular-nums">
+              {storageUsed} / {storageTotal} · 24%
+            </span>
           </div>
         </div>
 
@@ -491,6 +491,25 @@ export function KnowledgeBaseList() {
         )}
       </div>
 
+      {/* Create Dialog */}
+      <CreateKnowledgeBaseDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onCreate={handleCreateSubmit}
+      />
+
+      {/* Import Dialog */}
+      {importTarget && (
+        <ImportKnowledgeDialog
+          open={!!importTarget}
+          onOpenChange={(open) => {
+            if (!open) setImportTarget(null);
+          }}
+          knowledgeBaseId={importTarget.id}
+          knowledgeBaseName={importTarget.name}
+        />
+      )}
+
       {/* Magazine Masthead Footer */}
       <div className="max-w-7xl mx-auto px-6 py-16 border-t-4 border-zinc-900 mt-16">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -513,25 +532,6 @@ export function KnowledgeBaseList() {
           </div>
         </div>
       </div>
-
-      {/* Create Dialog */}
-      <CreateKnowledgeBaseDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        onCreate={handleCreateSubmit}
-      />
-
-      {/* Import Dialog */}
-      {importTarget && (
-        <ImportKnowledgeDialog
-          open={!!importTarget}
-          onOpenChange={(open) => {
-            if (!open) setImportTarget(null);
-          }}
-          knowledgeBaseId={importTarget.id}
-          knowledgeBaseName={importTarget.name}
-        />
-      )}
     </div>
   );
 }
