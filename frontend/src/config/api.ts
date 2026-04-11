@@ -6,6 +6,12 @@
  */
 
 /**
+ * API Version Prefix
+ * All API endpoints should use this prefix to ensure consistency
+ */
+export const API_PREFIX = '/api/v1';
+
+/**
  * Get API base URL from environment or default
  * Development: http://localhost:4000 (Node.js API Gateway)
  * Production: Configured via VITE_API_BASE_URL env var

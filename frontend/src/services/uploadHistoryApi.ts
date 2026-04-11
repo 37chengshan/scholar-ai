@@ -51,7 +51,7 @@ export interface UploadHistoryListResponse {
 /**
  * Get paginated upload history list
  *
- * GET /api/upload-history
+ * GET /api/v1/upload-history
  * Returns user's upload history records
  *
  * @param limit - Number of records per page (default 50, max 100)
@@ -59,7 +59,7 @@ export interface UploadHistoryListResponse {
  * @returns Upload history records with total count
  */
 export async function getList(limit = 50, offset = 0): Promise<UploadHistoryListResponse> {
-  const response = await apiClient.get<UploadHistoryListResponse>('/api/upload-history', {
+  const response = await apiClient.get<UploadHistoryListResponse>('/api/v1/uploads/history', {
     params: {
       limit: Math.min(100, Math.max(1, limit)),
       offset: Math.max(0, offset),
@@ -72,7 +72,7 @@ export async function getList(limit = 50, offset = 0): Promise<UploadHistoryList
 /**
  * Get detailed upload history record
  *
- * GET /api/upload-history/:id
+ * GET /api/v1/upload-history/:id
  * Returns detailed upload history record with paper info
  *
  * @param id - Upload history record ID
@@ -85,7 +85,7 @@ export async function getById(id: string): Promise<{
   const response = await apiClient.get<{
     success: boolean;
     data: UploadHistoryRecord;
-  }>(`/api/upload-history/${id}`);
+  }>(`/api/v1/uploads/history/${id}`);
 
   return response.data;
 }
@@ -93,7 +93,7 @@ export async function getById(id: string): Promise<{
 /**
  * Delete upload history record
  *
- * DELETE /api/upload-history/:id
+ * DELETE /api/v1/upload-history/:id
  * Safe deletion - only removes history record, paper remains in library
  *
  * Per D-01: Deleting history does not delete paper
@@ -114,7 +114,7 @@ export async function deleteRecord(id: string): Promise<{
       message: string;
       paperPreserved: boolean;
     };
-  }>(`/api/upload-history/${id}`);
+  }>(`/api/v1/uploads/history/${id}`);
 
   return response.data;
 }

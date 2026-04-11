@@ -17,7 +17,7 @@ import type { UploadResult } from '@/types';
 /**
  * Request presigned upload URL (S3/MinIO mode)
  *
- * POST /api/papers
+ * POST /api/v1/papers
  * Creates paper record and returns presigned upload URL
  *
  * @param filename - PDF filename
@@ -39,7 +39,7 @@ export async function getUploadUrl(filename: string): Promise<{
       storageKey: string;
       message: string;
     };
-  }>('/api/papers', {
+  }>('/api/v1/papers', {
     filename,
   });
 
@@ -79,7 +79,7 @@ export async function uploadFile(
       size: number;
       message: string;
     };
-  }>(`/api/papers/upload/local/${storageKey}`, file, {
+  }>(`/api/v1/papers/upload/local/${storageKey}`, file, {
     headers: {
       'Content-Type': 'application/octet-stream',
     },
@@ -99,7 +99,7 @@ export async function uploadFile(
 /**
  * Confirm upload and trigger processing
  *
- * POST /api/papers/webhook
+ * POST /api/v1/papers/webhook
  * Verifies file exists in storage and creates processing task
  *
  * @param paperId - Paper ID from getUploadUrl()
@@ -113,7 +113,7 @@ export async function confirmUpload(
   const response = await apiClient.post<{
     success: boolean;
     data: UploadResult;
-  }>('/api/papers/webhook', {
+  }>('/api/v1/papers/webhook', {
     paperId,
     storageKey,
   });
