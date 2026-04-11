@@ -137,8 +137,7 @@ export class SSEService {
       await this.processStream(response);
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.log('[SSE] Stream aborted (intentional disconnect)');
-        return;
+        return; // Stream aborted (intentional disconnect)
       }
       console.error('[SSE] Connection error:', error);
       if (!this.isDisconnecting) {
@@ -218,7 +217,6 @@ export class SSEService {
 
     try {
       const event: SSEEvent = JSON.parse(dataStr);
-      console.log('[SSE] Received event:', eventType, event);
 
       if (eventType === 'done') {
         this.isDisconnecting = true;
@@ -251,7 +249,6 @@ export class SSEService {
 
     if (this.reconnectAttempts < this.config.maxReconnects) {
       const delay = this.config.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts);
-      console.log(`[SSE] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${this.config.maxReconnects})`);
 
       setTimeout(() => {
         this.reconnectAttempts++;

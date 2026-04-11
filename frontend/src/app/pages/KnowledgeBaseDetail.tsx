@@ -221,7 +221,7 @@ export function KnowledgeBaseDetail() {
               }`}
             >
               <span className="flex items-center justify-center gap-2">
-                <Search className="w-4 h-4" /> Vector Search
+                <Search className="w-4 h-4" /> 知识库检索
               </span>
             </TabsTrigger>
             <TabsTrigger
@@ -233,7 +233,7 @@ export function KnowledgeBaseDetail() {
               }`}
             >
               <span className="flex items-center justify-center gap-2">
-                <MessageSquare className="w-4 w-4" /> Agentic Q&A
+                <MessageSquare className="w-4 h-4" /> 问答
               </span>
             </TabsTrigger>
           </TabsList>
@@ -250,7 +250,7 @@ export function KnowledgeBaseDetail() {
               <input
                 type="text"
                 className="block w-full pl-12 pr-32 py-5 text-lg border-2 border-zinc-900 font-medium placeholder:text-zinc-400 focus:outline-none focus:ring-0 focus:border-primary shadow-[6px_6px_0px_0px_rgba(24,24,27,1)] transition-colors bg-white"
-                placeholder="Query vectorized chunks..."
+                placeholder="输入您的问题..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -269,7 +269,7 @@ export function KnowledgeBaseDetail() {
                 <div className="flex items-center gap-4 mb-8">
                   <div className="h-px bg-zinc-300 flex-1"></div>
                   <span className="text-zinc-500 font-bold uppercase tracking-widest text-sm px-4">
-                    Top {results.length} Segments Retrieved
+                    检索到 {results.length} 个相关片段
                   </span>
                   <div className="h-px bg-zinc-300 flex-1"></div>
                 </div>
@@ -285,7 +285,7 @@ export function KnowledgeBaseDetail() {
                     }}
                   >
                     <div className="absolute -left-2 -top-2 bg-orange-100 text-orange-800 border-2 border-orange-200 font-mono text-xs px-2 py-1 font-bold shadow-sm">
-                      Relevance: {(result.score * 100).toFixed(1)}%
+                      相关度: {(result.score * 100).toFixed(1)}%
                     </div>
                     <p className="text-lg text-zinc-800 mt-4 leading-relaxed font-serif">
                       "...{result.content}..."

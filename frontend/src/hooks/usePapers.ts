@@ -113,7 +113,6 @@ export function usePapers(options: UsePapersOptions = {}): UsePapersReturn {
   const updatePaperLocal = useCallback((paperId: string, updates: Partial<PaperWithProgress>) => {
     // Note: In a full React Query implementation, we would use queryClient.setQueryData
     // For now, this is a placeholder for optimistic updates
-    console.log('Optimistic update:', paperId, updates);
   }, []);
 
 /**

@@ -21,11 +21,13 @@ import { ProfileForm } from "../components/ProfileForm";
 import { APIKeyManager } from "../components/APIKeyManager";
 import { FontSizeSelector } from "../components/FontSizeSelector";
 import { SystemDiagnostics } from "../components/SystemDiagnostics";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useNavigate } from "react-router";
 import toast from "react-hot-toast";
 
 export function Settings() {
   const [activeSection, setActiveSection] = useState("profile");
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); // 登出确认对话框
   const { fontSize, setFontSize } = useSettingsStore();
   const { language, setLanguage } = useLanguage();
   const { user, logout } = useAuth();
@@ -74,15 +76,22 @@ export function Settings() {
   };
 
   const handleLogout = async () => {
-    if (confirm(t.logoutConfirm)) {
-      try {
-        await logout();
-        toast.success(isZh ? "已登出" : "Logged out successfully");
-        navigate("/login");
-      } catch (error) {
-        toast.error(isZh ? "登出失败" : "Logout failed");
-      }
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = async () => {
+    try {
+      await logout();
+      toast.success(isZh ? "已登出" : "Logged out successfully");
+      navigate("/login");
+    } catch (error) {
+      toast.error(isZh ? "登出失败" : "Logout failed");
     }
+    setShowLogoutConfirm(false);
+  };
+
+  const cancelLogout = () => {
+    setShowLogoutConfirm(false);
   };
 
   return (
@@ -440,6 +449,18 @@ export function Settings() {
 
         </div>
       </motion.div>
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        title={isZh ? "退出登录" : "Logout"}
+        message={isZh ? "确定要退出登录吗？退出后需要重新登录才能使用。" : "Are you sure you want to logout? You will need to login again to use the system."}
+        confirmLabel={isZh ? "退出" : "Logout"}
+        cancelLabel={isZh ? "取消" : "Cancel"}
+        variant="danger"
+        onConfirm={confirmLogout}
+        onCancel={cancelLogout}
+      />
     </div>
   );
 }

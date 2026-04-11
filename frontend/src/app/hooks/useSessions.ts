@@ -58,7 +58,6 @@ export function useSessions(): UseSessionsReturn {
     try {
       const response = await apiClient.get('/api/v1/sessions?limit=50&status=active');
       const data = response.data.data || response.data;
-      console.log('[useSessions] Loaded sessions:', data);
       setSessions(data.sessions || []);
       
       if (data.sessions && data.sessions.length > 0) {
@@ -77,11 +76,9 @@ export function useSessions(): UseSessionsReturn {
     try {
       const response = await apiClient.get(`/api/v1/sessions/${sessionId}/messages?limit=100`);
       const data = response.data.data || response.data;
-      console.log('[useSessions] Loaded messages:', data);
       const msgs = (data.messages || []).reverse();
       setMessages(msgs);
     } catch (err) {
-      console.log('[useSessions] No messages yet for this session');
       setMessages([]); // No messages yet, that's OK
     }
   }, []);
@@ -95,7 +92,6 @@ export function useSessions(): UseSessionsReturn {
       });
       
       const session = response.data.data || response.data;
-      console.log('[useSessions] Created session:', session);
       setSessions(prev => [session, ...prev]);
       setCurrentSession(session);
       setMessages([]); // New session has no messages

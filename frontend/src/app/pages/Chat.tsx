@@ -39,6 +39,7 @@ import { ToolCallCard } from '../components/ToolCallCard';
 import { CitationsPanel, renderContentWithCitations } from '../components/CitationsPanel';
 import { TokenMonitor } from '../components/TokenMonitor';
 import { ConfirmationDialog } from '../components/ConfirmationDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { AgentStateSidebar, AgentUIState, ExecutionStep } from '../components/AgentStateSidebar';
 import { SSEEvent } from '@/services/sseService';
 import { API_BASE_URL } from '@/config/api';
@@ -54,6 +55,8 @@ export function Chat() {
   const [sending, setSending] = useState(false); // 防止重复发送
   const [sessionTokens, setSessionTokens] = useState(0); // 当前session的token
   const [sessionCost, setSessionCost] = useState(0); // 当前session的花费
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // 删除确认对话框
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null); // 待删除的会话ID
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { language } = useLanguage();
@@ -108,10 +111,26 @@ export function Chat() {
 
   const handleDeleteSession = useCallback(async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(t.deleteConfirm)) {
-      await deleteSession(sessionId);
+    setSessionToDelete(sessionId);
+    setShowDeleteConfirm(true);
+  }, []);
+
+  const confirmDeleteSession = useCallback(async () => {
+    if (!sessionToDelete) return;
+    try {
+      await deleteSession(sessionToDelete);
+      toast.success(isZh ? '对话已删除' : 'Session deleted');
+    } catch (err) {
+      toast.error(isZh ? '删除失败' : 'Delete failed');
     }
-  }, [deleteSession, t.deleteConfirm]);
+    setShowDeleteConfirm(false);
+    setSessionToDelete(null);
+  }, [sessionToDelete, deleteSession, isZh]);
+
+  const cancelDeleteSession = useCallback(() => {
+    setShowDeleteConfirm(false);
+    setSessionToDelete(null);
+  }, []);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isConnected || sending) return;
@@ -592,6 +611,18 @@ export function Chat() {
         isOpen={confirmation !== null}
         onApprove={() => sendConfirmationResponse(true)}
         onReject={() => sendConfirmationResponse(false)}
+      />
+      
+      {/* Delete Session Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title={isZh ? '删除对话' : 'Delete Session'}
+        message={isZh ? '确定要删除这个对话吗？删除后将无法恢复。' : 'Are you sure you want to delete this session? This cannot be undone.'}
+        confirmLabel={isZh ? '删除' : 'Delete'}
+        cancelLabel={isZh ? '取消' : 'Cancel'}
+        variant="danger"
+        onConfirm={confirmDeleteSession}
+        onCancel={cancelDeleteSession}
       />
       
       {/* Toggle Right Panel Button (when hidden) */}

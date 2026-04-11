@@ -2,6 +2,7 @@ import { UploadCloud, FolderUp, Link, History, Settings2, FileText, CheckCircle2
 import { clsx } from "clsx";
 import { motion } from "motion/react";
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router";
 import { useDropzone } from "react-dropzone";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useUpload } from "../hooks/useUpload";
@@ -15,6 +16,7 @@ import { Button } from "@/app/components/ui/button";
 import toast from "react-hot-toast";
 
 export function Upload() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("local");
   const { language } = useLanguage();
   const isZh = language === "zh";
@@ -247,7 +249,7 @@ export function Upload() {
                   <div 
                     key={record.id} 
                     className="flex flex-col gap-1 p-2 rounded-sm hover:bg-card border border-transparent hover:border-border/50 transition-colors cursor-pointer group"
-                    onClick={() => record.paper?.id && (window.location.href = `/read/${record.paper.id}`)}
+                    onClick={() => record.paper?.id && navigate(`/read/${record.paper.id}`)}
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] font-mono font-bold group-hover:text-primary transition-colors truncate max-w-[100px]">

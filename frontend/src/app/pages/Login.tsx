@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import * as authApi from "@/services/authApi";
 
 const SYSTEM_LOGS_EN = [
-  "[SYS] Initializing Node 04 environment...",
+  "[SYS] Initializing system environment...",
   "[SYS] Initializing vector database...",
   "[OK] Graph DB connected. Latency: 12ms",
   "[SYS] Loading local embedding models...",
@@ -17,7 +17,7 @@ const SYSTEM_LOGS_EN = [
 ];
 
 const SYSTEM_LOGS_ZH = [
-  "[SYS] 正在初始化 Node 04 环境...",
+  "[SYS] 正在初始化系统环境...",
   "[SYS] 正在初始化向量数据库...",
   "[OK] 图数据库已连接。延迟: 12ms",
   "[SYS] 正在加载本地嵌入模型...",

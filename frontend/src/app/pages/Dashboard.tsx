@@ -130,8 +130,8 @@ async function fetchRecentPapers() {
     sysStatus: isZh ? "系统状态" : "System Status",
     // Note: System monitoring API not implemented - showing placeholder
     // node: real data would come from /api/v1/system/status
-    apiActive: isZh ? "API: 活跃" : "API: Active",
-    dbSynced: isZh ? "DB: 已同步" : "DB: Synced",
+    apiActive: isZh ? "服务正常" : "Service Normal",
+    dbSynced: isZh ? "数据已同步" : "Data Synced",
     updateAgo: isZh ? "更新: 2分钟前" : "Update: 2m ago",
     totalPapers: isZh ? "总文献量" : "Total Papers",
     localIndex: isZh ? "本地索引" : "Local index",
