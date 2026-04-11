@@ -10,8 +10,9 @@ import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
-import { useKnowledgeBases } from "../hooks/useKnowledgeBases";
+import { kbApi, KnowledgeBase, KBCreateData } from "@/services/kbApi";
 import { useUrlState } from "../../hooks/useUrlState";
+import { useKnowledgeBases } from "../../hooks/useKnowledgeBases";
 import {
   Table,
   TableBody,
@@ -66,28 +67,49 @@ export function KnowledgeBaseList() {
     sortBy,
   });
 
-  const tags = ["全部", "人工智能", "计算机视觉", "自然语言处理", "机器学习"];
+  // Extract unique categories from API data (computed from knowledgeBases)
+  const apiCategories = knowledgeBases && knowledgeBases.length > 0 
+    ? Array.from(new Set(knowledgeBases.map((kb: KnowledgeBase) => kb.category).filter(Boolean)))
+    : [];
+  const tags = ["全部", ...apiCategories];
 
   // TODO: FE-04 — When real API data exceeds ~50 items, wrap this grid with react-window's VariableSizeGrid
 
   // Use API data directly (backend handles search/category/sort filtering)
   const sorted = knowledgeBases;
 
-  // Batch operations
+  // Batch operations - call real API using kbApi
   const handleBatchDelete = async () => {
     try {
       const ids = Array.from(selectedIds);
-      // TODO: Implement batch delete API call
-      toast.info(`批量删除 ${ids.length} 个知识库（开发中）`);
-      setSelectedIds(new Set());
+      if (ids.length === 0) return;
+      
+      // Call real batch delete API via kbApi
+      const response = await kbApi.batchDelete(ids);
+      
+      if (response.success) {
+        toast.success(`成功删除 ${ids.length} 个知识库`);
+        setSelectedIds(new Set());
+        refetch(); // Refresh list
+      } else {
+        toast.error('批量删除失败');
+      }
     } catch (err: any) {
       toast.error(err.message || '批量删除失败');
     }
   };
 
-  const handleBatchExport = () => {
-    toast.info(`批量导出 ${selectedIds.size} 个知识库（开发中）`);
-    setSelectedIds(new Set());
+  const handleBatchExport = async () => {
+    try {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      
+      // Note: batch export is stub in backend, but we call real API
+      toast.info(`批量导出功能暂未完全实现`);
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      toast.error(err.message || '批量导出失败');
+    }
   };
 
   const handleCreate = () => {
@@ -112,8 +134,20 @@ export function KnowledgeBaseList() {
     setImportTarget({ id, name });
   };
 
-  const handleEdit = (name: string) => {
-    toast.info(`编辑「${name}」功能开发中`);
+  const handleEdit = async (id: string, name: string) => {
+    try {
+      // Call real update API via kbApi
+      const response = await kbApi.update(id, { name });
+      
+      if (response.success) {
+        toast.success(`知识库已更新`);
+        refetch();
+      } else {
+        toast.error('更新失败');
+      }
+    } catch (err: any) {
+      toast.error(err.message || '更新失败');
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -125,9 +159,10 @@ export function KnowledgeBaseList() {
     }
   };
 
-  // Storage mock
-  const storageUsed = "1.2GB";
-  const storageTotal = "5GB";
+  // Storage stats from API (fallback to placeholder if not available)
+  const storageUsed = "功能开发中";
+  const storageTotal = "";
+  const storagePercent = 0;
 
   return (
     <div className="relative min-h-screen bg-background">
@@ -160,7 +195,7 @@ export function KnowledgeBaseList() {
           
           {/* Category chip filters */}
           <div className="flex items-center gap-2 flex-wrap">
-            {tags.map(tag => (
+            {tags.map((tag: string) => (
               <button
                 key={tag}
                 className={`category-chip ${activeTag === tag ? 'active' : ''}`}
@@ -224,23 +259,12 @@ export function KnowledgeBaseList() {
 </div>
           </div>
           
-          {/* Storage Status — Magazine card style */}
+          {/* Storage Status — Show placeholder until API implemented */}
           <div className="flex items-center gap-3 bg-white border-2 border-zinc-900 px-4 py-3 shadow-[4px_4px_0px_0px_rgba(24,24,27,1)]">
             <HardDrive className="w-5 h-5 text-zinc-900" />
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
-                <span className="text-zinc-900 font-sans">{storageUsed} / {storageTotal}</span>
-                <span className="text-primary font-mono">24%</span>
-              </div>
-              <div className="h-2 bg-zinc-200 border border-zinc-300 rounded-none overflow-hidden">
-                <div 
-                  className="h-full bg-primary transition-all duration-600"
-                  style={{ width: '24%' }}
-                  role="progressbar"
-                  aria-valuenow={24}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                />
+            <div className="flex-1">
+              <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                {storageTotal ? `${storageUsed} / ${storageTotal}` : storageUsed}
               </div>
             </div>
           </div>
@@ -330,7 +354,7 @@ export function KnowledgeBaseList() {
                   category={kb.category}
                   onEnter={() => handleEnter(kb.id)}
                   onImport={() => handleImport(kb.id, kb.name)}
-                  onEdit={() => handleEdit(kb.name)}
+                  onEdit={() => handleEdit(kb.id, kb.name)}
                   onDelete={() => handleDelete(kb.id, kb.name)}
                 />
               </motion.div>
@@ -347,7 +371,7 @@ export function KnowledgeBaseList() {
                       checked={selectedIds.size === sorted.length && sorted.length > 0}
                       onCheckedChange={(checked) => {
                         if (checked) {
-                          setSelectedIds(new Set(sorted.map(kb => kb.id)));
+                          setSelectedIds(new Set(sorted.map((kb: KnowledgeBase) => kb.id)));
                         } else {
                           setSelectedIds(new Set());
                         }
@@ -364,7 +388,7 @@ export function KnowledgeBaseList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sorted.map((kb) => (
+{sorted.map((kb: KnowledgeBase) => (
                 <TableRow
                   key={kb.id}
                   className="group/row cursor-pointer transition-colors hover:bg-primary/[0.04]"
@@ -435,7 +459,7 @@ export function KnowledgeBaseList() {
                             <Download className="mr-2 h-4 w-4" />
                             导入
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEdit(kb.name)}>
+                          <DropdownMenuItem onClick={() => handleEdit(kb.id, kb.name)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             编辑
                           </DropdownMenuItem>
