@@ -178,73 +178,47 @@ export function KnowledgeBaseList() {
     <div className="relative min-h-screen bg-background">
       <PaperTexture />
       
-      {/* Magazine Masthead Header */}
-      <div className="magazine-toolbar sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b-4 border-zinc-900">
-            <div className="space-y-4">
-              {/* Badge label */}
-              <div className="inline-block px-3 py-1 bg-orange-100 text-orange-800 font-bold uppercase tracking-widest text-xs">
-                知识库
-              </div>
-              
-              {/* Magazine masthead title */}
-              <h1 className="text-5xl md:text-7xl font-black font-serif uppercase tracking-tighter text-zinc-900 leading-none">
-                Knowledge<br/>
-                <span className="text-primary">Repositories</span>
-              </h1>
-              
-              {/* Description */}
-              <p className="text-zinc-600 font-medium max-w-xl text-lg font-sans">
-                管理您的向量化文档集合。上传、处理和使用高级嵌入模型查询企业知识。
-              </p>
+      {/* Toolbar (Filter Bar) — Magazine styling */}
+      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-zinc-100 p-4 border border-zinc-300">
+            {/* Create button */}
+            <Button 
+              onClick={handleCreate}
+              className="flex items-center gap-2 bg-primary hover:bg-zinc-900 text-white px-6 py-4 font-bold uppercase tracking-wide transition-all shadow-[4px_4px_0px_0px_rgba(24,24,27,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+            >
+              <Plus className="w-5 h-5" />
+              创建知识库
+            </Button>
+            
+            {/* Search input */}
+            <div className="relative w-full sm:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-5 h-5" />
+              <Input
+                type="text"
+                placeholder="搜索知识库..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-white border-2 border-zinc-300 pl-10 pr-4 py-3 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-secondary focus:ring-0 transition-colors"
+              />
             </div>
             
-            {/* Create button */}
-            <div className="flex items-center gap-4 shrink-0">
-              <Button 
-                onClick={handleCreate}
-                className="flex items-center gap-2 bg-primary hover:bg-zinc-900 text-white px-6 py-4 font-bold uppercase tracking-wide transition-all shadow-[4px_4px_0px_0px_rgba(24,24,27,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+            {/* Storage progress bar */}
+            <div className="flex items-center gap-3">
+              <div
+                className="storage-progress flex-1 max-w-xs"
+                role="progressbar"
+                aria-valuenow={24}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`存储使用量: ${storageUsed} / ${storageTotal}`}
               >
-                <Plus className="w-5 h-5" />
-                创建知识库
-              </Button>
+                <div className="storage-progress-fill" style={{ width: '24%' }} />
+              </div>
+              <span className="text-xs text-muted-foreground font-sans tabular-nums">
+                {storageUsed} / {storageTotal} · 24%
+              </span>
             </div>
-          </div>
-
-          {/* Storage progress bar */}
-          <div className="mt-4 flex items-center gap-3">
-            <div
-              className="storage-progress flex-1 max-w-xs"
-              role="progressbar"
-              aria-valuenow={24}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`存储使用量: ${storageUsed} / ${storageTotal}`}
-            >
-              <div className="storage-progress-fill" style={{ width: '24%' }} />
-            </div>
-            <span className="text-xs text-muted-foreground font-sans tabular-nums">
-              {storageUsed} / {storageTotal} · 24%
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Toolbar (Filter Bar) — Magazine styling */}
-      <div className="max-w-7xl mx-auto px-6 py-4">
-        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-zinc-100 p-4 border border-zinc-300">
-          {/* Search input */}
-          <div className="relative w-full sm:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-5 h-5" />
-            <Input
-              type="text"
-              placeholder="搜索知识库..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border-2 border-zinc-300 pl-10 pr-4 py-3 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-secondary focus:ring-0 transition-colors"
-            />
-          </div>
           
           {/* Category chip filters */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -515,6 +489,29 @@ export function KnowledgeBaseList() {
           </Table>
           </div>
         )}
+      </div>
+
+      {/* Magazine Masthead Footer */}
+      <div className="max-w-7xl mx-auto px-6 py-16 border-t-4 border-zinc-900 mt-16">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-4">
+            {/* Badge label */}
+            <div className="inline-block px-3 py-1 bg-orange-100 text-orange-800 font-bold uppercase tracking-widest text-xs">
+              知识库
+            </div>
+            
+            {/* Magazine masthead title */}
+            <h1 className="text-5xl md:text-7xl font-black font-serif uppercase tracking-tighter text-zinc-900 leading-none">
+              Knowledge<br/>
+              <span className="text-primary">Repositories</span>
+            </h1>
+            
+            {/* Description */}
+            <p className="text-zinc-600 font-medium max-w-xl text-lg font-sans">
+              管理您的向量化文档集合。上传、处理和使用高级嵌入模型查询企业知识。
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Create Dialog */}
