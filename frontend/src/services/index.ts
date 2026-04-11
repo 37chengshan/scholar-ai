@@ -22,3 +22,6 @@ export * from './ragApi';
 
 // Users API
 export * from './usersApi';
+
+// Knowledge Base API
+export * from './kbApi';
