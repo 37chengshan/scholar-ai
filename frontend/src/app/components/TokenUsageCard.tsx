@@ -55,7 +55,7 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
       const response = await apiClient.get<{
         success: boolean;
         data: TokenUsageData;
-      }>('/api/token-usage/monthly');
+      }>('/api/v1/users/me/token-usage/monthly');
 
       if (response.data.success) {
         setUsage(response.data.data);

@@ -12,14 +12,16 @@
  * - Paper autocomplete suggestions (Phase 23)
  * - Import external papers to library
  * - Real-time search results
+ * - URL state persistence (search query, filters, page)
  */
 
-import { Search as SearchIcon, Globe, Plus, RefreshCw, BarChart2, Hash, ExternalLink, Calendar, Users, TrendingUp, Layers } from "lucide-react";
+import { Search as SearchIcon, Globe, RefreshCw, BarChart2, Hash, Calendar, Users, TrendingUp } from "lucide-react";
 import { clsx } from "clsx";
-import { useState } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion } from "motion/react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSearch } from "@/hooks/useSearch";
+import { useUrlState } from "../../hooks/useUrlState";
 import { SearchResultCard } from "../components/SearchResultCard";
 import { AuthorResultCard } from "../components/AuthorResultCard";
 import { SearchFilters } from "../components/SearchFilters";
@@ -30,14 +32,19 @@ import toast from "react-hot-toast";
 import { NoSearchResultsState } from "../components/EmptyState";
 
 export function Search() {
-  const [activeSource, setActiveSource] = useState("all");
   const { language } = useLanguage();
   const isZh = language === "zh";
 
-  // Search filters state
-  const [searchFilters, setSearchFilters] = useState<{
-    sortBy?: 'relevance' | 'date';
-  }>({});
+  // URL-synchronized state (persisted across refresh/navigation)
+  const [activeSource, setActiveSource] = useUrlState<string>('source', 'all');
+  const [sortByFilter, setSortByFilter] = useUrlState<'relevance' | 'date'>('sort', 'relevance' as 'relevance' | 'date');
+  const [queryFromUrl] = useUrlState<string>('q', '');
+  const [pageFromUrl] = useUrlState<number>('page', 0);
+
+  // Derived search filters
+  const searchFilters = useMemo(() => ({
+    sortBy: sortByFilter,
+  }), [sortByFilter]);
 
   const {
     query,
@@ -49,11 +56,22 @@ export function Search() {
     totalPages,
     nextPage,
     prevPage,
-    goToPage,
     hasMore,
     hasPrev,
     pageSize: PAGE_SIZE,
-  } = useSearch(300, searchFilters);
+  } = useSearch({
+    debounceMs: 300,
+    filters: searchFilters,
+    initialQuery: queryFromUrl,
+    initialPage: pageFromUrl,
+  });
+
+  // Handle search filter changes
+  const handleSearchFilterChange = useCallback((newFilters: Partial<{ sortBy: 'relevance' | 'date' }>) => {
+    if (newFilters.sortBy) {
+      setSortByFilter(newFilters.sortBy);
+    }
+  }, [setSortByFilter]);
 
   // Author search state (Phase 23)
   const [authorResults, setAuthorResults] = useState<AuthorSearchResult[]>([]);
@@ -124,6 +142,16 @@ export function Search() {
   ];
 
   const handleAddToLibrary = async (result: any) => {
+    // TODO: Backend endpoint for importing external papers without KB context
+    // Currently, backend only has KB-scoped import endpoints:
+    // - /api/v1/knowledge-bases/{kbId}/import-url
+    // - /api/v1/knowledge-bases/{kbId}/import-arxiv
+    // 
+    // For now, show message that user needs to select a KB first
+    toast.error(t.importError + ' (需要选择知识库)');
+    console.error('Import external paper requires KB context - backend endpoint missing');
+    
+    /* Future implementation when backend endpoint exists:
     try {
       await papersApi.createFromExternal({
         source: result.source,
@@ -139,15 +167,11 @@ export function Search() {
       console.error('Failed to import paper:', error);
       toast.error(error.response?.data?.error?.detail || t.importError);
     }
+    */
   };
 
   const handleViewPaper = (paperId: string) => {
     console.log('View paper:', paperId);
-  };
-
-  const getCurrentPageResults = () => {
-    if (!results) return 0;
-    return results.internal.length + results.external.length;
   };
 
   return (
@@ -384,7 +408,7 @@ export function Search() {
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
 
           {/* Search Filters Component */}
-          <SearchFilters filters={searchFilters} onFilterChange={setSearchFilters} />
+          <SearchFilters filters={searchFilters} onFilterChange={handleSearchFilterChange} />
 
           {/* Publication Year Histogram */}
           <div className="flex flex-col gap-3">

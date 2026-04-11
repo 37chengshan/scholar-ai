@@ -14,6 +14,20 @@ import toast from 'react-hot-toast';
 import { API_BASE_URL, API_CONFIG } from '@/config/api';
 
 /**
+ * Custom AuthError class for authentication failures
+ *
+ * Used when refresh token fails and session is expired.
+ * Frontend should handle this by redirecting to login via React Router,
+ * NOT by window.location (which breaks SPA navigation).
+ */
+export class AuthError extends Error {
+  constructor(message: string = 'Session expired') {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
+
+/**
  * Axios instance with Cookie-based authentication
  *
  * Critical: withCredentials: true enables automatic Cookie handling
@@ -65,12 +79,20 @@ apiClient.interceptors.request.use(
  * Response interceptor - Error handling and token refresh
  *
  * Handles:
- * 1. Network errors with retry logic
- * 2. 401 errors with token refresh and retry
- * 3. All other errors with toast notifications
+ * 1. Unified response unwrapping (extracts data from { success, data } format)
+ * 2. Network errors with retry logic
+ * 3. 401 errors with token refresh and retry
+ * 4. All other errors with toast notifications
  */
 apiClient.interceptors.response.use(
   (response) => {
+    // Unified response unwrapping
+    // Backend returns { success: boolean, data: T } format
+    // Extract data for easier consumption in services
+    if (response.data?.success && response.data?.data !== undefined) {
+      response.data = response.data.data;
+    }
+
     // Log successful responses in development
     if (import.meta.env.DEV) {
       console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
@@ -83,7 +105,7 @@ apiClient.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { 
-      _retry?: boolean;
+      _retry?: number;
       metadata?: { isRefreshRequest?: boolean };
     };
 
@@ -136,25 +158,21 @@ apiClient.interceptors.response.use(
       }
       
       // CRITICAL: Check if this is a refresh request itself
-      // If refresh fails with 401, don't retry - go to login immediately
+      // If refresh fails with 401, don't retry - throw AuthError
       if (originalRequest?.metadata?.isRefreshRequest || originalRequest?.url?.includes('/auth/refresh')) {
         if (import.meta.env.DEV) {
-          console.error('[API Token Refresh] Refresh request failed with 401, redirecting to login');
+          console.error('[API Token Refresh] Refresh request failed with 401, throwing AuthError');
         }
         
-        // Only redirect if not already on auth pages
-        if (!window.location.pathname.match(/\/(login|register|forgot-password|reset-password)/)) {
-          toast.error('会话已过期，请重新登录');
-          window.location.href = '/login';
-        }
-        return Promise.reject(error);
+        toast.error('会话已过期，请重新登录');
+        throw new AuthError('Session expired - refresh token invalid');
       }
 
-      originalRequest._retry = true;
+      originalRequest._retry = 1;
 
       try {
         // Attempt to refresh token
-        await apiClient.post('/api/auth/refresh');
+        await apiClient.post('/api/v1/auth/refresh');
 
         if (import.meta.env.DEV) {
           console.log('[API Token Refresh] Token refreshed successfully');
@@ -168,13 +186,8 @@ apiClient.interceptors.response.use(
           console.error('[API Token Refresh] Refresh failed:', refreshError);
         }
 
-        // Only show toast and redirect if not already on auth pages
-        if (!window.location.pathname.match(/\/(login|register|forgot-password|reset-password)/)) {
-          toast.error('会话已过期，请重新登录');
-          window.location.href = '/login';
-        }
-
-        return Promise.reject(refreshError);
+        toast.error('会话已过期，请重新登录');
+        throw new AuthError('Session expired - refresh failed');
       }
     }
 

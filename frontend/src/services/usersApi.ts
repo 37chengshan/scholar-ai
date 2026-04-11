@@ -29,7 +29,7 @@ export async function getProfile(): Promise<User> {
   const response = await apiClient.get<{
     success: boolean;
     data: User;
-  }>('/api/users/me');
+  }>('/api/v1/users/me');
 
   return response.data.data;
 }
@@ -48,12 +48,12 @@ export async function getProfile(): Promise<User> {
 export async function updateProfile(data: {
   name?: string;
   email?: string;
-  avatar?: string;
+  avatar?: string | null;
 }): Promise<User> {
   const response = await apiClient.patch<{
     success: boolean;
     data: User;
-  }>('/api/users/me', data);
+  }>('/api/v1/users/me', data);
 
   return response.data.data;
 }
@@ -74,7 +74,7 @@ export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
   const response = await apiClient.post<{
     success: boolean;
     data: { avatar: string };
-  }>('/api/users/me/avatar', formData, {
+  }>('/api/v1/users/me/avatar', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -95,7 +95,7 @@ export async function getSettings(): Promise<UserSettings> {
   const response = await apiClient.get<{
     success: boolean;
     data: UserSettings;
-  }>('/api/users/me/settings');
+  }>('/api/v1/users/me/settings');
 
   return response.data.data;
 }
@@ -117,7 +117,7 @@ export async function updateSettings(data: {
   const response = await apiClient.patch<{
     success: boolean;
     data: UserSettings;
-  }>('/api/users/me/settings', data);
+  }>('/api/v1/users/me/settings', data);
 
   return response.data.data;
 }
@@ -141,7 +141,7 @@ export async function changePassword(
   const response = await apiClient.patch<{
     success: boolean;
     data: { message: string };
-  }>('/api/users/me/password', {
+  }>('/api/v1/users/me/password', {
     currentPassword,
     newPassword,
   });
@@ -161,7 +161,7 @@ export async function getApiKeys(): Promise<ApiKey[]> {
   const response = await apiClient.get<{
     success: boolean;
     data: ApiKey[];
-  }>('/api/users/me/api-keys');
+  }>('/api/v1/users/me/api-keys');
 
   return response.data.data;
 }
@@ -196,7 +196,7 @@ export async function createApiKey(name: string): Promise<{
       key: string;
       message: string;
     };
-  }>('/api/users/me/api-keys', {
+  }>('/api/v1/users/me/api-keys', {
     name,
   });
 
@@ -238,7 +238,7 @@ export async function getStats(userId: string): Promise<DashboardStats> {
   const response = await apiClient.get<{
     success: boolean;
     data: DashboardStats;
-  }>(`/api/users/${userId}/stats`);
+  }>(`/api/v1/users/${userId}/stats`);
 
   return response.data.data;
 }
@@ -288,7 +288,7 @@ export async function getMonthlyTokenUsage(
         requests: number;
       }>;
     };
-  }>(`/api/users/me/token-usage/monthly${params.toString() ? `?${params.toString()}` : ''}`);
+  }>(`/api/v1/users/me/token-usage/monthly${params.toString() ? `?${params.toString()}` : ''}`);
 
   const data = response.data.data;
   

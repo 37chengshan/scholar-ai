@@ -46,7 +46,7 @@ export function Dashboard() {
   useEffect(() => {
     if (!user?.id) return;
     
-    async function fetchRecentPapers() {
+async function fetchRecentPapers() {
       try {
         setRecentPapersLoading(true);
         const response = await apiClient.get<{
@@ -60,7 +60,7 @@ export function Dashboard() {
             lastReadAt: string;
             progress: number;
           }>;
-        }>('/api/dashboard/recent-papers?limit=3');
+        }>('/api/v1/dashboard/recent-papers?limit=3');
         
         if (response.data.success) {
           setRecentPapers(response.data.data);
@@ -74,7 +74,7 @@ export function Dashboard() {
     
     fetchRecentPapers();
   }, [user?.id]);
-
+  
   // Fetch recent sessions
   useEffect(() => {
     if (!user?.id) return;
@@ -91,7 +91,7 @@ export function Dashboard() {
             lastActivityAt: string;
             messageCount: number;
           }>;
-        }>('/api/sessions');
+        }>('/api/v1/sessions');
         
         if (response.data.success) {
           // Sort by lastActivityAt and take top 3
@@ -220,7 +220,7 @@ export function Dashboard() {
             {[
               { label: t.totalPapers, value: stats?.paperCount || "—", desc: t.localIndex, icon: Database, trend: stats?.weeklyTrend ? `+${stats.weeklyTrend}%` : "—" },
               { label: t.entitiesExt, value: stats?.entityCount || "—", desc: t.kg, icon: GitCommit, trend: "+4.2%" },
-              { label: t.llmGens, value: stats?.tokenCount ? `${(stats.tokenCount / 1000).toFixed(1)}M` : "—", desc: t.tokensProc, icon: Activity, trend: "+24%" },
+              { label: t.llmGens, value: stats?.llmTokens ? `${(stats.llmTokens / 1000).toFixed(1)}M` : "—", desc: t.tokensProc, icon: Activity, trend: "+24%" },
               { label: t.deepReads, value: stats?.queryCount || "—", desc: t.analyzedDocs, icon: Eye, trend: "+8%" },
               { label: t.globalQueries, value: stats?.queryCount || "—", desc: t.extSearches, icon: Search, trend: "+1.5%" },
             ].map((kpi, i) => (

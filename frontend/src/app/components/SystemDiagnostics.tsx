@@ -51,7 +51,7 @@ export function SystemDiagnostics() {
             vectorDB: StorageMetric;
             fileStorage: StorageMetric;
           };
-        }>('/api/system/storage');
+        }>('/api/v1/system/storage');
 
         if (response.data.success) {
           setVectorDB(response.data.data.vectorDB);
