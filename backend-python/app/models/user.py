@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from app.models.query import Query
     from app.models.orm_note import Note
     from app.models.project import Project
+    from app.models.knowledge_base import KnowledgeBase
     from app.models.annotation import Annotation
     from app.models.orm_session import Session
     from app.models.upload_history import UploadHistory
@@ -85,6 +86,9 @@ class User(Base):
     )
     projects: Mapped[List["Project"]] = relationship(
         "Project", back_populates="user", cascade="all, delete-orphan"
+    )
+    knowledge_bases: Mapped[List["KnowledgeBase"]] = relationship(
+        "KnowledgeBase", back_populates="user", cascade="all, delete-orphan"
     )
     annotations: Mapped[List["Annotation"]] = relationship(
         "Annotation", back_populates="user", cascade="all, delete-orphan"

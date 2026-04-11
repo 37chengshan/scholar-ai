@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from app.models.query import Query
     from app.models.batch import PaperBatch
     from app.models.project import Project
+    from app.models.knowledge_base import KnowledgeBase
 
 
 class Paper(Base):
@@ -59,9 +60,7 @@ class Paper(Base):
     pdf_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     pdf_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    imrad_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSON, nullable=True
-    )
+    imrad_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending")
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -81,6 +80,9 @@ class Paper(Base):
     starred: Mapped[bool] = mapped_column(Boolean, default=False)
     project_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("projects.id"), nullable=True
+    )
+    knowledge_base_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("knowledge_bases.id"), nullable=True
     )
     batch_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("paper_batches.id"), nullable=True
@@ -116,6 +118,9 @@ class Paper(Base):
     )
     project: Mapped[Optional["Project"]] = relationship(
         "Project", back_populates="papers"
+    )
+    knowledge_base: Mapped[Optional["KnowledgeBase"]] = relationship(
+        "KnowledgeBase", back_populates="papers"
     )
 
     __table_args__ = (
@@ -155,9 +160,7 @@ class PaperChunk(Base):
     # Relationships
     paper: Mapped["Paper"] = relationship("Paper", back_populates="paper_chunks")
 
-    __table_args__ = (
-        Index("idx_paper_chunks_paper_id", "paper_id"),
-    )
+    __table_args__ = (Index("idx_paper_chunks_paper_id", "paper_id"),)
 
     def __repr__(self) -> str:
         return f"<PaperChunk(id={self.id}, paper_id={self.paper_id})>"

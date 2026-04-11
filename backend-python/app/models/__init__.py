@@ -45,6 +45,9 @@ from app.models.annotation import Annotation
 # Project
 from app.models.project import Project
 
+# KnowledgeBase
+from app.models.knowledge_base import KnowledgeBase
+
 # Reading progress
 from app.models.reading_progress import ReadingProgress
 
@@ -135,6 +138,7 @@ __all__ = [
     "Note",
     "Annotation",
     "Project",
+    "KnowledgeBase",
     "ReadingProgress",
     "Session",
     "ChatMessage",
