@@ -200,6 +200,19 @@ class Settings(BaseSettings):
     QWEN3VL_RERANKER_MODEL_PATH: str = "./Qwen/Qwen3-VL-Reranker-2B"
 
     # =========================================================================
+    # PDF Parser Configuration (Docling)
+    # =========================================================================
+    # Per Sprint 4 Task 1: Configurable OCR and multimodal extraction
+    PARSER_DO_OCR: bool = True  # OCR enabled by default (was False)
+    PARSER_GENERATE_PICTURE_IMAGES: bool = True  # Extract images
+    PARSER_GENERATE_TABLE_IMAGES: bool = True  # Extract tables
+    PARSER_OCR_LANGUAGE: str = "en,zh"  # English + Chinese
+    PARSER_MAX_PAGES: int = 100  # Maximum pages to parse
+    PARSER_MAX_FILE_SIZE_MB: int = 50  # Maximum file size (MB)
+    PARSER_TIMEOUT_SECONDS: int = 300  # Parsing timeout (seconds)
+    PARSER_CPU_THREADS: int = 4  # CPU thread limit
+
+    # =========================================================================
     # RAG Configuration
     # =========================================================================
     CHUNK_SIZE: int = 500
