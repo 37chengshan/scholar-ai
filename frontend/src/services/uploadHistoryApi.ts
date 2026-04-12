@@ -19,7 +19,7 @@ export interface UploadHistoryRecord {
   id: string;
   userId: string;
   filename: string;
-  status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  status: 'PROCESSING' | 'COMPLETED' | 'FAILED' | string;
   chunksCount?: number | null;
   llmTokens?: number | null;
   pageCount?: number | null;
@@ -27,9 +27,12 @@ export interface UploadHistoryRecord {
   tableCount?: number | null;
   errorMessage?: string | null;
   processingTime?: number | null;
+  progress?: number;
+  processingStatus?: string | null;
+  completedAt?: string | null;
   paperId?: string | null;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string | null;
   paper?: {
     id: string;
     title: string;
@@ -48,6 +51,56 @@ export interface UploadHistoryListResponse {
   };
 }
 
+interface RawUploadHistoryRecord {
+  id: string;
+  user_id?: string;
+  paper_id?: string | null;
+  filename: string;
+  status: string;
+  chunks_count?: number | null;
+  llm_tokens?: number | null;
+  page_count?: number | null;
+  image_count?: number | null;
+  table_count?: number | null;
+  error_message?: string | null;
+  processing_time?: number | null;
+  created_at: string;
+  updated_at?: string | null;
+  paper_title?: string | null;
+  progress?: number;
+  processingStatus?: string | null;
+  completedAt?: string | null;
+}
+
+function normalizeUploadHistoryRecord(record: RawUploadHistoryRecord): UploadHistoryRecord {
+  return {
+    id: record.id,
+    userId: record.user_id || '',
+    paperId: record.paper_id ?? null,
+    filename: record.filename,
+    status: record.status,
+    chunksCount: record.chunks_count ?? null,
+    llmTokens: record.llm_tokens ?? null,
+    pageCount: record.page_count ?? null,
+    imageCount: record.image_count ?? null,
+    tableCount: record.table_count ?? null,
+    errorMessage: record.error_message ?? null,
+    processingTime: record.processing_time ?? null,
+    progress: record.progress,
+    processingStatus: record.processingStatus ?? null,
+    completedAt: record.completedAt ?? null,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at ?? null,
+    paper: record.paper_id
+      ? {
+          id: record.paper_id,
+          title: record.paper_title || record.filename,
+          filename: record.filename,
+        }
+      : null,
+  };
+}
+
 /**
  * Get paginated upload history list
  *
@@ -59,14 +112,20 @@ export interface UploadHistoryListResponse {
  * @returns Upload history records with total count
  */
 export async function getList(limit = 50, offset = 0): Promise<UploadHistoryListResponse> {
-  const response = await apiClient.get<UploadHistoryListResponse>('/api/v1/uploads/history', {
+  const response = await apiClient.get<{ records: RawUploadHistoryRecord[]; total: number }>('/api/v1/uploads/history', {
     params: {
       limit: Math.min(100, Math.max(1, limit)),
       offset: Math.max(0, offset),
     },
   });
 
-  return response.data;
+  return {
+    success: true,
+    data: {
+      records: (response.data.records || []).map(normalizeUploadHistoryRecord),
+      total: response.data.total || 0,
+    },
+  };
 }
 
 /**
@@ -82,12 +141,12 @@ export async function getById(id: string): Promise<{
   success: boolean;
   data: UploadHistoryRecord;
 }> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: UploadHistoryRecord;
-  }>(`/api/v1/uploads/history/${id}`);
+  const response = await apiClient.get<RawUploadHistoryRecord>(`/api/v1/uploads/history/${id}`);
 
-  return response.data;
+  return {
+    success: true,
+    data: normalizeUploadHistoryRecord(response.data),
+  };
 }
 
 /**
@@ -108,15 +167,12 @@ export async function deleteRecord(id: string): Promise<{
     paperPreserved: boolean;
   };
 }> {
-  const response = await apiClient.delete<{
-    success: boolean;
-    data: {
-      message: string;
-      paperPreserved: boolean;
-    };
-  }>(`/api/v1/uploads/history/${id}`);
+  const response = await apiClient.delete<{ message: string; paperPreserved: boolean }>(`/api/v1/uploads/history/${id}`);
 
-  return response.data;
+  return {
+    success: true,
+    data: response.data,
+  };
 }
 
 /**

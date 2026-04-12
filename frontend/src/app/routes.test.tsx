@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { ProtectedRoute } from './routes';
+import { ProtectedRoute, router } from './routes';
 
 // Mock AuthContext
 vi.mock('@/contexts/AuthContext', () => ({
@@ -57,5 +57,11 @@ describe('ProtectedRoute', () => {
     // TODO: Render ProtectedRoute at protected path
     // TODO: Verify navigate called with state: { from: pathname }
     expect(true).toBe(true);
+  });
+
+  it('should not expose standalone upload route', () => {
+    const appShell = router.routes.find((route: any) => route.children);
+    const childPaths = (appShell?.children || []).map((route: any) => route.path);
+    expect(childPaths).not.toContain('upload');
   });
 });

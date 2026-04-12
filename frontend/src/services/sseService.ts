@@ -189,6 +189,14 @@ export class SSEService {
       if (buffer) {
         this.processLine(buffer);
       }
+
+      // A stream can also close without emitting a final `done` event
+      // (for example when execution pauses for user confirmation).
+      // If we did not intentionally disconnect, surface the closure so the UI
+      // can exit the running state instead of staying locked forever.
+      if (!this.isDisconnecting && this.currentHandlers) {
+        this.currentHandlers.onError(new Error('Stream closed unexpectedly'));
+      }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         this.currentHandlers.onError(error);
@@ -261,6 +269,11 @@ export class SSEService {
           iterations,
           total_time_ms,
         });
+        this.disconnect();
+      } else if (eventType === 'error') {
+        this.currentHandlers.onError(
+          new Error(payload.error || payload.message || 'Stream error')
+        );
         this.disconnect();
       } else if (eventType === 'heartbeat') {
         // Keepalive - SSE comment format, ignored

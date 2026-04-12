@@ -69,6 +69,12 @@ export function useUploadHistory(options: UseUploadHistoryOptions = {}): UseUplo
     },
     enabled: !!user, // Only fetch when user is authenticated
     staleTime: 30 * 1000, // 30 seconds per D-02
+    refetchInterval: (query) => {
+      const records = query.state.data?.records || [];
+      return records.some((record: { status: string }) => record.status === 'PROCESSING')
+        ? 2000
+        : false;
+    },
   });
 
   // Delete mutation

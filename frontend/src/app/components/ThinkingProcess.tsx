@@ -16,8 +16,9 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 /**
  * Thinking step type
+ * Includes 'thinking' from backend AgentRunner (default thought type)
  */
-export type ThinkingStepType = 'analyze' | 'plan' | 'execute' | 'verify';
+export type ThinkingStepType = 'thinking' | 'analyze' | 'plan' | 'execute' | 'verify';
 
 /**
  * Single thinking step
@@ -42,9 +43,11 @@ export interface ThinkingProcessProps {
 
 /**
  * Get icon component for step type
+ * 'thinking' uses Brain icon (default from backend AgentRunner)
  */
 function getStepIcon(type: ThinkingStepType) {
   const icons: Record<ThinkingStepType, React.ElementType> = {
+    thinking: Brain,
     analyze: Brain,
     plan: ListChecks,
     execute: Play,
@@ -55,9 +58,11 @@ function getStepIcon(type: ThinkingStepType) {
 
 /**
  * Get icon color for step type
+ * 'thinking' uses purple (matches component's purple theme)
  */
 function getStepColor(type: ThinkingStepType): string {
   const colors: Record<ThinkingStepType, string> = {
+    thinking: 'text-purple-500',
     analyze: 'text-blue-500',
     plan: 'text-purple-500',
     execute: 'text-[#d35400]',

@@ -13,7 +13,6 @@ import { useAuth } from "@/contexts/AuthContext";
 const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
 const KnowledgeBaseList = lazy(() => import("./pages/KnowledgeBaseList").then(m => ({ default: m.KnowledgeBaseList })));
 const KnowledgeBaseDetail = lazy(() => import("./pages/KnowledgeBaseDetail").then(m => ({ default: m.KnowledgeBaseDetail })));
-const Upload = lazy(() => import("./pages/Upload").then(m => ({ default: m.Upload })));
 const Search = lazy(() => import("./pages/Search").then(m => ({ default: m.Search })));
 const Read = lazy(() => import("./pages/Read").then(m => ({ default: m.Read })));
 const Chat = lazy(() => import("./pages/Chat").then(m => ({ default: m.Chat })));
@@ -83,10 +82,6 @@ export const router = createBrowserRouter([
       {
         path: "knowledge-bases/:id",
         element: <LazyRoute><ProtectedRoute><KnowledgeBaseDetail /></ProtectedRoute></LazyRoute>,
-      },
-      {
-        path: "upload",
-        element: <LazyRoute><ProtectedRoute><Upload /></ProtectedRoute></LazyRoute>,
       },
       {
         path: "search",

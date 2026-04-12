@@ -26,16 +26,21 @@ from app.utils.logger import logger
 
 # Add Qwen model scripts path to sys.path
 qwen_scripts_path = Path(settings.QWEN3VL_EMBEDDING_MODEL_PATH) / "scripts"
+Qwen3VLEmbedder = None
+Qwen3VLForEmbedding = None
+
 if qwen_scripts_path.exists():
     sys.path.insert(0, str(qwen_scripts_path.parent))
-    from scripts.qwen3_vl_embedding import Qwen3VLEmbedder, Qwen3VLForEmbedding
+    try:
+        from scripts.qwen3_vl_embedding import Qwen3VLEmbedder, Qwen3VLForEmbedding
+    except ImportError:
+        logger.warning("Qwen3-VL-Embedding scripts import failed")
 else:
     # Fallback to importing from installed package
     try:
         from qwen3_vl_embedding import Qwen3VLEmbedder, Qwen3VLForEmbedding
     except ImportError:
-        logger.error("Qwen3-VL-Embedding scripts not found, please ensure model is downloaded correctly")
-        raise
+        logger.warning("Qwen3-VL-Embedding not available - multimodal search will be disabled")
 
 
 class Qwen3VLMultimodalEmbedding:
@@ -92,6 +97,12 @@ class Qwen3VLMultimodalEmbedding:
         Uses Flash Attention 2 for better acceleration (CUDA only).
         """
         if self._initialized:
+            return
+
+        # Check if Qwen3VLEmbedder is available
+        if Qwen3VLEmbedder is None:
+            logger.warning("Qwen3-VL-Embedding not available - skipping model load")
+            self._initialized = True  # Mark as initialized but embedder is None
             return
 
         try:
@@ -163,6 +174,10 @@ class Qwen3VLMultimodalEmbedding:
         """
         if not self._initialized:
             raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        if self.embedder is None:
+            logger.warning("Qwen3-VL-Embedding not available - returning empty embedding")
+            return [] if isinstance(image, list) else []
 
         # Handle single vs batch input
         is_single = not isinstance(image, list)

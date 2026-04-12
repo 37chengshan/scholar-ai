@@ -506,6 +506,7 @@ export function KnowledgeBaseList() {
           }}
           knowledgeBaseId={importTarget.id}
           knowledgeBaseName={importTarget.name}
+          onImportComplete={refetch}
         />
       )}
 

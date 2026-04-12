@@ -316,3 +316,97 @@ class GLM45AirClient:
         except Exception as e:
             logger.error("Chat failed", error=str(e))
             raise
+
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: str = "auto",
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> Any:
+        """Call GLM-4.5-Air with OpenAI-compatible interface.
+
+        This method provides an OpenAI-compatible response object for use
+        with agent_runner and other components that expect this format.
+
+        Args:
+            messages: Conversation messages (including system prompt)
+            tools: Optional tool schemas (OpenAI Functions format)
+            tool_choice: Tool choice mode (auto, none, or specific tool)
+            max_tokens: Optional max tokens override
+            temperature: Optional temperature override
+
+        Returns:
+            OpenAI-compatible response object with:
+                - choices[0].message.content: Response text
+                - choices[0].message.tool_calls: Tool calls (if any)
+                - usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
+        """
+        logger.info(
+            "Calling GLM-4.5-Air (chat_completion)",
+            message_count=len(messages),
+            has_tools=bool(tools)
+        )
+
+        # Use provided values or defaults
+        tokens = max_tokens if max_tokens is not None else self.max_tokens
+        temp = temperature if temperature is not None else self.temperature
+
+        # Retry loop for rate limits
+        for attempt in range(self.max_retries):
+            try:
+                # Build API call parameters
+                api_params = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_tokens": tokens,
+                    "temperature": temp,
+                }
+
+                # Add tools if provided
+                if tools:
+                    api_params["tools"] = tools
+                    api_params["tool_choice"] = tool_choice
+
+                # Call LLM (run in thread pool for async compatibility)
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    **api_params
+                )
+
+                # Log token usage
+                usage = response.usage
+                logger.info(
+                    "GLM-4.5-Air response",
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    total_tokens=usage.total_tokens,
+                    has_tool_calls=bool(response.choices[0].message.tool_calls)
+                )
+
+                # Return raw response (OpenAI-compatible format)
+                return response
+
+            except Exception as e:
+                error_msg = str(e)
+
+                # Check for rate limit errors
+                if "rate" in error_msg.lower() or "limit" in error_msg.lower():
+                    if attempt < self.max_retries - 1:
+                        wait_time = (attempt + 1) * 1.0  # 1s, 2s, 3s, ...
+                        logger.warning(
+                            "Rate limit hit, retrying",
+                            attempt=attempt,
+                            wait_time=wait_time
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+
+                    # Max retries reached
+                    logger.error("Max retries reached for rate limit", attempt=attempt)
+                    raise
+
+                # Other errors
+                logger.error("GLM-4.5-Air chat_completion failed", error=str(e))
+                raise

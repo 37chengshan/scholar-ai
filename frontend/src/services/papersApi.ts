@@ -12,16 +12,10 @@
  */
 
 import apiClient from '@/utils/apiClient';
-import type { PapersListResponse, Paper, PaperWithProgress, PapersQueryParams, ProcessingTaskStatus } from '@/types';
+import type { PapersListResponse, Paper, PapersQueryParams, ProcessingTaskStatus } from '@/types';
 
 /**
  * Get paginated papers list
- *
- * GET /api/v1/papers
- * Returns user's papers with processing status and progress
- *
- * @param params - Query parameters (page, limit, search, sortBy, starred, readStatus, dateFrom, dateTo)
- * @returns Papers list with pagination info
  */
 export async function list(params?: PapersQueryParams): Promise<PapersListResponse> {
   const response = await apiClient.get<PapersListResponse>('/api/v1/papers', {
@@ -38,17 +32,14 @@ export async function list(params?: PapersQueryParams): Promise<PapersListRespon
     },
   });
 
-  return response.data;
+  return {
+    success: true,
+    data: response.data,
+  } as unknown as PapersListResponse;
 }
 
 /**
  * Get paper details
- *
- * GET /api/v1/papers/:id
- * Returns full paper metadata and processing info
- *
- * @param id - Paper ID
- * @returns Paper details
  */
 export async function get(id: string): Promise<Paper> {
   const response = await apiClient.get<{
@@ -56,20 +47,11 @@ export async function get(id: string): Promise<Paper> {
     data: Paper;
   }>(`/api/v1/papers/${id}`);
 
-  return response.data.data;
+  return response.data as unknown as Paper;
 }
 
 /**
  * Delete paper
- *
- * DELETE /api/v1/papers/:id
- * Requires re-authentication (currentPassword in request body)
- *
- * Note: This endpoint has requireReauth middleware.
- * Frontend should prompt user for password confirmation.
- *
- * @param id - Paper ID
- * @param currentPassword - User's current password for re-auth
  */
 export async function deletePaper(id: string): Promise<void> {
   await apiClient.delete(`/api/v1/papers/${id}`);
@@ -95,18 +77,15 @@ export async function batchDelete(paperIds: string[]): Promise<{
     paperIds,
   });
 
-  return response.data.data;
+  return response.data as unknown as {
+    deletedCount: number;
+    requestedCount: number;
+    message: string;
+  };
 }
 
 /**
  * Batch star/unstar papers
- *
- * POST /api/v1/papers/batch/star
- * Updates starred status for multiple papers at once
- *
- * @param paperIds - Array of paper IDs
- * @param starred - New starred status
- * @returns Update result
  */
 export async function batchStar(
   paperIds: string[],
@@ -130,21 +109,20 @@ export async function batchStar(
     starred,
   });
 
-  return response.data.data;
+  return response.data as unknown as {
+    updatedCount: number;
+    requestedCount: number;
+    starred: boolean;
+    message: string;
+  };
 }
 
 /**
  * Get paper processing status
- *
- * GET /api/v1/papers/:id/status
- * Returns real-time processing status and progress
- *
- * @param id - Paper ID
- * @returns Processing status info
  */
 export async function getStatus(id: string): Promise<{
   paperId: string;
-  title: string;
+  title?: string;
   status: ProcessingTaskStatus | string;
   progress: number;
   errorMessage?: string | null;
@@ -155,7 +133,6 @@ export async function getStatus(id: string): Promise<{
     success: boolean;
     data: {
       paperId: string;
-      title: string;
       status: ProcessingTaskStatus | string;
       progress: number;
       errorMessage?: string | null;
@@ -164,17 +141,19 @@ export async function getStatus(id: string): Promise<{
     };
   }>(`/api/v1/papers/${id}/status`);
 
-  return response.data.data;
+  return response.data as unknown as {
+    paperId: string;
+    title?: string;
+    status: ProcessingTaskStatus | string;
+    progress: number;
+    errorMessage?: string | null;
+    updatedAt: string;
+    completedAt?: string | null;
+  };
 }
 
 /**
  * Get paper reading notes
- *
- * GET /api/v1/papers/:id/summary
- * Returns generated reading notes and IMRaD structure
- *
- * @param id - Paper ID
- * @returns Reading notes data
  */
 export async function getSummary(id: string): Promise<{
   paperId: string;
@@ -194,18 +173,17 @@ export async function getSummary(id: string): Promise<{
     };
   }>(`/api/v1/papers/${id}/summary`);
 
-  return response.data.data;
+  return response.data as unknown as {
+    paperId: string;
+    summary?: string | null;
+    imrad?: any | null;
+    status: string;
+    hasNotes: boolean;
+  };
 }
 
 /**
  * Regenerate paper reading notes
- *
- * POST /api/v1/papers/:id/regenerate-notes
- * Triggers AI service to regenerate notes with optional modifications
- *
- * @param id - Paper ID
- * @param modificationRequest - Optional instructions for modification
- * @returns Regeneration status
  */
 export async function regenerateNotes(
   id: string,
@@ -226,40 +204,26 @@ export async function regenerateNotes(
     modificationRequest,
   });
 
-  return response.data.data;
+  return response.data as unknown as {
+    paperId: string;
+    status: string;
+    message: string;
+  };
 }
 
 /**
  * Export paper notes as Markdown
- *
- * GET /api/v1/papers/:id/notes/export
- * Returns Markdown file for download
- *
- * @param id - Paper ID
- * @returns Markdown content (use response.text())
  */
 export async function exportNotes(id: string): Promise<string> {
   const response = await apiClient.get(`/api/v1/papers/${id}/notes/export`, {
     responseType: 'text',
   });
 
-  return response.data;
+  return response.data as unknown as string;
 }
 
 /**
  * Toggle paper starred status
- *
- * PATCH /api/v1/papers/:id/starred
- * Updates the starred boolean on a paper
- *
- * NOTE: This endpoint requires Plan 15-01 to be completed first.
- * Backend must have:
- * - `starred` field in Paper model (Prisma schema)
- * - PATCH /api/v1/papers/:id/starred route implementation
- *
- * @param id - Paper ID
- * @param starred - New starred status
- * @returns Updated paper data
  */
 export async function toggleStar(id: string, starred: boolean): Promise<Paper> {
   const response = await apiClient.patch<{
@@ -269,18 +233,11 @@ export async function toggleStar(id: string, starred: boolean): Promise<Paper> {
     starred,
   });
 
-  return response.data.data;
+  return response.data as unknown as Paper;
 }
 
 /**
  * Update paper fields
- *
- * PATCH /api/v1/papers/:id
- * Updates paper metadata (e.g., readingNotes)
- *
- * @param id - Paper ID
- * @param data - Fields to update
- * @returns Updated paper data
  */
 export async function update(id: string, data: { readingNotes?: string }): Promise<Paper> {
   const response = await apiClient.patch<{
@@ -288,23 +245,13 @@ export async function update(id: string, data: { readingNotes?: string }): Promi
     data: Paper;
   }>(`/api/v1/papers/${id}`, data);
 
-  return response.data.data;
+  return response.data as unknown as Paper;
 }
 
 /**
  * Get PDF download URL
- *
- * GET /api/v1/papers/:id/pdf
- * Redirects to PDF URL (presigned S3 URL or external URL)
- *
- * Note: This endpoint returns a redirect, not JSON.
- * Frontend should open in new tab or use direct link.
- *
- * @param id - Paper ID
- * @returns PDF URL (redirect target)
  */
 export function getPdfUrl(id: string): string {
-  // Returns the URL that will redirect to actual PDF
   return `${apiClient.defaults.baseURL}/api/v1/papers/${id}/pdf`;
 }
 

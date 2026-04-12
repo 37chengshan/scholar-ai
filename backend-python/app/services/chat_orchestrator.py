@@ -360,6 +360,9 @@ class ChatOrchestrator:
             """Push real-time events to SSE queue."""
             await event_queue.put((event_type, data))
 
+        # Set event callback on runner instance (event_callback is a constructor param, not execute param)
+        runner.event_callback = event_callback
+
         async def run_agent():
             """Execute agent and push completion signal."""
             try:
@@ -368,7 +371,6 @@ class ChatOrchestrator:
                     session_id=session_id,
                     user_id=user_id,
                     auto_confirm=auto_confirm,
-                    event_callback=event_callback,
                 )
                 await event_queue.put(("agent_complete", result))
             except Exception as e:

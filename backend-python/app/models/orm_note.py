@@ -30,24 +30,24 @@ class Note(Base):
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
     title: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
     tags: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
-    paper_ids: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
+    paper_ids: Mapped[List[str]] = mapped_column(ARRAY(String), default=list, name="paper_ids")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), name="createdAt"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), onupdate=func.now(), name="updatedAt"
     )
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="notes")
 
     __table_args__ = (
-        Index("idx_notes_user_id", "user_id"),
-        Index("idx_notes_created_at", "created_at"),
+        Index("idx_notes_user_id", "userId"),
+        Index("idx_notes_created_at", "createdAt"),
     )
 
     def __repr__(self) -> str:

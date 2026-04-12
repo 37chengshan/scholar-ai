@@ -245,8 +245,8 @@ async def upload_single_file(
         storage_key=storage_key,
         file_size=file_size,
         keywords=[],
-        upload_status="completed",
-        upload_progress=100,
+        upload_status="processing",
+        upload_progress=0,
         uploaded_at=now,
     )
     db.add(paper)
@@ -797,9 +797,13 @@ async def get_upload_history(
         select(
             UploadHistory,
             Paper.title.label("paper_title"),
-            Paper.status.label("paper_status"),
+            ProcessingTask.status.label("processing_status"),
+            ProcessingTask.error_message.label("task_error"),
+            ProcessingTask.updated_at.label("task_updated_at"),
+            ProcessingTask.completed_at.label("task_completed_at"),
         )
         .outerjoin(Paper, UploadHistory.paper_id == Paper.id)
+        .outerjoin(ProcessingTask, UploadHistory.paper_id == ProcessingTask.paper_id)
         .where(UploadHistory.user_id == user_id)
         .order_by(UploadHistory.created_at.desc())
         .limit(limit)
@@ -817,23 +821,47 @@ async def get_upload_history(
     formatted_records = []
     for row in records:
         upload_hist = row[0]  # UploadHistory object
+        processing_status = row.processing_status or upload_hist.status.lower()
+        display_status = upload_hist.status
+        if row.processing_status:
+            normalized = str(row.processing_status).lower()
+            if normalized == "completed":
+                display_status = "COMPLETED"
+            elif normalized == "failed":
+                display_status = "FAILED"
+            else:
+                display_status = "PROCESSING"
+
+        progress = 100 if display_status == "COMPLETED" else 0
+        if display_status == "PROCESSING":
+            progress = _get_progress_percent(processing_status)
+
         formatted_records.append({
             "id": upload_hist.id,
             "user_id": upload_hist.user_id,
             "paper_id": upload_hist.paper_id,
             "filename": upload_hist.filename,
-            "status": upload_hist.status,
+            "status": display_status,
             "chunks_count": upload_hist.chunks_count,
             "llm_tokens": upload_hist.llm_tokens,
             "page_count": upload_hist.page_count,
             "image_count": upload_hist.image_count,
             "table_count": upload_hist.table_count,
-            "error_message": upload_hist.error_message,
+            "error_message": upload_hist.error_message or row.task_error,
             "processing_time": upload_hist.processing_time,
             "created_at": upload_hist.created_at.isoformat() if upload_hist.created_at else None,
-            "updated_at": upload_hist.updated_at.isoformat() if upload_hist.updated_at else None,
+            "updated_at": (
+                row.task_updated_at.isoformat()
+                if row.task_updated_at
+                else (
+                    upload_hist.updated_at.isoformat() if upload_hist.updated_at else None
+                )
+            ),
+            "completedAt": row.task_completed_at.isoformat() if row.task_completed_at else None,
+            "processingStatus": processing_status,
+            "progress": progress,
             "paper_title": row.paper_title,
-            "paper_status": row.paper_status,
+            "paper_status": row.processing_status,
         })
 
     return UploadResponse(
@@ -843,6 +871,92 @@ async def get_upload_history(
             "total": total,
             "limit": limit,
             "offset": offset,
+        },
+    )
+
+
+@router.get("/history/{upload_id}", response_model=UploadResponse)
+async def get_upload_history_record(
+    request: Request,
+    upload_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single upload history record."""
+    instance = str(request.url.path)
+    user_id = str(current_user.id)
+
+    record_result = await db.execute(
+        select(
+            UploadHistory,
+            Paper.title.label("paper_title"),
+            ProcessingTask.status.label("processing_status"),
+            ProcessingTask.error_message.label("task_error"),
+            ProcessingTask.updated_at.label("task_updated_at"),
+            ProcessingTask.completed_at.label("task_completed_at"),
+        )
+        .outerjoin(Paper, UploadHistory.paper_id == Paper.id)
+        .outerjoin(ProcessingTask, UploadHistory.paper_id == ProcessingTask.paper_id)
+        .where(
+            UploadHistory.id == upload_id,
+            UploadHistory.user_id == user_id,
+        )
+    )
+    row = record_result.first()
+
+    if not row:
+        raise _create_error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_type=ErrorTypes.NOT_FOUND,
+            title="Not Found",
+            detail="Upload history record not found",
+            instance=instance,
+        )
+
+    upload_hist = row[0]
+    processing_status = row.processing_status or upload_hist.status.lower()
+    display_status = upload_hist.status
+    if row.processing_status:
+        normalized = str(row.processing_status).lower()
+        if normalized == "completed":
+            display_status = "COMPLETED"
+        elif normalized == "failed":
+            display_status = "FAILED"
+        else:
+            display_status = "PROCESSING"
+
+    progress = 100 if display_status == "COMPLETED" else 0
+    if display_status == "PROCESSING":
+        progress = _get_progress_percent(processing_status)
+
+    return UploadResponse(
+        success=True,
+        data={
+            "id": upload_hist.id,
+            "user_id": upload_hist.user_id,
+            "paper_id": upload_hist.paper_id,
+            "filename": upload_hist.filename,
+            "status": display_status,
+            "chunks_count": upload_hist.chunks_count,
+            "llm_tokens": upload_hist.llm_tokens,
+            "page_count": upload_hist.page_count,
+            "image_count": upload_hist.image_count,
+            "table_count": upload_hist.table_count,
+            "error_message": upload_hist.error_message or row.task_error,
+            "processing_time": upload_hist.processing_time,
+            "created_at": upload_hist.created_at.isoformat() if upload_hist.created_at else None,
+            "updated_at": (
+                row.task_updated_at.isoformat()
+                if row.task_updated_at
+                else (
+                    upload_hist.updated_at.isoformat() if upload_hist.updated_at else None
+                )
+            ),
+            "completedAt": row.task_completed_at.isoformat() if row.task_completed_at else None,
+            "processingStatus": processing_status,
+            "progress": progress,
+            "paper_title": row.paper_title,
+            "paper_status": row.processing_status,
         },
     )
 

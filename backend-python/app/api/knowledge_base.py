@@ -11,10 +11,12 @@ Per D-07: KB专用API，不复用 papers/projects。
 Per D-08: KB全局固定配置，导入论文继承KB配置。
 """
 
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
+import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, desc, or_
@@ -22,7 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.knowledge_base import KnowledgeBase
-from app.models.paper import Paper
+from app.models.paper import Paper, PaperChunk
+from app.models.task import ProcessingTask
+from app.models.upload_history import UploadHistory
 from app.utils.logger import logger
 from app.core.auth import CurrentUserId
 from app.utils.problem_detail import Errors
@@ -142,6 +146,42 @@ def _format_kb_response(kb: KnowledgeBase) -> dict:
     }
 
 
+async def _hydrate_kb_stats(db: AsyncSession, kb: KnowledgeBase) -> dict:
+    """Build a response payload with live counts where possible."""
+    paper_count_result = await db.execute(
+        select(func.count(Paper.id)).where(Paper.knowledge_base_id == kb.id)
+    )
+    paper_count = paper_count_result.scalar() or 0
+
+    chunk_count_result = await db.execute(
+        select(func.count(PaperChunk.id))
+        .select_from(PaperChunk)
+        .join(Paper, PaperChunk.paper_id == Paper.id)
+        .where(Paper.knowledge_base_id == kb.id)
+    )
+    chunk_count = chunk_count_result.scalar() or 0
+
+    latest_paper_update_result = await db.execute(
+        select(func.max(Paper.updated_at)).where(Paper.knowledge_base_id == kb.id)
+    )
+    latest_paper_update = latest_paper_update_result.scalar_one_or_none()
+
+    payload = _format_kb_response(kb)
+    payload["paperCount"] = int(paper_count)
+    payload["chunkCount"] = int(chunk_count)
+
+    effective_updated_at = kb.updated_at
+    if latest_paper_update and (
+        effective_updated_at is None or latest_paper_update > effective_updated_at
+    ):
+        effective_updated_at = latest_paper_update
+
+    payload["updatedAt"] = (
+        effective_updated_at.isoformat() if effective_updated_at else None
+    )
+    return payload
+
+
 # =============================================================================
 # KB CRUD Endpoints
 # =============================================================================
@@ -195,7 +235,7 @@ async def list_knowledge_bases(
         return KBListResponse(
             success=True,
             data={
-                "knowledgeBases": [_format_kb_response(kb) for kb in kbs],
+                "knowledgeBases": [await _hydrate_kb_stats(db, kb) for kb in kbs],
                 "total": total,
                 "limit": limit,
                 "offset": offset,
@@ -245,7 +285,7 @@ async def create_knowledge_base(
             "Knowledge base created", kb_id=kb.id, user_id=user_id, name=request.name
         )
 
-        return KBResponse(success=True, data=_format_kb_response(kb))
+        return KBResponse(success=True, data=await _hydrate_kb_stats(db, kb))
 
     except Exception as e:
         logger.error("Failed to create knowledge base", error=str(e))
@@ -276,7 +316,7 @@ async def get_knowledge_base(
                 detail=Errors.not_found("Knowledge base not found"),
             )
 
-        return KBResponse(success=True, data=_format_kb_response(kb))
+        return KBResponse(success=True, data=await _hydrate_kb_stats(db, kb))
 
     except HTTPException:
         raise
@@ -323,7 +363,7 @@ async def update_knowledge_base(
 
         logger.info("Knowledge base updated", kb_id=kb_id, user_id=user_id)
 
-        return KBResponse(success=True, data=_format_kb_response(kb))
+        return KBResponse(success=True, data=await _hydrate_kb_stats(db, kb))
 
     except HTTPException:
         raise
@@ -495,6 +535,18 @@ async def list_kb_papers(
         total_result = await db.execute(count_query)
         total = total_result.scalar() or 0
 
+        paper_ids = [paper.id for paper in papers]
+        chunk_counts: dict[str, int] = {}
+        if paper_ids:
+            chunk_count_result = await db.execute(
+                select(PaperChunk.paper_id, func.count(PaperChunk.id))
+                .where(PaperChunk.paper_id.in_(paper_ids))
+                .group_by(PaperChunk.paper_id)
+            )
+            chunk_counts = {
+                row[0]: int(row[1]) for row in chunk_count_result.fetchall()
+            }
+
         return KBResponse(
             success=True,
             data={
@@ -504,8 +556,12 @@ async def list_kb_papers(
                         "title": p.title,
                         "authors": p.authors,
                         "year": p.year,
+                        "venue": p.venue,
                         "status": p.status,
+                        "chunkCount": chunk_counts.get(p.id, 0),
+                        "entityCount": 0,
                         "createdAt": p.created_at.isoformat() if p.created_at else None,
+                        "updatedAt": p.updated_at.isoformat() if p.updated_at else None,
                     }
                     for p in papers
                 ],
@@ -670,11 +726,146 @@ async def upload_pdf_to_kb(
     Per D-08: Paper inherits KB config (embeddingModel, parseEngine, etc.).
     No config fields in request - KB config is used for processing.
     """
-    # Stub - will fetch KB and use kb.embedding_model, kb.parse_engine, etc. for processing
-    return KBResponse(
-        success=True,
-        data={"message": "Upload endpoint - to be implemented", "kbId": kb_id},
-    )
+    try:
+        kb_result = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
+            )
+        )
+        kb = kb_result.scalar_one_or_none()
+
+        if not kb:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Knowledge base not found"),
+            )
+
+        if not file:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("No file uploaded. Use form field name 'file'"),
+            )
+
+        filename = file.filename or "untitled.pdf"
+        if not filename.lower().endswith(".pdf"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("Only PDF files are accepted"),
+            )
+
+        content = await file.read()
+        file_size = len(content)
+        max_size = 50 * 1024 * 1024
+
+        if file_size > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=Errors.validation("File size exceeds 50MB limit"),
+            )
+
+        if not content.startswith(b"%PDF-"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("File is not a valid PDF"),
+            )
+
+        title = filename.replace(".pdf", "").replace(".PDF", "")
+        existing_query = select(Paper).where(
+            Paper.user_id == user_id,
+            Paper.title == title,
+        )
+        existing_result = await db.execute(existing_query)
+        existing = existing_result.scalar_one_or_none()
+
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=Errors.conflict(
+                    f'A paper with title "{title}" already exists in your library.'
+                ),
+            )
+
+        storage_key = f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid.uuid4()}.pdf"
+        local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+        file_path = os.path.join(local_storage_path, storage_key)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        async with aiofiles.open(file_path, "wb") as output_file:
+            await output_file.write(content)
+
+        paper_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+
+        paper = Paper(
+            id=paper_id,
+            title=title,
+            authors=[],
+            status="processing",
+            user_id=user_id,
+            storage_key=storage_key,
+            file_size=file_size,
+            keywords=[],
+            knowledge_base_id=kb_id,
+            upload_status="processing",
+            upload_progress=0,
+            uploaded_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(paper)
+
+        task = ProcessingTask(
+            id=task_id,
+            paper_id=paper_id,
+            status="pending",
+            storage_key=storage_key,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(task)
+
+        upload_history = UploadHistory(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            paper_id=paper_id,
+            filename=filename,
+            status="PROCESSING",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(upload_history)
+
+        kb.paper_count += 1
+        kb.updated_at = now
+
+        logger.info(
+            "Paper uploaded directly to knowledge base",
+            user_id=user_id,
+            kb_id=kb_id,
+            paper_id=paper_id,
+            filename=filename,
+            file_size=file_size,
+        )
+
+        return KBResponse(
+            success=True,
+            data={
+                "kbId": kb_id,
+                "paperId": paper_id,
+                "taskId": task_id,
+                "status": "processing",
+                "message": "File uploaded successfully. Processing started.",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to upload PDF to knowledge base", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to upload PDF: {str(e)}"),
+        )
 
 
 @router.post("/{kb_id}/import-url", response_model=KBResponse)
@@ -862,11 +1053,19 @@ Please provide a comprehensive answer based on the context above."""
             answer = "无法生成回答"
 
         # Format citations/sources
+        title_result = await db.execute(
+            select(Paper.id, Paper.title).where(Paper.id.in_(paper_ids))
+        )
+        paper_titles = {row[0]: row[1] for row in title_result.fetchall()}
+
         citations = []
         for res in result.get("results", [])[:5]:
+            paper_id = res.get("paper_id")
             citations.append(
                 {
-                    "paper_id": res.get("paper_id"),
+                    "paper_id": paper_id,
+                    "paperId": paper_id,
+                    "paperTitle": paper_titles.get(paper_id),
                     "chunk_id": res.get("id"),
                     "content_preview": res.get("content_data", "")[:200],
                     "score": res.get("score", 0.0),
@@ -902,6 +1101,154 @@ Please provide a comprehensive answer based on the context above."""
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"KB query failed: {str(e)}"),
+        )
+
+
+@router.get("/{kb_id}/upload-history", response_model=KBResponse)
+async def get_kb_upload_history(
+    kb_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get upload history records related to papers in a specific KB."""
+    try:
+        kb_result = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
+            )
+        )
+        kb = kb_result.scalar_one_or_none()
+
+        if not kb:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Knowledge base not found"),
+            )
+
+        records_result = await db.execute(
+            select(
+                UploadHistory,
+                Paper.title.label("paper_title"),
+                ProcessingTask.status.label("processing_status"),
+                ProcessingTask.error_message.label("task_error"),
+                ProcessingTask.updated_at.label("task_updated_at"),
+                ProcessingTask.completed_at.label("task_completed_at"),
+            )
+            .join(Paper, UploadHistory.paper_id == Paper.id)
+            .outerjoin(ProcessingTask, ProcessingTask.paper_id == Paper.id)
+            .where(
+                UploadHistory.user_id == user_id,
+                Paper.knowledge_base_id == kb_id,
+                Paper.user_id == user_id,
+            )
+            .order_by(UploadHistory.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        records = records_result.all()
+
+        total_result = await db.execute(
+            select(func.count(UploadHistory.id))
+            .select_from(UploadHistory)
+            .join(Paper, UploadHistory.paper_id == Paper.id)
+            .where(
+                UploadHistory.user_id == user_id,
+                Paper.knowledge_base_id == kb_id,
+                Paper.user_id == user_id,
+            )
+        )
+        total = total_result.scalar() or 0
+
+        formatted_records = []
+        for row in records:
+            upload_hist = row[0]
+            processing_status = row.processing_status or upload_hist.status.lower()
+            display_status = upload_hist.status
+            if row.processing_status:
+                normalized = str(row.processing_status).lower()
+                if normalized == "completed":
+                    display_status = "COMPLETED"
+                elif normalized == "failed":
+                    display_status = "FAILED"
+                else:
+                    display_status = "PROCESSING"
+
+            progress = 100 if display_status == "COMPLETED" else 0
+            if display_status == "PROCESSING":
+                progress_map = {
+                    "pending": 0,
+                    "processing_ocr": 15,
+                    "parsing": 30,
+                    "extracting_imrad": 45,
+                    "generating_notes": 60,
+                    "storing_vectors": 75,
+                    "indexing_multimodal": 90,
+                    "completed": 100,
+                    "failed": 0,
+                }
+                progress = progress_map.get(processing_status, 50)
+
+            formatted_records.append(
+                {
+                    "id": upload_hist.id,
+                    "userId": upload_hist.user_id,
+                    "paperId": upload_hist.paper_id,
+                    "filename": upload_hist.filename,
+                    "status": display_status,
+                    "chunksCount": upload_hist.chunks_count,
+                    "llmTokens": upload_hist.llm_tokens,
+                    "pageCount": upload_hist.page_count,
+                    "imageCount": upload_hist.image_count,
+                    "tableCount": upload_hist.table_count,
+                    "errorMessage": upload_hist.error_message or row.task_error,
+                    "processingTime": upload_hist.processing_time,
+                    "createdAt": upload_hist.created_at.isoformat()
+                    if upload_hist.created_at
+                    else None,
+                    "updatedAt": (
+                        row.task_updated_at.isoformat()
+                        if row.task_updated_at
+                        else (
+                            upload_hist.updated_at.isoformat()
+                            if upload_hist.updated_at
+                            else None
+                        )
+                    ),
+                    "completedAt": row.task_completed_at.isoformat()
+                    if row.task_completed_at
+                    else None,
+                    "processingStatus": processing_status,
+                    "progress": progress,
+                    "paper": (
+                        {
+                            "id": upload_hist.paper_id,
+                            "title": row.paper_title or upload_hist.filename,
+                            "filename": upload_hist.filename,
+                        }
+                        if upload_hist.paper_id
+                        else None
+                    ),
+                }
+            )
+
+        return KBResponse(
+            success=True,
+            data={
+                "records": formatted_records,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get KB upload history", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to get KB upload history: {str(e)}"),
         )
 
 
@@ -961,12 +1308,19 @@ async def kb_vector_search(
         )
 
         # Format results for KB response
+        title_result = await db.execute(
+            select(Paper.id, Paper.title).where(Paper.id.in_(paper_ids))
+        )
+        paper_titles = {row[0]: row[1] for row in title_result.fetchall()}
+
         results = []
         for res in result.get("results", []):
+            paper_id = res.get("paper_id")
             results.append(
                 {
                     "id": res.get("id"),
-                    "paperId": res.get("paper_id"),
+                    "paperId": paper_id,
+                    "paperTitle": paper_titles.get(paper_id),
                     "content": res.get("content_data", ""),
                     "section": res.get("section"),
                     "page": res.get("page_num"),

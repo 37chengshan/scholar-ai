@@ -68,7 +68,11 @@ interface UseSSEReturn {
   /** Token usage for current message */
   currentMessageTokens: TokenUsage | null;
   /** Connect to SSE endpoint with POST body */
-  connect: (url: string, body?: Record<string, unknown>) => void;
+  connect: (
+    url: string,
+    body?: Record<string, unknown>,
+    options?: { resetState?: boolean }
+  ) => void;
   /** Disconnect from SSE endpoint */
   disconnect: () => void;
   /** Clear all messages */
@@ -111,32 +115,47 @@ export function useSSE(): UseSSEReturn {
    * @param url - SSE endpoint URL
    * @param body - POST body (message, session_id, etc.)
    */
-  const connect = useCallback((url: string, body?: Record<string, unknown>) => {
-    // Reset state
+  const connect = useCallback((
+    url: string,
+    body?: Record<string, unknown>,
+    options?: { resetState?: boolean }
+  ) => {
+    const shouldResetState = options?.resetState !== false;
+
     setIsConnected(true);
     setError(null);
-    setMessages([]);
-    setTokensUsed(0);
-    setCost(0);
-    setTotalTimeMs(0);
-    accumulatedContent.current = '';
 
-    // Reset tool-specific state
-    setToolCalls([]);
-    toolCallsRef.current = [];
+    if (shouldResetState) {
+      setMessages([]);
+      setTokensUsed(0);
+      setCost(0);
+      setTotalTimeMs(0);
+      accumulatedContent.current = '';
+
+      setToolCalls([]);
+      toolCallsRef.current = [];
+      setCitations([]);
+      setCurrentMessageTokens(null);
+    }
+
     setConfirmation(null);
-    setCitations([]);
-    setCurrentMessageTokens(null);
 
     sseService.connect(url, {
       onMessage: (event: SSEEvent) => {
+        // Debug: Log received event
+        console.log('[useSSE] Event received:', event.type, event.content);
+
         // Add message to list
         setMessages((prev) => [...prev, event]);
 
         // Accumulate message content for streaming text
         // Use event.content for actual content (not event.type which is SSE event type)
-        if (event.type === 'message' && typeof event.content.content === 'string') {
-          accumulatedContent.current += event.content.content;
+        if (event.type === 'message') {
+          const content = event.content?.content || event.content || '';
+          console.log('[useSSE] Message content:', content);
+          if (typeof content === 'string') {
+            accumulatedContent.current += content;
+          }
         }
 
         // Handle tool_call events - extract from event.content
@@ -177,6 +196,8 @@ export function useSSE(): UseSSEReturn {
             tool: event.content.tool_name || event.content.tool || 'unknown',
             params: event.content.parameters || event.content.params || {},
           });
+          setIsConnected(false);
+          sseService.disconnect();
         }
 
         // Handle citation events - extract from event.content

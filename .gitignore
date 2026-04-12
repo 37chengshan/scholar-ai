@@ -47,6 +47,7 @@ temp/
 # Testing
 coverage/
 .nyc_output/
+test-results/
 
 # Prisma
 prisma/migrations/*/

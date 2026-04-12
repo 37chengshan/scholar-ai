@@ -9,16 +9,16 @@
  * - Delete session
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import apiClient from '../../utils/apiClient';
 
 export interface ChatSession {
   id: string;
   title: string;
   status: string;
-  message_count: number;
-  created_at: string;
-  updated_at?: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ChatMessage {
@@ -52,6 +52,11 @@ export function useSessions(): UseSessionsReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Use ref for timestamp to prevent race condition (doesn't trigger re-render or callback recreation)
+  const lastLocalMessageTime = useRef<number>(0);
+  // Grace period: 3 seconds to prevent API overwriting local message
+  const LOCAL_MESSAGE_GRACE_PERIOD = 3000;
+
   const loadSessions = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -73,6 +78,12 @@ export function useSessions(): UseSessionsReturn {
   }, []);
 
   const loadSessionMessages = useCallback(async (sessionId: string) => {
+    // Skip reload if we recently added a local message (race condition prevention)
+    const timeSinceLastLocalMessage = Date.now() - lastLocalMessageTime.current;
+    if (timeSinceLastLocalMessage < LOCAL_MESSAGE_GRACE_PERIOD) {
+      console.log('[useSessions] Skipping loadSessionMessages - local message added', timeSinceLastLocalMessage, 'ms ago');
+      return;
+    }
     try {
       const response = await apiClient.get(`/api/v1/sessions/${sessionId}/messages?limit=100`);
       const data = response.data.data || response.data;
@@ -81,7 +92,7 @@ export function useSessions(): UseSessionsReturn {
     } catch (err) {
       setMessages([]); // No messages yet, that's OK
     }
-  }, []);
+  }, []); // No dependency on lastLocalMessageTime - it's a ref
 
   const createSession = useCallback(async (title?: string): Promise<ChatSession | null> => {
     setError(null);
@@ -126,6 +137,9 @@ export function useSessions(): UseSessionsReturn {
   }, [currentSession]);
 
   const addMessage = useCallback((message: ChatMessage) => {
+    // Record timestamp to prevent loadSessionMessages from overwriting
+    lastLocalMessageTime.current = Date.now();
+    console.log('[useSessions] Adding local message, timestamp set to', lastLocalMessageTime.current);
     setMessages(prev => [...prev, message]);
   }, []);
 

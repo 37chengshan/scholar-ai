@@ -70,7 +70,12 @@ export interface UpdateNotePayload {
  * @returns Notes array
  */
 export async function getNotes(params?: GetNotesParams): Promise<Note[]> {
-  const response = await apiClient.get<Note[]>('/api/v1/notes', {
+  const response = await apiClient.get<{
+    notes: Note[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>('/api/v1/notes', {
     params: {
       paperId: params?.paperId,
       tag: params?.tag,
@@ -81,7 +86,8 @@ export async function getNotes(params?: GetNotesParams): Promise<Note[]> {
     },
   });
 
-  return response.data;
+  // Backend returns { notes: [...], total, limit, offset }
+  return response.data.notes || [];
 }
 
 /**
@@ -149,6 +155,9 @@ export async function deleteNote(id: string): Promise<void> {
  * @returns Notes array
  */
 export async function getNotesByPaper(paperId: string): Promise<Note[]> {
-  const response = await apiClient.get<Note[]>(`/api/v1/notes/paper/${paperId}`);
-  return response.data;
+  const response = await apiClient.get<{
+    notes: Note[];
+    total: number;
+  }>(`/api/v1/notes/paper/${paperId}`);
+  return response.data.notes || [];
 }

@@ -37,14 +37,14 @@ class Query(Base):
     sources: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSON, nullable=True
     )
-    query_type: Mapped[str] = mapped_column(String, default="single")
+    query_type: Mapped[str] = mapped_column(String, default="single", name="queryType")
     status: Mapped[str] = mapped_column(String, default="pending")
-    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="durationMs")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), name="createdAt"
     )
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    paper_ids: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
+    paper_ids: Mapped[List[str]] = mapped_column(ARRAY(String), default=list, name="paperIds")
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="queries")
@@ -52,8 +52,8 @@ class Query(Base):
     # Access papers via paper_ids list instead of ORM relationship
 
     __table_args__ = (
-        Index("idx_queries_created_at", "created_at"),
-        Index("idx_queries_user_id", "user_id"),
+        Index("idx_queries_created_at", "createdAt"),
+        Index("idx_queries_user_id", "userId"),
     )
 
     def __repr__(self) -> str:

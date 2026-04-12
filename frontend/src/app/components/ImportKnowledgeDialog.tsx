@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion } from "motion/react";
-import { Upload, Link, BookOpen, FolderOpen, X, FileText, CheckCircle, Loader2, AlertCircle, Clock } from "lucide-react";
+import { Upload, X, FileText, CheckCircle, Loader2, AlertCircle, Clock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,27 +10,28 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Label } from "../components/ui/label";
 import { Progress } from "../components/ui/progress";
 import { cn } from "../components/ui/utils";
+import { toast } from "sonner";
+import * as papersApi from "@/services/papersApi";
+import { kbApi } from "@/services/kbApi";
 
 interface ImportKnowledgeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   knowledgeBaseId: string;
   knowledgeBaseName: string;
+  onImportComplete?: () => void | Promise<void>;
 }
 
 interface FileItem {
   id: string;
+  file: File;
   name: string;
   size: number;
   status: "pending" | "uploading" | "completed" | "failed";
   progress: number;
-  chunkCount?: number;
-  entityCount?: number;
   error?: string;
 }
 
@@ -43,13 +44,12 @@ function formatFileSize(bytes: number): string {
 export function ImportKnowledgeDialog({
   open,
   onOpenChange,
-  knowledgeBaseId: _knowledgeBaseId,
+  knowledgeBaseId,
   knowledgeBaseName,
+  onImportComplete,
 }: ImportKnowledgeDialogProps) {
   const [activeTab, setActiveTab] = useState("local");
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [urlInput, setUrlInput] = useState("");
-  const [arxivInput, setArxivInput] = useState("");
   const [isImporting, setIsImporting] = useState(false);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -72,6 +72,7 @@ export function ImportKnowledgeDialog({
   const addFiles = (fileList: File[]) => {
     const newFiles: FileItem[] = fileList.map((f) => ({
       id: Math.random().toString(36).slice(2, 11),
+      file: f,
       name: f.name,
       size: f.size,
       status: "pending",
@@ -84,67 +85,105 @@ export function ImportKnowledgeDialog({
     setFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
-  const handleImport = () => {
-    if (files.length === 0 && activeTab === "local") return;
+  const setFileState = useCallback((id: string, updater: (file: FileItem) => FileItem) => {
+    setFiles((prev) => prev.map((file) => (file.id === id ? updater(file) : file)));
+  }, []);
+
+  const pollPaperStatus = useCallback(async (paperId: string, fileId: string) => {
+    const maxAttempts = 60;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const status = await papersApi.getStatus(paperId);
+      const normalizedStatus = String(status.status).toLowerCase();
+      const progress = typeof status.progress === "number" ? status.progress : 0;
+
+      if (normalizedStatus === "completed") {
+        setFileState(fileId, (file) => ({
+          ...file,
+          status: "completed",
+          progress: 100,
+        }));
+        return;
+      }
+
+      if (normalizedStatus === "failed") {
+        throw new Error(status.errorMessage || "处理失败");
+      }
+
+      setFileState(fileId, (file) => ({
+        ...file,
+        status: "uploading",
+        progress: Math.max(file.progress, Math.min(progress, 99)),
+      }));
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    throw new Error("处理超时，请稍后刷新查看");
+  }, [setFileState]);
+
+  const handleImport = async () => {
+    if (activeTab !== "local") {
+      toast.info("当前轮次仅接通本地 PDF 导入");
+      return;
+    }
+
+    if (files.length === 0) return;
 
     setIsImporting(true);
 
-    // Simulate import progress for mock
-    setFiles((prev) =>
-      prev.map((f) => ({
-        ...f,
-        status: "uploading" as const,
-        progress: 0,
-      }))
-    );
+    try {
+      for (const fileItem of files) {
+        if (fileItem.status === "completed") continue;
 
-    // Simulate per-file progress
-    files.forEach((file) => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 20 + 5;
-        if (progress >= 100) {
-          progress = 100;
-          clearInterval(interval);
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === file.id
-                ? {
-                    ...f,
-                    status: "completed" as const,
-                    progress: 100,
-                    chunkCount: Math.floor(Math.random() * 100 + 50),
-                    entityCount: Math.floor(Math.random() * 30 + 10),
-                  }
-                : f
-            )
-          );
-          // Check if all complete
-          setFiles((prev) => {
-            const allDone = prev.every(
-              (f) => f.status === "completed" || f.status === "failed"
-            );
-            if (allDone) {
-              setIsImporting(false);
-            }
-            return prev;
-          });
-        } else {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === file.id ? { ...f, progress: Math.min(progress, 99) } : f
-            )
-          );
+        try {
+          const { file } = fileItem;
+
+          setFileState(fileItem.id, (current) => ({
+            ...current,
+            status: "uploading",
+            progress: 5,
+            error: undefined,
+          }));
+
+          const response = await kbApi.uploadPdf(knowledgeBaseId, file);
+          const paperId = response.data.paperId;
+
+          setFileState(fileItem.id, (current) => ({
+            ...current,
+            progress: 60,
+          }));
+
+          await pollPaperStatus(paperId, fileItem.id);
+
+          setFileState(fileItem.id, (current) => ({
+            ...current,
+            status: "completed",
+            progress: 100,
+          }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "导入失败";
+          setFileState(fileItem.id, (current) => ({
+            ...current,
+            status: "failed",
+            error: message,
+          }));
+          throw error;
         }
-      }, 300);
-    });
+      }
+
+      await onImportComplete?.();
+      toast.success(`已将 ${files.length} 篇论文导入「${knowledgeBaseName}」`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "导入失败");
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       setFiles([]);
-      setUrlInput("");
-      setArxivInput("");
       setIsImporting(false);
     }
     onOpenChange(open);
@@ -167,22 +206,10 @@ export function ImportKnowledgeDialog({
 
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }}>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
-          <TabsList className="grid w-full grid-cols-4 bg-paper-2">
+          <TabsList className="grid w-full grid-cols-1 bg-paper-2">
             <TabsTrigger value="local" className="data-[state=active]:bg-paper-1">
               <FileText className="h-3.5 w-3.5 mr-1.5" />
               本地 PDF
-            </TabsTrigger>
-            <TabsTrigger value="url" className="data-[state=active]:bg-paper-1">
-              <Link className="h-3.5 w-3.5 mr-1.5" />
-              URL / DOI
-            </TabsTrigger>
-            <TabsTrigger value="arxiv" className="data-[state=active]:bg-paper-1">
-              <BookOpen className="h-3.5 w-3.5 mr-1.5" />
-              arXiv
-            </TabsTrigger>
-            <TabsTrigger value="batch" className="data-[state=active]:bg-paper-1">
-              <FolderOpen className="h-3.5 w-3.5 mr-1.5" />
-              批量导入
             </TabsTrigger>
           </TabsList>
 
@@ -259,81 +286,6 @@ export function ImportKnowledgeDialog({
             )}
           </TabsContent>
 
-          {/* URL/DOI */}
-          <TabsContent value="url" className="mt-4">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label>论文 URL 或 DOI</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Link className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="https://doi.org/10.48550/arXiv.2301.12345"
-                      value={urlInput}
-                      onChange={(e) => setUrlInput(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  支持 DOI 链接、论文 URL、Semantic Scholar 链接
-                </p>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* arXiv */}
-          <TabsContent value="arxiv" className="mt-4">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label>arXiv ID</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="2301.12345 或 arXiv:2301.12345"
-                      value={arxivInput}
-                      onChange={(e) => setArxivInput(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  输入 arXiv 论文 ID，系统将自动下载并解析
-                </p>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* 批量导入 */}
-          <TabsContent value="batch" className="mt-4">
-            <div
-              className={cn(
-                "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
-                "border-border/50 hover:border-primary/50 hover:bg-primary/5"
-              )}
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-            >
-              <FolderOpen className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-              <p className="text-sm font-medium text-foreground">
-                拖拽文件夹或多个 PDF 文件
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                或{" "}
-                <label className="text-primary cursor-pointer hover:underline">
-                  点击选择
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
-                </label>
-              </p>
-            </div>
-          </TabsContent>
         </Tabs>
 
         {/* Import progress */}
@@ -369,7 +321,7 @@ export function ImportKnowledgeDialog({
                   <span className="flex-1 truncate">{file.name}</span>
                   {file.status === "completed" && (
                     <span className="text-xs text-muted-foreground">
-                      解析完成 · {file.chunkCount} 切片 · {file.entityCount} 实体
+                      导入完成
                     </span>
                   )}
                   {file.status === "uploading" && (
@@ -393,18 +345,9 @@ export function ImportKnowledgeDialog({
           </Button>
           <Button
             onClick={handleImport}
-            disabled={
-              isImporting ||
-              (activeTab === "local" && files.length === 0) ||
-              (activeTab === "url" && !urlInput.trim()) ||
-              (activeTab === "arxiv" && !arxivInput.trim())
-            }
+            disabled={isImporting || files.length === 0}
           >
-            {isImporting
-              ? "导入中..."
-              : activeTab === "local"
-              ? `开始导入 (${files.length})`
-              : "开始导入"}
+            {isImporting ? "导入中..." : `开始导入 (${files.length})`}
           </Button>
         </DialogFooter>
       </DialogContent>

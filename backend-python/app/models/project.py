@@ -31,14 +31,14 @@ class Project(Base):
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
     name: Mapped[str] = mapped_column(String)
     color: Mapped[str] = mapped_column(String, default="#3B82F6")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), name="createdAt"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), onupdate=func.now(), name="updatedAt"
     )
 
     # Relationships
@@ -46,7 +46,7 @@ class Project(Base):
     papers: Mapped[List["Paper"]] = relationship("Paper", back_populates="project")
 
     __table_args__ = (
-        Index("idx_projects_user_id", "user_id"),
+        Index("idx_projects_user_id", "userId"),
     )
 
     def __repr__(self) -> str:

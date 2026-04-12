@@ -16,6 +16,7 @@ import { clsx } from 'clsx';
 import { ChevronDown, ChevronUp, Trash2, ExternalLink, AlertCircle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import type { UploadHistoryRecord } from '@/services/uploadHistoryApi';
+import { Progress } from '@/app/components/ui/progress';
 
 /**
  * Component props
@@ -153,6 +154,16 @@ export function UploadHistoryCard({ record, onDelete }: UploadHistoryCardProps) 
       {isExpanded && (
         <div className="px-3 py-3 border-t border-border/50 bg-muted/10">
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px]">
+            {record.progress !== null && record.progress !== undefined && (
+              <div className="col-span-2 space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">进度:</span>
+                  <span className="font-bold">{record.progress}%</span>
+                </div>
+                <Progress value={record.progress} className="h-1.5" />
+              </div>
+            )}
+
             {/* Processing stats - show for COMPLETED */}
             {record.status === 'COMPLETED' && (
               <>

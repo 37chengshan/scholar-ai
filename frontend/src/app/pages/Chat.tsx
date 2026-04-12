@@ -34,7 +34,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useSSE } from '../hooks/useSSE';
 import { useSessions, ChatMessage } from '../hooks/useSessions';
 import { ThinkingProcess, ThinkingStep } from '../components/ThinkingProcess';
-import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { TypingText } from '../components/TypingText';
 import { ToolCallCard } from '../components/ToolCallCard';
 import { CitationsPanel, renderContentWithCitations } from '../components/CitationsPanel';
 import { TokenMonitor } from '../components/TokenMonitor';
@@ -176,22 +176,28 @@ export function Chat() {
     if (messages.length === 0) return;
 
     const latestMessage = messages[messages.length - 1];
+    console.log('[Chat] SSE message received:', latestMessage.type, latestMessage.content);
 
     if (latestMessage.type === 'message') {
-      setStreamingMessage(prev => prev + (latestMessage.content || ''));
+      const content = latestMessage.content?.content || '';
+      console.log('[Chat] Updating streamingMessage with:', content);
+      setStreamingMessage(prev => prev + content);
     }
 
-    if (latestMessage.type === 'thought' || 
-        latestMessage.type === 'tool_call' || 
-        latestMessage.type === 'tool_result') {
+    if (latestMessage.type === 'thought' ||
+        latestMessage.type === 'tool_call' ||
+        latestMessage.type === 'tool_result' ||
+        latestMessage.type === 'confirmation_required') {
+      console.log('[Chat] Adding to agentEvents:', latestMessage.type);
       setAgentEvents(prev => [...prev, latestMessage]);
     }
 
     // Capture token usage from done event
     if (latestMessage.type === 'done') {
+      console.log('[Chat] SSE stream done, streamingMessage:', streamingMessage);
       const tokensUsed = latestMessage.content?.tokens_used || 0;
       const cost = latestMessage.content?.cost || 0;
-      
+
       setSessionTokens(prev => prev + tokensUsed);
       setSessionCost(prev => prev + cost);
     }
@@ -199,6 +205,7 @@ export function Chat() {
 
   useEffect(() => {
     if (!isConnected && streamingMessage && currentSession) {
+      console.log('[Chat] SSE disconnected, saving streamingMessage to sessionMessages');
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         session_id: currentSession.id,
@@ -220,27 +227,23 @@ export function Chat() {
 
   // Update agent UI state based on connection and events
   useEffect(() => {
-    if (isConnected || sending) {
+    if (confirmation) {
+      setAgentUIState('WAITING');
+    } else if (isConnected || sending) {
       setAgentUIState('RUNNING');
     } else if (agentEvents.length > 0) {
-      // Check if waiting for confirmation
-      const hasConfirmation = agentEvents.some(e => e.type === 'confirmation_required');
-      if (hasConfirmation) {
-        setAgentUIState('WAITING');
-      } else {
-        setAgentUIState('DONE');
-      }
+      setAgentUIState('DONE');
     } else {
       setAgentUIState('IDLE');
     }
-  }, [isConnected, sending, agentEvents]);
+  }, [confirmation, isConnected, sending, agentEvents]);
 
   // Compute thinking steps from agent events
   const thinkingSteps = useMemo<ThinkingStep[]>(() => {
     return agentEvents
       .filter(e => e.type === 'thought')
       .map(e => ({
-        type: (e.content?.type || 'analyze') as 'analyze' | 'plan' | 'execute' | 'verify',
+        type: (e.content?.type || 'thinking') as 'thinking' | 'analyze' | 'plan' | 'execute' | 'verify',
         content: typeof e.content === 'string' ? e.content : (e.content?.content || e.content?.thought || ''),
         timestamp: e.timestamp ? new Date(e.timestamp).getTime() : undefined,
       }));
@@ -298,28 +301,22 @@ export function Chat() {
   const sendConfirmationResponse = useCallback(async (approved: boolean) => {
     if (!confirmation) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/chat/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          confirmation_id: confirmation.confirmation_id,  // Sprint 3: Use confirmation_id (not tool)
-          session_id: currentSession?.id,                  // Sprint 3: Use snake_case field
+      connect(
+        `${API_BASE_URL}/api/v1/chat/confirm`,
+        {
+          confirmation_id: confirmation.confirmation_id,
+          session_id: currentSession?.id,
           approved,
-        }),
-      });
-      if (!response.ok) {
-        toast.error(isZh ? '确认响应发送失败' : 'Failed to send confirmation response');
-      } else {
-        // Success - confirmation processed, SSE stream will continue automatically
-        toast.success(isZh ? '确认已提交' : 'Confirmation submitted');
-      }
+        },
+        { resetState: false }
+      );
+      toast.success(isZh ? '确认已提交' : 'Confirmation submitted');
     } catch (error) {
       toast.error(isZh ? '确认响应发送失败' : 'Failed to send confirmation response');
     } finally {
       resetConfirmation();
     }
-  }, [confirmation, currentSession, resetConfirmation, isZh]);
+  }, [confirmation, currentSession, resetConfirmation, isZh, connect]);
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -396,7 +393,7 @@ export function Chat() {
                       {session.title}
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {session.message_count} {isZh ? '条消息' : 'messages'}
+                      {session.messageCount} {isZh ? '条消息' : 'messages'}
                     </div>
                   </div>
                   <button
@@ -465,7 +462,7 @@ export function Chat() {
                 </div>
               ))}
               
-              {streamingMessage && (
+              {(streamingMessage || (isConnected && (thinkingSteps.length > 0 || toolCalls.length > 0))) && (
                 <div className="flex gap-3 justify-start">
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                     <Bot className="w-4 h-4 text-primary" />
@@ -491,19 +488,21 @@ export function Chat() {
                     )}
 
                     {/* Answer with MarkdownRenderer (D-01) */}
-                    <motion.div
-                      initial={{ opacity: 0.7 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.05 }}
-                    >
-                      <div className="rounded-2xl px-4 py-3 bg-muted">
-                        {citations.length > 0 ? (
-                          renderContentWithCitations(streamingMessage, handleCitationClick)
-                        ) : (
-                          <MarkdownRenderer content={streamingMessage} className="text-sm" />
-                        )}
-                      </div>
-                    </motion.div>
+                    {streamingMessage && (
+                      <motion.div
+                        initial={{ opacity: 0.7 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.05 }}
+                      >
+                        <div className="rounded-2xl px-4 py-3 bg-muted">
+                          {citations.length > 0 ? (
+                            renderContentWithCitations(streamingMessage, handleCitationClick)
+                          ) : (
+                            <TypingText text={streamingMessage} className="text-sm" />
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
 
                     {/* Citations Panel (D-05) */}
                     {citations.length > 0 && (

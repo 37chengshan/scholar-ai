@@ -43,7 +43,13 @@ export async function getUploadUrl(filename: string): Promise<{
     filename,
   });
 
-  return response.data.data;
+  return response.data as unknown as {
+    paperId: string;
+    uploadUrl: string;
+    expiresIn: number;
+    storageKey: string;
+    message: string;
+  };
 }
 
 /**
@@ -93,7 +99,11 @@ export async function uploadFile(
     },
   });
 
-  return response.data.data;
+  return response.data as unknown as {
+    storageKey: string;
+    size: number;
+    message: string;
+  };
 }
 
 /**
@@ -118,7 +128,7 @@ export async function confirmUpload(
     storageKey,
   });
 
-  return response.data.data;
+  return response.data as unknown as UploadResult;
 }
 
 /**

@@ -26,12 +26,8 @@ import type { User, UserSettings, ApiKey, DashboardStats } from '@/types';
  * @returns User profile
  */
 export async function getProfile(): Promise<User> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: User;
-  }>('/api/v1/users/me');
-
-  return response.data.data;
+  const response = await apiClient.get<User>('/api/v1/users/me');
+  return response.data;
 }
 
 /**
@@ -50,12 +46,8 @@ export async function updateProfile(data: {
   email?: string;
   avatar?: string | null;
 }): Promise<User> {
-  const response = await apiClient.patch<{
-    success: boolean;
-    data: User;
-  }>('/api/v1/users/me', data);
-
-  return response.data.data;
+  const response = await apiClient.patch<User>('/api/v1/users/me', data);
+  return response.data;
 }
 
 /**
@@ -71,16 +63,13 @@ export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
   const formData = new FormData();
   formData.append('avatar', file);
 
-  const response = await apiClient.post<{
-    success: boolean;
-    data: { avatar: string };
-  }>('/api/v1/users/me/avatar', formData, {
+  const response = await apiClient.post<{ avatar: string }>('/api/v1/users/me/avatar', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   });
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -92,12 +81,8 @@ export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
  * @returns User settings
  */
 export async function getSettings(): Promise<UserSettings> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: UserSettings;
-  }>('/api/v1/users/me/settings');
-
-  return response.data.data;
+  const response = await apiClient.get<UserSettings>('/api/v1/users/me/settings');
+  return response.data;
 }
 
 /**
@@ -114,12 +99,8 @@ export async function updateSettings(data: {
   defaultModel?: string;
   theme?: 'light' | 'dark';
 }): Promise<UserSettings> {
-  const response = await apiClient.patch<{
-    success: boolean;
-    data: UserSettings;
-  }>('/api/v1/users/me/settings', data);
-
-  return response.data.data;
+  const response = await apiClient.patch<UserSettings>('/api/v1/users/me/settings', data);
+  return response.data;
 }
 
 /**
@@ -138,15 +119,12 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<{ message: string }> {
-  const response = await apiClient.patch<{
-    success: boolean;
-    data: { message: string };
-  }>('/api/v1/users/me/password', {
+  const response = await apiClient.patch<{ message: string }>('/api/v1/users/me/password', {
     currentPassword,
     newPassword,
   });
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -158,12 +136,8 @@ export async function changePassword(
  * @returns API keys list
  */
 export async function getApiKeys(): Promise<ApiKey[]> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: ApiKey[];
-  }>('/api/v1/users/me/api-keys');
-
-  return response.data.data;
+  const response = await apiClient.get<ApiKey[]>('/api/v1/users/me/api-keys');
+  return response.data;
 }
 
 /**
@@ -187,20 +161,17 @@ export async function createApiKey(name: string): Promise<{
   message: string;
 }> {
   const response = await apiClient.post<{
-    success: boolean;
-    data: {
-      id: string;
-      name: string;
-      prefix: string;
-      createdAt: string;
-      key: string;
-      message: string;
-    };
+    id: string;
+    name: string;
+    prefix: string;
+    createdAt: string;
+    key: string;
+    message: string;
   }>('/api/v1/users/me/api-keys', {
     name,
   });
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -226,27 +197,47 @@ export async function deleteApiKey(
 /**
  * Get user dashboard statistics
  *
- * GET /api/users/:id/stats
+ * GET /api/v1/dashboard/stats
  * Returns paper count, query count, LLM tokens, weekly trend, etc.
  *
- * Note: Only own stats accessible (or admin)
+ * Note: Stats are for the current authenticated user
  *
- * @param userId - User ID
+ * @param userId - User ID (not used, stats are for current user)
  * @returns Dashboard statistics
  */
 export async function getStats(userId: string): Promise<DashboardStats> {
   const response = await apiClient.get<{
-    success: boolean;
-    data: DashboardStats;
-  }>(`/api/v1/users/${userId}/stats`);
+    totalPapers: number;
+    starredPapers: number;
+    processingPapers: number;
+    completedPapers: number;
+    queriesCount: number;
+    sessionsCount: number;
+    projectsCount: number;
+    llmTokens: number;
+  }>('/api/v1/dashboard/stats');
 
-  return response.data.data;
+  // apiClient interceptor already unwraps { success, data } -> data
+  const data = response.data;
+  return {
+    paperCount: data.totalPapers,
+    entityCount: 0, // TODO: fetch from entities endpoint
+    llmTokens: data.llmTokens,
+    queryCount: data.queriesCount,
+    sessionCount: data.sessionsCount,
+    weeklyTrend: [], // TODO: fetch from /api/v1/dashboard/trends
+    subjectDistribution: [], // TODO: implement
+    storageUsage: {
+      vectorDB: { used: 0, total: 0 },
+      blobStorage: { used: 0, total: 0 },
+    },
+  } as DashboardStats;
 }
 
 /**
  * Get monthly token usage
  *
- * GET /api/users/me/token-usage/monthly
+ * GET /api/v1/token-usage/token-usage/monthly
  * Returns aggregated token usage for current month
  *
  * @param year - Year (optional, default current year)
@@ -274,24 +265,22 @@ export async function getMonthlyTokenUsage(
   if (month) params.append('month', month.toString());
 
   const response = await apiClient.get<{
-    success: boolean;
-    data: {
-      total_tokens: number;
-      input_tokens: number;
-      output_tokens: number;
-      total_cost_cny: number;
-      request_count: number;
-      daily_breakdown: Array<{
-        date: string;
-        tokens: number;
-        cost: number;
-        requests: number;
-      }>;
-    };
-  }>(`/api/v1/users/me/token-usage/monthly${params.toString() ? `?${params.toString()}` : ''}`);
+    total_tokens: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_cost_cny: number;
+    request_count: number;
+    daily_breakdown: Array<{
+      date: string;
+      tokens: number;
+      cost: number;
+      requests: number;
+    }>;
+  }>(`/api/v1/token-usage/token-usage/monthly${params.toString() ? `?${params.toString()}` : ''}`);
 
-  const data = response.data.data;
-  
+  // apiClient interceptor already unwraps { success, data } -> data
+  const data = response.data;
+
   return {
     totalTokens: data.total_tokens,
     inputTokens: data.input_tokens,

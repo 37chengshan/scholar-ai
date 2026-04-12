@@ -33,15 +33,15 @@ class KnowledgeMap(Base):
     name: Mapped[str] = mapped_column(String)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     domain: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    node_count: Mapped[int] = mapped_column(Integer, default=0)
-    edge_count: Mapped[int] = mapped_column(Integer, default=0)
+    node_count: Mapped[int] = mapped_column(Integer, default=0, name="nodeCount")
+    edge_count: Mapped[int] = mapped_column(Integer, default=0, name="edgeCount")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), name="createdAt"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), onupdate=func.now(), name="updatedAt"
     )
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="knowledge_maps")

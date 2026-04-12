@@ -385,6 +385,7 @@ async def search_papers(
 
     # Build search query (case-insensitive)
     search_term = f"%{q.lower()}%"
+    escaped_q = q.replace("'", "''")  # Escape single quotes for SQL
 
     # Search in title, abstract, and authors array
     query = (
@@ -396,7 +397,7 @@ async def search_papers(
                 func.lower(Paper.title).ilike(search_term),
                 func.lower(Paper.abstract).ilike(search_term),
                 # For array search, use raw SQL with unnest
-                text(f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{q.replace("'", "''")}%'))"),
+                text(f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{escaped_q}%'))"),
             )
         )
         .order_by(Paper.created_at.desc())
@@ -421,7 +422,7 @@ async def search_papers(
             or_(
                 func.lower(Paper.title).ilike(search_term),
                 func.lower(Paper.abstract).ilike(search_term),
-                text(f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{q.replace("'", "''")}%'))"),
+                text(f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{escaped_q}%'))"),
             )
         )
     )

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router";
 import {
   ArrowLeft,
@@ -10,56 +10,135 @@ import {
   Sparkles,
   Database,
   Loader2,
+  Clock3,
+  Library,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
 import { PaperTexture } from "../components/PaperTexture";
-import { kbApi, KnowledgeBase, KBSearchResult } from "@/services/kbApi";
+import { Button } from "../components/ui/button";
+import { PaperListItem } from "../components/PaperListItem";
+import { UploadHistoryList } from "@/components/upload/UploadHistoryList";
+import { uploadHistoryApi } from "@/services/uploadHistoryApi";
+import {
+  kbApi,
+  KnowledgeBase,
+  KBPaperListItem,
+  KBSearchResult,
+  KBUploadHistoryRecord,
+} from "@/services/kbApi";
 import { toast } from "sonner";
 
 export function KnowledgeBaseDetail() {
   const navigate = useNavigate();
   const { id: kbId } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "retrieval");
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get("tab") || "papers"
+  );
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  // KB State
   const [kb, setKB] = useState<KnowledgeBase | null>(null);
   const [loadingKB, setLoadingKB] = useState(true);
+  const [papers, setPapers] = useState<KBPaperListItem[]>([]);
+  const [papersLoading, setPapersLoading] = useState(false);
+  const [uploadRecords, setUploadRecords] = useState<KBUploadHistoryRecord[]>([]);
+  const [uploadHistoryLoading, setUploadHistoryLoading] = useState(false);
 
-  // Q&A State (messages will be populated by real API)
-  const [messages, setMessages] = useState<{ role: string; content: string; citations?: any[]; isError?: boolean }[]>([]);
+  const [messages, setMessages] = useState<
+    { role: string; content: string; citations?: any[]; isError?: boolean }[]
+  >([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // Retrieval State
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<KBSearchResult[] | null>(null);
 
-  // Fetch KB on mount
-  useEffect(() => {
-    if (kbId) {
-      setLoadingKB(true);
-      kbApi.get(kbId)
-        .then(res => {
-          if (res.success && res.data) {
-            setKB(res.data);
-          } else {
-            toast.error('获取知识库详情失败');
-          }
-        })
-        .catch(err => {
-          toast.error(err.message || '网络错误');
-        })
-        .finally(() => {
-          setLoadingKB(false);
-        });
+  const loadKnowledgeBase = useCallback(async () => {
+    if (!kbId) return;
+
+    setLoadingKB(true);
+    try {
+      const res = await kbApi.get(kbId);
+      if (res.success && res.data) {
+        setKB(res.data);
+      } else {
+        toast.error("获取知识库详情失败");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "网络错误");
+    } finally {
+      setLoadingKB(false);
     }
   }, [kbId]);
 
-  // Sync tab with URL
+  const loadPapers = useCallback(async () => {
+    if (!kbId) return;
+
+    setPapersLoading(true);
+    try {
+      const response = await kbApi.listPapers(kbId);
+      if (response.success && response.data) {
+        setPapers(response.data.papers || []);
+      } else {
+        toast.error("加载知识库论文失败");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "加载知识库论文失败");
+    } finally {
+      setPapersLoading(false);
+    }
+  }, [kbId]);
+
+  const loadUploadHistory = useCallback(async () => {
+    if (!kbId) return;
+
+    setUploadHistoryLoading(true);
+    try {
+      const response = await kbApi.getUploadHistory(kbId, { limit: 20, offset: 0 });
+      if (response.success && response.data) {
+        setUploadRecords(response.data.records || []);
+      } else {
+        toast.error("加载上传记录失败");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "加载上传记录失败");
+    } finally {
+      setUploadHistoryLoading(false);
+    }
+  }, [kbId]);
+
+  const handleDeleteUploadRecord = useCallback(async (id: string) => {
+    try {
+      await uploadHistoryApi.delete(id);
+      setUploadRecords((prev) => prev.filter((record) => record.id !== id));
+      toast.success("上传记录已删除");
+    } catch (err: any) {
+      toast.error(err.message || "删除上传记录失败");
+    }
+  }, []);
+
+  const refreshKnowledgeBaseWorkspace = useCallback(async () => {
+    await Promise.all([loadKnowledgeBase(), loadPapers(), loadUploadHistory()]);
+  }, [loadKnowledgeBase, loadPapers, loadUploadHistory]);
+
+  useEffect(() => {
+    if (!uploadRecords.some((record) => record.status === "PROCESSING")) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshKnowledgeBaseWorkspace();
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [uploadRecords, refreshKnowledgeBaseWorkspace]);
+
+  useEffect(() => {
+    void refreshKnowledgeBaseWorkspace();
+  }, [refreshKnowledgeBaseWorkspace]);
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setSearchParams({ tab });
@@ -70,14 +149,13 @@ export function KnowledgeBaseDetail() {
     if (!input.trim() || !kbId) return;
 
     const userMessage = input.trim();
-    setMessages([...messages, { role: "user", content: userMessage }]);
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setInput("");
     setIsTyping(true);
 
     try {
-      // Call real KB query API
       const response = await kbApi.query(kbId, userMessage);
-      
+
       if (response.success && response.data) {
         setMessages((prev) => [
           ...prev,
@@ -88,23 +166,23 @@ export function KnowledgeBaseDetail() {
           },
         ]);
       } else {
-        // Show error message to user
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: "抱歉，问答功能暂未完全实现。请稍后再试。",
+            content: "抱歉，知识库问答暂时不可用，请稍后再试。",
+            isError: true,
           },
         ]);
         toast.error("问答请求失败");
       }
     } catch (err: any) {
-      // User-level error feedback
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           content: `错误: ${err.message || "网络请求失败"}`,
+          isError: true,
         },
       ]);
       toast.error(err.message || "问答失败");
@@ -123,16 +201,15 @@ export function KnowledgeBaseDetail() {
       if (res.success && res.data) {
         setResults(res.data.results);
       } else {
-        toast.error('搜索失败');
+        toast.error("搜索失败");
       }
     } catch (err: any) {
-      toast.error(err.message || '搜索失败');
+      toast.error(err.message || "搜索失败");
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Loading state
   if (loadingKB) {
     return (
       <div className="relative min-h-screen bg-background">
@@ -144,7 +221,6 @@ export function KnowledgeBaseDetail() {
     );
   }
 
-  // Error state (KB not found)
   if (!kb) {
     return (
       <div className="relative min-h-screen bg-background">
@@ -166,7 +242,6 @@ export function KnowledgeBaseDetail() {
     <div className="relative min-h-screen bg-background">
       <PaperTexture />
       <div className="space-y-8 pb-20 px-6 max-w-7xl mx-auto relative z-10">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b-4 border-zinc-900">
           <div className="space-y-4">
             <Link
@@ -182,7 +257,10 @@ export function KnowledgeBaseDetail() {
             </Link>
             <div className="flex items-center gap-4">
               <h1 className="text-4xl md:text-5xl font-black font-serif uppercase tracking-tight text-zinc-900 leading-none">
-                {kb.name.split(" ")[0]} <span className="text-primary">{kb.name.split(" ").slice(1).join(" ") || kb.name}</span>
+                {kb.name.split(" ")[0]}{" "}
+                <span className="text-primary">
+                  {kb.name.split(" ").slice(1).join(" ") || kb.name}
+                </span>
               </h1>
               <span className="bg-zinc-100 border border-zinc-300 px-3 py-1 font-mono text-sm text-zinc-600 shadow-[2px_2px_0px_0px_rgba(24,24,27,0.2)]">
                 {kbId}
@@ -192,9 +270,16 @@ export function KnowledgeBaseDetail() {
               <span className="flex items-center gap-2">
                 <Database className="w-4 h-4" /> {kb.embeddingModel} Model
               </span>
-              <span className="flex items-center gap-2 text-primary">★ {kb.parseEngine} Engine</span>
+              <span className="flex items-center gap-2 text-primary">
+                ★ {kb.parseEngine} Engine
+              </span>
               <span>{kb.paperCount} Papers</span>
               <span>{kb.chunkCount} Chunks</span>
+              {kb.entityCount > 0 ? (
+                <span>{kb.entityCount} Entities</span>
+              ) : (
+                <span>Graph Pending</span>
+              )}
             </div>
           </div>
 
@@ -209,14 +294,37 @@ export function KnowledgeBaseDetail() {
           </div>
         </div>
 
-        {/* Main Content Area with Tabs */}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="flex border-b-2 border-zinc-200 bg-transparent h-auto p-0 gap-0 w-full justify-start">
+          <TabsList className="flex flex-wrap border-b-2 border-zinc-200 bg-transparent h-auto p-0 gap-0 w-full justify-start">
+            <TabsTrigger
+              value="papers"
+              className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                activeTab === "papers"
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <Library className="w-4 h-4" /> 论文列表
+              </span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="uploads"
+              className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                activeTab === "uploads"
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <Clock3 className="w-4 h-4" /> 上传记录
+              </span>
+            </TabsTrigger>
             <TabsTrigger
               value="retrieval"
-              className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent data-[state=active]:bg-primary/5 ${
+              className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
                 activeTab === "retrieval"
-                  ? "border-primary text-primary"
+                  ? "border-primary text-primary bg-primary/5"
                   : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
               }`}
             >
@@ -238,11 +346,56 @@ export function KnowledgeBaseDetail() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent
-            value="retrieval"
-            className="mt-8 space-y-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500"
-          >
-            {/* Search Form */}
+          <TabsContent value="papers" className="mt-8 space-y-6 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {papersLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : papers.length === 0 ? (
+              <div className="bg-white border-2 border-zinc-900 p-10 text-center space-y-4 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)]">
+                <div className="text-zinc-600 font-medium">当前知识库还没有论文</div>
+                <Button onClick={() => setIsImportModalOpen(true)}>导入第一篇论文</Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {papers.map((paper) => (
+                  <PaperListItem
+                    key={paper.id}
+                    id={paper.id}
+                    title={paper.title}
+                    authors={paper.authors?.join("、") || "未知作者"}
+                    year={paper.year ? String(paper.year) : "未知年份"}
+                    venue={paper.venue || "未标注来源"}
+                    chunkCount={paper.chunkCount || 0}
+                    parseStatus={
+                      ["pending", "processing", "completed", "failed"].includes(paper.status)
+                        ? (paper.status as "pending" | "processing" | "completed" | "failed")
+                        : "pending"
+                    }
+                    entityCount={paper.entityCount || 0}
+                    onRead={() => navigate(`/read/${paper.id}`)}
+                    onNotes={() => navigate(`/notes?paperId=${paper.id}`)}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="uploads" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] p-6 min-h-[420px] flex flex-col">
+              <div className="mb-4">
+                <h3 className="font-serif text-xl font-semibold">知识库上传记录</h3>
+                <p className="text-sm text-zinc-500 mt-1">查看导入历史和真实处理状态</p>
+              </div>
+              <UploadHistoryList
+                records={uploadRecords}
+                isLoading={uploadHistoryLoading}
+                onDelete={handleDeleteUploadRecord}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="retrieval" className="mt-8 space-y-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
             <form onSubmit={handleSearch} className="relative max-w-3xl">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Search className="h-6 w-6 text-zinc-400" />
@@ -263,8 +416,11 @@ export function KnowledgeBaseDetail() {
               </button>
             </form>
 
-            {/* Results List */}
-            {results && (
+            {!papersLoading && papers.length === 0 ? (
+              <div className="bg-white border-2 border-zinc-900 p-8 text-center text-zinc-600 font-medium shadow-[8px_8px_0px_0px_rgba(24,24,27,1)]">
+                请先向知识库导入论文，再开始检索。
+              </div>
+            ) : results && results.length > 0 ? (
               <div className="space-y-6 max-w-4xl">
                 <div className="flex items-center gap-4 mb-8">
                   <div className="h-px bg-zinc-300 flex-1"></div>
@@ -279,7 +435,6 @@ export function KnowledgeBaseDetail() {
                     key={result.id}
                     className="bg-white border-2 border-zinc-200 p-6 relative hover:border-zinc-400 transition-colors group cursor-pointer"
                     onClick={() => {
-                      // B-02: KB检索结果点击跳转到阅读页
                       const page = result.page || 1;
                       navigate(`/read/${result.paperId}?page=${page}`);
                     }}
@@ -292,25 +447,27 @@ export function KnowledgeBaseDetail() {
                     </p>
                     <div className="mt-6 flex items-center gap-2 text-sm font-medium text-zinc-500 bg-zinc-50 p-3 border border-zinc-100">
                       <FileText className="w-4 h-4 text-zinc-400" />
-                      <span className="truncate">{result.paperId}</span>
+                      <span className="truncate">{result.paperTitle || result.paperId}</span>
                       {result.page && <span className="text-primary">第{result.page}页</span>}
-                    </div>
-                    <div className="mt-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity font-bold uppercase tracking-wider">
-                      点击查看 →
                     </div>
                   </div>
                 ))}
               </div>
-            )}
+            ) : results && results.length === 0 ? (
+              <div className="bg-white border-2 border-zinc-900 p-8 text-center text-zinc-600 font-medium shadow-[8px_8px_0px_0px_rgba(24,24,27,1)]">
+                没有检索到相关结果，请尝试其他问题。
+              </div>
+            ) : null}
           </TabsContent>
 
-          <TabsContent
-            value="qa"
-            className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl"
-          >
+          <TabsContent value="qa" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl">
             <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] flex flex-col h-[600px]">
-              {/* Chat History */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {messages.length === 0 && !isTyping && (
+                  <div className="text-center text-zinc-500 py-12 font-medium">
+                    请输入问题，针对当前知识库发起问答。
+                  </div>
+                )}
                 {messages.map((msg, i) => (
                   <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div
@@ -326,8 +483,7 @@ export function KnowledgeBaseDetail() {
                         </div>
                       )}
                       {msg.content}
-                      
-                      {/* B-02: KB问答引用显示和跳转 */}
+
                       {msg.role === "assistant" && msg.citations && msg.citations.length > 0 && (
                         <div className="mt-4 pt-3 border-t border-primary/20">
                           <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
@@ -339,26 +495,18 @@ export function KnowledgeBaseDetail() {
                                 key={idx}
                                 className="flex items-center gap-2 text-xs cursor-pointer hover:text-primary transition-colors group"
                                 onClick={() => {
-                                  // 点击引用跳转到阅读页
                                   const page = citation.page || 1;
-                                  navigate(`/read/${citation.paperId}?page=${page}`);
+                                  const paperId = citation.paperId || citation.paper_id;
+                                  if (!paperId) return;
+                                  navigate(`/read/${paperId}?page=${page}`);
                                 }}
                               >
                                 <FileText className="w-3 h-3 text-muted-foreground" />
-                                <span className="text-muted-foreground group-hover:text-primary">
-                                  [{idx + 1}]
-                                </span>
-                                <span className="truncate">
-                                  {citation.paperTitle || citation.paperId}
-                                </span>
+                                <span className="text-muted-foreground group-hover:text-primary">[{idx + 1}]</span>
+                                <span className="truncate">{citation.paperTitle || citation.paperId || citation.paper_id}</span>
                                 {citation.page && (
-                                  <span className="text-primary font-bold">
-                                    第{citation.page}页
-                                  </span>
+                                  <span className="text-primary font-bold">第{citation.page}页</span>
                                 )}
-                                <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                  →
-                                </span>
                               </div>
                             ))}
                           </div>
@@ -377,7 +525,6 @@ export function KnowledgeBaseDetail() {
                 )}
               </div>
 
-              {/* Chat Input */}
               <div className="border-t-2 border-zinc-900 p-4 bg-zinc-50">
                 <form onSubmit={handleSendMessage} className="relative flex items-center">
                   <input
@@ -401,12 +548,12 @@ export function KnowledgeBaseDetail() {
         </Tabs>
       </div>
 
-      {/* Import Dialog - uses existing ImportKnowledgeDialog component */}
       <ImportKnowledgeDialog
         open={isImportModalOpen}
         onOpenChange={setIsImportModalOpen}
         knowledgeBaseId={kb.id}
         knowledgeBaseName={kb.name}
+        onImportComplete={refreshKnowledgeBaseWorkspace}
       />
     </div>
   );

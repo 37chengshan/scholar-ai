@@ -821,7 +821,7 @@ export function Library() {
                 <p className="text-sm font-medium">{error}</p>
               </div>
             ) : papers.length === 0 && !debouncedSearch ? (
-              <NoPapersState onUpload={() => navigate('/upload')} isZh={isZh} />
+              <NoPapersState onUpload={() => navigate('/knowledge-bases')} isZh={isZh} />
             ) : papers.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                 <FileText className="w-12 h-12 mb-4 opacity-50" />

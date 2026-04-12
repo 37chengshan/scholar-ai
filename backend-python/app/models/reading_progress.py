@@ -31,8 +31,8 @@ class ReadingProgress(Base):
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    paper_id: Mapped[str] = mapped_column(ForeignKey("papers.id"))
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    paper_id: Mapped[str] = mapped_column(ForeignKey("papers.id"), name="paperId")
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
     current_page: Mapped[int] = mapped_column(Integer, default=1)
     total_pages: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_read_at: Mapped[datetime] = mapped_column(
@@ -44,9 +44,9 @@ class ReadingProgress(Base):
     user: Mapped["User"] = relationship(back_populates="reading_progress")
 
     __table_args__ = (
-        UniqueConstraint("paper_id", "user_id", name="unique_paper_user"),
+        UniqueConstraint("paperId", "userId", name="unique_paper_user"),
         Index("idx_reading_progress_last_read", "last_read_at"),
-        Index("idx_reading_progress_user_id", "user_id"),
+        Index("idx_reading_progress_userId", "userId"),
     )
 
     def __repr__(self) -> str:

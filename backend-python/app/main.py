@@ -163,13 +163,35 @@ async def lifespan(app: FastAPI):
     # 2. Neo4j + Redis
     await init_databases()
 
-    # Initialize AI services lazily (defer heavy model loading)
-    # Services will be initialized on first use via app.state getters
-    logger.info("AI services will be initialized on first use (lazy loading)")
-    app.state.milvus_service = None  # Lazy init
-    app.state.reranker_service = None  # Lazy init
-    app.state.embedding_service = None  # Lazy init
-    app.state.ai_services_initialized = False
+    # Initialize AI services at startup (not lazy)
+    # Load embedding and reranker models immediately
+    logger.info("Initializing AI services at startup...")
+
+    # 1. Embedding Service (Qwen3-VL-Embedding-2B)
+    try:
+        logger.info("Loading Embedding model...")
+        embedding_service = get_embedding_service()
+        embedding_service.load_model()
+        app.state.embedding_service = embedding_service
+        logger.info("✅ Embedding model loaded successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to load Embedding model: {e}")
+        app.state.embedding_service = None
+
+    # 2. Reranker Service (Qwen3-VL-Reranker-2B)
+    try:
+        logger.info("Loading ReRanker model...")
+        reranker_service = get_reranker_service()
+        reranker_service.load_model()
+        app.state.reranker_service = reranker_service
+        logger.info("✅ ReRanker model loaded successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to load ReRanker model: {e}")
+        app.state.reranker_service = None
+
+    # 3. Milvus (lazy - connection only)
+    app.state.milvus_service = None  # Lazy init on first use
+    app.state.ai_services_initialized = True
 
     yield
 

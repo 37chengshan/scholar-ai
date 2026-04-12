@@ -5,6 +5,7 @@ Contains:
 - PaperChunk: Text chunks for RAG retrieval
 
 Table names match Prisma schema (papers, paper_chunks).
+Column names use Prisma camelCase convention via 'name' parameter.
 """
 
 import uuid
@@ -43,7 +44,7 @@ if TYPE_CHECKING:
 class Paper(Base):
     """Paper model with metadata and content.
 
-    Matches Prisma schema 'papers' table.
+    Matches Prisma schema 'papers' table with camelCase column names.
     """
 
     __tablename__ = "papers"
@@ -56,30 +57,30 @@ class Paper(Base):
     year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     abstract: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     doi: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    arxiv_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    pdf_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    pdf_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    arxiv_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, name="arxivId")
+    pdf_url: Mapped[Optional[str]] = mapped_column(String, nullable=True, name="pdfUrl")
+    pdf_path: Mapped[Optional[str]] = mapped_column(String, nullable=True, name="pdfPath")
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    imrad_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    imrad_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True, name="imradJson")
     status: Mapped[str] = mapped_column(String, default="pending")
-    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="fileSize")
+    page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="pageCount")
     keywords: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
     venue: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     citations: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), name="createdAt"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), onupdate=func.now(), name="updatedAt"
     )
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
     storage_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reading_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     notes_version: Mapped[int] = mapped_column(Integer, default=0)
     starred: Mapped[bool] = mapped_column(Boolean, default=False)
     project_id: Mapped[Optional[str]] = mapped_column(
-        ForeignKey("projects.id"), nullable=True
+        ForeignKey("projects.id"), nullable=True, name="projectId"
     )
     knowledge_base_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("knowledge_bases.id"), nullable=True
@@ -112,7 +113,6 @@ class Paper(Base):
     upload_history: Mapped[List["UploadHistory"]] = relationship(
         "UploadHistory", back_populates="paper"
     )
-    # Note: queries relationship removed - Query.paper_ids is ARRAY(String) without FK
     batch: Mapped[Optional["PaperBatch"]] = relationship(
         "PaperBatch", back_populates="papers"
     )
@@ -124,8 +124,8 @@ class Paper(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("user_id", "title", name="unique_user_title"),
-        Index("idx_papers_user_id", "user_id"),
+        UniqueConstraint("userId", "title", name="unique_user_title"),
+        Index("idx_papers_userId", "userId"),
         Index("idx_papers_starred", "starred"),
         Index("idx_papers_batch_id", "batch_id"),
     )
@@ -147,20 +147,20 @@ class PaperChunk(Base):
     )
     content: Mapped[str] = mapped_column(Text)
     section: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    page_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    page_end: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    is_table: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_figure: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_formula: Mapped[bool] = mapped_column(Boolean, default=False)
+    page_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="pageStart")
+    page_end: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="pageEnd")
+    is_table: Mapped[bool] = mapped_column(Boolean, default=False, name="isTable")
+    is_figure: Mapped[bool] = mapped_column(Boolean, default=False, name="isFigure")
+    is_formula: Mapped[bool] = mapped_column(Boolean, default=False, name="isFormula")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), default=func.now(), name="createdAt"
     )
-    paper_id: Mapped[str] = mapped_column(ForeignKey("papers.id"))
+    paper_id: Mapped[str] = mapped_column(ForeignKey("papers.id"), name="paperId")
 
     # Relationships
     paper: Mapped["Paper"] = relationship("Paper", back_populates="paper_chunks")
 
-    __table_args__ = (Index("idx_paper_chunks_paper_id", "paper_id"),)
+    __table_args__ = (Index("idx_paper_chunks_paper_id", "paperId"),)
 
     def __repr__(self) -> str:
         return f"<PaperChunk(id={self.id}, paper_id={self.paper_id})>"

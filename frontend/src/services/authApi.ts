@@ -12,7 +12,15 @@
  */
 
 import apiClient from '@/utils/apiClient';
-import type { LoginResponse, User } from '@/types';
+import type { User } from '@/types';
+
+export interface LoginResult {
+  user: User;
+  meta?: {
+    request_id?: string;
+    timestamp?: string;
+  };
+}
 
 /**
  * Login with email and password
@@ -26,19 +34,19 @@ import type { LoginResponse, User } from '@/types';
  * @param password - User password
  * @returns Login response with user data
  */
-export async function login(email: string, password: string): Promise<LoginResponse> {
+export async function login(email: string, password: string): Promise<LoginResult> {
   // OAuth2 password flow requires form-data with 'username' field
   const formData = new URLSearchParams();
   formData.append('username', email);
   formData.append('password', password);
 
-  const response = await apiClient.post<LoginResponse>('/api/v1/auth/login', formData, {
+  const response = await apiClient.post<LoginResult>('/api/v1/auth/login', formData, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
   });
 
-  return response.data;
+  return response.data as LoginResult;
 }
 
 /**
@@ -78,7 +86,7 @@ export async function me(): Promise<User> {
     data: User;
   }>('/api/v1/auth/me');
 
-  return response.data.data;
+  return response.data as unknown as User;
 }
 
 /**
@@ -105,7 +113,7 @@ export async function register(
     name,
   });
 
-  return response.data.data;
+  return response.data as unknown as User;
 }
 
 /**

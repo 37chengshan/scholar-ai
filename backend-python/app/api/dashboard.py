@@ -21,7 +21,7 @@ from app.models.project import Project
 from app.models.reading_progress import ReadingProgress
 from app.models.query import Query as QueryModel
 from app.models.orm_session import Session
-from app.models.orm_chat_message import ChatMessage
+from app.models.token_usage_log import TokenUsageLog
 from app.utils.logger import logger
 from app.middleware.auth import get_current_user
 from app.services.auth_service import User
@@ -159,11 +159,9 @@ async def get_dashboard_stats(
         )
         projects_count = projects_result.scalar() or 0
 
-        # LLM tokens from chat messages
+        # LLM tokens from token_usage_logs
         tokens_result = await db.execute(
-            select(func.sum(ChatMessage.tokens_used)).select_from(ChatMessage)
-            .join(Session, ChatMessage.session_id == Session.id)
-            .where(Session.user_id == user_id)
+            select(func.sum(TokenUsageLog.total_tokens)).where(TokenUsageLog.user_id == user_id)
         )
         llm_tokens = tokens_result.scalar() or 0
 
