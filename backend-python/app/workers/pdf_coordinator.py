@@ -70,7 +70,7 @@ class PDFCoordinator:
     @property
     def storage_manager(self) -> StorageManager:
         """Lazy-initialized storage manager property.
-        
+
         Per VERIFICATION gap closure: StorageManager is instantiated with db_pool.
         """
         if self._storage_manager is None:
@@ -86,13 +86,9 @@ class PDFCoordinator:
         if not self._db_pool:
             db_url = os.getenv(
                 "DATABASE_URL",
-                "postgresql://scholarai:scholarai123@localhost:5432/scholarai"
+                "postgresql://scholarai:scholarai123@localhost:5432/scholarai",
             )
-            self._db_pool = await asyncpg.create_pool(
-                db_url,
-                min_size=1,
-                max_size=10
-            )
+            self._db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=10)
 
     async def process(self, task_id: str) -> bool:
         """Process a PDF task through the parallel pipeline.
@@ -121,10 +117,12 @@ class PDFCoordinator:
             ctx.current_stage = PipelineStage.DOWNLOAD
             try:
                 # Create temp file for PDF download
-                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                     await self.storage.download_file(ctx.storage_key, tmp.name)
                     ctx.local_path = tmp.name
-                logger.info(f"Downloaded PDF to {ctx.local_path} for task {ctx.task_id}")
+                logger.info(
+                    f"Downloaded PDF to {ctx.local_path} for task {ctx.task_id}"
+                )
             except Exception as e:
                 ctx.errors.append(f"Download failed: {str(e)}")
                 await self._update_status(ctx, PipelineStage.FAILED.value, error=str(e))
@@ -136,7 +134,7 @@ class PDFCoordinator:
                 ctx.parse_result = await self.parser.parse_pdf(ctx.local_path)
                 logger.info(
                     f"Parsed PDF for task {ctx.task_id}: "
-                    f"{len(ctx.parse_result.get('pages', []))} pages"
+                    f"{ctx.parse_result.get('page_count', 0)} pages"  # Task 2: Unified field 'page_count'
                 )
             except Exception as e:
                 ctx.errors.append(f"Parsing failed: {str(e)}")
@@ -184,7 +182,7 @@ class PDFCoordinator:
                    FROM processing_tasks pt
                    JOIN papers p ON pt.paper_id = p.id
                    WHERE pt.id = $1""",
-                task_id
+                task_id,
             )
 
         if not task:
@@ -194,14 +192,11 @@ class PDFCoordinator:
             task_id=task_id,
             paper_id=task["paper_id"],
             user_id=task["userId"],
-            storage_key=task["storage_key"]
+            storage_key=task["storage_key"],
         )
 
     async def _update_status(
-        self,
-        ctx: PipelineContext,
-        status: str,
-        error: Optional[str] = None
+        self, ctx: PipelineContext, status: str, error: Optional[str] = None
     ) -> None:
         """Update task status in database.
 
@@ -226,7 +221,7 @@ class PDFCoordinator:
                 status,
                 error,
                 completed_at,
-                ctx.task_id
+                ctx.task_id,
             )
 
             # Update papers status to keep them synchronized
@@ -237,7 +232,7 @@ class PDFCoordinator:
                            "updatedAt" = NOW()
                        WHERE id = $2""",
                     status,
-                    ctx.paper_id
+                    ctx.paper_id,
                 )
 
         logger.info("Task status updated", task_id=ctx.task_id, status=status)
