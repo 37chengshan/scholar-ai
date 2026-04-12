@@ -41,11 +41,11 @@ class SSEConnectionManager:
         self.redis = redis_db
 
     async def stream_with_heartbeat(
-        self,
-        session_id: str,
-        generator: AsyncIterator[str]
+        self, session_id: str, generator: AsyncIterator[str]
     ) -> AsyncIterator[str]:
         """Merge business events with heartbeat events.
+
+        Uses asyncio.wait_for to timeout when no events, then sends heartbeat comment.
 
         Args:
             session_id: Session ID for event caching
@@ -53,33 +53,35 @@ class SSEConnectionManager:
 
         Yields:
             SSE event strings (business or heartbeat)
+
+        Heartbeat format: ": heartbeat {timestamp}\\n\\n"
+        (SSE comment, ignored by browser EventSource)
         """
-        last_heartbeat = time.time()
+        while True:
+            try:
+                # Wait for next event with timeout
+                event = await asyncio.wait_for(
+                    generator.__anext__(), timeout=self.HEARTBEAT_INTERVAL
+                )
 
-        try:
-            async for event in generator:
-                # Update last event time
-                last_heartbeat = time.time()
-
-                # Cache event
+                # Cache event (returns event_id)
                 await self.store_event(session_id, event)
 
+                # Emit business event
                 yield event
 
-                # Check if we should send a heartbeat
-                elapsed = time.time() - last_heartbeat
-                if elapsed >= self.HEARTBEAT_INTERVAL:
-                    yield f"event: heartbeat\ndata: {int(time.time())}\n\n"
-                    last_heartbeat = time.time()
+            except asyncio.TimeoutError:
+                # No event within HEARTBEAT_INTERVAL
+                # Send heartbeat comment to keep connection alive
+                heartbeat = f": heartbeat {int(time.time())}\n\n"
+                yield heartbeat
 
-        except Exception as e:
-            logger.error("Stream with heartbeat error", error=str(e))
-            raise
+            except StopAsyncIteration:
+                # Generator finished
+                return
 
     async def handle_reconnect(
-        self,
-        session_id: str,
-        last_event_id: str
+        self, session_id: str, last_event_id: str
     ) -> AsyncIterator[str]:
         """Replay missed events after reconnection.
 
@@ -113,45 +115,49 @@ class SSEConnectionManager:
                 "Reconnected SSE stream",
                 session_id=session_id,
                 last_event_id=last_event_id,
-                replayed=replayed
+                replayed=replayed,
             )
 
         except Exception as e:
-            logger.error(
-                "Reconnect error",
-                error=str(e),
-                session_id=session_id
-            )
+            logger.error("Reconnect error", error=str(e), session_id=session_id)
 
     async def store_event(self, session_id: str, event_str: str) -> str:
         """Cache event in Redis for replay after reconnection.
 
+        Extracts event_id from SSE string's 'id:' line, or generates one if missing.
+
         Args:
             session_id: Session ID
-            event_str: SSE event string
+            event_str: SSE event string (format: "id: <id>\nevent: <type>\ndata: <json>\n\n")
 
         Returns:
-            Event ID
+            Event ID extracted from SSE string
         """
         try:
-            # Generate event ID
-            event_id = str(uuid.uuid4())
+            # Extract event_id from SSE 'id:' line
+            event_id = None
+            for line in event_str.split("\n"):
+                if line.startswith("id:"):
+                    event_id = line.split(":", 1)[1].strip()
+                    break
 
-            # Get event counter
-            counter_key = f"session:{session_id}:event_counter"
-            if self.redis.client:
-                event_counter = await self.redis.client.incr(counter_key)
-                await self.redis.client.expire(counter_key, self.EVENT_CACHE_TTL)
-            else:
-                event_counter = int(time.time() * 1000)
+            # Generate event_id if missing
+            if not event_id:
+                # Get event counter
+                counter_key = f"session:{session_id}:event_counter"
+                if self.redis.client:
+                    event_counter = await self.redis.client.incr(counter_key)
+                    await self.redis.client.expire(counter_key, self.EVENT_CACHE_TTL)
+                else:
+                    event_counter = int(time.time() * 1000)
 
-            event_id = f"{event_counter}"
+                event_id = f"{event_counter}"
 
             # Store event
             event_data = {
                 "event_id": event_id,
                 "event_str": event_str,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             cache_key = f"session:{session_id}:events"
@@ -166,41 +172,15 @@ class SSEConnectionManager:
                 # Set TTL
                 await self.redis.client.expire(cache_key, self.EVENT_CACHE_TTL)
 
-            logger.debug(
-                "Cached SSE event",
-                session_id=session_id,
-                event_id=event_id
-            )
+            logger.debug("Cached SSE event", session_id=session_id, event_id=event_id)
 
             return event_id
 
         except Exception as e:
-            logger.error(
-                "Failed to cache event",
-                error=str(e),
-                session_id=session_id
-            )
+            logger.error("Failed to cache event", error=str(e), session_id=session_id)
             return ""
 
     # Private helper methods
-
-    async def _heartbeat_loop(self) -> None:
-        """Sleep for HEARTBEAT_INTERVAL seconds."""
-        await asyncio.sleep(self.HEARTBEAT_INTERVAL)
-
-    async def _collect_generator(self, generator: AsyncIterator[str]) -> List[str]:
-        """Collect all events from generator into a list.
-
-        Args:
-            generator: Async generator of SSE events
-
-        Returns:
-            List of SSE event strings
-        """
-        events = []
-        async for event in generator:
-            events.append(event)
-        return events
 
     async def _get_cached_events(self, session_id: str) -> List[Dict]:
         """Retrieve cached events from Redis.
@@ -233,9 +213,7 @@ class SSEConnectionManager:
 
         except Exception as e:
             logger.error(
-                "Failed to get cached events",
-                error=str(e),
-                session_id=session_id
+                "Failed to get cached events", error=str(e), session_id=session_id
             )
             return []
 
