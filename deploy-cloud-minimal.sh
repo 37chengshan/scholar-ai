@@ -79,16 +79,20 @@ echo "✅ 依赖安装完成"
 echo ""
 echo "Step 4: 创建环境配置"
 cat > ${INSTALL_DIR}/.env << 'ENVEOF'
-# Database
-DATABASE_URL=postgresql://scholarai:ScholarAI_2026_Secure!@223.6.249.253:5432/scholarai
+# ⚠️ SECURITY: All credentials must be set via environment variables
+# Run: export DB_PASSWORD=xxx REDIS_PASSWORD=xxx NEO4J_PASSWORD=xxx
+# before executing this script
 
-# Redis
-REDIS_URL=redis://:S3j2fyGHTGJ8LGx8@223.6.249.253:26739/0
+# Database - credentials from environment
+DATABASE_URL=postgresql://${DB_USER:-scholarai}:${DB_PASSWORD}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME:-scholarai}
 
-# Neo4j
-NEO4J_URI=bolt://223.6.249.253:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=scholarai123
+# Redis - credentials from environment
+REDIS_URL=redis://${REDIS_HOST:-localhost}:${REDIS_PORT:-6379}/${REDIS_DB:-0}
+
+# Neo4j - credentials from environment
+NEO4J_URI=bolt://${NEO4J_HOST:-localhost}:${NEO4J_PORT:-7687}
+NEO4J_USER=${NEO4J_USER:-neo4j}
+NEO4J_PASSWORD=${NEO4J_PASSWORD}
 
 # Storage
 OSS_ENDPOINT=local
