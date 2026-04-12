@@ -565,10 +565,9 @@ class AgentRunner:
                 - tool_call: (if not complete) Tool call dict
         """
         try:
-            llm_client = get_llm_client()
-
-            # Call LLM with tools
-            response = await llm_client.chat_completion(
+            # Use injected LLM client (per D-05) instead of get_llm_client()
+            # This avoids blocking the event loop and ensures proper async behavior
+            response = await self.llm_client.chat_completion(
                 messages=[{"role": "system", "content": system_prompt}, *messages],
                 tools=tools_schema,
                 tool_choice="auto",
