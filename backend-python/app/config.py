@@ -80,6 +80,16 @@ class Settings(BaseSettings):
             if "*" in self.ALLOWED_HOSTS:
                 errors.append("ALLOWED_HOSTS must not be '*' in production")
 
+            if "scholarai123" in self.DATABASE_URL:
+                errors.append(
+                    "DATABASE_URL contains default password - use secure credentials"
+                )
+
+            if self.NEO4J_PASSWORD == "scholarai123":
+                errors.append(
+                    "NEO4J_PASSWORD uses default value - use secure credentials"
+                )
+
             if errors:
                 raise ValueError(
                     "Production security validation failed:\n"
