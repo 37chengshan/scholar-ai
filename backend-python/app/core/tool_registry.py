@@ -228,6 +228,126 @@ class ToolRegistry:
             )
         )
 
+        self.register(
+            Tool(
+                name="rag_search",
+                description="Search your personal library using multimodal RAG (text, tables, images)",
+                parameters={
+                    "question": {
+                        "type": "string",
+                        "description": "Question to search for in your library",
+                        "required": True,
+                    },
+                    "paper_ids": {
+                        "type": "array",
+                        "description": "Optional: restrict search to specific papers",
+                        "required": False,
+                        "default": [],
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Number of results to return",
+                        "required": False,
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 20,
+                    },
+                },
+                needs_confirmation=False,
+            )
+        )
+
+        self.register(
+            Tool(
+                name="list_papers",
+                description="List papers in your library with optional filters",
+                parameters={
+                    "filter": {
+                        "type": "object",
+                        "description": "Optional filters (e.g., {status: 'completed'})",
+                        "required": False,
+                        "default": {},
+                    },
+                    "sort": {
+                        "type": "string",
+                        "description": "Sort by field",
+                        "required": False,
+                        "default": "created_at",
+                        "enum": ["created_at", "year", "title"],
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum results to return",
+                        "required": False,
+                        "default": 20,
+                        "minimum": 1,
+                        "maximum": 100,
+                    },
+                },
+                needs_confirmation=False,
+            )
+        )
+
+        self.register(
+            Tool(
+                name="read_paper",
+                description="Read the content of a specific paper",
+                parameters={
+                    "paper_id": {
+                        "type": "string",
+                        "description": "Paper ID to read",
+                        "required": True,
+                    },
+                    "sections": {
+                        "type": "array",
+                        "description": "Sections to retrieve",
+                        "required": False,
+                        "default": ["metadata", "abstract"],
+                        "enum": ["metadata", "abstract", "content", "notes", "chunks"],
+                    },
+                },
+                needs_confirmation=False,
+            )
+        )
+
+        self.register(
+            Tool(
+                name="list_notes",
+                description="List your reading notes",
+                parameters={
+                    "paper_id": {
+                        "type": "string",
+                        "description": "Optional: filter by paper ID",
+                        "required": False,
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum results to return",
+                        "required": False,
+                        "default": 20,
+                        "minimum": 1,
+                        "maximum": 100,
+                    },
+                },
+                needs_confirmation=False,
+            )
+        )
+
+        self.register(
+            Tool(
+                name="read_note",
+                description="Read a specific note's content",
+                parameters={
+                    "note_id": {
+                        "type": "string",
+                        "description": "Note ID to read",
+                        "required": True,
+                    },
+                },
+                needs_confirmation=False,
+            )
+        )
+
         # Note Tools (Level 2: WRITE)
         self.register(
             Tool(
