@@ -215,23 +215,28 @@ async def chat_stream(
 
 
 # =============================================================================
-# User Confirmation Endpoint
+# User Confirmation Endpoint (Sprint 3: SSE Stream Response)
 # =============================================================================
 
 
 @router.post("/confirm")
-async def confirm_action(request: ChatConfirmRequest, user_id: str = CurrentUserId):
+async def confirm_action(
+    request: ChatConfirmRequest,
+    http_request: Request,
+    user_id: str = CurrentUserId,
+):
     """
-    User confirmation for dangerous operations.
+    User confirmation for dangerous operations with SSE streaming.
 
-    Resumes Agent execution after user confirms or declines a dangerous tool.
+    Sprint 3: Returns SSE stream with tool execution events for resumption.
 
     Args:
         request: Confirmation request with confirmation_id and approved flag
+        http_request: HTTP request for headers
         user_id: Authenticated user ID
 
     Returns:
-        Result of resumed Agent execution
+        SSE stream with tool execution and continuation events
     """
     try:
         logger.info(
@@ -239,60 +244,74 @@ async def confirm_action(request: ChatConfirmRequest, user_id: str = CurrentUser
             confirmation_id=request.confirmation_id,
             approved=request.approved,
             session_id=request.session_id,
+            user_id=user_id,
         )
 
-        # Validate confirmation_id from Redis
-        import redis.asyncio as redis
+        # Get confirmation state from orchestrator
+        confirmation_state = await chat_orchestrator.get_confirmation_state(
+            request.confirmation_id
+        )
 
-        r = redis.from_url(settings.REDIS_URL, decode_responses=True)
-
-        confirmation_key = f"confirmation:{request.confirmation_id}"
-        confirmation_data = await r.get(confirmation_key)
-
-        if not confirmation_data:
+        if not confirmation_state:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("Invalid or expired confirmation_id"),
             )
 
-        # Parse confirmation data
-        import json
-
-        data = json.loads(confirmation_data)
-
         # Verify user ownership
-        if data.get("user_id") != user_id:
+        if confirmation_state.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=Errors.forbidden("Confirmation belongs to different user"),
             )
 
-        if not request.approved:
-            # Clear confirmation from Redis
-            await r.delete(confirmation_key)
-            return {"success": False, "message": "User declined the operation"}
+        # Verify session_id matches
+        if confirmation_state.session_id != request.session_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("Session ID mismatch"),
+            )
 
-        # Resume Agent execution
-        runner, _, _, _ = initialize_agent_components()
+        # Generate SSE stream for resumption
+        async def event_generator() -> AsyncIterator[str]:
+            """Generate SSE events from Agent resumption."""
+            async for event in chat_orchestrator.resume_with_confirmation(
+                confirmation_id=request.confirmation_id,
+                approved=request.approved,
+            ):
+                yield event
 
-        # Retrieve tool_name and parameters from confirmation data
-        tool_name = data.get("tool_name")
-        tool_params = data.get("tool_params", {})
-        session_id = data.get("session_id")
+        # Wrap with heartbeat
+        async def stream_with_heartbeat() -> AsyncIterator[str]:
+            """Add heartbeat to SSE stream."""
+            async for event in sse_manager.stream_with_heartbeat(
+                request.session_id, event_generator()
+            ):
+                yield event
 
-        # Clear confirmation from Redis
-        await r.delete(confirmation_key)
+        logger.info(
+            "Confirmation validated, streaming resumption events",
+            confirmation_id=request.confirmation_id,
+            approved=request.approved,
+        )
 
-        return {
-            "success": True,
-            "message": "Operation confirmed. Agent execution resumed.",
-            "tool_name": tool_name,
-            "tool_params": tool_params,
-            "session_id": session_id,
-        }
+        return StreamingResponse(
+            stream_with_heartbeat(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Confirmation-Processed": "true",
+            },
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions (already properly formatted)
+        raise
 
     except Exception as e:
-        logger.error("Confirmation error", error=str(e))
+        logger.error("Confirmation processing error", error=str(e))
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

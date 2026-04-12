@@ -33,9 +33,10 @@ import { sseService, SSEEvent } from '@/services/sseService';
 import { ToolCall, PaperCitation, TokenUsage } from '@/types/chat';
 
 /**
- * Confirmation request from agent
+ * Confirmation request from agent (Sprint 3: Added confirmation_id)
  */
 interface ConfirmationState {
+  confirmation_id: string;  // Required for backend resumption
   tool: string;
   params: Record<string, unknown>;
 }
@@ -169,9 +170,10 @@ export function useSSE(): UseSSEReturn {
           setToolCalls(toolCallsCopy);
         }
 
-        // Handle confirmation_required events - extract from event.content
+        // Handle confirmation_required events - extract from event.content (Sprint 3: Add confirmation_id)
         if (event.type === 'confirmation_required') {
           setConfirmation({
+            confirmation_id: event.content.confirmation_id || '',  // Required for backend resumption
             tool: event.content.tool_name || event.content.tool || 'unknown',
             params: event.content.parameters || event.content.params || {},
           });

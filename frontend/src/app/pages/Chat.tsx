@@ -294,7 +294,7 @@ export function Chat() {
     }
   }, [citations, navigate]);
 
-  // Send confirmation response (approve/reject) to backend
+  // Send confirmation response (approve/reject) to backend (Sprint 3: Use confirmation_id)
   const sendConfirmationResponse = useCallback(async (approved: boolean) => {
     if (!confirmation) return;
     try {
@@ -303,20 +303,23 @@ export function Chat() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          sessionId: currentSession?.id,
-          tool: confirmation.tool,
+          confirmation_id: confirmation.confirmation_id,  // Sprint 3: Use confirmation_id (not tool)
+          session_id: currentSession?.id,                  // Sprint 3: Use snake_case field
           approved,
         }),
       });
       if (!response.ok) {
         toast.error(isZh ? '确认响应发送失败' : 'Failed to send confirmation response');
+      } else {
+        // Success - confirmation processed, SSE stream will continue automatically
+        toast.success(isZh ? '确认已提交' : 'Confirmation submitted');
       }
     } catch (error) {
       toast.error(isZh ? '确认响应发送失败' : 'Failed to send confirmation response');
     } finally {
       resetConfirmation();
     }
-  }, [confirmation, currentSession, resetConfirmation]);
+  }, [confirmation, currentSession, resetConfirmation, isZh]);
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
