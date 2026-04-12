@@ -20,6 +20,7 @@
 
 /**
  * SSE Event Types (from backend Agent-Native architecture)
+ * These come from the 'event:' line in SSE stream
  */
 export type SSEEventType =
   | 'thought'
@@ -34,14 +35,24 @@ export type SSEEventType =
 
 /**
  * SSE Event structure
+ * 
+ * IMPORTANT: 'type' field comes from 'event:' line (authoritative), not from JSON.type
+ * 'content' field contains the entire JSON payload from 'data:' line
  */
 export interface SSEEvent {
+  /** Event type from 'event:' line - authoritative source */
   type: SSEEventType;
+  /** Entire JSON payload from 'data:' line */
   content: any;
+  /** Optional timestamp from payload */
   timestamp?: string;
+  /** Tool name for tool_call/tool_result events */
   tool?: string;
+  /** Tool result for tool_result events */
   result?: any;
+  /** Event type string (same as type, for backward compatibility) */
   event?: string;
+  /** Raw data payload (same as content, for backward compatibility) */
   data?: any;
 }
 
@@ -211,19 +222,39 @@ export class SSEService {
 
   /**
    * Handle a parsed SSE event
+   * 
+   * IMPORTANT: Uses event: line as authoritative type, not JSON.type field
    */
   private handleEvent(eventType: string, dataStr: string): void {
     if (!this.currentHandlers) return;
 
     try {
-      const event: SSEEvent = JSON.parse(dataStr);
+      // Parse JSON payload from data: line
+      const payload = JSON.parse(dataStr);
+
+      // Construct SSEEvent using event: line type as authoritative
+      // This fixes the bug where frontend used JSON.type instead of SSE event type
+      const event: SSEEvent = {
+        type: eventType as SSEEventType,  // From event: line (authoritative)
+        content: payload,                 // Entire JSON payload
+        timestamp: payload.timestamp,
+        tool: payload.tool,
+        result: payload.result || payload.data,
+        event: eventType,
+        data: payload,
+      };
+
+      // Store last event ID if present
+      if (this.lastEventId) {
+        // Already stored in processLine() at line 206
+      }
 
       if (eventType === 'done') {
         this.isDisconnecting = true;
-        const tokensUsed = (event as any).tokens_used || (event as any).content?.tokens_used || 0;
-        const cost = (event as any).cost || (event as any).content?.cost || 0;
-        const iterations = (event as any).iterations || (event as any).content?.iterations || 0;
-        const total_time_ms = (event as any).total_time_ms || (event as any).content?.total_time_ms || 0;
+        const tokensUsed = payload.tokens_used || 0;
+        const cost = payload.cost || 0;
+        const iterations = payload.iterations || 0;
+        const total_time_ms = payload.total_time_ms || 0;
         this.currentHandlers.onDone({
           tokens_used: tokensUsed,
           cost,
@@ -232,7 +263,7 @@ export class SSEService {
         });
         this.disconnect();
       } else if (eventType === 'heartbeat') {
-        // Keepalive
+        // Keepalive - SSE comment format, ignored
       } else {
         this.currentHandlers.onMessage(event);
       }

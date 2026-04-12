@@ -133,16 +133,17 @@ export function useSSE(): UseSSEReturn {
         setMessages((prev) => [...prev, event]);
 
         // Accumulate message content for streaming text
-        if (event.type === 'message' && typeof event.content === 'string') {
-          accumulatedContent.current += event.content;
+        // Use event.content for actual content (not event.type which is SSE event type)
+        if (event.type === 'message' && typeof event.content.content === 'string') {
+          accumulatedContent.current += event.content.content;
         }
 
-        // Handle tool_call events
+        // Handle tool_call events - extract from event.content
         if (event.type === 'tool_call') {
           const toolCall: ToolCall = {
             id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            tool: event.tool || 'unknown',
-            parameters: event.content?.parameters || event.content || {},
+            tool: event.content.tool || event.tool || 'unknown',
+            parameters: event.content.parameters || {},
             status: 'running',
             startedAt: Date.now(),
           };
@@ -150,15 +151,15 @@ export function useSSE(): UseSSEReturn {
           setToolCalls(toolCallsRef.current);
         }
 
-        // Handle tool_result events
+        // Handle tool_result events - extract from event.content
         if (event.type === 'tool_result') {
-          const toolName = event.tool || 'unknown';
+          const toolName = event.content.tool || event.tool || 'unknown';
           const toolCallsCopy = [...toolCallsRef.current];
           for (let i = toolCallsCopy.length - 1; i >= 0; i--) {
             const tc = toolCallsCopy[i];
             if (tc.tool === toolName && tc.status === 'running') {
-              tc.status = event.result?.success !== false ? 'success' : 'error';
-              tc.result = event.result?.data ?? event.result;
+              tc.status = event.content.success !== false ? 'success' : 'error';
+              tc.result = event.content.data ?? event.content.result ?? event.result;
               tc.completedAt = Date.now();
               tc.duration = tc.completedAt - tc.startedAt;
               break;
@@ -168,16 +169,16 @@ export function useSSE(): UseSSEReturn {
           setToolCalls(toolCallsCopy);
         }
 
-        // Handle confirmation_required events
+        // Handle confirmation_required events - extract from event.content
         if (event.type === 'confirmation_required') {
           setConfirmation({
-            tool: event.content?.tool || event.tool || 'unknown',
-            params: event.content?.parameters || event.content || {},
+            tool: event.content.tool_name || event.content.tool || 'unknown',
+            params: event.content.parameters || event.content.params || {},
           });
         }
 
-        // Handle citation events
-        if (event.type === 'citation' || event.event === 'citation') {
+        // Handle citation events - extract from event.content
+        if (event.type === 'citation') {
           const citationData = event.content || event.data;
           if (citationData && Array.isArray(citationData)) {
             const citations: PaperCitation[] = citationData.map((c: any) => ({
