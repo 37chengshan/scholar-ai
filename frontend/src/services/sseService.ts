@@ -21,6 +21,10 @@
 /**
  * SSE Event Types (from backend Agent-Native architecture)
  * These come from the 'event:' line in SSE stream
+ *
+ * P2 additions:
+ * - routing_decision: Agent routing decision (complexity analysis)
+ * - thinking_status: Thinking process status updates
  */
 export type SSEEventType =
   | 'thought'
@@ -31,7 +35,9 @@ export type SSEEventType =
   | 'done'
   | 'heartbeat'
   | 'error'
-  | 'citation';
+  | 'citation'
+  | 'routing_decision'
+  | 'thinking_status';
 
 /**
  * SSE Event structure

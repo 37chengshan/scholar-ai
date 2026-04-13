@@ -51,7 +51,7 @@ export interface ParsedSSEEvent {
  * Each event type has specific required fields that must be present.
  * This enforces the frontend-backend contract.
  */
-export const EVENT_CONTRACTS: Partial<Record<SSEEventType, string[]>> = {
+export const EVENT_CONTRACTS: Record<SSEEventType, string[]> = {
   // Agent thinking events
   thought: ['content', 'timestamp'],
 
@@ -74,7 +74,10 @@ export const EVENT_CONTRACTS: Partial<Record<SSEEventType, string[]>> = {
   // Citation events
   citation: ['source', 'timestamp'],
 
-  // Future events (P2 additions)
+  // Heartbeat - no required fields (keepalive)
+  heartbeat: [],
+
+  // P2 additions: routing and thinking status
   routing_decision: ['complexity', 'reasoning', 'method', 'mode', 'sequence', 'timestamp', 'session_id'],
   thinking_status: ['status', 'summary', 'sequence', 'timestamp', 'session_id'],
 };
