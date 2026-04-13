@@ -37,7 +37,7 @@ export async function list(): Promise<Project[]> {
     data: Project[];
   }>('/api/v1/projects');
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -59,7 +59,7 @@ export async function create(name: string, color?: string): Promise<Project> {
     color,
   });
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -78,7 +78,7 @@ export async function update(id: string, data: { name?: string; color?: string }
     data: Project;
   }>(`/api/v1/projects/${id}`, data);
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -119,5 +119,5 @@ export async function assignPaper(paperId: string, projectId: string | null): Pr
     projectId,
   });
 
-  return response.data.data;
+  return response.data;
 }

@@ -30,7 +30,7 @@ export async function query(params: QueryParams): Promise<QueryResult> {
     queryType: params.queryType || 'single',
   });
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
