@@ -24,7 +24,7 @@ from app.models.orm_note import Note
 from app.models.paper import Paper
 from app.core.notes_generator import NotesGenerator
 from app.utils.logger import logger
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 
 router = APIRouter()

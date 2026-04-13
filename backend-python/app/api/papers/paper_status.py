@@ -8,6 +8,9 @@ Endpoints:
 - GET /api/v1/papers/{id}/download - Download PDF
 - GET /api/v1/papers/{id}/chunks - Get paper chunks
 - POST /api/v1/papers/{id}/regenerate-chunks - Regenerate chunks
+- GET /api/v1/papers/{id}/summary - Get paper summary and notes
+- POST /api/v1/papers/{id}/regenerate-notes - Trigger notes regeneration
+- GET /api/v1/papers/{id}/notes/export - Export notes as Markdown
 """
 
 import os
@@ -23,6 +26,7 @@ from app.deps import get_current_user
 from app.models import Paper, ProcessingTask, PaperChunk
 from app.services.auth_service import User
 from app.utils.problem_detail import ErrorTypes
+from app.config import settings
 
 from .paper_shared import (
     StarredRequest,
@@ -161,8 +165,8 @@ async def download_paper(
             instance=instance,
         )
 
-    local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
-    file_path = os.path.join(local_storage_path, storage_key)
+    local_storage_path = settings.LOCAL_STORAGE_PATH
+    file_path = f"{local_storage_path}/{storage_key}"
 
     if not os.path.exists(file_path):
         raise create_error_response(
@@ -294,6 +298,182 @@ async def regenerate_chunks(
             "message": "Chunk regeneration triggered",
         },
     }
+
+
+class RegenerateNotesRequest(BaseModel):
+    """Request to regenerate paper notes."""
+    modificationRequest: Optional[str] = None
+
+
+@router.get("/{paper_id}/summary")
+async def get_paper_summary(
+    request: Request,
+    paper_id: str,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Get paper summary and reading notes."""
+    instance = str(request.url.path)
+    user_id = current_user.id
+
+    paper_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
+    )
+    paper_result = await db.execute(paper_query)
+    paper = paper_result.scalar_one_or_none()
+
+    if not paper:
+        raise create_error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_type=ErrorTypes.NOT_FOUND,
+            title="Not Found",
+            detail="Paper not found",
+            instance=instance,
+        )
+
+    return {
+        "success": True,
+        "data": {
+            "paperId": paper_id,
+            "summary": paper.reading_notes,
+            "imrad": paper.imrad_json,
+            "status": paper.status,
+            "hasNotes": paper.reading_notes is not None and len(paper.reading_notes) > 0,
+        },
+    }
+
+
+@router.post("/{paper_id}/regenerate-notes")
+async def regenerate_notes(
+    request: Request,
+    paper_id: str,
+    body: Optional[RegenerateNotesRequest] = None,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Trigger notes regeneration for a paper.
+
+    This creates a new processing task to regenerate reading notes.
+    Optionally accepts a modificationRequest to guide regeneration.
+    """
+    instance = str(request.url.path)
+    user_id = current_user.id
+
+    paper_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
+    )
+    paper_result = await db.execute(paper_query)
+    paper = paper_result.scalar_one_or_none()
+
+    if not paper:
+        raise create_error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_type=ErrorTypes.NOT_FOUND,
+            title="Not Found",
+            detail="Paper not found",
+            instance=instance,
+        )
+
+    # Create or update processing task for notes regeneration
+    existing_task_query = select(ProcessingTask).where(
+        ProcessingTask.paper_id == paper_id,
+    )
+    existing_task_result = await db.execute(existing_task_query)
+    existing_task = existing_task_result.scalar_one_or_none()
+
+    now = datetime.now(timezone.utc)
+
+    if existing_task:
+        existing_task.status = "pending"
+        existing_task.error_message = None
+        existing_task.updated_at = now
+        task_id = existing_task.id
+    else:
+        task_id = str(uuid4())
+        task = ProcessingTask(
+            id=task_id,
+            paper_id=paper_id,
+            status="pending",
+            storage_key=paper.storage_key,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(task)
+
+    logger.info(
+        "Notes regeneration triggered",
+        paper_id=paper_id,
+        task_id=task_id,
+        modification_request=body.modificationRequest if body else None,
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "paperId": paper_id,
+            "status": "pending",
+            "message": "Notes regeneration triggered",
+        },
+    }
+
+
+@router.get("/{paper_id}/notes/export")
+async def export_notes(
+    request: Request,
+    paper_id: str,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Export paper notes as Markdown.
+
+    Returns reading notes in Markdown format for download.
+    """
+    instance = str(request.url.path)
+    user_id = current_user.id
+
+    paper_query = select(Paper).where(
+        Paper.id == paper_id,
+        Paper.user_id == user_id,
+    )
+    paper_result = await db.execute(paper_query)
+    paper = paper_result.scalar_one_or_none()
+
+    if not paper:
+        raise create_error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_type=ErrorTypes.NOT_FOUND,
+            title="Not Found",
+            detail="Paper not found",
+            instance=instance,
+        )
+
+    if not paper.reading_notes:
+        raise create_error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_type=ErrorTypes.NOT_FOUND,
+            title="Not Found",
+            detail="No reading notes available for this paper",
+            instance=instance,
+        )
+
+    # Format notes as Markdown
+    markdown_content = f"# {paper.title}\n\n"
+    markdown_content += f"**Authors:** {', '.join(paper.authors) if paper.authors else 'Unknown'}\n\n"
+    markdown_content += f"**Year:** {paper.year or 'Unknown'}\n\n"
+    if paper.abstract:
+        markdown_content += f"## Abstract\n\n{paper.abstract}\n\n"
+    markdown_content += f"## Reading Notes\n\n{paper.reading_notes}\n"
+
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(
+        content=markdown_content,
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": f"attachment; filename={paper.title or 'paper'}-notes.md"
+        },
+    )
 
 
 __all__ = ["router"]

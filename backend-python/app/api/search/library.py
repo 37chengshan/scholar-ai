@@ -28,7 +28,7 @@ from .shared import (
 )
 from .external import search_arxiv, search_semantic_scholar
 from app.core.multimodal_search_service import get_multimodal_search_service
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.logger import logger
 from app.utils.problem_detail import Errors
 

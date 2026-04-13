@@ -37,14 +37,18 @@ from app.core.database import (
     get_redis,
 )
 
-# Re-export auth dependencies
+# Re-export auth dependencies from unified source (middleware/auth.py)
+# AUTH-01: Single auth source with blacklist check for all APIs
 from app.middleware.auth import (
     oauth2_scheme,
     get_current_user,
+    get_current_user_id,
     get_current_active_user,
     get_optional_user,
     require_roles,
     TokenData,
+    CurrentUser,
+    CurrentUserId,
 )
 
 # Re-export user model
@@ -55,17 +59,6 @@ from app.services.auth_service import User
 get_db = sqlalchemy_get_db
 
 
-# =============================================================================
-# Unified Authentication Dependencies (D-04)
-# =============================================================================
-
-# Primary dependency for protected routes - returns User object
-CurrentUser = Depends(get_current_user)
-
-# Alias for backwards compatibility with core.auth.CurrentUserId pattern
-CurrentUserId = Depends(lambda u: u.id if hasattr(u, "id") else str(u))  # type: ignore
-
-
 __all__ = [
     # Database (SQLAlchemy)
     "get_db",
@@ -74,11 +67,12 @@ __all__ = [
     "get_redis",
     "neo4j_db",
     "redis_db",
-    # Auth (unified)
+    # Auth (unified from middleware/auth.py)
     "CurrentUser",
     "CurrentUserId",
     "oauth2_scheme",
     "get_current_user",
+    "get_current_user_id",
     "get_current_active_user",
     "get_optional_user",
     "require_roles",

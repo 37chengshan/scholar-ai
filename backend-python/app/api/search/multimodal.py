@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.page_clustering import cluster_pages
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.logger import logger
 from app.utils.problem_detail import Errors
 

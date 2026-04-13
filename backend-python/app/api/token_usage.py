@@ -7,7 +7,7 @@ Provides endpoints for:
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.token_tracker import TokenTracker
 from app.utils.logger import logger
 

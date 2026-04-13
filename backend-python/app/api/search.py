@@ -24,7 +24,7 @@ from app.config import settings
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.page_clustering import cluster_pages
 from app.utils.logger import logger
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 
 router = APIRouter()

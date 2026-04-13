@@ -3,7 +3,7 @@
 
 set -e
 
-BASE_URL="http://localhost:4000"
+BASE_URL="http://localhost:8000"
 UPLOAD_DIR="scholar-ai/uploads"
 PDF_DIR="doc/测试论文"
 

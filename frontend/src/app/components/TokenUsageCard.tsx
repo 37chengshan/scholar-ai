@@ -52,10 +52,7 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
 
   const fetchTokenUsage = async () => {
     try {
-      const response = await apiClient.get<{
-        success: boolean;
-        data: TokenUsageData;
-      }>('/api/v1/users/me/token-usage/monthly');
+      const response = await apiClient.get<TokenUsageData>('/api/v1/users/me/token-usage/monthly');
 
         setUsage(response.data);
     } catch (error) {

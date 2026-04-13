@@ -20,10 +20,7 @@ import type { QueryParams, QueryResult } from '@/types';
  * @returns Query result with answer and sources
  */
 export async function query(params: QueryParams): Promise<QueryResult> {
-  const response = await apiClient.post<{
-    success: boolean;
-    data: QueryResult;
-  }>('/api/v1/rag/query', {
+  const response = await apiClient.post<QueryResult>('/api/v1/rag/query', {
     query: params.query,
     paperIds: params.paperIds,
     topK: params.topK || 5,

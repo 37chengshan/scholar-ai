@@ -26,7 +26,8 @@ import * as papersApi from '@/services/papersApi';
 import * as annotationsApi from '@/services/annotationsApi';
 import type { Annotation } from '@/services/annotationsApi';
 import apiClient from '@/utils/apiClient';
-import { API_BASE_URL, API_PREFIX } from '@/config/api';
+import { API_PREFIX } from '@/config/api';
+
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -168,7 +169,7 @@ export function Read() {
     );
   }
 
-  const pdfUrl = `${API_BASE_URL}${API_PREFIX}/papers/${id}/pdf`;
+  
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -296,7 +297,7 @@ export function Read() {
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 overflow-hidden">
             <PDFViewer
-              fileUrl={pdfUrl}
+              paperId={id!}
               currentPage={currentPage}
               onPageChange={handlePageChange}
               onNumPagesChange={handleNumPagesChange}
@@ -305,7 +306,7 @@ export function Read() {
           {/* Thumbnail Strip at bottom */}
           <div className="h-28 border-t bg-muted/10 shrink-0">
             <ThumbnailStrip
-              fileUrl={pdfUrl}
+              paperId={id!}
               currentPage={currentPage}
               onPageClick={(page) => {
                 setCurrentPage(page);

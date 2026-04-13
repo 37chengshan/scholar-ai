@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.knowledge_base import KnowledgeBase
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 from app.utils.logger import logger
 
@@ -86,6 +86,13 @@ class KBBatchExport(BaseModel):
     """Request to batch export KBs."""
 
     ids: List[str]
+
+
+class KBStorageStats(BaseModel):
+    """Response for KB storage statistics."""
+
+    success: bool = True
+    data: Dict[str, Any]
 
 
 # =============================================================================
@@ -457,6 +464,78 @@ async def batch_export_knowledge_bases(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to batch export: {str(e)}"),
+        )
+
+
+# =============================================================================
+# KB Storage Statistics
+# =============================================================================
+
+
+@router.get("/storage-stats", response_model=KBStorageStats)
+async def get_kb_storage_stats(
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get storage statistics for user's knowledge bases.
+
+    Returns aggregate counts and estimated storage usage.
+    """
+    try:
+        from app.models.paper import Paper, PaperChunk
+
+        # Count user's knowledge bases
+        kb_count_result = await db.execute(
+            select(func.count(KnowledgeBase.id)).where(
+                KnowledgeBase.user_id == user_id
+            )
+        )
+        kb_count = kb_count_result.scalar() or 0
+
+        # Get KB IDs for this user
+        kb_ids_result = await db.execute(
+            select(KnowledgeBase.id).where(KnowledgeBase.user_id == user_id)
+        )
+        kb_ids = [row[0] for row in kb_ids_result.all()]
+
+        # Count papers in user's KBs
+        paper_count_result = await db.execute(
+            select(func.count(Paper.id)).where(
+                Paper.knowledge_base_id.in_(kb_ids) if kb_ids else False
+            )
+        )
+        paper_count = paper_count_result.scalar() or 0
+
+        # Count chunks in user's KBs
+        chunk_count_result = await db.execute(
+            select(func.count(PaperChunk.id))
+            .select_from(PaperChunk)
+            .join(Paper, PaperChunk.paper_id == Paper.id)
+            .where(Paper.knowledge_base_id.in_(kb_ids) if kb_ids else False)
+        )
+        chunk_count = chunk_count_result.scalar() or 0
+
+        # Estimate file storage (2MB average per paper)
+        avg_file_size = 2 * 1024 * 1024  # 2MB
+        estimated_storage_bytes = paper_count * avg_file_size
+        estimated_storage_mb = round(estimated_storage_bytes / (1024 * 1024), 1)
+
+        return KBStorageStats(
+            success=True,
+            data={
+                "kbCount": int(kb_count),
+                "paperCount": int(paper_count),
+                "chunkCount": int(chunk_count),
+                "estimatedStorageMB": estimated_storage_mb,
+                "storageLimitMB": 50000,  # 50GB limit
+            },
+        )
+
+    except Exception as e:
+        logger.error("Failed to get KB storage stats", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to get storage stats: {str(e)}"),
         )
 
 

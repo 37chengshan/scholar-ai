@@ -110,6 +110,14 @@ export interface KBUploadHistoryRecord {
   } | null;
 }
 
+export interface KBStorageStats {
+  kbCount: number;
+  paperCount: number;
+  chunkCount: number;
+  estimatedStorageMB: number;
+  storageLimitMB: number;
+}
+
 export const kbApi = {
   // === CRUD ===
 
@@ -221,6 +229,14 @@ export const kbApi = {
   /** Query KB for Q&A - returns answer with citations */
   query: async (kbId: string, query: string, topK?: number): Promise<ApiResponse<{ answer: string, citations?: any[], sources?: any[], confidence: number }>> => {
     const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/query`, { query, topK });
+    return { success: true, data: response.data };
+  },
+
+  // === Storage Stats ===
+
+  /** Get storage statistics for user's knowledge bases */
+  getStorageStats: async (): Promise<ApiResponse<KBStorageStats>> => {
+    const response = await apiClient.get('/api/v1/knowledge-bases/storage-stats');
     return { success: true, data: response.data };
   },
 };

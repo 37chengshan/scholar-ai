@@ -46,11 +46,8 @@ export function SystemDiagnostics() {
     const fetchStorage = async () => {
       try {
         const response = await apiClient.get<{
-          success: boolean;
-          data: {
-            vectorDB: StorageMetric;
-            fileStorage: StorageMetric;
-          };
+          vectorDB: StorageMetric;
+          fileStorage: StorageMetric;
         }>('/api/v1/system/storage');
 
         setVectorDB(response.data.vectorDB);

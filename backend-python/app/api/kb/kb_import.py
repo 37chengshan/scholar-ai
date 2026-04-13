@@ -1,14 +1,15 @@
-"""KB Import operations - Upload PDF, import from URL/arXiv, manage papers.
+"""KB Import operations - Upload PDF, import from URL/arXiv, upload history.
 
 Split from knowledge_base.py per D-11: 按 CRUD/业务域/外部集成划分.
+Per D-01: kb_import.py contains upload/import/upload-history endpoints.
 
 Endpoints:
 - POST /api/v1/knowledge-bases/{kb_id}/upload - Upload PDF to KB
 - POST /api/v1/knowledge-bases/{kb_id}/import-url - Import from URL/DOI
 - POST /api/v1/knowledge-bases/{kb_id}/import-arxiv - Import from arXiv
 - POST /api/v1/knowledge-bases/{kb_id}/batch-upload - Batch upload
-- POST /api/v1/knowledge-bases/{kb_id}/papers - Add paper to KB
-- DELETE /api/v1/knowledge-bases/{kb_id}/papers/{paper_id} - Remove paper from KB
+- GET /api/v1/knowledge-bases/{kb_id}/upload-history - Upload history
+- DELETE /api/v1/knowledge-bases/{kb_id}/upload-history/{id} - Delete upload history
 """
 
 import os
@@ -17,9 +18,9 @@ from datetime import datetime, timezone
 from typing import Dict, Any
 
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -27,7 +28,7 @@ from app.models.knowledge_base import KnowledgeBase
 from app.models.paper import Paper
 from app.models.task import ProcessingTask
 from app.models.upload_history import UploadHistory
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 from app.utils.logger import logger
 
@@ -47,12 +48,6 @@ class KBResponse(BaseModel):
     data: Dict[str, Any]
 
 
-class KBPaperAdd(BaseModel):
-    """Request to add paper to KB."""
-
-    paperId: str
-
-
 class KBImportUrl(BaseModel):
     """Request to import paper from URL/DOI."""
 
@@ -63,139 +58,6 @@ class KBImportArxiv(BaseModel):
     """Request to import paper from arXiv."""
 
     arxivId: str
-
-
-# =============================================================================
-# KB Paper Management
-# =============================================================================
-
-
-@router.post("/{kb_id}/papers", response_model=KBResponse)
-async def add_paper_to_kb(
-    kb_id: str,
-    request: KBPaperAdd,
-    user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db),
-):
-    """Add an existing paper to a knowledge base."""
-    try:
-        # Verify KB ownership
-        kb_result = await db.execute(
-            select(KnowledgeBase).where(
-                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
-            )
-        )
-        kb = kb_result.scalar_one_or_none()
-
-        if not kb:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Knowledge base not found"),
-            )
-
-        # Verify paper ownership
-        paper_result = await db.execute(
-            select(Paper).where(Paper.id == request.paperId, Paper.user_id == user_id)
-        )
-        paper = paper_result.scalar_one_or_none()
-
-        if not paper:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Paper not found"),
-            )
-
-        # Update paper's KB
-        paper.knowledge_base_id = kb_id
-        kb.paper_count += 1
-
-        await db.flush()
-
-        logger.info("Paper added to KB", paper_id=request.paperId, kb_id=kb_id)
-
-        return KBResponse(
-            success=True,
-            data={
-                "paperId": request.paperId,
-                "knowledgeBaseId": kb_id,
-                "paperCount": kb.paper_count,
-            },
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to add paper to KB", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to add paper: {str(e)}"),
-        )
-
-
-@router.delete("/{kb_id}/papers/{paper_id}", response_model=KBResponse)
-async def remove_paper_from_kb(
-    kb_id: str,
-    paper_id: str,
-    user_id: str = CurrentUserId,
-    db: AsyncSession = Depends(get_db),
-):
-    """Remove a paper from a knowledge base."""
-    try:
-        # Verify KB ownership
-        kb_result = await db.execute(
-            select(KnowledgeBase).where(
-                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
-            )
-        )
-        kb = kb_result.scalar_one_or_none()
-
-        if not kb:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Knowledge base not found"),
-            )
-
-        # Verify paper in this KB
-        paper_result = await db.execute(
-            select(Paper).where(
-                Paper.id == paper_id,
-                Paper.knowledge_base_id == kb_id,
-                Paper.user_id == user_id,
-            )
-        )
-        paper = paper_result.scalar_one_or_none()
-
-        if not paper:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Paper not found in this knowledge base"),
-            )
-
-        # Remove paper from KB
-        paper.knowledge_base_id = None
-        kb.paper_count -= 1
-
-        await db.flush()
-
-        logger.info("Paper removed from KB", paper_id=paper_id, kb_id=kb_id)
-
-        return KBResponse(
-            success=True,
-            data={
-                "paperId": paper_id,
-                "removed": True,
-                "paperCount": kb.paper_count,
-            },
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to remove paper from KB", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Failed to remove paper: {str(e)}"),
-        )
 
 
 # =============================================================================
@@ -419,6 +281,207 @@ async def batch_upload_to_kb(
         success=True,
         data={"message": "Batch upload endpoint - to be implemented", "kbId": kb_id},
     )
+
+
+@router.get("/{kb_id}/upload-history", response_model=KBResponse)
+async def get_kb_upload_history(
+    kb_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get upload history records related to papers in a specific KB."""
+    try:
+        kb_result = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
+            )
+        )
+        kb = kb_result.scalar_one_or_none()
+
+        if not kb:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Knowledge base not found"),
+            )
+
+        records_result = await db.execute(
+            select(
+                UploadHistory,
+                Paper.title.label("paper_title"),
+                ProcessingTask.status.label("processing_status"),
+                ProcessingTask.error_message.label("task_error"),
+                ProcessingTask.updated_at.label("task_updated_at"),
+                ProcessingTask.completed_at.label("task_completed_at"),
+            )
+            .join(Paper, UploadHistory.paper_id == Paper.id)
+            .outerjoin(ProcessingTask, ProcessingTask.paper_id == Paper.id)
+            .where(
+                UploadHistory.user_id == user_id,
+                Paper.knowledge_base_id == kb_id,
+                Paper.user_id == user_id,
+            )
+            .order_by(UploadHistory.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        records = records_result.all()
+
+        total_result = await db.execute(
+            select(func.count(UploadHistory.id))
+            .select_from(UploadHistory)
+            .join(Paper, UploadHistory.paper_id == Paper.id)
+            .where(
+                UploadHistory.user_id == user_id,
+                Paper.knowledge_base_id == kb_id,
+                Paper.user_id == user_id,
+            )
+        )
+        total = total_result.scalar() or 0
+
+        formatted_records = []
+        for row in records:
+            upload_hist = row[0]
+            processing_status = row.processing_status or upload_hist.status.lower()
+            display_status = upload_hist.status
+            if row.processing_status:
+                normalized = str(row.processing_status).lower()
+                if normalized == "completed":
+                    display_status = "COMPLETED"
+                elif normalized == "failed":
+                    display_status = "FAILED"
+                else:
+                    display_status = "PROCESSING"
+
+            progress = 100 if display_status == "COMPLETED" else 0
+            if display_status == "PROCESSING":
+                progress_map = {
+                    "pending": 0,
+                    "processing_ocr": 15,
+                    "parsing": 30,
+                    "extracting_imrad": 45,
+                    "generating_notes": 60,
+                    "storing_vectors": 75,
+                    "indexing_multimodal": 90,
+                    "completed": 100,
+                    "failed": 0,
+                }
+                progress = progress_map.get(processing_status, 0)
+
+            formatted_records.append(
+                {
+                    "id": upload_hist.id,
+                    "userId": upload_hist.user_id,
+                    "paperId": upload_hist.paper_id,
+                    "filename": upload_hist.filename,
+                    "status": display_status,
+                    "chunksCount": upload_hist.chunks_count,
+                    "llmTokens": upload_hist.llm_tokens,
+                    "pageCount": upload_hist.page_count,
+                    "imageCount": upload_hist.image_count,
+                    "tableCount": upload_hist.table_count,
+                    "errorMessage": upload_hist.error_message or row.task_error,
+                    "processingTime": upload_hist.processing_time,
+                    "createdAt": upload_hist.created_at.isoformat()
+                    if upload_hist.created_at
+                    else None,
+                    "updatedAt": (
+                        row.task_updated_at.isoformat()
+                        if row.task_updated_at
+                        else (
+                            upload_hist.updated_at.isoformat()
+                            if upload_hist.updated_at
+                            else None
+                        )
+                    ),
+                    "completedAt": row.task_completed_at.isoformat()
+                    if row.task_completed_at
+                    else None,
+                    "processingStatus": processing_status,
+                    "progress": progress,
+                    "paper": (
+                        {
+                            "id": upload_hist.paper_id,
+                            "title": row.paper_title or upload_hist.filename,
+                            "filename": upload_hist.filename,
+                        }
+                        if upload_hist.paper_id
+                        else None
+                    ),
+                }
+            )
+
+        return KBResponse(
+            success=True,
+            data={
+                "records": formatted_records,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get KB upload history", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to get KB upload history: {str(e)}"),
+        )
+
+
+@router.delete("/{kb_id}/upload-history/{history_id}", response_model=KBResponse)
+async def delete_kb_upload_history(
+    kb_id: str,
+    history_id: str,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete an upload history record."""
+    try:
+        kb_result = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
+            )
+        )
+        kb = kb_result.scalar_one_or_none()
+
+        if not kb:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Knowledge base not found"),
+            )
+
+        history_result = await db.execute(
+            select(UploadHistory).where(
+                UploadHistory.id == history_id,
+                UploadHistory.user_id == user_id,
+            )
+        )
+        history = history_result.scalar_one_or_none()
+
+        if not history:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Upload history record not found"),
+            )
+
+        await db.delete(history)
+        logger.info("KB upload history deleted", history_id=history_id, kb_id=kb_id)
+
+        return KBResponse(
+            success=True,
+            data={"id": history_id, "deleted": True},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete KB upload history", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to delete upload history: {str(e)}"),
+        )
 
 
 __all__ = ["router"]

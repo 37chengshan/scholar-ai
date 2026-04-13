@@ -536,7 +536,7 @@ npm run type-check  # TypeScript 类型检查
 server: {
   proxy: {
     '/api': {
-      target: 'http://localhost:4000',
+      target: 'http://localhost:8000',
       changeOrigin: true,
     },
   },

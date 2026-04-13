@@ -42,7 +42,6 @@ from app.api import (
     # Wave 2 (27-03a): Users
     users,
     # Wave 2 (27-03b): Papers, Uploads, Tasks
-    papers,
     uploads,
     tasks,
     # Wave 3 (27-04): Extended APIs
@@ -65,6 +64,9 @@ from app.api import (
     rag,
     token_usage,
 )
+
+# Wave 2: Papers (split per 38-05)
+from app.api.papers import router as papers_router
 
 from app.config import settings
 from app.core.logging import setup_logging
@@ -245,7 +247,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 
 # Wave 2: Papers, Uploads, Tasks (27-03b)
-app.include_router(papers.router, prefix="/api/v1/papers", tags=["papers"])
+app.include_router(papers_router, prefix="/api/v1/papers", tags=["papers"])
 app.include_router(uploads.router, prefix="/api/v1/uploads", tags=["uploads"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 

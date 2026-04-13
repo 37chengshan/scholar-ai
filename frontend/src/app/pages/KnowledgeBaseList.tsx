@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive, Loader2 } from "lucide-react";
@@ -10,7 +10,7 @@ import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
-import { kbApi, KnowledgeBase, KBCreateData } from "@/services/kbApi";
+import { kbApi, KnowledgeBase, KBCreateData, KBStorageStats } from "@/services/kbApi";
 import { useUrlState } from "../../hooks/useUrlState";
 import { useKnowledgeBases } from "../../hooks/useKnowledgeBases";
 import {
@@ -52,6 +52,28 @@ export function KnowledgeBaseList() {
   const [importTarget, setImportTarget] = useState<{ id: string; name: string } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBatchMode, setIsBatchMode] = useState(false);
+
+  // Storage stats state
+  const [storageStats, setStorageStats] = useState<KBStorageStats | null>(null);
+  const [storageStatsLoading, setStorageStatsLoading] = useState(false);
+
+  // Fetch storage stats on mount
+  useEffect(() => {
+    const fetchStorageStats = async () => {
+      setStorageStatsLoading(true);
+      try {
+        const response = await kbApi.getStorageStats();
+        if (response.success && response.data) {
+          setStorageStats(response.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch storage stats:', err);
+      } finally {
+        setStorageStatsLoading(false);
+      }
+    };
+    fetchStorageStats();
+  }, []);
 
   // API integration - use real data
   const {
@@ -159,10 +181,6 @@ export function KnowledgeBaseList() {
     }
   };
 
-  // Storage stats - placeholder until API endpoint implemented
-  // TODO: Implement GET /api/v1/knowledge-bases/storage-stats
-  const showStorageStats = false; // Disabled until backend endpoint available
-
   return (
     <div className="relative min-h-screen bg-background">
       <PaperTexture />
@@ -258,15 +276,30 @@ export function KnowledgeBaseList() {
 </div>
           </div>
           
-          {/* Storage Status — Disabled until backend endpoint available */}
-          {showStorageStats && (
+          {/* Storage Status */}
+          {storageStats && (
           <div className="flex items-center gap-3 bg-white border-2 border-zinc-900 px-4 py-3 shadow-[4px_4px_0px_0px_rgba(24,24,27,1)]">
             <HardDrive className="w-5 h-5 text-zinc-900" />
             <div className="flex-1">
               <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                Storage Stats
+                存储统计
+              </div>
+              <div className="flex items-center gap-4 mt-1">
+                <span className="text-sm font-medium">
+                  {storageStats.kbCount} 知识库
+                </span>
+                <span className="text-sm font-medium">
+                  {storageStats.paperCount} 论文
+                </span>
+                <span className="text-sm font-medium">
+                  {storageStats.chunkCount.toLocaleString()} 切片
+                </span>
+              </div>
+              <div className="text-xs text-zinc-400 mt-1">
+                {storageStats.estimatedStorageMB.toLocaleString()} MB / {storageStats.storageLimitMB.toLocaleString()} MB
               </div>
             </div>
+            {storageStatsLoading && <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />}
           </div>
           )}
         </div>

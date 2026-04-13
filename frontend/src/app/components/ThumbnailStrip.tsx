@@ -7,6 +7,7 @@
  * - Click to navigate to page
  * - Current page highlighted with accent border
  * - Lazy loading: only renders visible thumbnails + buffer of 3
+ * - Cookie-based authentication for PDF loading
  *
  * Requirements: D-06 (Thumbnail navigation), 30-03 (horizontal layout, lazy loading)
  */
@@ -15,45 +16,71 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
+import apiClient from '@/utils/apiClient';
 
-// Configure PDF.js worker (same as PDFViewer)
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
 ).toString();
 
 interface ThumbnailStripProps {
-  fileUrl: string;
+  paperId: string;
   currentPage: number;
   onPageClick: (page: number) => void;
   thumbnailWidth?: number;
 }
 
 export function ThumbnailStrip({
-  fileUrl,
+  paperId,
   currentPage,
   onPageClick,
   thumbnailWidth = 60,
 }: ThumbnailStripProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 10 });
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { language } = useLanguage();
   const isZh = language === 'zh';
   const buffer = 3;
+
+  useEffect(() => {
+    const fetchPdf = async () => {
+      try {
+        const response = await apiClient.get(`/api/v1/papers/${paperId}/download`, {
+          responseType: 'blob',
+        });
+
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        setPdfBlobUrl(url);
+      } catch (err: any) {
+        console.error('ThumbnailStrip PDF fetch error:', err);
+      }
+    };
+
+    if (paperId) {
+      fetchPdf();
+    }
+
+    return () => {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
+  }, [paperId]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
     setVisibleRange({ start: 0, end: Math.min(10, numPages) });
   };
 
-  // Update visible range on scroll (lazy loading)
   const handleScroll = useCallback(() => {
     if (!containerRef.current || numPages === 0) return;
     const container = containerRef.current;
     const scrollLeft = container.scrollLeft;
     const containerWidth = container.clientWidth;
-    const thumbnailTotalWidth = thumbnailWidth + 8; // width + gap
+    const thumbnailTotalWidth = thumbnailWidth + 8;
 
     const startPage = Math.max(0, Math.floor(scrollLeft / thumbnailTotalWidth) - buffer);
     const visibleCount = Math.ceil(containerWidth / thumbnailTotalWidth);
@@ -69,7 +96,6 @@ export function ThumbnailStrip({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
-  // Scroll to current page thumbnail when it changes
   useEffect(() => {
     if (!containerRef.current || numPages === 0) return;
     const thumbnailEl = containerRef.current.querySelector(
@@ -80,16 +106,23 @@ export function ThumbnailStrip({
     }
   }, [currentPage, numPages]);
 
-  // Generate array of page numbers to render (lazy loaded)
   const pagesToRender = Array.from(
     { length: visibleRange.end - visibleRange.start },
     (_, i) => visibleRange.start + i + 1
   );
 
+  if (!pdfBlobUrl) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+        {isZh ? '加载缩略图...' : 'Loading thumbnails...'}
+      </div>
+    );
+  }
+
   return (
     <div className="h-full" data-testid="thumbnail-strip">
       <Document
-        file={fileUrl}
+        file={pdfBlobUrl}
         onLoadSuccess={onDocumentLoadSuccess}
         loading={
           <div className="flex items-center justify-center h-full text-muted-foreground text-xs">

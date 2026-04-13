@@ -197,16 +197,20 @@ export async function deleteApiKey(
 /**
  * Get user dashboard statistics
  *
- * GET /api/v1/dashboard/stats
- * Returns paper count, query count, LLM tokens, weekly trend, etc.
+ * GET /api/v1/dashboard/stats - Returns paper/query/token counts
+ * GET /api/v1/dashboard/trends - Returns weekly time-series data
  *
- * Note: Stats are for the current authenticated user
+ * Note: Stats are for the current authenticated user.
+ * Some fields are not yet available from backend:
+ * - entityCount: Backend has per-paper entity counts but not user-level aggregate
+ * - subjectDistribution: Backend API not yet implemented
  *
  * @param userId - User ID (not used, stats are for current user)
  * @returns Dashboard statistics
  */
 export async function getStats(userId: string): Promise<DashboardStats> {
-  const response = await apiClient.get<{
+  // Fetch main stats
+  const statsResponse = await apiClient.get<{
     totalPapers: number;
     starredPapers: number;
     processingPapers: number;
@@ -217,16 +221,32 @@ export async function getStats(userId: string): Promise<DashboardStats> {
     llmTokens: number;
   }>('/api/v1/dashboard/stats');
 
-  // apiClient interceptor already unwraps { success, data } -> data
-  const data = response.data;
+  // Fetch weekly trends
+  const trendsResponse = await apiClient.get<{
+    dataPoints: Array<{ date: string; papers: number; queries: number }>;
+    period: string;
+  }>('/api/v1/dashboard/trends?period=weekly');
+
+  const statsData = statsResponse.data;
+  const trendsData = trendsResponse.data;
+
   return {
-    paperCount: data.totalPapers,
-    entityCount: 0, // TODO: fetch from entities endpoint
-    llmTokens: data.llmTokens,
-    queryCount: data.queriesCount,
-    sessionCount: data.sessionsCount,
-    weeklyTrend: [], // TODO: fetch from /api/v1/dashboard/trends
-    subjectDistribution: [], // TODO: implement
+    paperCount: statsData.totalPapers,
+    // Backend limitation: Entity counts are per-paper only (GET /api/v1/entities/{paper_id}/status)
+    // User-level aggregate entity count requires a new endpoint or aggregation across all papers
+    entityCount: 0,
+    llmTokens: statsData.llmTokens,
+    queryCount: statsData.queriesCount,
+    sessionCount: statsData.sessionsCount,
+    weeklyTrend: trendsData.dataPoints.map((dp) => ({
+      date: dp.date,
+      papers: dp.papers,
+      queries: dp.queries,
+      tokens: 0, // Backend trends API does not include per-day tokens
+    })),
+    // Backend limitation: Subject distribution requires paper classification/keywords aggregation
+    // Not yet implemented in backend API
+    subjectDistribution: [],
     storageUsage: {
       vectorDB: { used: 0, total: 0 },
       blobStorage: { used: 0, total: 0 },

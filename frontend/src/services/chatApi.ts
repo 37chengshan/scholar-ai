@@ -21,10 +21,7 @@ import type { Session, Message } from '@/types';
  * @returns Created session
  */
 export async function createSession(): Promise<Session> {
-  const response = await apiClient.post<{
-    success: boolean;
-    data: Session;
-  }>('/api/v1/sessions');
+  const response = await apiClient.post<Session>('/api/v1/sessions');
 
   return response.data;
 }
@@ -38,10 +35,7 @@ export async function createSession(): Promise<Session> {
  * @returns Sessions list
  */
 export async function getSessions(): Promise<Session[]> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: Session[];
-  }>('/api/v1/sessions');
+  const response = await apiClient.get<Session[]>('/api/v1/sessions');
 
   return response.data;
 }
@@ -56,10 +50,7 @@ export async function getSessions(): Promise<Session[]> {
  * @returns Messages list
  */
 export async function getMessages(sessionId: string): Promise<Message[]> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: Message[];
-  }>(`/api/v1/sessions/${sessionId}/messages`);
+  const response = await apiClient.get<Message[]>(`/api/v1/sessions/${sessionId}/messages`);
 
   return response.data;
 }
@@ -80,10 +71,7 @@ export async function sendMessage(
   sessionId: string,
   content: string
 ): Promise<Message> {
-  const response = await apiClient.post<{
-    success: boolean;
-    data: Message;
-  }>(`/api/v1/sessions/${sessionId}/messages`, {
+  const response = await apiClient.post<Message>(`/api/v1/sessions/${sessionId}/messages`, {
     content,
   });
 
@@ -116,10 +104,7 @@ export async function updateSession(
   sessionId: string,
   title: string
 ): Promise<Session> {
-  const response = await apiClient.patch<{
-    success: boolean;
-    data: Session;
-  }>(`/api/v1/sessions/${sessionId}`, {
+  const response = await apiClient.patch<Session>(`/api/v1/sessions/${sessionId}`, {
     title,
   });
 

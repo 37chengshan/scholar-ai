@@ -61,10 +61,7 @@ export async function autocomplete(
   query: string,
   limit: number = 5
 ): Promise<AutocompletePaper[]> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: AutocompletePaper[];
-  }>('/api/v1/semantic-scholar/autocomplete', {
+  const response = await apiClient.get<AutocompletePaper[]>('/api/v1/semantic-scholar/autocomplete', {
     params: { query, limit },
   });
 
@@ -89,10 +86,7 @@ export async function searchAuthors(
   limit: number = 10,
   offset: number = 0
 ): Promise<{ data: AuthorSearchResult[]; total?: number }> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: { data: AuthorSearchResult[]; total?: number };
-  }>('/api/v1/semantic-scholar/author', {
+  const response = await apiClient.get<{ data: AuthorSearchResult[]; total?: number }>('/api/v1/semantic-scholar/author', {
     params: { query, limit, offset },
   });
 
@@ -116,10 +110,7 @@ export async function getAuthorPapers(
   limit: number = 10,
   offset: number = 0
 ): Promise<{ data: AuthorPaper[]; next?: number }> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: { data: AuthorPaper[]; next?: number };
-  }>(`/api/v1/semantic-scholar/author/${authorId}/papers`, {
+  const response = await apiClient.get<{ data: AuthorPaper[]; next?: number }>(`/api/v1/semantic-scholar/author/${authorId}/papers`, {
     params: { limit, offset },
   });
 
@@ -177,32 +168,35 @@ export async function unified(
   if (year_to) params.append('year_to', year_to.toString());
 
   const response = await apiClient.get<{
-    success: boolean;
-    data: {
-      query: string;
-      results: Array<{
-        id: string;
-        title: string;
-        authors?: string[];
-        abstract?: string;
-        year?: number;
-        source: 'internal' | 'arxiv' | 's2';
-        paperId?: string;
-        externalId?: string;
-        pdfUrl?: string;
-        citations?: number;
-      }>;
-      total: number;
-      filters: {
-        year_from: number | null;
-        year_to: number | null;
-      };
+    query: string;
+    results: Array<{
+      id: string;
+      title: string;
+      authors?: string[];
+      abstract?: string;
+      year?: number;
+      source: 'internal' | 'arxiv' | 's2';
+      paperId?: string;
+      externalId?: string;
+      pdfUrl?: string;
+      citations?: number;
+    }>;
+    total: number;
+    filters: {
+      year_from: number | null;
+      year_to: number | null;
     };
   }>(`/api/v1/search/unified?${params.toString()}`);
 
   return response.data;
 }
 
-// DELETED: external() and addExternal() functions
-// These referenced /api/v1/search/external which doesn't exist in backend.
-// Use unified() for combined search or papersApi.createFromExternal() for adding external papers.
+/**
+ * External paper import is handled by kbApi, not searchApi.
+ *
+ * Import workflow:
+ * 1. Use searchApi.unified() to find external papers
+ * 2. Use kbApi.importFromArxiv() or kbApi.importFromUrl() to import to a knowledge base
+ *
+ * See Search.tsx handleImportToKB() for complete implementation example.
+ */

@@ -252,11 +252,18 @@ export async function update(id: string, data: { readingNotes?: string }): Promi
  * Get PDF download URL
  */
 export function getPdfUrl(id: string): string {
-  return `${apiClient.defaults.baseURL}/api/v1/papers/${id}/pdf`;
+  return `${apiClient.defaults.baseURL}/api/v1/papers/${id}/download`;
 }
 
-// DELETED: createFromExternal() function
-// This referenced /api/v1/search/external which doesn't exist in backend.
-// TODO: Implement proper external paper import using backend endpoints
-// Backend has: /api/v1/search/arxiv and /api/v1/search/semantic-scholar for search
-// Paper creation should use standard POST /api/v1/papers endpoint
+/**
+ * External paper import is handled by kbApi, not papersApi.
+ *
+ * Import workflow:
+ * 1. Search external papers via searchApi.unified() or searchApi.searchAuthors()
+ * 2. Select target knowledge base (KB)
+ * 3. Import via kbApi.importFromArxiv() or kbApi.importFromUrl()
+ *
+ * See Search.tsx handleImportToKB() for implementation example.
+ *
+ * Future enhancement: Add papersApi.importToDefaultKB() for quick import without KB selection.
+ */

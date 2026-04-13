@@ -128,7 +128,7 @@ apiClient.interceptors.response.use(
 
     // Case 1: Network error (no response) - Retry with exponential backoff
     if (!error.response) {
-      const retryCount = originalRequest?._retry ? 1 : 0;
+      const retryCount = originalRequest?._retry || 0;
 
       if (retryCount < API_CONFIG.maxRetries) {
         originalRequest._retry = retryCount + 1;

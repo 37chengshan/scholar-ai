@@ -8,15 +8,13 @@ from fastapi import APIRouter
 
 from .kb_crud import router as crud_router
 from .kb_import import router as import_router
-from .kb_search import router as search_router
-from .kb_query import router as query_router
+from .kb_papers import router as papers_router
 
 
 router = APIRouter()
 router.include_router(crud_router, prefix="")
 router.include_router(import_router, prefix="")
-router.include_router(search_router, prefix="")
-router.include_router(query_router, prefix="")
+router.include_router(papers_router, prefix="")
 
 
 __all__ = ["router"]

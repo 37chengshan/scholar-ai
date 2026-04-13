@@ -17,8 +17,7 @@ docker-compose ps
 
 服务启动后：
 - 前端: http://localhost:3000
-- Node.js API: http://localhost:4000
-- Python AI: http://localhost:8000
+- Python AI API: http://localhost:8000
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379
 - Neo4j: http://localhost:7474
@@ -57,25 +56,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-#### 4. 启动 Node.js API 服务
-
-```bash
-cd backend-node
-
-# 安装依赖
-npm install
-
-# 生成 Prisma 客户端
-npx prisma generate
-
-# 运行数据库迁移
-npx prisma migrate dev
-
-# 启动服务
-npm run dev
-```
-
-#### 5. 启动前端
+#### 4. 启动前端
 
 ```bash
 cd frontend
@@ -99,17 +80,7 @@ scholar-ai/
 │   ├── src/
 │   └── ...
 │
-├── backend-node/            # Node.js API 服务
-│   ├── src/
-│   │   ├── routes/         # API 路由
-│   │   ├── controllers/    # 控制器
-│   │   ├── services/       # 业务逻辑
-│   │   └── utils/          # 工具函数
-│   ├── prisma/
-│   │   └── schema.prisma   # 数据库模型
-│   └── ...
-│
-└── backend-python/          # Python AI 服务
+└── backend-python/          # Python AI 服务 (FastAPI)
     ├── app/
     │   ├── api/            # API 路由
     │   ├── core/           # 核心配置
@@ -174,7 +145,7 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 ## 📚 API 文档
 
 - Python AI Service: http://localhost:8000/docs (Swagger UI)
-- Node.js API: http://localhost:4000/api/health
+- API Health: http://localhost:8000/api/v1/health
 
 ## 🐛 故障排查
 
@@ -184,7 +155,6 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 lsof -i :5432  # PostgreSQL
 lsof -i :6379  # Redis
 lsof -i :8000  # Python AI
-lsof -i :4000  # Node.js API
 lsof -i :3000  # Frontend
 ```
 

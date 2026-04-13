@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.logger import logger
 from app.database import get_db
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.zhipu_client import get_llm_client
 from app.utils.problem_detail import Errors
 from app.models.paper import Paper, PaperChunk

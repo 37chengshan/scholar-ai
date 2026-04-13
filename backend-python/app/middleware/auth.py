@@ -204,6 +204,29 @@ async def get_current_user(
         )
 
 
+async def get_current_user_id(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+) -> str:
+    """Lightweight authentication returning user_id string.
+
+    Includes blacklist check for revoked tokens.
+    Uses get_current_user internally to ensure consistent validation.
+
+    Args:
+        request: FastAPI request object
+        token: Optional token from OAuth2 scheme (header)
+
+    Returns:
+        user_id string if authenticated
+
+    Raises:
+        HTTPException: If not authenticated or token invalid/revoked
+    """
+    user = await get_current_user(request, token)
+    return user.id
+
+
 async def get_current_active_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
@@ -264,6 +287,7 @@ def require_roles(*required_roles: str):
     Returns:
         Dependency function that validates roles
     """
+
     async def role_checker(
         current_user: User = Depends(get_current_user),
     ) -> User:
@@ -280,11 +304,25 @@ def require_roles(*required_roles: str):
     return role_checker
 
 
+# =============================================================================
+# Unified Authentication Dependencies
+# =============================================================================
+
+# Primary dependency for protected routes - returns User object
+CurrentUser = Depends(get_current_user)
+
+# Lightweight dependency - returns user_id string (with blacklist check)
+CurrentUserId = Depends(get_current_user_id)
+
+
 __all__ = [
     "oauth2_scheme",
     "get_current_user",
+    "get_current_user_id",
     "get_current_active_user",
     "get_optional_user",
     "require_roles",
     "TokenData",
+    "CurrentUser",
+    "CurrentUserId",
 ]

@@ -20,7 +20,7 @@ from app.models.session import (
 )
 from app.utils.session_manager import session_manager
 from app.utils.logger import logger
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 
 router = APIRouter()

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import UploadFile
 
-from app.api.knowledge_base import upload_pdf_to_kb
+from app.api.kb.kb_import import upload_pdf_to_kb
 from app.models.knowledge_base import KnowledgeBase
 
 
@@ -42,8 +42,8 @@ async def test_upload_pdf_to_kb_creates_kb_bound_paper():
     )
 
     db.execute.side_effect = [
-        _ScalarResult(kb),   # KB lookup
-        _ScalarResult(None), # duplicate paper lookup
+        _ScalarResult(kb),  # KB lookup
+        _ScalarResult(None),  # duplicate paper lookup
     ]
 
     file = UploadFile(filename="paper.pdf", file=BytesIO(b"%PDF-1.4\nhello\n%%EOF"))
@@ -52,8 +52,9 @@ async def test_upload_pdf_to_kb_creates_kb_bound_paper():
     mock_open.__aenter__.return_value.write = AsyncMock()
     mock_open.__aexit__.return_value = False
 
-    with patch("app.api.knowledge_base.os.makedirs"), patch(
-        "app.api.knowledge_base.aiofiles.open", return_value=mock_open
+    with (
+        patch("app.api.kb.kb_import.os.makedirs"),
+        patch("app.api.kb.kb_import.aiofiles.open", return_value=mock_open),
     ):
         response = await upload_pdf_to_kb(
             "kb-123",

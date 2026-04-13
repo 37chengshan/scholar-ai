@@ -31,7 +31,7 @@ from app.core.streaming import (
     mock_token_generator
 )
 from app.core.multimodal_search_service import get_multimodal_search_service
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 
 router = APIRouter()
 

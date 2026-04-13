@@ -13,7 +13,7 @@ export const API_PREFIX = '/api/v1';
 
 /**
  * Get API base URL from environment or default
- * Development: http://localhost:4000 (Node.js API Gateway)
+ * Development: Use relative path, Vite proxy forwards /api/* to http://localhost:8000
  * Production: Configured via VITE_API_BASE_URL env var
  */
 export const getApiBaseUrl = (): string => {

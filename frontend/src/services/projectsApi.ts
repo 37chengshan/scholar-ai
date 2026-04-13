@@ -32,10 +32,7 @@ export interface Project {
  * @returns Projects list
  */
 export async function list(): Promise<Project[]> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: Project[];
-  }>('/api/v1/projects');
+  const response = await apiClient.get<Project[]>('/api/v1/projects');
 
   return response.data;
 }
@@ -51,10 +48,7 @@ export async function list(): Promise<Project[]> {
  * @returns Created project
  */
 export async function create(name: string, color?: string): Promise<Project> {
-  const response = await apiClient.post<{
-    success: boolean;
-    data: Project;
-  }>('/api/v1/projects', {
+  const response = await apiClient.post<Project>('/api/v1/projects', {
     name,
     color,
   });
@@ -73,10 +67,7 @@ export async function create(name: string, color?: string): Promise<Project> {
  * @returns Updated project
  */
 export async function update(id: string, data: { name?: string; color?: string }): Promise<Project> {
-  const response = await apiClient.patch<{
-    success: boolean;
-    data: Project;
-  }>(`/api/v1/projects/${id}`, data);
+  const response = await apiClient.patch<Project>(`/api/v1/projects/${id}`, data);
 
   return response.data;
 }
@@ -109,12 +100,9 @@ export async function assignPaper(paperId: string, projectId: string | null): Pr
   projectId: string | null;
 }> {
   const response = await apiClient.patch<{
-    success: boolean;
-    data: {
-      id: string;
-      title: string;
-      projectId: string | null;
-    };
+    id: string;
+    title: string;
+    projectId: string | null;
   }>(`/api/v1/projects/paper/${paperId}`, {
     projectId,
   });

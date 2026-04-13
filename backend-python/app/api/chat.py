@@ -48,7 +48,7 @@ from app.services.chat_orchestrator import chat_orchestrator
 from app.utils.session_manager import session_manager
 from app.utils.sse_manager import sse_manager
 from app.utils.logger import logger
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 
 # Task 1.4: Import new modules for dual-layer routing

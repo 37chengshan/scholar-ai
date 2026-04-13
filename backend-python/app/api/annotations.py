@@ -19,7 +19,7 @@ from app.database import get_db
 from app.models.annotation import Annotation
 from app.models.paper import Paper
 from app.utils.logger import logger
-from app.core.auth import CurrentUserId
+from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 
 router = APIRouter()

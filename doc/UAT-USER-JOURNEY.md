@@ -284,23 +284,23 @@
 
 ```bash
 # 1. 健康检查
-curl http://localhost:4000/api/health
+curl http://localhost:8000/api/v1/health
 curl http://localhost:8000/
 
 # 2. 登录测试
-curl -X POST http://localhost:4000/api/auth/login \
+curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"Test123456"}'
 
 # 3. 获取论文列表 (替换$TOKEN)
-curl http://localhost:4000/api/papers \
+curl http://localhost:8000/api/v1/papers \
   -H "Authorization: Bearer $TOKEN"
 
 # 4. 搜索测试
-curl "http://localhost:4000/api/search?q=transformer"
+curl "http://localhost:8000/api/v1/search?q=transformer"
 
 # 5. Chat测试
-curl -X POST http://localhost:4000/api/chat \
+curl -X POST http://localhost:8000/api/v1/chat \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"message":"你好"}'

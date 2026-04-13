@@ -5,12 +5,14 @@ Split from papers.py per D-11: 按 CRUD/业务域/外部集成划分.
 Endpoints:
 - POST /api/v1/papers/webhook - Confirm upload completion
 - POST /api/v1/papers/upload - Direct file upload
+- POST /api/v1/papers/upload/local/{storage_key} - Local storage file upload
 """
 
 import os
 import aiofiles
 
 from fastapi import APIRouter, Depends, Request, UploadFile, File, status
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.database import get_db
@@ -18,6 +20,7 @@ from app.deps import get_current_user
 from app.models import Paper, ProcessingTask, UploadHistory
 from app.services.auth_service import User
 from app.utils.problem_detail import ErrorTypes
+from app.config import settings
 
 from .paper_shared import (
     PaperCreateResponse,
@@ -193,8 +196,8 @@ async def direct_upload(
         )
 
     storage_key = f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid4()}.pdf"
-    local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
-    file_path = os.path.join(local_storage_path, storage_key)
+    local_storage_path = settings.LOCAL_STORAGE_PATH
+    file_path = f"{local_storage_path}/{storage_key}"
 
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
@@ -239,6 +242,115 @@ async def direct_upload(
             "paperId": paper_id,
             "taskId": task_id,
             "status": "processing",
+        },
+    )
+
+
+class LocalUploadResponse(BaseModel):
+    """Response for local storage file upload."""
+
+    success: bool = True
+    data: dict
+
+
+@router.post(
+    "/upload/local/{storage_key:path}",
+    response_model=LocalUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_to_local_storage(
+    request: Request,
+    storage_key: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload file to local storage at specified storage_key path.
+
+    This endpoint handles the second step of the upload flow:
+    1. POST /api/v1/papers -> creates paper record, returns uploadUrl
+    2. POST /api/v1/papers/upload/local/{storage_key} -> uploads file (this endpoint)
+    3. POST /api/v1/papers/webhook -> triggers processing
+
+    Args:
+        storage_key: Path within uploads directory (e.g., user_id/date/file.pdf)
+        file: PDF file to upload
+
+    Returns:
+        Storage key and file size on success
+    """
+    instance = str(request.url.path)
+    user_id = current_user.id
+
+    if not storage_key.startswith(str(user_id) + "/"):
+        raise create_error_response(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_type=ErrorTypes.FORBIDDEN,
+            title="Forbidden",
+            detail="Storage key does not belong to current user",
+            instance=instance,
+        )
+
+    if ".." in storage_key or storage_key.startswith("/"):
+        raise create_error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_type=ErrorTypes.VALIDATION_ERROR,
+            title="Validation Error",
+            detail="Invalid storage key format",
+            instance=instance,
+        )
+
+    if not file:
+        raise create_error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_type=ErrorTypes.VALIDATION_ERROR,
+            title="Validation Error",
+            detail="No file uploaded",
+            instance=instance,
+        )
+
+    content = await file.read()
+    file_size = len(content)
+
+    max_size = 50 * 1024 * 1024
+    if file_size > max_size:
+        raise create_error_response(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            error_type=ErrorTypes.FILE_TOO_LARGE,
+            title="File Too Large",
+            detail="File size exceeds 50MB limit",
+            instance=instance,
+        )
+
+    if not content.startswith(b"%PDF-"):
+        raise create_error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_type=ErrorTypes.INVALID_FILE_FORMAT,
+            title="Invalid File Format",
+            detail="File is not a valid PDF",
+            instance=instance,
+        )
+
+    local_storage_path = settings.LOCAL_STORAGE_PATH
+    file_path = f"{local_storage_path}/{storage_key}"
+
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(content)
+
+    logger.info(
+        "File uploaded to local storage",
+        user_id=user_id,
+        storage_key=storage_key,
+        file_size=file_size,
+    )
+
+    return LocalUploadResponse(
+        success=True,
+        data={
+            "storageKey": storage_key,
+            "size": file_size,
+            "message": "File uploaded successfully",
         },
     )
 

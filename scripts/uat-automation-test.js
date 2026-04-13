@@ -3,7 +3,7 @@
  * 使用 Cookie-based Session 认证
  */
 
-const BASE_URL = 'http://localhost:4000';
+const BASE_URL = 'http://localhost:8000';
 const FRONTEND_URL = 'http://localhost:5173';
 
 const TEST_CONFIG = {

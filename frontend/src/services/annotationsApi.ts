@@ -49,10 +49,7 @@ export interface UpdateAnnotationData {
  * @returns Array of annotations
  */
 export async function list(paperId: string): Promise<Annotation[]> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: Annotation[];
-  }>(`/api/v1/annotations/${paperId}`);
+  const response = await apiClient.get<Annotation[]>(`/api/v1/annotations/${paperId}`);
 
   return response.data;
 }
@@ -67,10 +64,7 @@ export async function list(paperId: string): Promise<Annotation[]> {
  * @returns Created annotation
  */
 export async function create(data: CreateAnnotationData): Promise<Annotation> {
-  const response = await apiClient.post<{
-    success: boolean;
-    data: Annotation;
-  }>('/api/v1/annotations', data);
+  const response = await apiClient.post<Annotation>('/api/v1/annotations', data);
 
   return response.data;
 }
@@ -86,10 +80,7 @@ export async function create(data: CreateAnnotationData): Promise<Annotation> {
  * @returns Updated annotation
  */
 export async function update(id: string, data: UpdateAnnotationData): Promise<Annotation> {
-  const response = await apiClient.patch<{
-    success: boolean;
-    data: Annotation;
-  }>(`/api/v1/annotations/${id}`, data);
+  const response = await apiClient.patch<Annotation>(`/api/v1/annotations/${id}`, data);
 
   return response.data;
 }

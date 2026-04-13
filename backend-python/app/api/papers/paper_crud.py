@@ -23,6 +23,7 @@ from app.deps import get_current_user
 from app.models import Paper, ProcessingTask, PaperChunk, UploadHistory, ReadingProgress
 from app.services.auth_service import User
 from app.utils.problem_detail import ErrorTypes
+from app.config import settings
 
 from .paper_shared import (
     PaperListResponse,
@@ -310,7 +311,7 @@ async def create_paper(
     )
     db.add(upload_history)
 
-    use_local_storage = os.getenv("USE_LOCAL_STORAGE", "true").lower() == "true"
+    use_local_storage = settings.USE_LOCAL_STORAGE
     upload_url = f"/api/v1/papers/upload/local/{storage_key}"
 
     return PaperCreateResponse(
@@ -461,8 +462,7 @@ async def delete_paper(
 
     storage_key = paper.storage_key
     if storage_key:
-        local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
-        file_path = os.path.join(local_storage_path, storage_key)
+        file_path = f"{settings.LOCAL_STORAGE_PATH}/{storage_key}"
         if os.path.exists(file_path):
             os.remove(file_path)
 

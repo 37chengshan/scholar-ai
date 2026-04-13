@@ -49,19 +49,16 @@ export function Dashboard() {
 async function fetchRecentPapers() {
       try {
         setRecentPapersLoading(true);
-        const response = await apiClient.get<{
-          success: boolean;
-          data: Array<{
-            id: string;
-            title: string;
-            authors: string[];
-            year?: number;
-            currentPage: number;
-            lastReadAt: string;
-            progress: number;
-          }>;
-        }>('/api/v1/dashboard/recent-papers?limit=3');
-        
+        const response = await apiClient.get<Array<{
+          id: string;
+          title: string;
+          authors: string[];
+          year?: number;
+          currentPage: number;
+          lastReadAt: string;
+          progress: number;
+        }>>('/api/v1/dashboard/recent-papers?limit=3');
+
         setRecentPapers(response.data);
       } catch (err) {
       } finally {
@@ -79,17 +76,14 @@ async function fetchRecentPapers() {
     async function fetchRecentSessions() {
       try {
         setRecentSessionsLoading(true);
-        const response = await apiClient.get<{
-          success: boolean;
-          data: Array<{
-            id: string;
-            title?: string;
-            createdAt: string;
-            lastActivityAt: string;
-            messageCount: number;
-          }>;
-        }>('/api/v1/sessions');
-        
+        const response = await apiClient.get<Array<{
+          id: string;
+          title?: string;
+          createdAt: string;
+          lastActivityAt: string;
+          messageCount: number;
+        }>>('/api/v1/sessions');
+
         // Sort by lastActivityAt and take top 3
         const sorted = response.data
           .sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime())
