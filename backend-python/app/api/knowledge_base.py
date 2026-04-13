@@ -1188,7 +1188,7 @@ async def get_kb_upload_history(
                     "completed": 100,
                     "failed": 0,
                 }
-                progress = progress_map.get(processing_status, 50)
+                progress = progress_map.get(processing_status, 0)
 
             formatted_records.append(
                 {
