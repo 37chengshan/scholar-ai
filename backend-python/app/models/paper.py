@@ -94,6 +94,21 @@ class Paper(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # 子状态字段（Per Section 2 语义，统一 PostgreSQL Boolean）
+    # is_search_ready: PostgreSQL + Milvus text chunks 成功
+    is_search_ready: Mapped[bool] = mapped_column(Boolean, default=False, name="isSearchReady")
+    # is_multimodal_ready: Milvus images/tables 成功
+    is_multimodal_ready: Mapped[bool] = mapped_column(Boolean, default=False, name="isMultimodalReady")
+    # is_notes_ready: reading_notes 字段有内容
+    is_notes_ready: Mapped[bool] = mapped_column(Boolean, default=False, name="isNotesReady")
+
+    # 失败标记
+    notes_failed: Mapped[bool] = mapped_column(Boolean, default=False, name="notesFailed")
+    multimodal_failed: Mapped[bool] = mapped_column(Boolean, default=False, name="multimodalFailed")
+
+    # trace_id（继承自 task，贯穿日志）
+    trace_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, name="traceId")
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="papers")
     paper_chunks: Mapped[List["PaperChunk"]] = relationship(
