@@ -411,27 +411,13 @@ export function Settings() {
             <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground mb-3 flex items-center gap-1.5">
               <HardDrive className="w-3 h-3" /> {t.storageUsage}
             </h3>
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-end">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-foreground">{t.vectorDB}</span>
-                {/* Note: Backend storage API not implemented - showing placeholder */}
-                <span className="text-[9px] font-mono text-muted-foreground">-- / --</span>
+            <div className="flex flex-col items-center justify-center py-4 text-center">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {isZh ? "存储监控功能暂不提供" : "Storage monitoring not available"}
               </div>
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                {/* No data - empty progress bar */}
+              <div className="text-[8px] font-mono text-muted-foreground/70 mt-1.5">
+                {isZh ? "请使用数据库管理工具查看存储详情" : "Use database management tools for storage details"}
               </div>
-
-              <div className="flex justify-between items-end mt-3">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-foreground">{t.blobStorage}</span>
-                {/* Note: Backend storage API not implemented - showing placeholder */}
-                <span className="text-[9px] font-mono text-muted-foreground">-- / --</span>
-              </div>
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                {/* No data - empty progress bar */}
-              </div>
-            </div>
-            <div className="text-[8px] font-mono text-muted-foreground mt-3 italic">
-              {isZh ? "系统存储监控功能暂未实现" : "System storage monitoring not yet implemented"}
             </div>
           </div>
 

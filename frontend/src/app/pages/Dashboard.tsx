@@ -124,11 +124,8 @@ async function fetchRecentPapers() {
 
   const t = {
     sysStatus: isZh ? "系统状态" : "System Status",
-    // Note: System monitoring API not implemented - showing placeholder
-    // node: real data would come from /api/v1/system/status
-    apiActive: isZh ? "服务正常" : "Service Normal",
-    dbSynced: isZh ? "数据已同步" : "Data Synced",
-    updateAgo: isZh ? "更新: 2分钟前" : "Update: 2m ago",
+    monitoringNotAvailable: isZh ? "系统监控未接入" : "Monitoring Not Available",
+    userStatsOnly: isZh ? "仅展示用户侧统计" : "User-side stats only",
     totalPapers: isZh ? "总文献量" : "Total Papers",
     localIndex: isZh ? "本地索引" : "Local index",
     entitiesExt: isZh ? "提取实体" : "Entities Extracted",
@@ -182,18 +179,15 @@ async function fetchRecentPapers() {
             <div className="flex gap-6 items-center">
               <div className="flex flex-col">
                 <span className="text-[9px] font-bold tracking-[0.3em] uppercase text-primary">{t.sysStatus}</span>
-                {/* Note: System monitoring not implemented - placeholder removed */}
               </div>
               <div className="h-8 w-px bg-border/50" />
               <div className="flex gap-5 text-[9px] font-bold tracking-[0.2em] uppercase text-muted-foreground">
-                {/* Note: These status indicators are placeholders - real data from /api/v1/system/status */}
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  {t.apiActive}
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
+                  {t.monitoringNotAvailable}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Database className="w-3 h-3" />
-                  {t.dbSynced}
+                  {t.userStatsOnly}
                 </div>
               </div>
             </div>
