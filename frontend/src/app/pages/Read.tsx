@@ -157,8 +157,8 @@ export function Read() {
         {error ? (
           <div className="text-center">
             <p className="text-destructive mb-4">{error}</p>
-            <Button onClick={() => navigate('/library')}>
-              {isZh ? '返回论文库' : 'Back to Library'}
+            <Button onClick={() => navigate('/knowledge-bases')}>
+              {isZh ? '返回知识库' : 'Back to Knowledge Bases'}
             </Button>
           </div>
         ) : (
