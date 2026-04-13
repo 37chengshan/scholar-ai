@@ -6,18 +6,24 @@ Provides common dependencies for:
 - Authentication
 - User context
 
+Architecture Decision D-04:
+    - Unified CurrentUser dependency for all protected routes
+    - Returns User object with id, email, roles
+
 Usage:
-    from app.deps import get_db, get_current_user, get_redis
+    from app.deps import get_db, CurrentUser
 
     @router.get("/papers")
     async def list_papers(
         db: AsyncSession = Depends(get_db),
-        user: User = Depends(get_current_user),
+        user: User = CurrentUser,
     ):
-        # ...
+        # user.id, user.email, user.roles available
 """
 
 from typing import AsyncGenerator, Optional
+
+from fastapi import Depends
 
 # SQLAlchemy database session (PostgreSQL)
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +55,17 @@ from app.services.auth_service import User
 get_db = sqlalchemy_get_db
 
 
+# =============================================================================
+# Unified Authentication Dependencies (D-04)
+# =============================================================================
+
+# Primary dependency for protected routes - returns User object
+CurrentUser = Depends(get_current_user)
+
+# Alias for backwards compatibility with core.auth.CurrentUserId pattern
+CurrentUserId = Depends(lambda u: u.id if hasattr(u, "id") else str(u))  # type: ignore
+
+
 __all__ = [
     # Database (SQLAlchemy)
     "get_db",
@@ -57,7 +74,9 @@ __all__ = [
     "get_redis",
     "neo4j_db",
     "redis_db",
-    # Auth
+    # Auth (unified)
+    "CurrentUser",
+    "CurrentUserId",
     "oauth2_scheme",
     "get_current_user",
     "get_current_active_user",
