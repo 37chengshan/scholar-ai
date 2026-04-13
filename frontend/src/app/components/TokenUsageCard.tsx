@@ -57,9 +57,7 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
         data: TokenUsageData;
       }>('/api/v1/users/me/token-usage/monthly');
 
-      if (response.data.success) {
-        setUsage(response.data.data);
-      }
+        setUsage(response.data);
     } catch (error) {
       console.error('Failed to fetch token usage:', error);
     } finally {

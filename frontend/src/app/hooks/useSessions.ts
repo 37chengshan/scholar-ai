@@ -62,7 +62,7 @@ export function useSessions(): UseSessionsReturn {
     setError(null);
     try {
       const response = await apiClient.get('/api/v1/sessions?limit=50&status=active');
-      const data = response.data.data || response.data;
+      const data = response.data;
       setSessions(data.sessions || []);
       
       if (data.sessions && data.sessions.length > 0) {
@@ -86,7 +86,7 @@ export function useSessions(): UseSessionsReturn {
     }
     try {
       const response = await apiClient.get(`/api/v1/sessions/${sessionId}/messages?limit=100`);
-      const data = response.data.data || response.data;
+      const data = response.data;
       const msgs = (data.messages || []).reverse();
       setMessages(msgs);
     } catch (err) {
@@ -102,7 +102,7 @@ export function useSessions(): UseSessionsReturn {
         status: 'active'
       });
       
-      const session = response.data.data || response.data;
+      const session = response.data;
       setSessions(prev => [session, ...prev]);
       setCurrentSession(session);
       setMessages([]); // New session has no messages
@@ -152,7 +152,7 @@ export function useSessions(): UseSessionsReturn {
     
     try {
       const response = await apiClient.patch(`/api/v1/sessions/${currentSession.id}`, updates);
-      const updated = response.data.data || response.data;
+      const updated = response.data;
       setCurrentSession(updated);
       setSessions(prev => prev.map(s => s.id === updated.id ? updated : s));
     } catch (err) {

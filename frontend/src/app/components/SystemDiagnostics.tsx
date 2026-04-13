@@ -53,10 +53,8 @@ export function SystemDiagnostics() {
           };
         }>('/api/v1/system/storage');
 
-        if (response.data.success) {
-          setVectorDB(response.data.data.vectorDB);
-          setFileStorage(response.data.data.fileStorage);
-        }
+        setVectorDB(response.data.vectorDB);
+        setFileStorage(response.data.fileStorage);
       } catch (error) {
         console.error('Failed to fetch storage:', error);
       }
