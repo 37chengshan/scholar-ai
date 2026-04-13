@@ -20,8 +20,7 @@ help:
 	@echo "  make build      - 重建 Docker 镜像"
 	@echo ""
 	@echo "数据库操作:"
-	@echo "  make db-migrate - 运行数据库迁移"
-	@echo "  make db-studio  - 打开 Prisma Studio"
+	@echo "  make db-migrate - 运行数据库迁移 (Python backend)"
 	@echo "  make db-reset   - 重置数据库"
 	@echo ""
 	@echo "清理:"
@@ -31,21 +30,20 @@ help:
 # 安装依赖
 install:
 	@echo "📦 安装前端依赖..."
-	npm install
-	@echo "📦 安装 Node.js 后端依赖..."
-	cd backend-node && npm install
+	cd frontend && npm install
+	@echo "📦 安装 Python 后端依赖..."
+	cd backend-python && pip install -r requirements.txt
 	@echo "✅ 依赖安装完成"
 
 # 启动开发环境 (只启动数据库)
 dev:
 	@echo "🐳 启动数据库服务..."
-	docker-compose up -d postgres redis neo4j
+	docker-compose up -d postgres redis neo4j milvus-etcd milvus-minio milvus-standalone
 	@echo "✅ 数据库已启动"
 	@echo ""
 	@echo "请手动启动其他服务:"
 	@echo "  1. cd backend-python && uvicorn app.main:app --reload --port 8000"
-	@echo "  2. cd backend-node && npm run dev"
-	@echo "  3. npm run dev"
+	@echo "  2. cd frontend && npm run dev"
 
 # Docker Compose 操作
 up:
@@ -71,22 +69,24 @@ ps:
 build:
 	docker-compose up -d --build
 
-# 数据库操作
+# 数据库操作 (Python backend uses SQLAlchemy)
 db-migrate:
-	cd backend-node && npx prisma migrate dev
-
-db-studio:
-	cd backend-node && npx prisma studio
+	@echo "⚠️ Python backend uses SQLAlchemy auto-migration"
+	@echo "Run: cd backend-python && python -c 'from app.db.base import init_db; init_db()'"
 
 db-reset:
-	cd backend-node && npx prisma migrate reset
+	@echo "⚠️ 重置数据库..."
+	docker-compose down -v postgres redis neo4j milvus-etcd milvus-minio milvus-standalone
+	docker volume rm scholar-ai_postgres_data scholar-ai_redis_data scholar-ai_neo4j_data 2>/dev/null || true
+	docker-compose up -d postgres redis neo4j milvus-etcd milvus-minio milvus-standalone
+	@echo "✅ 数据库已重置"
 
 # 清理
 clean:
 	@echo "🧹 清理构建文件..."
 	docker-compose down -v
-	rm -rf backend-node/dist
-	rm -rf backend-node/node_modules
+	rm -rf frontend/dist
+	rm -rf frontend/node_modules
 	rm -rf node_modules
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".venv" -exec rm -rf {} + 2>/dev/null || true
