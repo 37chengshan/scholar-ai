@@ -31,6 +31,8 @@ class TestValidTransitions:
         """验证恢复分支合法。"""
         assert is_valid_transition(TaskStatus.FAILED_DOWNLOAD, TaskStatus.PROCESSING_DOWNLOAD)
         assert is_valid_transition(TaskStatus.FAILED_PARSE, TaskStatus.PROCESSING_PARSE)
+        assert is_valid_transition(TaskStatus.FAILED_EXTRACT, TaskStatus.PROCESSING_EXTRACT)
+        assert is_valid_transition(TaskStatus.FAILED_STORE, TaskStatus.PROCESSING_STORE)
 
 
 class TestInvalidTransitions:
