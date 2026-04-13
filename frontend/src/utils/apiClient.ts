@@ -76,6 +76,13 @@ apiClient.interceptors.request.use(
 );
 
 /**
+ * Response Interceptor Contract:
+ * - Success responses unwrapped: { success, data } -> data
+ * - Services receive unwrapped data: response.data is the payload
+ * - Services should return: response.data (not response.data.data)
+ * - Errors are thrown, not returned in response
+ */
+/**
  * Response interceptor - Error handling and token refresh
  *
  * Handles:
