@@ -29,12 +29,30 @@ class StageTimer:
             self._time_source = time.monotonic
 
     def start(self, stage: str) -> None:
-        """开始阶段计时。"""
+        """开始阶段计时。
+
+        Args:
+            stage: 阶段名称。
+
+        Note:
+            如果已有活动阶段，调用 start() 会覆盖前一个阶段，
+            前一个阶段不会被记录到 stages 中。
+            这是一种"丢弃"行为，确保只有最近一次 start() 有效。
+        """
         self.current_stage = stage
         self.start_monotonic = self._time_source()
 
     def end(self) -> int:
-        """结束当前阶段，返回毫秒数。"""
+        """结束当前阶段，返回毫秒数。
+
+        Returns:
+            当前阶段的耗时（毫秒）。如果没有活动阶段，返回 0。
+
+        Note:
+            - 如果没有调用 start()，end() 返回 0 且不记录任何阶段。
+            - end() 后再次调用 end() 会返回 0，因为 current_stage 已被清空。
+            - 结束后，current_stage 和 start_monotonic 都会被重置为 None。
+        """
         # 使用 is not None 检查，避免 0.0 被误判为 False
         if self.current_stage is not None and self.start_monotonic is not None:
             elapsed = self._time_source() - self.start_monotonic
