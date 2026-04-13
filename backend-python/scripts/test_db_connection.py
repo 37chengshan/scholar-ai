@@ -1,7 +1,7 @@
 """
 数据库连接测试脚本
 
-测试云端数据库 (223.6.249.253) 的连接:
+测试数据库连接:
 - PostgreSQL
 - Neo4j
 - Redis
@@ -35,7 +35,9 @@ from app.utils.logger import logger
 async def test_postgres():
     """测试 PostgreSQL 连接"""
     print("\n🐘 测试 PostgreSQL 连接...")
-    print(f"   连接地址: {settings.DATABASE_URL.replace(settings.DATABASE_URL.split('@')[0].split(':')[-1], '***')}")
+    print(
+        f"   连接地址: {settings.DATABASE_URL.replace(settings.DATABASE_URL.split('@')[0].split(':')[-1], '***')}"
+    )
 
     try:
         await postgres_db.connect()
@@ -57,7 +59,7 @@ async def test_postgres():
         # 插入测试数据
         await postgres_db.execute(
             "INSERT INTO test_connection (test_data) VALUES ($1)",
-            "Connection test from local dev"
+            "Connection test from local dev",
         )
 
         # 查询测试数据
@@ -88,7 +90,7 @@ async def test_neo4j():
         # 测试创建节点
         result = await neo4j_db.run(
             "CREATE (t:Test {message: $msg, timestamp: datetime()}) RETURN t",
-            {"msg": "Connection test from local dev"}
+            {"msg": "Connection test from local dev"},
         )
         print(f"   ✅ Neo4j 连接成功!")
         print(f"   📄 测试节点创建成功")
@@ -140,22 +142,24 @@ async def test_redis():
 async def main():
     """主测试函数"""
     print("=" * 60)
-    print("🧪 ScholarAI 云端数据库连接测试")
+    print("🧪 ScholarAI 数据库连接测试")
     print("=" * 60)
-    print(f"\n📍 服务器: 223.6.249.253")
+    print(
+        f"\n📍 服务器: {settings.DATABASE_URL.split('@')[1].split(':')[0] if '@' in settings.DATABASE_URL else 'localhost'}"
+    )
     print("📦 测试服务: PostgreSQL | Neo4j | Redis")
 
     results = {}
 
     try:
         # 测试 PostgreSQL
-        results['postgresql'] = await test_postgres()
+        results["postgresql"] = await test_postgres()
 
         # 测试 Neo4j
-        results['neo4j'] = await test_neo4j()
+        results["neo4j"] = await test_neo4j()
 
         # 测试 Redis
-        results['redis'] = await test_redis()
+        results["redis"] = await test_redis()
 
     finally:
         # 关闭所有连接
@@ -181,9 +185,9 @@ async def main():
         return 0
     else:
         print("⚠️ 部分数据库连接失败，请检查:")
-        print("   1. 云端数据库服务是否运行")
+        print("   1. 数据库服务是否运行")
         print("   2. .env.local 中的密码是否正确")
-        print("   3. 本地网络是否可以访问 223.6.249.253")
+        print("   3. 本地网络是否可以访问数据库服务器")
         return 1
 
 
