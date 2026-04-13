@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -47,12 +47,32 @@ class ProcessingTask(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # === 新增: checkpoint 路径引用（Per Review Fix #3: 不存大 JSON） ===
+    checkpoint_stage: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    checkpoint_storage_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    checkpoint_version: Mapped[int] = mapped_column(Integer, default=0)
+
+    # === 新增: 阶段耗时（JSON） ===
+    stage_timings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    # === 新增: 失败分类（统一 vocabulary） ===
+    failure_stage: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    failure_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    failure_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # === 新增: 重试标记（PostgreSQL Boolean，Per Review Fix #4） ===
+    is_retryable: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # === 新增: trace_id（Per Review Fix #8） ===
+    trace_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
     # Relationships
     paper: Mapped["Paper"] = relationship("Paper", back_populates="processing_task")
 
     __table_args__ = (
         Index("idx_processing_tasks_paper_id", "paper_id"),
         Index("idx_processing_tasks_status", "status"),
+        Index("idx_processing_tasks_trace_id", "trace_id"),
     )
 
     def __repr__(self) -> str:
