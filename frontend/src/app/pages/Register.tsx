@@ -174,13 +174,6 @@ export function Register() {
 
       {/* Right Column: Register Form */}
       <div className="w-full md:w-[480px] lg:w-[540px] flex flex-col justify-center items-center p-8 lg:p-16 bg-background relative z-10 shadow-2xl">
-        {/* Development Indicator */}
-        <div className="absolute top-2 right-2 z-50">
-          <Badge variant="secondary" className="text-xs">
-            {isZh ? "认证开发中" : "Auth Under Development"}
-          </Badge>
-        </div>
-
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
