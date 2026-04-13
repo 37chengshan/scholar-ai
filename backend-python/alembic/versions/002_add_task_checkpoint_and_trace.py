@@ -36,7 +36,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "processing_tasks",
-        sa.Column("checkpoint_version", sa.Integer(), nullable=True, default=0),
+        sa.Column("checkpoint_version", sa.Integer(), nullable=False, server_default="0"),
     )
 
     # 阶段耗时（JSON）
@@ -62,7 +62,7 @@ def upgrade() -> None:
     # 重试标记（PostgreSQL Boolean, Per Review Fix #4）
     op.add_column(
         "processing_tasks",
-        sa.Column("is_retryable", sa.Boolean(), nullable=True, default=True),
+        sa.Column("is_retryable", sa.Boolean(), nullable=False, server_default="true"),
     )
 
     # trace_id（Per Review Fix #8）
