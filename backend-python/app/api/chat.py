@@ -12,15 +12,18 @@ Business logic is delegated to:
 - MessageService: Message persistence
 - ChatOrchestrator: Agent execution and SSE streaming
 - SessionManager: Session CRUD
+- ComplexityRouter: Dual-layer query routing (Task 1.4)
+- SSEEventBuffer: Ordered event transmission (Task 1.4)
 
 SSE Event Types:
+- routing_decision: Query routing result (Task 1.4, first event)
 - thought: Agent thinking process
 - tool_call: Tool execution start
 - tool_result: Tool execution result
 - confirmation_required: Needs user approval
 - message: Final response
 - error: Error occurred
-- done: Stream complete
+- done: Stream complete (MUST follow error events per P2)
 """
 
 import json
@@ -48,7 +51,14 @@ from app.utils.logger import logger
 from app.core.auth import CurrentUserId
 from app.utils.problem_detail import Errors
 
+# Task 1.4: Import new modules for dual-layer routing
+from app.core.complexity_router import ComplexityRouter
+from app.core.sse_event_buffer import SSEEventBuffer
+
 router = APIRouter()
+
+# Task 1.4: Initialize ComplexityRouter (rule-based, no LLM client for now)
+complexity_router = ComplexityRouter()
 
 
 @router.post("/stream")
@@ -58,21 +68,29 @@ async def chat_stream(
     """
     SSE streaming chat with Agent.
 
+    Task 1.4: Integrated dual-layer routing mechanism.
+
     Flow:
     1. Get or create session (SessionManager)
-    2. Save user message (MessageService)
-    3. Execute Agent with SSE streaming (ChatOrchestrator)
-    4. Save tool call and assistant messages (MessageService)
-    5. Handle confirmation requests (pause execution)
+    2. Route query complexity (ComplexityRouter) - NEW
+    3. Send routing_decision event (SSEEventBuffer) - NEW
+    4. Save user message (MessageService)
+    5. Execute Agent/RAG based on routing (ChatOrchestrator)
+    6. Save tool call and assistant messages (MessageService)
+    7. Handle confirmation requests (pause execution)
 
-    SSE Events:
+    SSE Events (Task 1.4 minimum loop):
+    - event: routing_decision - Query routing result (FIRST event)
+    - event: thinking_status - Agent thinking
+    - event: message - Final response
+    - event: done - Stream complete
+    - event: error - Error occurred (MUST follow with done per P2)
+
+    Additional events:
     - event: thought - Agent thinking process
     - event: tool_call - Tool execution start
     - event: tool_result - Tool execution result
     - event: confirmation_required - Needs user approval
-    - event: message - Final response
-    - event: error - Error occurred
-    - event: done - Stream complete
     """
     try:
         logger.info(
@@ -100,25 +118,61 @@ async def chat_stream(
 
         session_id = session.id
 
+        # Task 1.4: Create SSEEventBuffer for ordered events
+        event_buffer = SSEEventBuffer(session_id=session_id)
+
         auto_confirm = False
         if request.context:
             auto_confirm = request.context.get("auto_confirm", False)
 
         async def event_generator() -> AsyncIterator[str]:
-            """Generate SSE events from Agent execution with message persistence."""
+            """Generate SSE events from Agent execution with message persistence.
+
+            Task 1.4: Added routing_decision event at start.
+            P2: Ensure error events are followed by done events.
+            """
             try:
                 last_event_id = None
                 if "last-event-id" in http_request.headers:
                     last_event_id = http_request.headers["last-event-id"]
 
+                # Replay missed events on reconnect
                 if last_event_id:
                     async for replay_event in sse_manager.handle_reconnect(
                         session_id, last_event_id
                     ):
                         yield replay_event
 
+                # Task 1.4: Route query complexity (async with LLM fallback)
+                routing_result = await complexity_router.route_async(request.message)
+
+                logger.info(
+                    "Query routed",
+                    complexity=routing_result["complexity"],
+                    method=routing_result["method"],
+                    confidence=routing_result["confidence"],
+                )
+
+                # Task 1.4: Send routing_decision event (FIRST event, per P2 minimum loop)
+                routing_event = await event_buffer.emit(
+                    "routing_decision",
+                    {
+                        "complexity": routing_result["complexity"],
+                        "method": routing_result["method"],
+                        "confidence": routing_result["confidence"],
+                        "reasoning": routing_result.get("reasoning", ""),
+                        "query_preview": request.message[:100],
+                    }
+                )
+                yield routing_event.to_sse_format()
+
                 async def business_events() -> AsyncIterator[str]:
-                    """Generate business events with message persistence."""
+                    """Generate business events with message persistence.
+
+                    Task 1.4: Routing determines execution path:
+                    - simple → RAG mode (thinking_status → message → done)
+                    - complex → Agent mode (multi-step, simplified for MVP)
+                    """
                     try:
                         await message_service.save_message(
                             session_id=session_id,
@@ -128,12 +182,40 @@ async def chat_stream(
                     except Exception as e:
                         logger.warning("Failed to save user message", error=str(e))
 
+                    # Task 1.4: Branch based on routing result
+                    # Note: For MVP, both paths use chat_orchestrator
+                    # Future: Simple queries → dedicated RAG path (simplified for now)
+
                     async for event in chat_orchestrator.execute_with_streaming(
                         user_input=request.message,
                         session_id=session_id,
                         user_id=user_id,
                         auto_confirm=auto_confirm,
                     ):
+                        # Buffer events for ordered transmission
+                        if event.startswith("event:"):
+                            # Parse event type
+                            event_type_line = event.split("\n")[0]
+                            event_type = event_type_line.replace("event: ", "").strip()
+
+                            # Parse event data
+                            if "data: " in event:
+                                data_start = event.find("data: ") + 6
+                                data_json = event[data_start : event.rfind("\n")]
+                                try:
+                                    event_data = json.loads(data_json)
+                                    # Buffer the event
+                                    buffered_event = await event_buffer.emit(event_type, event_data)
+                                    yield buffered_event.to_sse_format()
+                                except json.JSONDecodeError:
+                                    # Fallback to original event if parsing fails
+                                    yield event
+                            else:
+                                yield event
+                        else:
+                            yield event
+
+                        # Persist tool_result messages
                         if event.startswith("event: tool_result"):
                             try:
                                 data_start = event.find("data: ") + 6
@@ -152,6 +234,7 @@ async def chat_stream(
                                     "Failed to save tool message", error=str(e)
                                 )
 
+                        # Persist assistant messages
                         elif event.startswith("event: message"):
                             try:
                                 data_start = event.find("data: ") + 6
@@ -168,8 +251,6 @@ async def chat_stream(
                                     "Failed to save assistant message", error=str(e)
                                 )
 
-                        yield event
-
                 async for event in sse_manager.stream_with_heartbeat(
                     session_id, business_events()
                 ):
@@ -177,12 +258,22 @@ async def chat_stream(
 
             except Exception as e:
                 logger.error("SSE stream error", error=str(e))
-                yield await chat_orchestrator.stream_sse_event(
+
+                # P2: Send error event followed by done event (critical for frontend)
+                error_event = await event_buffer.emit(
                     SSEEventType.ERROR,
                     ErrorEventData(
                         type="error", error=str(e), details=None
                     ).model_dump(),
                 )
+                yield error_event.to_sse_format()
+
+                # P2: MUST send done event after error (frontend otherwise hangs)
+                done_event = await event_buffer.emit(
+                    SSEEventType.DONE,
+                    {"status": "error_terminated"}
+                )
+                yield done_event.to_sse_format()
 
         return StreamingResponse(
             event_generator(),
@@ -199,13 +290,25 @@ async def chat_stream(
         logger.error("Chat stream initialization error", error=str(e))
         error_msg = str(e)
 
+        # P2: Error stream must also send done after error
         async def error_stream():
-            yield await chat_orchestrator.stream_sse_event(
+            # Create temporary buffer for error scenario
+            temp_buffer = SSEEventBuffer(session_id="error")
+
+            error_event = await temp_buffer.emit(
                 SSEEventType.ERROR,
                 ErrorEventData(
                     type="error", error=error_msg, details=None
                 ).model_dump(),
             )
+            yield error_event.to_sse_format()
+
+            # P2: MUST send done after error
+            done_event = await temp_buffer.emit(
+                SSEEventType.DONE,
+                {"status": "init_error"}
+            )
+            yield done_event.to_sse_format()
 
         return StreamingResponse(
             error_stream(),

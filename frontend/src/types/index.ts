@@ -5,6 +5,12 @@
  * Matches backend Prisma schema and API response formats.
  */
 
+// SSE Event Types
+export * from './sse';
+
+// Chat Types
+export * from './chat';
+
 /**
  * User entity
  */
