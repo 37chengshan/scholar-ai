@@ -148,9 +148,9 @@ async def lifespan(app: FastAPI):
 
     logger.info("🤖 ScholarAI AI Service starting...")
     logger.info(f"📚 Log level: {settings.LOG_LEVEL}")
-    logger.info(f"🔗 Database: {settings.DATABASE_URL}")
-    logger.info(f"🕸️  Neo4j: {settings.NEO4J_URI}")
-    logger.info(f"⚡ Redis: {settings.REDIS_URL}")
+    logger.info(f"🔗 Database: {settings.DB_HOST}")
+    logger.info(f"🕸️  Neo4j: {settings.NEO4J_HOST}")
+    logger.info(f"⚡ Redis: {settings.REDIS_HOST}")
 
     # 1. SQLAlchemy PostgreSQL (首先初始化)
     try:
@@ -262,10 +262,11 @@ app.include_router(
 )
 
 # Wave 3: Knowledge Base (36-02)
-from app.api import knowledge_base
+# Split per38-05: KB module (kb_crud + kb_import  kb_search  kb_query)
+from app.api.kb import router as kb_router
 
 app.include_router(
-    knowledge_base.router,
+    kb_router,
     prefix="/api/v1/knowledge-bases",
     tags=["knowledge-bases"],
 )

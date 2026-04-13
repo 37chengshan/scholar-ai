@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, and_, any_
 
-from app.api.search import search_arxiv, search_semantic_scholar
+from app.api.search.external import search_arxiv, search_semantic_scholar
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.database import AsyncSessionLocal
 from app.models.paper import Paper
@@ -307,13 +307,15 @@ async def execute_read_paper(params: Dict[str, Any], **kwargs) -> Dict[str, Any]
             # Build response based on requested sections
             paper_data = {"id": paper.id}
             if "metadata" in sections:
-                paper_data.update({
-                    "title": paper.title,
-                    "authors": paper.authors,
-                    "year": paper.year,
-                    "doi": paper.doi,
-                    "keywords": paper.keywords,
-                })
+                paper_data.update(
+                    {
+                        "title": paper.title,
+                        "authors": paper.authors,
+                        "year": paper.year,
+                        "doi": paper.doi,
+                        "keywords": paper.keywords,
+                    }
+                )
             if "abstract" in sections:
                 paper_data["abstract"] = paper.abstract
             if "content" in sections:
@@ -411,9 +413,7 @@ async def execute_read_note(params: Dict[str, Any], **kwargs) -> Dict[str, Any]:
 
         async with AsyncSessionLocal() as db:
             # Build query with SQLAlchemy ORM
-            stmt = select(Note).where(
-                and_(Note.id == note_id, Note.user_id == user_id)
-            )
+            stmt = select(Note).where(and_(Note.id == note_id, Note.user_id == user_id))
 
             result = await db.execute(stmt)
             note = result.scalar_one_or_none()
