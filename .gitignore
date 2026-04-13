@@ -85,3 +85,6 @@ build/
 *.seed
 *.pid.lock
 backend-python/docling-models/
+
+# Worktrees
+.worktrees/
