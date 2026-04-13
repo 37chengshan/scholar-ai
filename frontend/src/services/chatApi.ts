@@ -26,7 +26,7 @@ export async function createSession(): Promise<Session> {
     data: Session;
   }>('/api/v1/sessions');
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -43,7 +43,7 @@ export async function getSessions(): Promise<Session[]> {
     data: Session[];
   }>('/api/v1/sessions');
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -61,7 +61,7 @@ export async function getMessages(sessionId: string): Promise<Message[]> {
     data: Message[];
   }>(`/api/v1/sessions/${sessionId}/messages`);
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -87,7 +87,7 @@ export async function sendMessage(
     content,
   });
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -123,5 +123,5 @@ export async function updateSession(
     title,
   });
 
-  return response.data.data;
+  return response.data;
 }

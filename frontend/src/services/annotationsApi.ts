@@ -54,7 +54,7 @@ export async function list(paperId: string): Promise<Annotation[]> {
     data: Annotation[];
   }>(`/api/v1/annotations/${paperId}`);
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -72,7 +72,7 @@ export async function create(data: CreateAnnotationData): Promise<Annotation> {
     data: Annotation;
   }>('/api/v1/annotations', data);
 
-  return response.data.data;
+  return response.data;
 }
 
 /**
@@ -91,7 +91,7 @@ export async function update(id: string, data: UpdateAnnotationData): Promise<An
     data: Annotation;
   }>(`/api/v1/annotations/${id}`, data);
 
-  return response.data.data;
+  return response.data;
 }
 
 /**

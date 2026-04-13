@@ -68,7 +68,7 @@ export async function autocomplete(
     params: { query, limit },
   });
 
-  return response.data.data || [];
+  return response.data || [];
 }
 
 /**
@@ -96,7 +96,7 @@ export async function searchAuthors(
     params: { query, limit, offset },
   });
 
-  return response.data.data || { data: [] };
+  return response.data || { data: [] };
 }
 
 /**
@@ -123,7 +123,7 @@ export async function getAuthorPapers(
     params: { limit, offset },
   });
 
-  return response.data.data || { data: [] };
+  return response.data || { data: [] };
 }
 
 // ============================================================
@@ -200,7 +200,7 @@ export async function unified(
     };
   }>(`/api/v1/search/unified?${params.toString()}`);
 
-  return response.data.data;
+  return response.data;
 }
 
 // DELETED: external() and addExternal() functions
