@@ -3,6 +3,10 @@
 Per Review Fix #9: 独立任务表 + FOR UPDATE SKIP LOCKED 抢占。
 """
 
+# Load dotenv before any imports that use env vars
+from dotenv import load_dotenv
+load_dotenv()
+
 import asyncio
 import os
 from datetime import datetime
@@ -20,7 +24,8 @@ class NotesWorker:
     Per Review Fix #9: 使用 FOR UPDATE SKIP LOCKED 抢占机制防止多 worker 重复处理。
     """
 
-    WORKER_ID = "notes-worker-01"  # 可配置
+    # Configurable WORKER_ID: use env var or hostname + PID
+    WORKER_ID = os.getenv("NOTES_WORKER_ID", f"notes-worker-{os.getpid()}")
     POLL_INTERVAL = 5
     MAX_ATTEMPTS = 3
 
@@ -135,25 +140,68 @@ class NotesWorker:
             notes_length=len(notes),
         )
 
-    async def fail_task(self, task_id: str, error: str) -> None:
-        """标记任务失败。
+    async def fail_task(self, task_id: str, error: str) -> bool:
+        """标记任务失败，自动重试如果未达到最大次数。
 
         Args:
             task_id: NotesTask UUID
             error: Error message
+
+        Returns:
+            True if task was reset for retry, False if permanently failed.
         """
         async with self.db_pool.acquire() as conn:
-            await conn.execute(
+            # First increment attempts
+            result = await conn.fetchrow(
                 """UPDATE notes_generation_tasks
                    SET status = 'failed',
                        error_message = $1,
                        attempts = attempts + 1
-                   WHERE id = $2""",
+                   WHERE id = $2
+                   RETURNING attempts""",
                 error[:500],  # Truncate to 500 chars
                 task_id,
             )
 
         logger.error("Notes task failed", task_id=task_id, error=error[:200])
+
+        # Auto-reset for retry if under max attempts
+        if result and result["attempts"] < self.MAX_ATTEMPTS:
+            await self.reset_for_retry(task_id)
+            logger.info("Task auto-reset for retry", task_id=task_id, attempts=result["attempts"])
+            return True
+
+        return False
+
+    async def reset_for_retry(self, task_id: str) -> bool:
+        """Reset failed task to pending for retry.
+
+        Args:
+            task_id: NotesTask UUID
+
+        Returns:
+            True if reset, False if max attempts exceeded.
+        """
+        async with self.db_pool.acquire() as conn:
+            task = await conn.fetchrow(
+                """SELECT attempts FROM notes_generation_tasks WHERE id = $1""",
+                task_id,
+            )
+
+            if not task or task["attempts"] >= self.MAX_ATTEMPTS:
+                return False
+
+            await conn.execute(
+                """UPDATE notes_generation_tasks
+                   SET status = 'pending',
+                       claimed_by = NULL,
+                       claimed_at = NULL,
+                       error_message = NULL
+                   WHERE id = $1""",
+                task_id,
+            )
+            logger.info("Task reset for retry", task_id=task_id, attempts=task["attempts"])
+            return True
 
     async def run_loop(self) -> None:
         """Worker 主循环。
