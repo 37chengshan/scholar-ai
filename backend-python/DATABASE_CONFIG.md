@@ -17,14 +17,14 @@ pip install -r requirements.txt
 vim .env.local
 
 # 修改以下字段为你的实际密码：
-POSTGRES_PASSWORD=你的密码
-NEO4J_PASSWORD=你的密码
+POSTGRES_PASSWORD=<YOUR_PASSWORD>
+NEO4J_PASSWORD=<YOUR_PASSWORD>
 ```
 
 ### 3. 测试连接
 
 ```bash
-# 测试云端数据库连接
+# 测试数据库连接
 python -m scripts.test_db_connection
 ```
 
@@ -48,19 +48,19 @@ uvicorn app.main:app --reload --port 8000
 ## 📁 配置文件说明
 
 ### `.env.local`
-本地开发环境配置，连接云端数据库 (223.6.249.253)。**不要提交到 Git！**
+本地开发环境配置。⚠️ **不要提交到 Git！**
 
 ```
-# PostgreSQL (云端)
-DATABASE_URL=postgresql://scholarai:密码@223.6.249.253:5432/scholarai
+# PostgreSQL (使用环境变量或安全配置)
+DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
 
-# Redis (云端)
-REDIS_URL=redis://223.6.249.253:6379/0
+# Redis (使用环境变量或安全配置)
+REDIS_URL=redis://${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}
 
-# Neo4j (云端)
-NEO4J_URI=bolt://223.6.249.253:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=密码
+# Neo4j (使用环境变量或安全配置)
+NEO4J_URI=bolt://${NEO4J_HOST}:${NEO4J_PORT}
+NEO4J_USER=${NEO4J_USER}
+NEO4J_PASSWORD=${NEO4J_PASSWORD}
 ```
 
 ### `app/core/config.py`
@@ -148,18 +148,18 @@ GET /papers/{paper_id}/related
 
 ```bash
 # 检查网络连通性
-ping 223.6.249.253
+ping <YOUR_HOST_IP>
 
 # 检查端口开放
-telnet 223.6.249.253 5432  # PostgreSQL
-telnet 223.6.249.253 7687  # Neo4j
-telnet 223.6.249.253 6379  # Redis
+telnet <YOUR_HOST_IP> 5432  # PostgreSQL
+telnet <YOUR_HOST_IP> 7687  # Neo4j
+telnet <YOUR_HOST_IP> 6379  # Redis
 ```
 
 ### 认证失败
 
 1. 检查 `.env.local` 密码是否正确
-2. 检查云端服务器数据库密码
+2. 检查服务器数据库密码
 
 ### 表不存在
 
@@ -170,14 +170,13 @@ python -m scripts.init_database
 
 ---
 
-## 📊 云端数据库状态
+## 📊 数据库连接状态
 
-| 服务 | 地址 | 状态 |
+| 服务 | 配置方式 | 状态 |
 |-----|------|------|
-| PostgreSQL | 223.6.249.253:5432 | ✅ 运行中 |
-| Neo4j | 223.6.249.253:7687 | ✅ 运行中 |
-| Redis | 223.6.249.253:6379 | ✅ 运行中 |
-| Neo4j Web | http://223.6.249.253:7474 | ✅ 可访问 |
+| PostgreSQL | ${DB_HOST}:${DB_PORT} | 环境变量配置 |
+| Neo4j | ${NEO4J_HOST}:${NEO4J_PORT} | 环境变量配置 |
+| Redis | ${REDIS_HOST}:${REDIS_PORT} | 环境变量配置 |
 
 ---
 
@@ -186,4 +185,4 @@ python -m scripts.init_database
 1. **`.env.local` 不要提交到 Git**，已添加到 `.gitignore`
 2. 本地开发时自动使用 `.env.local` 配置
 3. 生产环境使用 Docker 环境变量或 Kubernetes Secrets
-4. 云端数据库密码定期更换
+4. ⚠️ **数据库密码定期更换，使用环境变量模板**

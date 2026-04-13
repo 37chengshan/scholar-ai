@@ -17,20 +17,22 @@ UPLOADS_DIR="${INSTALL_DIR}/uploads"
 LOGS_DIR="${INSTALL_DIR}/logs"
 
 # 数据库配置（请根据实际情况修改）
-DB_HOST="223.6.249.253"
-DB_PORT="5432"
-DB_NAME="scholarai"
-DB_USER="scholarai"
-DB_PASS="ScholarAI_2026_Secure!"
+# ⚠️ SECURITY: Set these via environment variables before running
+# Run: export DB_HOST=xxx DB_PASSWORD=xxx REDIS_PASSWORD=xxx NEO4J_PASSWORD=xxx
+DB_HOST="${DB_HOST:-localhost}"
+DB_PORT="${DB_PORT:-5432}"
+DB_NAME="${DB_NAME:-scholarai}"
+DB_USER="${DB_USER:-scholarai}"
+DB_PASS="${DB_PASSWORD}"
 
-REDIS_HOST="223.6.249.253"
-REDIS_PORT="26739"
-REDIS_PASS="S3j2fyGHTGJ8LGx8"
+REDIS_HOST="${REDIS_HOST:-localhost}"
+REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_PASS="${REDIS_PASSWORD}"
 
-NEO4J_HOST="223.6.249.253"
-NEO4J_PORT="7687"
-NEO4J_USER="neo4j"
-NEO4J_PASS="scholarai123"
+NEO4J_HOST="${NEO4J_HOST:-localhost}"
+NEO4J_PORT="${NEO4J_PORT:-7687}"
+NEO4J_USER="${NEO4J_USER:-neo4j}"
+NEO4J_PASS="${NEO4J_PASSWORD}"
 
 echo "Step 1: 安装系统依赖"
 echo "─────────────────────────────────────────────────────────────"
