@@ -32,6 +32,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.task import ProcessingTask
+    from app.models.notes_task import NotesTask
     from app.models.annotation import Annotation
     from app.models.reading_progress import ReadingProgress
     from app.models.upload_history import UploadHistory
@@ -136,6 +137,9 @@ class Paper(Base):
     )
     knowledge_base: Mapped[Optional["KnowledgeBase"]] = relationship(
         "KnowledgeBase", back_populates="papers"
+    )
+    notes_tasks: Mapped[Optional["NotesTask"]] = relationship(
+        "NotesTask", back_populates="paper", uselist=False
     )
 
     __table_args__ = (

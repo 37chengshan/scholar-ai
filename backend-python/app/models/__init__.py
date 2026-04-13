@@ -32,6 +32,7 @@ from app.models.paper import Paper, PaperChunk
 
 # Processing
 from app.models.task import ProcessingTask
+from app.models.notes_task import NotesTask
 
 # Query
 from app.models.query import Query
@@ -134,6 +135,7 @@ __all__ = [
     "Paper",
     "PaperChunk",
     "ProcessingTask",
+    "NotesTask",
     "Query",
     "Note",
     "Annotation",
