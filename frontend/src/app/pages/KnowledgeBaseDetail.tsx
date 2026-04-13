@@ -55,57 +55,75 @@ export function KnowledgeBaseDetail() {
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<KBSearchResult[] | null>(null);
 
-  const loadKnowledgeBase = useCallback(async () => {
+  const loadKnowledgeBase = useCallback(async (options?: { silent?: boolean }) => {
     if (!kbId) return;
 
-    setLoadingKB(true);
+    if (!options?.silent) {
+      setLoadingKB(true);
+    }
     try {
       const res = await kbApi.get(kbId);
       if (res.success && res.data) {
         setKB(res.data);
-      } else {
+      } else if (!options?.silent) {
         toast.error("获取知识库详情失败");
       }
     } catch (err: any) {
-      toast.error(err.message || "网络错误");
+      if (!options?.silent) {
+        toast.error(err.message || "网络错误");
+      }
     } finally {
-      setLoadingKB(false);
+      if (!options?.silent) {
+        setLoadingKB(false);
+      }
     }
   }, [kbId]);
 
-  const loadPapers = useCallback(async () => {
+  const loadPapers = useCallback(async (options?: { silent?: boolean }) => {
     if (!kbId) return;
 
-    setPapersLoading(true);
+    if (!options?.silent) {
+      setPapersLoading(true);
+    }
     try {
       const response = await kbApi.listPapers(kbId);
       if (response.success && response.data) {
         setPapers(response.data.papers || []);
-      } else {
+      } else if (!options?.silent) {
         toast.error("加载知识库论文失败");
       }
     } catch (err: any) {
-      toast.error(err.message || "加载知识库论文失败");
+      if (!options?.silent) {
+        toast.error(err.message || "加载知识库论文失败");
+      }
     } finally {
-      setPapersLoading(false);
+      if (!options?.silent) {
+        setPapersLoading(false);
+      }
     }
   }, [kbId]);
 
-  const loadUploadHistory = useCallback(async () => {
+  const loadUploadHistory = useCallback(async (options?: { silent?: boolean }) => {
     if (!kbId) return;
 
-    setUploadHistoryLoading(true);
+    if (!options?.silent) {
+      setUploadHistoryLoading(true);
+    }
     try {
       const response = await kbApi.getUploadHistory(kbId, { limit: 20, offset: 0 });
       if (response.success && response.data) {
         setUploadRecords(response.data.records || []);
-      } else {
+      } else if (!options?.silent) {
         toast.error("加载上传记录失败");
       }
     } catch (err: any) {
-      toast.error(err.message || "加载上传记录失败");
+      if (!options?.silent) {
+        toast.error(err.message || "加载上传记录失败");
+      }
     } finally {
-      setUploadHistoryLoading(false);
+      if (!options?.silent) {
+        setUploadHistoryLoading(false);
+      }
     }
   }, [kbId]);
 
@@ -119,8 +137,12 @@ export function KnowledgeBaseDetail() {
     }
   }, []);
 
-  const refreshKnowledgeBaseWorkspace = useCallback(async () => {
-    await Promise.all([loadKnowledgeBase(), loadPapers(), loadUploadHistory()]);
+  const refreshKnowledgeBaseWorkspace = useCallback(async (options?: { silent?: boolean }) => {
+    await Promise.all([
+      loadKnowledgeBase(options),
+      loadPapers(options),
+      loadUploadHistory(options),
+    ]);
   }, [loadKnowledgeBase, loadPapers, loadUploadHistory]);
 
   useEffect(() => {
@@ -129,7 +151,7 @@ export function KnowledgeBaseDetail() {
     }
 
     const timer = window.setInterval(() => {
-      void refreshKnowledgeBaseWorkspace();
+      void refreshKnowledgeBaseWorkspace({ silent: true });
     }, 2000);
 
     return () => window.clearInterval(timer);
