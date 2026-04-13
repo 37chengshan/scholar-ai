@@ -3,8 +3,10 @@
 Per D-01: Complete refactor from serial to parallel architecture.
 Per D-04: Four-stage parallel extraction (IMRaD, metadata, images, tables).
 Per D-12-D-15: Strict error handling with critical/auxiliary distinction.
+Per Review Fix #8: trace_id for full-pipeline tracing.
 """
 
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -30,12 +32,14 @@ class PipelineContext:
     Carries task metadata and stage results through the parallel pipeline.
     Per D-12: Critical stage failures block the pipeline.
     Per D-15: Auxiliary failures logged in errors list, not blocking.
+    Per Review Fix #8: trace_id for full-pipeline tracing.
 
     Attributes:
         task_id: UUID of the processing task
         paper_id: UUID of the paper being processed
         user_id: UUID of the paper owner
         storage_key: Object storage key for the PDF
+        trace_id: UUID for full-pipeline log tracing (auto-generated)
 
         local_path: Local filesystem path after download
         parse_result: Docling parse result (markdown, items, page_count)
@@ -53,6 +57,9 @@ class PipelineContext:
     paper_id: str
     user_id: str
     storage_key: str
+
+    # Per Review Fix #8: trace_id for full-pipeline tracing
+    trace_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     # Stage results (populated during processing)
     local_path: Optional[str] = None
