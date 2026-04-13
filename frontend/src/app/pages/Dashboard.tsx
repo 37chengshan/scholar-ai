@@ -62,9 +62,7 @@ async function fetchRecentPapers() {
           }>;
         }>('/api/v1/dashboard/recent-papers?limit=3');
         
-        if (response.data.success) {
-          setRecentPapers(response.data.data);
-        }
+        setRecentPapers(response.data);
       } catch (err) {
       } finally {
         setRecentPapersLoading(false);
@@ -92,13 +90,11 @@ async function fetchRecentPapers() {
           }>;
         }>('/api/v1/sessions');
         
-        if (response.data.success) {
-          // Sort by lastActivityAt and take top 3
-          const sorted = response.data.data
-            .sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime())
-            .slice(0, 3);
-          setRecentSessions(sorted);
-        }
+        // Sort by lastActivityAt and take top 3
+        const sorted = response.data
+          .sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime())
+          .slice(0, 3);
+        setRecentSessions(sorted);
       } catch (err) {
       } finally {
         setRecentSessionsLoading(false);
