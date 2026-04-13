@@ -48,6 +48,11 @@ temp/
 coverage/
 .nyc_output/
 test-results/
+playwright-report/
+uat-test-results/
+
+# Frontend build
+frontend/dist/
 
 # Prisma
 prisma/migrations/*/

@@ -114,6 +114,22 @@ class Settings(BaseSettings):
             return url
         return url
 
+    @property
+    def DB_HOST(self) -> str:
+        """Extract host from DATABASE_URL for safe logging."""
+        url = self.DATABASE_URL
+        if "@" in url:
+            return url.split("@")[-1].split(":")[0].split("/")[0]
+        return "localhost"
+
+    @property
+    def NEO4J_HOST(self) -> str:
+        """Extract host from NEO4J_URI for safe logging."""
+        uri = self.NEO4J_URI
+        if "://" in uri:
+            return uri.split("://")[-1].split(":")[0]
+        return "localhost"
+
     # =========================================================================
     # Redis Configuration
     # =========================================================================
