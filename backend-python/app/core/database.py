@@ -2,14 +2,29 @@
 
 提供 Neo4j 和 Redis 的数据库连接管理。
 PostgreSQL 已迁移到 app/database.py (SQLAlchemy ORM)。
+
+Per Task 2: NEO4J_DISABLED 显式禁用逻辑
+- NEO4J_DISABLED=true: 主动跳过连接，打印 info 日志
+- NEO4J_DISABLED=false: 尝试连接，失败时 warn 不阻塞
+- Redis 连接失败必须 raise（必需服务）
 """
 
+import os
 from neo4j import AsyncGraphDatabase
 import redis.asyncio as redis
 from typing import Optional
 
 from app.config import settings
 from app.utils.logger import logger
+
+
+def _is_neo4j_disabled() -> bool:
+    """Check if Neo4j is explicitly disabled via environment variable.
+
+    Returns:
+        True if NEO4J_DISABLED=true, False otherwise.
+    """
+    return os.getenv("NEO4J_DISABLED", "false").lower() == "true"
 
 
 # =============================================================================
@@ -190,23 +205,45 @@ async def init_databases():
     """初始化 Neo4j 和 Redis 连接。
 
     PostgreSQL 已迁移到 app/database.py (SQLAlchemy)。
+
+    Per Task 2: NEO4J_DISABLED 显式禁用逻辑
+    - NEO4J_DISABLED=true: 主动跳过 Neo4j，打印 info 日志
+    - NEO4J_DISABLED=false: 尝试连接 Neo4j，失败时 warn 不阻塞
+    - Redis 连接失败必须 raise（必需服务）
     """
     logger.info("正在初始化 Neo4j 和 Redis 连接...")
 
-    # Neo4j
-    await neo4j_db.connect()
+    # Neo4j - 显式禁用检查
+    if _is_neo4j_disabled():
+        logger.info("NEO4J_DISABLED=true, 主动跳过 Neo4j 连接")
+    else:
+        # NEO4J_DISABLED=false 或未设置，尝试连接
+        try:
+            await neo4j_db.connect()
+        except Exception as e:
+            # 连接失败：warn 不阻塞（允许应用启动）
+            logger.warning(f"Neo4j 连接失败 (NEO4J_DISABLED=false): {e}")
 
-    # Redis
+    # Redis - 必需服务，失败必须 raise
     await redis_db.connect()
 
     logger.info("Neo4j 和 Redis 连接初始化完成")
 
 
 async def close_databases():
-    """关闭 Neo4j 和 Redis 连接。"""
+    """关闭 Neo4j 和 Redis 连接。
+
+    Per Task 2: NEO4J_DISABLED 显式禁用逻辑
+    - NEO4J_DISABLED=true: 跳过 Neo4j disconnect
+    - NEO4J_DISABLED=false: 尝试 disconnect
+    """
     logger.info("正在关闭 Neo4j 和 Redis 连接...")
 
-    await neo4j_db.disconnect()
+    # Neo4j - 仅在未禁用时关闭
+    if not _is_neo4j_disabled():
+        await neo4j_db.disconnect()
+
+    # Redis - 始终关闭
     await redis_db.disconnect()
 
     logger.info("Neo4j 和 Redis 连接已关闭")
