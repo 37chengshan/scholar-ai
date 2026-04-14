@@ -1,0 +1,153 @@
+{
+  "version": "1.0",
+  "papers": [
+    {
+      "paper_id": "test-paper-001",
+      "title": "Test Paper: Introduction to Machine Learning",
+      "queries": [
+        {
+          "id": "q1",
+          "query": "What is the main contribution of this paper?",
+          "expected_chunks": ["chunk-001", "chunk-002"],
+          "expected_sections": ["Introduction", "Conclusion"],
+          "query_type": "single"
+        },
+        {
+          "id": "q2",
+          "query": "How does the proposed method compare to baseline?",
+          "expected_chunks": ["chunk-003", "chunk-004", "chunk-005"],
+          "expected_sections": ["Methods", "Results"],
+          "query_type": "compare"
+        },
+        {
+          "id": "q3",
+          "query": "What are the key findings from the experimental results?",
+          "expected_chunks": ["chunk-006", "chunk-007"],
+          "expected_sections": ["Results", "Discussion"],
+          "query_type": "single"
+        },
+        {
+          "id": "q4",
+          "query": "How has the approach evolved from previous work?",
+          "expected_chunks": ["chunk-008", "chunk-009", "chunk-010"],
+          "expected_sections": ["Introduction", "Related Work", "Methods"],
+          "query_type": "evolution"
+        },
+        {
+          "id": "q5",
+          "query": "What methodology was used for the experiments?",
+          "expected_chunks": ["chunk-011", "chunk-012"],
+          "expected_sections": ["Methods"],
+          "query_type": "single"
+        }
+      ]
+    },
+    {
+      "paper_id": "test-paper-002",
+      "title": "Test Paper: Neural Network Optimization Techniques",
+      "queries": [
+        {
+          "id": "q6",
+          "query": "What optimization techniques are proposed?",
+          "expected_chunks": ["chunk-013", "chunk-014"],
+          "expected_sections": ["Methods", "Abstract"],
+          "query_type": "single"
+        },
+        {
+          "id": "q7",
+          "query": "Compare the performance of different optimization methods",
+          "expected_chunks": ["chunk-015", "chunk-016", "chunk-017"],
+          "expected_sections": ["Results", "Discussion"],
+          "query_type": "compare"
+        },
+        {
+          "id": "q8",
+          "query": "What are the limitations of the current approach?",
+          "expected_chunks": ["chunk-018", "chunk-019"],
+          "expected_sections": ["Discussion", "Conclusion"],
+          "query_type": "single"
+        }
+      ]
+    },
+    {
+      "paper_id": "test-paper-003",
+      "title": "Test Paper: Deep Learning for Image Classification",
+      "queries": [
+        {
+          "id": "q9",
+          "query": "How does this work build upon previous image classification methods?",
+          "expected_chunks": ["chunk-020", "chunk-021", "chunk-022"],
+          "expected_sections": ["Introduction", "Related Work", "Methods"],
+          "query_type": "evolution"
+        },
+        {
+          "id": "q10",
+          "query": "What dataset was used for training and evaluation?",
+          "expected_chunks": ["chunk-023", "chunk-024"],
+          "expected_sections": ["Methods", "Experiments"],
+          "query_type": "single"
+        },
+        {
+          "id": "q11",
+          "query": "What are the quantitative results compared to baseline methods?",
+          "expected_chunks": ["chunk-025", "chunk-026", "chunk-027"],
+          "expected_sections": ["Results", "Tables"],
+          "query_type": "compare"
+        }
+      ]
+    }
+  ],
+  "multimodal_queries": [
+    {
+      "id": "mq1",
+      "query": "What does Figure 3 show about performance comparison?",
+      "expected_content_type": ["image", "text"],
+      "expected_figure_id": "fig-003",
+      "paper_id": "test-paper-001"
+    },
+    {
+      "id": "mq2",
+      "query": "What information is presented in Table 2 regarding accuracy metrics?",
+      "expected_content_type": ["table", "text"],
+      "expected_table_id": "table-002",
+      "paper_id": "test-paper-002"
+    },
+    {
+      "id": "mq3",
+      "query": "What does the architecture diagram in Figure 1 illustrate?",
+      "expected_content_type": ["image", "text"],
+      "expected_figure_id": "fig-001",
+      "paper_id": "test-paper-003"
+    },
+    {
+      "id": "mq4",
+      "query": "How do the results in Figure 5 compare across different configurations?",
+      "expected_content_type": ["image", "text"],
+      "expected_figure_id": "fig-005",
+      "paper_id": "test-paper-001"
+    },
+    {
+      "id": "mq5",
+      "query": "What are the key parameters listed in Table 1?",
+      "expected_content_type": ["table", "text"],
+      "expected_table_id": "table-001",
+      "paper_id": "test-paper-002"
+    }
+  ],
+  "cross_paper_queries": [
+    {
+      "id": "cp1",
+      "query": "How do the optimization techniques in paper 2 compare to the methodology in paper 1?",
+      "expected_paper_ids": ["test-paper-001", "test-paper-002"],
+      "expected_sections": ["Methods", "Results"],
+      "query_type": "compare"
+    },
+    {
+      "id": "cp2",
+      "query": "What are the common findings across all three papers?",
+      "expected_paper_ids": ["test-paper-001", "test-paper-002", "test-paper-003"],
+      "expected_sections": ["Conclusion", "Discussion"],
+      "query_type": "compare"
+    }
+  ]
+}
