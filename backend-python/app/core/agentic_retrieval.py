@@ -5,6 +5,7 @@ Implements multi-round retrieval with:
 - Parallel sub-question execution via asyncio.gather
 - LLM synthesis of results
 - Convergence detection (max 3 rounds or early convergence)
+- Citation enforcement with post-processing validation and fallback
 
 Usage:
     orchestrator = AgenticRetrievalOrchestrator()
@@ -16,7 +17,9 @@ Usage:
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
+import re
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.utils.logger import logger
 from app.core.query_decomposer import (
@@ -419,7 +422,7 @@ Provide a concise synthesis that:
         query_type: QueryType,
         all_results: List[Dict[str, Any]],
     ) -> str:
-        """Generate final synthesis across all rounds.
+        """Generate final synthesis across all rounds with citation enforcement.
 
         Args:
             query: Original query
@@ -427,36 +430,25 @@ Provide a concise synthesis that:
             all_results: All round results
 
         Returns:
-            Final synthesized answer
+            Final synthesized answer with validated citations
         """
-        # Combine all round results
-        combined_context = []
+        # Collect all chunks for citation context
+        all_chunks = []
         for round_data in all_results:
-            round_num = round_data.get("round", 0)
             round_results = round_data.get("results", [])
-
-            round_context = []
             for result in round_results:
                 if not result.get("success", True):
                     continue
                 chunks = result.get("chunks", [])
-                if chunks:
-                    round_context.append(
-                        f"- {result.get('sub_question', 'N/A')}: "
-                        f"{result.get('summary', 'N/A')[:200]}"
-                    )
+                all_chunks.extend(chunks)
 
-            if round_context:
-                combined_context.append(
-                    f"Round {round_num}:\n" + "\n".join(round_context)
-                )
-
-        if not combined_context:
+        if not all_chunks:
             return "No relevant information found across all retrieval rounds."
 
-        full_context = "\n\n".join(combined_context)
+        # Build context with citations using helper method
+        full_context = self._build_context_with_citations(all_chunks)
 
-        # Call LLM for final synthesis
+        # Call LLM for final synthesis with citation enforcement
         try:
             from app.utils.zhipu_client import get_llm_client
 
@@ -478,23 +470,38 @@ Provide a concise synthesis that:
 2. Integrates all retrieved information
 3. Cites specific findings where relevant"""
 
-            prompt = f"""Generate a final synthesized answer based on all retrieval rounds.
+            # Citation enforcement prompt
+            citation_instruction = """
+CRITICAL CITATION REQUIREMENTS:
+- EVERY factual statement MUST include a citation in [Paper Title, Section] format
+- Use the exact citation markers provided in the context above
+- Minimum citation density: at least one citation per 2-3 sentences
+- Example format: "YOLOv1 introduced unified detection [YOLOv1 Paper, Introduction]."
+
+FORMAT YOUR RESPONSE:
+- Use ## headers for main sections
+- Use - bullet points for lists
+- Each bullet point must end with a citation"""
+
+            prompt = f"""Generate a final synthesized answer based on the retrieved information.
 
 Original query: {query}
 Query type: {query_type}
 
-Retrieved information across {len(all_results)} rounds:
+Retrieved information (each item includes a citation marker):
 {full_context}
 
 {synthesis_instruction}
 
-Format your response with clear sections and bullet points where appropriate."""
+{citation_instruction}
+
+Your answer MUST include citations from the provided context. Do not make claims without citations."""
 
             response = await llm_client.chat_completion(
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert research synthesis assistant.",
+                        "content": "You are an expert research synthesis assistant. You ALWAYS cite your sources using [Paper Title, Section] format.",
                     },
                     {"role": "user", "content": prompt},
                 ],
@@ -502,19 +509,21 @@ Format your response with clear sections and bullet points where appropriate."""
                 max_tokens=1500,
             )
 
-            return response.choices[0].message.content
+            raw_answer = response.choices[0].message.content
+
+            # Validate and fix citations if needed
+            validated_answer = self._validate_and_fix_citations(
+                answer=raw_answer,
+                all_results=all_results,
+                query=query,
+            )
+
+            return validated_answer
 
         except Exception as e:
             logger.error("Final synthesis failed", error=str(e))
-            # Fallback: simple concatenation with markdown formatting
-            return f"""## Synthesis
-
-Based on {len(all_results)} rounds of retrieval:
-
-{full_context}
-
-*Note: LLM synthesis failed, showing raw retrieved information.*
-"""
+            # Fallback: use structured fallback answer
+            return self._build_fallback_answer(all_chunks, query)
 
     async def _refine_subquestions(
         self,
@@ -706,6 +715,212 @@ Based on {len(all_results)} rounds of retrieval:
         else:
             page = chunk.get("page")
             return f"[{paper_title}, Page {page}]" if page else f"[{paper_title}]"
+
+    # ============================================================
+    # Citation Validation and Fallback Methods
+    # ============================================================
+
+    def _extract_citations_from_answer(
+        self,
+        answer: str,
+    ) -> List[Tuple[str, str]]:
+        """Extract [Paper Title, Section] citation markers from answer text.
+
+        Args:
+            answer: Generated answer text
+
+        Returns:
+            List of (paper_title, section) tuples extracted from citations
+        """
+        # Pattern: [Paper Title, Section] or [Paper Title, Page N]
+        pattern = r"\[([^,\[\]]+),\s*([^\[\]]+)\]"
+        matches = re.findall(pattern, answer)
+
+        citations = []
+        for paper, location in matches:
+            # Clean up extracted values
+            paper = paper.strip()
+            location = location.strip()
+            if paper and location:
+                citations.append((paper, location))
+
+        return citations
+
+    def _calculate_citation_density(
+        self,
+        answer: str,
+    ) -> float:
+        """Calculate citation density (citations per content length).
+
+        Args:
+            answer: Generated answer text
+
+        Returns:
+            Citation density ratio (higher = more citations)
+        """
+        citations = self._extract_citations_from_answer(answer)
+        citation_count = len(citations)
+
+        # Count meaningful content (excluding citation markers themselves)
+        # Remove citation markers to get pure content
+        content_only = re.sub(r"\[([^,\[\]]+),\s*([^\[\]]+)\]", "", answer)
+        content_only = content_only.strip()
+
+        # Calculate word count of content
+        word_count = len(content_only.split())
+
+        if word_count == 0:
+            return 0.0
+
+        # Density = citations per 100 words
+        density = (citation_count / word_count) * 100
+
+        return density
+
+    def _needs_citation_fallback(
+        self,
+        answer: str,
+        chunk_count: int,
+    ) -> bool:
+        """Determine if fallback answer is needed due to insufficient citations.
+
+        Args:
+            answer: Generated answer text
+            chunk_count: Number of chunks available for citation
+
+        Returns:
+            True if fallback answer should be used
+        """
+        citations = self._extract_citations_from_answer(answer)
+        citation_count = len(citations)
+
+        # Threshold: need at least 0.5 citations per chunk (minimum density)
+        # Example: 4 chunks -> need at least 2 citations
+        min_citations = max(1, int(chunk_count * 0.5))
+
+        # Also check density threshold (should have ~2 citations per 100 words)
+        density = self._calculate_citation_density(answer)
+
+        # Fallback needed if:
+        # 1. Citation count is below chunk-based threshold
+        # 2. OR density is very low (< 1 citation per 100 words)
+        needs_fallback = citation_count < min_citations or density < 1.0
+
+        logger.debug(
+            "Citation fallback check",
+            citation_count=citation_count,
+            min_citations=min_citations,
+            density=density,
+            needs_fallback=needs_fallback,
+        )
+
+        return needs_fallback
+
+    def _validate_and_fix_citations(
+        self,
+        answer: str,
+        all_results: List[Dict[str, Any]],
+        query: str,
+    ) -> str:
+        """Validate citations in answer and fix if insufficient.
+
+        Args:
+            answer: Generated answer text
+            all_results: All round results with chunks
+            query: Original user query
+
+        Returns:
+            Either original answer (if citations sufficient) or fallback answer
+        """
+        # Collect all chunks from results
+        all_chunks = []
+        for round_data in all_results:
+            round_results = round_data.get("results", [])
+            for result in round_results:
+                if not result.get("success", True):
+                    continue
+                chunks = result.get("chunks", [])
+                all_chunks.extend(chunks)
+
+        chunk_count = len(all_chunks)
+
+        # Check if fallback needed
+        if not self._needs_citation_fallback(answer, chunk_count):
+            logger.info(
+                "Citations sufficient, keeping original answer",
+                chunk_count=chunk_count,
+            )
+            return answer
+
+        # Generate fallback answer with proper citations
+        logger.warning(
+            "Insufficient citations, generating fallback answer",
+            chunk_count=chunk_count,
+            query=query[:50],
+        )
+
+        return self._build_fallback_answer(all_chunks, query)
+
+    def _build_fallback_answer(
+        self,
+        chunks: List[Dict[str, Any]],
+        query: str,
+    ) -> str:
+        """Build structured fallback answer with guaranteed citations.
+
+        Args:
+            chunks: All available chunks
+            query: Original user query
+
+        Returns:
+            Structured answer with proper [Paper, Section] citations for each item
+        """
+        if not chunks:
+            return "No relevant information found for your query."
+
+        # Group chunks by section
+        section_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for chunk in chunks:
+            section = chunk.get("section") or "General"
+            section_groups[section].append(chunk)
+
+        # Build structured answer
+        answer_parts = []
+        answer_parts.append(f"## Answer to: {query}")
+        answer_parts.append("")
+        answer_parts.append("Based on the retrieved sources:")
+        answer_parts.append("")
+
+        # For each section, add header and bullet items with citations
+        for section, section_chunks in section_groups.items():
+            # Add section header
+            answer_parts.append(f"### {section}")
+            answer_parts.append("")
+
+            # Sort by similarity (highest first)
+            sorted_chunks = sorted(
+                section_chunks,
+                key=lambda x: x.get("similarity", 0),
+                reverse=True,
+            )
+
+            # Add bullet points with citations
+            for chunk in sorted_chunks:
+                content = chunk.get("content", "")
+                citation = self._build_citation(chunk)
+
+                # Truncate content to ~150 chars for readability
+                truncated = self._truncate_at_sentence_boundary(content, 150)
+
+                answer_parts.append(f"- {truncated} {citation}")
+
+            answer_parts.append("")
+
+        # Add summary footer
+        answer_parts.append("---")
+        answer_parts.append(f"*Sources: {len(chunks)} chunks from {len(section_groups)} sections*")
+
+        return "\n".join(answer_parts)
 
     def _collect_sources(
         self,

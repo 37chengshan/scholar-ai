@@ -432,3 +432,358 @@ class TestCollectSourcesWithCitations:
 
         assert len(sources) == 1
         assert sources[0]["citation"] == "[Valid Paper, Intro]"
+
+
+class TestValidateAndFixCitations:
+    """Tests for _validate_and_fix_citations post-processing method."""
+
+    @pytest.fixture
+    def orchestrator(self) -> AgenticRetrievalOrchestrator:
+        """Create orchestrator instance."""
+        return AgenticRetrievalOrchestrator()
+
+    def test_extract_citation_markers(self, orchestrator: AgenticRetrievalOrchestrator):
+        """Test extraction of [Paper, Section] citation markers from answer."""
+        answer = """## YOLO Evolution
+
+YOLOv1 introduced the unified detection framework [YOLOv1 Paper, Introduction].
+Key improvements include:
+- Faster inference speed [YOLOv2 Paper, Method]
+- Better accuracy with anchor boxes [YOLOv2 Paper, Results]
+"""
+
+        citations = orchestrator._extract_citations_from_answer(answer)
+
+        assert len(citations) == 3
+        assert ("YOLOv1 Paper", "Introduction") in citations
+        assert ("YOLOv2 Paper", "Method") in citations
+        assert ("YOLOv2 Paper", "Results") in citations
+
+    def test_calculate_citation_density(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test citation density calculation."""
+        answer = """Content with [Paper A, Section 1] and [Paper B, Section 2].
+More content here [Paper C, Section 3]."""
+
+        # 3 citations, ~70 words -> density ~0.04
+        density = orchestrator._calculate_citation_density(answer)
+
+        # Citation density should be positive
+        assert density > 0
+        # Approximate check: 3 citations in ~20 words of content
+        assert density >= 0.1  # At least 10% citation rate
+
+    def test_citation_density_below_threshold_triggers_fallback(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test low citation density triggers fallback answer generation."""
+        answer = "This is a long answer without any citations at all. " * 10
+
+        # 0 citations, many words -> very low density
+        citations = orchestrator._extract_citations_from_answer(answer)
+        assert len(citations) == 0
+
+        # Should need fallback (density < threshold)
+        chunks = [
+            {
+                "content": "YOLOv1 content here.",
+                "paper_title": "YOLOv1",
+                "section": "Intro",
+                "similarity": 0.80,
+            },
+            {
+                "content": "YOLOv2 content here.",
+                "paper_title": "YOLOv2",
+                "section": "Method",
+                "similarity": 0.75,
+            },
+        ]
+
+        needs_fallback = orchestrator._needs_citation_fallback(answer, len(chunks))
+        assert needs_fallback is True
+
+    def test_citation_density_above_threshold_no_fallback(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test sufficient citation density does not trigger fallback."""
+        answer = "Answer with [Paper A, Intro] and [Paper B, Method] citations."
+
+        # 2 citations in short answer -> good density
+        chunks = [
+            {"content": "Content", "paper_title": "Paper A", "section": "Intro"},
+            {"content": "Content", "paper_title": "Paper B", "section": "Method"},
+        ]
+
+        needs_fallback = orchestrator._needs_citation_fallback(answer, len(chunks))
+        assert needs_fallback is False
+
+    def test_validate_returns_original_answer_when_sufficient_citations(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test validation returns original answer when citations are sufficient."""
+        answer = """## Summary
+
+Key findings [Paper A, Results] show improvements.
+Methods described in [Paper B, Method] are effective.
+"""
+
+        chunks = [
+            {
+                "id": "c1",
+                "content": "Findings content",
+                "paper_title": "Paper A",
+                "section": "Results",
+                "similarity": 0.85,
+            },
+            {
+                "id": "c2",
+                "content": "Methods content",
+                "paper_title": "Paper B",
+                "section": "Method",
+                "similarity": 0.80,
+            },
+        ]
+
+        all_results = [
+            {
+                "round": 1,
+                "results": [
+                    {
+                        "sub_question": "Test query",
+                        "chunks": chunks,
+                        "success": True,
+                    }
+                ],
+            }
+        ]
+
+        validated = orchestrator._validate_and_fix_citations(
+            answer=answer,
+            all_results=all_results,
+            query="Test query",
+        )
+
+        # Should return original answer when citations sufficient
+        assert validated == answer
+
+    def test_validate_returns_fallback_when_insufficient_citations(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test validation returns fallback answer when citations insufficient."""
+        answer = "This is a long answer without any proper citation markers."
+
+        chunks = [
+            {
+                "id": "c1",
+                "content": "YOLOv1 introduced unified detection framework.",
+                "paper_title": "YOLOv1 Paper",
+                "section": "Introduction",
+                "similarity": 0.85,
+            },
+            {
+                "id": "c2",
+                "content": "YOLOv2 improved with anchor boxes.",
+                "paper_title": "YOLOv2 Paper",
+                "section": "Method",
+                "similarity": 0.80,
+            },
+        ]
+
+        all_results = [
+            {
+                "round": 1,
+                "results": [
+                    {
+                        "sub_question": "YOLO evolution",
+                        "chunks": chunks,
+                        "success": True,
+                    }
+                ],
+            }
+        ]
+
+        validated = orchestrator._validate_and_fix_citations(
+            answer=answer,
+            all_results=all_results,
+            query="YOLO evolution",
+        )
+
+        # Should return fallback answer with proper citations
+        assert "[YOLOv1 Paper, Introduction]" in validated
+        assert "[YOLOv2 Paper, Method]" in validated
+
+
+class TestBuildFallbackAnswer:
+    """Tests for _build_fallback_answer method."""
+
+    @pytest.fixture
+    def orchestrator(self) -> AgenticRetrievalOrchestrator:
+        """Create orchestrator instance."""
+        return AgenticRetrievalOrchestrator()
+
+    def test_fallback_groups_chunks_by_section(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test fallback answer groups chunks by section."""
+        chunks = [
+            {
+                "content": "YOLOv1 intro content.",
+                "paper_title": "YOLOv1",
+                "section": "Introduction",
+                "similarity": 0.80,
+            },
+            {
+                "content": "YOLOv1 method content.",
+                "paper_title": "YOLOv1",
+                "section": "Method",
+                "similarity": 0.75,
+            },
+            {
+                "content": "YOLOv2 intro content.",
+                "paper_title": "YOLOv2",
+                "section": "Introduction",
+                "similarity": 0.85,
+            },
+        ]
+
+        fallback = orchestrator._build_fallback_answer(
+            chunks=chunks,
+            query="YOLO comparison",
+        )
+
+        # Should have section headers
+        assert "Introduction" in fallback
+        assert "Method" in fallback
+        # Should have citations for each chunk
+        assert "[YOLOv1, Introduction]" in fallback
+        assert "[YOLOv1, Method]" in fallback
+        assert "[YOLOv2, Introduction]" in fallback
+
+    def test_fallback_uses_citation_format(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test fallback uses [Paper Title, Section] citation format."""
+        chunks = [
+            {
+                "content": "Important finding.",
+                "paper_title": "Test Paper",
+                "section": "Results",
+                "page": 5,
+                "similarity": 0.90,
+            },
+        ]
+
+        fallback = orchestrator._build_fallback_answer(
+            chunks=chunks,
+            query="What are the results?",
+        )
+
+        # Must use exact citation format
+        assert "[Test Paper, Results]" in fallback
+
+    def test_fallback_falls_back_to_page_when_no_section(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test fallback uses Page format when section is missing."""
+        chunks = [
+            {
+                "content": "Content without section.",
+                "paper_title": "Paper X",
+                "section": None,
+                "page": 10,
+                "similarity": 0.70,
+            },
+        ]
+
+        fallback = orchestrator._build_fallback_answer(
+            chunks=chunks,
+            query="Query",
+        )
+
+        assert "[Paper X, Page 10]" in fallback
+
+    def test_fallback_uses_paper_id_when_no_title(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test fallback uses paper_id when paper_title is missing."""
+        chunks = [
+            {
+                "content": "Content without title.",
+                "paper_title": None,
+                "paper_id": "uuid-123",
+                "section": "Abstract",
+                "similarity": 0.75,
+            },
+        ]
+
+        fallback = orchestrator._build_fallback_answer(
+            chunks=chunks,
+            query="Query",
+        )
+
+        assert "[uuid-123, Abstract]" in fallback
+
+    def test_fallback_structure_has_headers_and_bullets(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test fallback answer uses proper structure with headers and bullets."""
+        chunks = [
+            {
+                "content": "First finding.",
+                "paper_title": "Paper A",
+                "section": "Results",
+                "similarity": 0.80,
+            },
+            {
+                "content": "Second finding.",
+                "paper_title": "Paper B",
+                "section": "Results",
+                "similarity": 0.75,
+            },
+        ]
+
+        fallback = orchestrator._build_fallback_answer(
+            chunks=chunks,
+            query="What are the findings?",
+        )
+
+        # Should have header format
+        assert "##" in fallback or "Results" in fallback
+        # Should use bullet format for items
+        assert "-" in fallback or "*" in fallback
+
+    def test_fallback_empty_chunks_returns_no_info_message(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test fallback with empty chunks returns appropriate message."""
+        fallback = orchestrator._build_fallback_answer(
+            chunks=[],
+            query="Query",
+        )
+
+        assert "No relevant information" in fallback or "no information" in fallback.lower()
+
+    def test_fallback_truncates_long_content(
+        self, orchestrator: AgenticRetrievalOrchestrator
+    ):
+        """Test fallback truncates very long chunk content."""
+        long_content = "Very long content. " * 50  # ~1000 chars
+        chunks = [
+            {
+                "content": long_content,
+                "paper_title": "Long Paper",
+                "section": "Intro",
+                "similarity": 0.80,
+            },
+        ]
+
+        fallback = orchestrator._build_fallback_answer(
+            chunks=chunks,
+            query="Query",
+        )
+
+        # Should truncate content (not include full 1000 chars)
+        assert len(fallback) < len(long_content) + 100  # +100 for structure
+        # Should still have citation
+        assert "[Long Paper, Intro]" in fallback
