@@ -66,7 +66,7 @@ class ImportJob(Base):
         String(32), ForeignKey("knowledge_bases.id"), nullable=False
     )
     batch_id: Mapped[Optional[str]] = mapped_column(
-        String(32), ForeignKey("import_batches.id"), nullable=True  # Wave 3 linkage
+        String(32), nullable=True  # Wave 3 linkage - FK will be added when import_batches created
     )
 
     # Source identification
