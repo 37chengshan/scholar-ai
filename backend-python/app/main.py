@@ -273,6 +273,15 @@ app.include_router(
     tags=["knowledge-bases"],
 )
 
+# Wave 1: ImportJob (41-01) - Unified import system
+from app.api.imports import router as imports_router
+
+app.include_router(
+    imports_router,
+    prefix="/api/v1",
+    tags=["imports"],
+)
+
 # Wave 3: Dashboard, Search, System (27-04)
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
