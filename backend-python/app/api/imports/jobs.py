@@ -241,9 +241,9 @@ async def upload_file_to_job(
             size_bytes=len(content),
         )
 
-        # Note: Worker processing will be added in Wave 5
-        # from app.workers.import_worker import process_import_job
-        # process_import_job.delay(job_id)
+        # Trigger worker processing (Wave 5)
+        from app.workers.import_worker import process_import_job
+        process_import_job.delay(job_id)
 
         return KBResponse(
             success=True,
@@ -404,6 +404,171 @@ async def list_import_jobs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to list import jobs: {str(e)}"),
+        )
+
+
+# =============================================================================
+# Wave 5: Retry and Cancel Endpoints
+# =============================================================================
+
+
+class RetryRequest(BaseModel):
+    """Request to retry a failed ImportJob."""
+
+    retryFromStage: Optional[str] = Field(
+        default=None,
+        description="Stage to retry from (resolve_source, download_pdf, etc.)",
+    )
+
+
+@router.post("/import-jobs/{job_id}/retry", response_model=KBResponse)
+async def retry_import_job(
+    job_id: str,
+    request: Optional[RetryRequest] = None,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retry a failed import job.
+
+    Per gpt意见.md 2.4.4: Only allow retry for failed status.
+    Resets status to queued and triggers worker.
+
+    Args:
+        job_id: ImportJob ID to retry
+        request: Optional retry stage specification
+        user_id: User ID for ownership check
+        db: Database session
+
+    Returns:
+        Updated ImportJob status
+    """
+    try:
+        service = ImportJobService()
+        job = await service.get_job(job_id, user_id, db)
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Import job not found"),
+            )
+
+        if job.status != "failed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("Only failed jobs can be retried"),
+            )
+
+        # Reset status
+        job.status = "queued"
+        job.stage = (
+            request.retryFromStage if request and request.retryFromStage
+            else "resolving_source"
+        )
+        job.error_code = None
+        job.error_message = None
+        job.retry_count += 1
+        job.updated_at = datetime.now(timezone.utc)
+        job.next_action = None  # Worker handles next steps
+        await db.commit()
+
+        logger.info(
+            "ImportJob retry triggered",
+            job_id=job_id,
+            retry_count=job.retry_count,
+            retry_from_stage=job.stage,
+        )
+
+        # Re-trigger worker
+        from app.workers.import_worker import process_import_job
+        process_import_job.delay(job_id)
+
+        return KBResponse(
+            success=True,
+            data={
+                "importJobId": job_id,
+                "status": "queued",
+                "stage": job.stage,
+                "retryCount": job.retry_count,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to retry ImportJob", error=str(e), job_id=job_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to retry import job: {str(e)}"),
+        )
+
+
+@router.post("/import-jobs/{job_id}/cancel", response_model=KBResponse)
+async def cancel_import_job(
+    job_id: str,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancel a running or queued import job.
+
+    Per gpt意见.md 2.4.5: Cancel jobs not yet completed.
+    Sets status to cancelled and clears next_action.
+
+    Args:
+        job_id: ImportJob ID to cancel
+        user_id: User ID for ownership check
+        db: Database session
+
+    Returns:
+        Cancelled ImportJob status
+    """
+    try:
+        service = ImportJobService()
+        job = await service.get_job(job_id, user_id, db)
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Import job not found"),
+            )
+
+        if job.status in ["completed", "cancelled"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("Cannot cancel completed or already cancelled job"),
+            )
+
+        # Use service method for consistent state update
+        await service.set_cancelled(job, db)
+
+        # Log event
+        await service.add_event(
+            job,
+            level="info",
+            event_type="job_cancelled",
+            message="User cancelled import",
+            db=db,
+        )
+
+        logger.info(
+            "ImportJob cancelled by user",
+            job_id=job_id,
+            previous_status=job.status,
+        )
+
+        return KBResponse(
+            success=True,
+            data={
+                "importJobId": job_id,
+                "status": "cancelled",
+                "cancelledAt": job.cancelled_at.isoformat() if job.cancelled_at else None,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to cancel ImportJob", error=str(e), job_id=job_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to cancel import job: {str(e)}"),
         )
 
 
