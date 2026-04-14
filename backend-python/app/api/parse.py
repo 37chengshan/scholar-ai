@@ -54,51 +54,64 @@ async def parse_pdf(
     - Magic bytes validation at start
     - Timeout protection
     """
+    # Task 1: Streaming file upload with tempfile per D-11
+    # Per D-11: Memory-stable for large files using streaming write
+    MAX_FILE_SIZE = settings.PARSER_MAX_FILE_SIZE_MB * 1024 * 1024
+    CHUNK_SIZE = 8 * 1024  # 8KB per Sprint 4 D-04
+
     temp_path = None
     try:
-        # Validate file extension and magic bytes (validate_pdf_upload handles this)
+        # Validate file extension and magic bytes
         await validate_pdf_upload(file)
 
-        # Task 3: Streaming file read with size limit
-        MAX_FILE_SIZE = settings.PARSER_MAX_FILE_SIZE_MB * 1024 * 1024
-        CHUNK_SIZE = 8192  # 8KB chunks
-
-        # Stream read and accumulate (validate_pdf_upload already reset pointer)
-        chunks = []
+        # Per D-11: Streaming write to tempfile (no b"".join())
         total_size = 0
 
-        while True:
-            chunk = await file.read(CHUNK_SIZE)
-            if not chunk:
-                break
+        with tempfile.NamedTemporaryFile(
+            suffix=".pdf",
+            delete=False,  # Keep file for processing
+            dir=settings.UPLOAD_DIR if os.path.exists(settings.UPLOAD_DIR) else None
+        ) as tmp:
+            try:
+                while True:
+                    chunk = await file.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
 
-            # Check size limit during streaming
-            total_size += len(chunk)
-            if total_size > MAX_FILE_SIZE:
-                logger.warning(
-                    "File size exceeded during streaming upload",
-                    filename=file.filename,
-                    total_size_mb=total_size / (1024 * 1024),
-                    limit_mb=settings.PARSER_MAX_FILE_SIZE_MB,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"文件大小超过限制 {settings.PARSER_MAX_FILE_SIZE_MB}MB",
-                )
+                    # Per D-11: Size check during streaming (not after)
+                    total_size += len(chunk)
+                    if total_size > MAX_FILE_SIZE:
+                        # Clean up tempfile before raising
+                        tmp.close()
+                        os.unlink(tmp.name)
+                        logger.warning(
+                            "File size exceeded during streaming upload",
+                            filename=file.filename,
+                            total_size_mb=total_size / (1024 * 1024),
+                            limit_mb=settings.PARSER_MAX_FILE_SIZE_MB,
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f"File too large: {total_size / (1024*1024):.1f}MB exceeds {settings.PARSER_MAX_FILE_SIZE_MB}MB",
+                        )
 
-            chunks.append(chunk)
+                    tmp.write(chunk)
 
-        # Merge chunks for temp file creation
-        content = b"".join(chunks)
+                temp_path = tmp.name
+
+            except Exception as e:
+                # Clean up on error
+                tmp.close()
+                if os.path.exists(tmp.name):
+                    os.unlink(tmp.name)
+                raise
 
         logger.info(
-            f"Parsing PDF: {file.filename}, size: {len(content)} bytes ({len(content) / (1024 * 1024):.1f}MB)"
+            "Streaming upload complete",
+            filename=file.filename,
+            size_mb=total_size / (1024 * 1024),
+            temp_path=temp_path,
         )
-
-        # Save to temp file for Docling processing
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp.write(content)
-            temp_path = tmp.name
 
         # Parse with Docling
         parser = DoclingParser()
