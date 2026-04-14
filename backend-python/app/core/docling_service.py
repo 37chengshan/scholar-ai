@@ -431,23 +431,26 @@ class DoclingParser:
         self,
         items: List[Dict[str, Any]],
         paper_id: str,
+        section_spans: Optional[Dict] = None,  # NEW: Section spans from extract_imrad_structure()
         imrad_structure: Optional[Dict] = None,
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Chunk text with semantic awareness, overlap, and quality optimization.
 
-        Per D-03: Advanced semantic chunking with:
+        Per D-03, D-06: Advanced semantic chunking with:
         - Config-driven chunk size (default 500 words)
         - Overlap mechanism (default 100 words)
         - Semantic boundary protection
-        - IMRaD-adaptive chunk sizes
+        - IMRaD-adaptive chunk sizes via section_spans
+        - Section-first chunking flow
         - Quality evaluation
 
         Args:
             items: Parsed items from Docling
             paper_id: Paper UUID
-            imrad_structure: IMRaD section info (optional)
+            section_spans: Section spans from extract_imrad_structure() (preferred)
+            imrad_structure: IMRaD section info (legacy, use section_spans instead)
             chunk_size: Override config chunk size (optional)
             chunk_overlap: Override config overlap (optional)
 
@@ -455,9 +458,13 @@ class DoclingParser:
             List of chunks with page tracking, section info, and overlap tracking
         """
         from app.config import settings
+        from app.core.imrad_extractor import get_section_chunk_params
 
         chunk_size = chunk_size or settings.CHUNK_SIZE
         chunk_overlap = chunk_overlap or settings.CHUNK_OVERLAP
+
+        # Use section_spans if available, fall back to imrad_structure
+        section_info = section_spans or imrad_structure
 
         chunks = []
 
@@ -472,19 +479,20 @@ class DoclingParser:
             if word_count < 1:
                 continue
 
+            # Per D-06: Pass page for range matching in _assign_section
             section = (
-                self._assign_section(text, imrad_structure) if imrad_structure else ""
+                self._assign_section(text, section_info, page=page) if section_info else ""
             )
 
             has_equations = self._has_equations(text)
             has_figures = "figure" in text.lower() or "table" in text.lower()
             has_special_boundaries = self._detect_special_boundaries(text)
 
+            # Per D-06: Use section-specific chunk sizes from SECTION_CHUNK_SIZES
             adaptive_size = chunk_size
-            if imrad_structure and section:
-                adaptive_size = self._adaptive_chunk_size_by_section(
-                    section, chunk_size
-                )
+            if section:
+                section_params = get_section_chunk_params(section)
+                adaptive_size = chunk_size or section_params["size"]
 
             chunks.append(
                 {
@@ -757,19 +765,115 @@ class DoclingParser:
 
         return ChunkQualityReport(metrics)
 
-    def _assign_section(self, text: str, imrad_structure: dict) -> str:
-        """Assign section based on IMRaD structure.
+    def _assign_section(
+        self,
+        text: str,
+        imrad_structure: dict,
+        page: Optional[int] = None,
+    ) -> str:
+        """Assign section based on IMRaD structure with priority logic.
 
-        This is a placeholder - actual section assignment
-        will be done by PDF worker with page information.
+        Per D-06: Priority order:
+        1. heading命中 (highest confidence)
+        2. page range命中 (medium confidence)
+        3. IMRaD anchor命中
+        4. Keyword rules兜底
 
-        Returns empty string instead of None to prevent None-related errors.
+        Args:
+            text: Text to check for heading/keywords
+            imrad_structure: Section spans from extract_imrad_structure()
+            page: Page number for range matching
+
+        Returns:
+            Section name (not empty string)
         """
-        for section_name, section_data in imrad_structure.items():
-            if section_name.startswith("_"):
-                continue
-            pass
-        return ""  # Fix: Return empty string instead of None
+        # Priority 1: Check for heading match
+        heading_section = self._detect_heading_in_text(text)
+        if heading_section:
+            return heading_section
+
+        # Priority 2: Check page range match
+        if page and imrad_structure:
+            for section_name, section_data in imrad_structure.items():
+                if section_name.startswith("_"):
+                    continue
+                if isinstance(section_data, dict):
+                    # Support both page_start/page_end and start_page/end_page formats
+                    start = section_data.get("page_start") or section_data.get("start_page", 0)
+                    end = section_data.get("page_end") or section_data.get("end_page", 999)
+                    if start is not None and end is not None and start <= page <= end:
+                        confidence = section_data.get("confidence", 0.5)
+                        if confidence >= 0.7:
+                            return section_name
+
+        # Priority 3: Check anchor mentions
+        if imrad_structure:
+            for section_name, section_data in imrad_structure.items():
+                if section_name.startswith("_"):
+                    continue
+                anchors = section_data.get("anchors", [])
+                if anchors:
+                    for anchor in anchors:
+                        if isinstance(anchor, str) and anchor.lower() in text.lower():
+                            return section_name
+
+        # Priority 4: Keyword fallback
+        return self._detect_section_keywords_in_text(text) or ""
+
+    def _detect_heading_in_text(self, text: str) -> Optional[str]:
+        """Detect if text starts with a section heading.
+
+        Per D-06: Heading detection with high confidence.
+        Headings are typically:
+        - Short (< 50 chars)
+        - Start with number or keyword
+        - End without punctuation
+        """
+        from app.core.imrad_extractor import IMRAD_PATTERNS
+
+        text = text.strip()
+        if len(text) > 50:
+            return None
+
+        # Check for numbered headings: "1. Introduction", "2 Methods"
+        numbered_match = re.match(r"^(\d+)[.\s]*([a-zA-Z]+)", text)
+        if numbered_match:
+            keyword = numbered_match.group(2).lower()
+            for section, patterns in IMRAD_PATTERNS.items():
+                if any(re.search(p, keyword, re.IGNORECASE) for p in patterns):
+                    return section
+
+        # Check for keyword headings
+        for section, patterns in IMRAD_PATTERNS.items():
+            for pattern in patterns:
+                try:
+                    if re.match(pattern, text.lower(), re.IGNORECASE):
+                        return section
+                except re.error:
+                    continue
+
+        return None
+
+    def _detect_section_keywords_in_text(self, text: str) -> Optional[str]:
+        """Detect section from content keywords (fallback).
+
+        Per D-06: Keyword fallback when heading and page range don't match.
+        More lenient than heading detection - looks for section
+        keywords in first ~100 chars of content.
+        """
+        from app.core.imrad_extractor import IMRAD_PATTERNS
+
+        text_preview = text[:100].lower()
+
+        for section, patterns in IMRAD_PATTERNS.items():
+            for pattern in patterns:
+                try:
+                    if re.search(pattern, text_preview, re.IGNORECASE):
+                        return section
+                except re.error:
+                    continue
+
+        return None
 
     async def extract_imrad(self, markdown: str) -> dict:
         """

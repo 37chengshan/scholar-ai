@@ -391,6 +391,38 @@ def _create_empty_result() -> Dict[str, Any]:
     }
 
 
+# Per D-06: Section-specific chunk sizes for IMRaD-adaptive chunking
+# Different sections have different information density
+SECTION_CHUNK_SIZES = {
+    "introduction": {"size": 1000, "overlap": 120},  # 900-1200 range, background+motivation
+    "methods": {"size": 800, "overlap": 150},  # 700-900 range, step-by-step procedures
+    "results": {"size": 650, "overlap": 100},  # 500-800 range, data+observations
+    "discussion": {"size": 900, "overlap": 120},  # 800-1000 range, complete arguments
+    "conclusion": {"size": 900, "overlap": 120},  # Same as discussion
+    "abstract": {"size": 400, "overlap": 50},  # Shorter, concise summary
+    "default": {"size": 500, "overlap": 100},  # Fallback for unknown sections
+}
+
+
+def get_section_chunk_params(section: str) -> Dict[str, int]:
+    """Get chunk size and overlap for a section.
+
+    Per D-06: Different sections have different information density.
+    - Introduction: Larger chunks for context (background + motivation)
+    - Methods: Medium chunks for procedures (step-by-step)
+    - Results: Smaller chunks for data (dense tables/figures)
+    - Discussion: Larger chunks for arguments (complete reasoning)
+    - Conclusion: Smaller chunks for summary (concise)
+
+    Args:
+        section: IMRaD section name
+
+    Returns:
+        Dict with 'size' and 'overlap' keys
+    """
+    return SECTION_CHUNK_SIZES.get(section.lower(), SECTION_CHUNK_SIZES["default"])
+
+
 def extract_metadata(
     items: List[Dict[str, Any]], arxiv_id: Optional[str] = None
 ) -> Dict[str, Any]:
