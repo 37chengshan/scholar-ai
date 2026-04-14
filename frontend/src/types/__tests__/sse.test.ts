@@ -28,36 +28,59 @@ import {
 
 describe('SSEEventType enum', () => {
   it('should contain all required event types', () => {
-    const expectedTypes = [
+    // New event types (HARD RULE 0.2)
+    const newEventTypes = [
+      'session_start',
       'routing_decision',
+      'phase',
+      'reasoning',
+      'message',
+      'tool_call',
+      'tool_result',
+      'citation',
+      'confirmation_required',
+      'cancel',
+      'done',
+      'error',
+      'heartbeat',
+    ];
+
+    // Legacy event types (backward compatibility)
+    const legacyEventTypes = [
       'thinking_status',
       'step_progress',
       'thought',
-      'tool_call',
-      'tool_result',
-      'message',
-      'error',
-      'done',
     ];
+
+    const expectedTypes = [...newEventTypes, ...legacyEventTypes];
 
     const actualTypes = Object.values(SSEEventType);
 
-    expect(actualTypes).toHaveLength(expectedTypes.length);
-    expectedTypes.forEach((type) => {
+    // Check all new event types are present
+    newEventTypes.forEach((type) => {
       expect(actualTypes).toContain(type);
     });
   });
 
   it('should have correct enum values', () => {
+    // New event types (HARD RULE 0.2)
+    expect(SSEEventType.SESSION_START).toBe('session_start');
     expect(SSEEventType.ROUTING_DECISION).toBe('routing_decision');
-    expect(SSEEventType.THINKING_STATUS).toBe('thinking_status');
-    expect(SSEEventType.STEP_PROGRESS).toBe('step_progress');
-    expect(SSEEventType.THOUGHT).toBe('thought');
+    expect(SSEEventType.PHASE).toBe('phase');
+    expect(SSEEventType.REASONING).toBe('reasoning');
     expect(SSEEventType.TOOL_CALL).toBe('tool_call');
     expect(SSEEventType.TOOL_RESULT).toBe('tool_result');
     expect(SSEEventType.MESSAGE).toBe('message');
+    expect(SSEEventType.CITATION).toBe('citation');
+    expect(SSEEventType.CONFIRMATION_REQUIRED).toBe('confirmation_required');
+    expect(SSEEventType.CANCEL).toBe('cancel');
     expect(SSEEventType.ERROR).toBe('error');
     expect(SSEEventType.DONE).toBe('done');
+    expect(SSEEventType.HEARTBEAT).toBe('heartbeat');
+    // Legacy event types
+    expect(SSEEventType.THINKING_STATUS).toBe('thinking_status');
+    expect(SSEEventType.STEP_PROGRESS).toBe('step_progress');
+    expect(SSEEventType.THOUGHT).toBe('thought');
   });
 });
 
@@ -97,6 +120,7 @@ describe('SSEEvent contract fields', () => {
       session_id: 'session-abc',
       type: SSEEventType.MESSAGE,
       data: {},
+      message_id: 'msg-123', // HARD RULE 0.2
     };
 
     expect(event.id).toBeDefined();
@@ -111,6 +135,7 @@ describe('SSEEvent contract fields', () => {
       session_id: 'session-abc',
       type: SSEEventType.MESSAGE,
       data: {},
+      message_id: 'msg-123', // HARD RULE 0.2
     };
 
     expect(event.sequence).toBeDefined();
@@ -125,6 +150,7 @@ describe('SSEEvent contract fields', () => {
       session_id: 'session-abc',
       type: SSEEventType.MESSAGE,
       data: {},
+      message_id: 'msg-123', // HARD RULE 0.2
     };
 
     expect(event.timestamp).toBeDefined();
@@ -139,10 +165,27 @@ describe('SSEEvent contract fields', () => {
       session_id: 'session-abc',
       type: SSEEventType.MESSAGE,
       data: {},
+      message_id: 'msg-123', // HARD RULE 0.2
     };
 
     expect(event.session_id).toBeDefined();
     expect(typeof event.session_id).toBe('string');
+  });
+
+  // HARD RULE 0.2: message_id is required
+  it('should require message_id field (string)', () => {
+    const event: SSEEvent = {
+      id: 'uuid-123',
+      sequence: 1,
+      timestamp: Date.now(),
+      session_id: 'session-abc',
+      type: SSEEventType.MESSAGE,
+      data: {},
+      message_id: 'msg-123',
+    };
+
+    expect(event.message_id).toBeDefined();
+    expect(typeof event.message_id).toBe('string');
   });
 
   it('should require type field (SSEEventType)', () => {
@@ -153,6 +196,7 @@ describe('SSEEvent contract fields', () => {
       session_id: 'session-abc',
       type: SSEEventType.MESSAGE,
       data: {},
+      message_id: 'msg-123', // HARD RULE 0.2
     };
 
     expect(event.type).toBeDefined();
@@ -167,6 +211,7 @@ describe('SSEEvent contract fields', () => {
       session_id: 'session-abc',
       type: SSEEventType.MESSAGE,
       data: {},
+      message_id: 'msg-123', // HARD RULE 0.2
     };
 
     expect(event.data).toBeDefined();
@@ -264,13 +309,13 @@ describe('Event data interfaces', () => {
     expect(['warning', 'error', 'critical']).toContain(data.severity);
   });
 
-  it('DoneData should have required fields', () => {
+  it('DoneData should have optional fields', () => {
     const data: DoneData = {
-      completion_status: 'success',
+      finish_reason: 'stop',
     };
 
-    expect(data.completion_status).toBeDefined();
-    expect(['success', 'partial', 'failed']).toContain(data.completion_status);
+    expect(data.finish_reason).toBeDefined();
+    expect(['stop', 'tool_calls', 'length', 'cancel']).toContain(data.finish_reason);
   });
 });
 
@@ -283,6 +328,7 @@ describe('isSSEEventOfType type guard', () => {
       session_id: 'session-abc',
       type: SSEEventType.MESSAGE,
       data: { content: 'test' },
+      message_id: 'msg-123', // HARD RULE 0.2
     };
 
     expect(isSSEEventOfType(event, SSEEventType.MESSAGE)).toBe(true);
@@ -296,6 +342,7 @@ describe('isSSEEventOfType type guard', () => {
       session_id: 'session-abc',
       type: SSEEventType.MESSAGE,
       data: { content: 'test' },
+      message_id: 'msg-123', // HARD RULE 0.2
     };
 
     expect(isSSEEventOfType(event, SSEEventType.ERROR)).toBe(false);
@@ -312,6 +359,7 @@ describe('isSSEEventOfType type guard', () => {
         session_id: 'session-abc',
         type: eventType,
         data: {},
+        message_id: 'msg-123', // HARD RULE 0.2
       };
 
       expect(isSSEEventOfType(event, eventType)).toBe(true);
@@ -320,12 +368,13 @@ describe('isSSEEventOfType type guard', () => {
 });
 
 describe('createSSEEvent helper', () => {
-  it('should create event with all contract fields', () => {
+  it('should create event with all contract fields including message_id (HARD RULE 0.2)', () => {
     const event = createSSEEvent(
       SSEEventType.MESSAGE,
       { content: 'test' },
       'session-abc',
-      1
+      1,
+      'msg-123' // message_id
     );
 
     expect(event.id).toBeDefined();
@@ -334,6 +383,7 @@ describe('createSSEEvent helper', () => {
     expect(event.session_id).toBe('session-abc');
     expect(event.type).toBe(SSEEventType.MESSAGE);
     expect(event.data).toEqual({ content: 'test' });
+    expect(event.message_id).toBe('msg-123'); // HARD RULE 0.2
   });
 
   it('should generate valid UUID for id', () => {
@@ -347,6 +397,18 @@ describe('createSSEEvent helper', () => {
     // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
     expect(event.id).toMatch(uuidRegex);
+  });
+
+  it('should generate message_id if not provided (HARD RULE 0.2)', () => {
+    const event = createSSEEvent(
+      SSEEventType.MESSAGE,
+      {},
+      'session-abc',
+      1
+    );
+
+    expect(event.message_id).toBeDefined();
+    expect(typeof event.message_id).toBe('string');
   });
 
   it('should increment sequence correctly', () => {

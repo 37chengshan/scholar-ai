@@ -4,12 +4,62 @@
  * Shared type definitions for all chat components in Phase 28.
  * Used by ToolCallCard, CitationsPanel, TokenMonitor, ConfirmationDialog,
  * and all 15+ tool-specific components.
+ *
+ * Phase 5.1: Extended for Thinking refactor with AgentPhase, ToolTimelineItem, CitationItem.
  */
+
+/**
+ * Agent processing phase for thinking visualization
+ * Per implementation plan v3 Section 3.1
+ */
+export type AgentPhase =
+  | 'idle'
+  | 'analyzing'
+  | 'retrieving'
+  | 'reading'
+  | 'tool_calling'
+  | 'synthesizing'
+  | 'verifying'
+  | 'done'
+  | 'error'
+  | 'cancelled';
+
+/**
+ * Stream status for message state machine
+ * Per HARD RULE 0.3: idle → streaming → completed/error/cancelled
+ */
+export type StreamStatus = 'idle' | 'streaming' | 'completed' | 'error' | 'cancelled';
 
 /**
  * Status of a tool call execution
  */
 export type ToolCallStatus = 'pending' | 'running' | 'success' | 'error';
+
+/**
+ * Tool timeline item for real-time tool tracking
+ * Per implementation plan v3 Section 3.1 ChatStreamState.toolTimeline
+ */
+export interface ToolTimelineItem {
+  id: string;
+  tool: string;
+  label: string;
+  status: 'running' | 'success' | 'failed';
+  summary?: string;
+  startedAt?: number;
+  endedAt?: number;
+}
+
+/**
+ * Citation item for message references
+ * Per implementation plan v3 Section 3.1 ChatStreamState.citations
+ */
+export interface CitationItem {
+  paper_id: string;
+  title: string;
+  pages?: number[];
+  hits?: number;
+  relevance?: number;
+}
 
 /**
  * Represents a tool call made by the Agent during a chat session.

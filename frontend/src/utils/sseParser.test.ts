@@ -207,7 +207,11 @@ describe('validateEventContract', () => {
     const event: ParsedSSEEvent = {
       type: 'tool_call',
       data: {
+        id: 'tc-123',
         tool: 'web_search',
+        label: 'Web Search',
+        status: 'running',
+        message_id: 'msg-123', // HARD RULE 0.2
         timestamp: '2024-01-15T10:30:05Z',
       },
       raw: '',
@@ -216,7 +220,7 @@ describe('validateEventContract', () => {
     expect(validateEventContract(event)).toBe(true);
   });
 
-  it('throws for missing tool in tool_call', () => {
+  it('throws for missing id in tool_call', () => {
     const event: ParsedSSEEvent = {
       type: 'tool_call',
       data: {
@@ -225,14 +229,18 @@ describe('validateEventContract', () => {
       raw: '',
     };
 
-    expect(() => validateEventContract(event)).toThrow('missing required fields [tool]');
+    expect(() => validateEventContract(event)).toThrow('missing required fields');
   });
 
   it('validates tool_result event with required fields', () => {
     const event: ParsedSSEEvent = {
       type: 'tool_result',
       data: {
+        id: 'tc-123',
         tool: 'web_search',
+        label: 'Web Search',
+        status: 'success',
+        message_id: 'msg-123', // HARD RULE 0.2
         result: { status: 'success' },
         timestamp: '2024-01-15T10:30:10Z',
       },
@@ -242,10 +250,12 @@ describe('validateEventContract', () => {
     expect(validateEventContract(event)).toBe(true);
   });
 
-  it('validates done event with only timestamp', () => {
+  it('validates done event with required fields', () => {
     const event: ParsedSSEEvent = {
       type: 'done',
       data: {
+        finish_reason: 'stop',
+        message_id: 'msg-123', // HARD RULE 0.2
         timestamp: '2024-01-15T10:31:00Z',
       },
       raw: '',
@@ -258,7 +268,9 @@ describe('validateEventContract', () => {
     const event: ParsedSSEEvent = {
       type: 'error',
       data: {
-        error: 'Something went wrong',
+        code: 'UNKNOWN',
+        message: 'Something went wrong',
+        message_id: 'msg-123', // HARD RULE 0.2
         timestamp: '2024-01-15T10:31:00Z',
       },
       raw: '',
@@ -554,17 +566,13 @@ describe('EVENT_CONTRACTS', () => {
 
   it('defines routing_decision contract (P2)', () => {
     expect(EVENT_CONTRACTS.routing_decision).toEqual([
-      'complexity',
-      'reasoning',
-      'method',
-      'mode',
-      'sequence',
-      'timestamp',
-      'session_id',
+      'route',
+      'confidence',
+      'message_id',
     ]);
   });
 
-  it('defines thinking_status contract (P2)', () => {
+  it('defines thinking_status contract (legacy)', () => {
     expect(EVENT_CONTRACTS.thinking_status).toEqual([
       'status',
       'summary',

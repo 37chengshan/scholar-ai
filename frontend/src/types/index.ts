@@ -5,10 +5,18 @@
  * Matches backend Prisma schema and API response formats.
  */
 
+// Import types from sibling modules for local use
+import type {
+  AgentPhase,
+  StreamStatus,
+  ToolTimelineItem,
+  CitationItem,
+} from './chat';
+
 // SSE Event Types
 export * from './sse';
 
-// Chat Types
+// Chat Types (re-export for external modules)
 export * from './chat';
 
 /**
@@ -134,6 +142,10 @@ export interface Session {
 
 /**
  * Chat message entity
+ *
+ * Phase 5.1: Extended with thinking-related fields for Agent-Native Chat.
+ * Per implementation plan v3 Section 3.1 ChatStreamState.
+ * All new fields are optional for backward compatibility.
  */
 export interface Message {
   id: string;
@@ -142,6 +154,41 @@ export interface Message {
   content: string;
   tokensUsed?: number | null;
   createdAt: string;
+
+  // === Phase 5.1: Thinking-related fields ===
+
+  /** Reasoning process content for Think block display */
+  reasoningBuffer?: string;
+
+  /** Current agent processing phase */
+  currentPhase?: AgentPhase;
+
+  /** Human-readable phase label for UI */
+  phaseLabel?: string;
+
+  /** Tool call timeline for real-time tracking */
+  toolTimeline?: ToolTimelineItem[];
+
+  /** Citations/references for this message */
+  citations?: CitationItem[];
+
+  /** Stream status state machine (HARD RULE 0.3) */
+  streamStatus?: StreamStatus;
+
+  /** Cost in currency units */
+  cost?: number;
+
+  /** Processing duration in milliseconds */
+  duration?: number;
+
+  /** Error info if streamStatus is 'error' */
+  error?: { code: string; message: string };
+
+  /** Timestamp when streaming started */
+  startedAt?: number;
+
+  /** Timestamp when streaming ended */
+  endedAt?: number;
 }
 
 /**

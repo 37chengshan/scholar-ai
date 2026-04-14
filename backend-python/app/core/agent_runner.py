@@ -24,7 +24,7 @@ Usage:
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, AsyncGenerator
 from dataclasses import dataclass
 import json
 import asyncio
@@ -39,6 +39,7 @@ from app.utils.logger import logger
 from app.utils.zhipu_client import get_llm_client
 from app.utils.token_tracker import TokenTracker
 from app.utils.audit_logger import get_audit_logger
+from app.llm.glm_client import GLM45AirClient
 
 
 # Error recovery constants per D-12
@@ -654,6 +655,105 @@ class AgentRunner:
 
         except Exception as e:
             logger.error("LLM call failed", error=str(e))
+            raise
+
+    async def _think_stream(
+        self,
+        system_prompt: str,
+        messages: List[Dict[str, Any]],
+        tools_schema: List[Dict[str, Any]],
+        user_id: str = "",
+        session_id: str = "",
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """模型流适配层 - 只负责调用 LLM 和解析 chunk。
+
+        HARD RULE: 此方法不做：
+        - ❌ phase 推断（如 "analyzing → retrieving"）
+        - ❌ 工具执行
+        - ❌ 消息拼接
+        - ❌ 业务逻辑
+
+        此方法只做：
+        1. 调用 llm_client.chat_stream()
+        2. 遍历 chunk，提取 reasoning_content / content / tool_calls
+        3. 发送原始事件（不带 phase，不带业务判断）
+        4. 返回结果供上层处理
+
+        Args:
+            system_prompt: 系统提示词
+            messages: 对话消息列表
+            tools_schema: 工具定义 schema
+            user_id: 用户 ID（用于日志）
+            session_id: 会话 ID（用于日志）
+
+        Yields:
+            原始事件 dict，包含：
+                - type: "reasoning" | "content" | "tool_call"
+                - content: 内容文本（reasoning/content 类型）
+                - id/name/arguments: 工具调用数据（tool_call 类型）
+        """
+        logger.info(
+            "Starting stream adapter",
+            user_id=user_id,
+            session_id=session_id,
+            message_count=len(messages),
+            tool_count=len(tools_schema),
+        )
+
+        # 获取 GLM45AirClient 实例
+        # 如果注入的 llm_client 是 GLM45AirClient，直接使用
+        # 否则创建新实例
+        stream_client: GLM45AirClient
+        if isinstance(self.llm_client, GLM45AirClient):
+            stream_client = self.llm_client
+        else:
+            # 为流式调用创建专用客户端
+            stream_client = GLM45AirClient()
+
+        try:
+            # 调用 chat_stream() - 只做流式调用，不做业务逻辑
+            async for chunk in stream_client.chat_stream(
+                system_prompt=system_prompt,
+                messages=messages,
+                enable_thinking=True,  # 启用思考模式
+            ):
+                # 只发送原始事件，不带 phase
+                chunk_type = chunk.get("type")
+
+                if chunk_type == "reasoning":
+                    # 原始思考内容，不做 phase 推断
+                    yield {
+                        "type": "reasoning",
+                        "content": chunk.get("content", ""),
+                    }
+
+                elif chunk_type == "content":
+                    # 原始输出内容，不做 phase 推断
+                    yield {
+                        "type": "content",
+                        "content": chunk.get("content", ""),
+                    }
+
+                elif chunk_type == "tool_call":
+                    # 原始工具调用数据，不做执行
+                    yield {
+                        "type": "tool_call",
+                        "id": chunk.get("id"),
+                        "name": chunk.get("name"),
+                        "arguments": chunk.get("arguments"),
+                    }
+
+                # 不做 finish 处理，交给上层
+
+            logger.info("Stream adapter completed")
+
+        except Exception as e:
+            logger.error("Stream adapter failed", error=str(e))
+            # 发送错误事件，让上层处理
+            yield {
+                "type": "error",
+                "error": str(e),
+            }
             raise
 
     async def _execute_tool(

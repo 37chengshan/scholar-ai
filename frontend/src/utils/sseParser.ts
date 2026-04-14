@@ -6,12 +6,13 @@
  * - Contract validation for event fields
  * - Last-Event-ID support for resumption
  * - EventSource integration helpers
+ * - message_id extraction (HARD RULE 0.2)
  *
  * Standard SSE Format:
  * ```
  * id: <uuid>
  * event: <type>
- * data: <json>
+ * data: <json with message_id>
  *
  * ```
  */
@@ -36,49 +37,67 @@ export class ContractViolationError extends Error {
 
 /**
  * Parsed SSE event structure
+ * Includes message_id for event correlation (HARD RULE 0.2)
  */
 export interface ParsedSSEEvent {
   id?: string;
   type: SSEEventType;
   data: Record<string, unknown>;
+  /** Message ID for event correlation (HARD RULE 0.2) */
+  message_id?: string;
   raw: string;
 }
 
 /**
  * Event contract definitions - required fields per event type
  *
+ * HARD RULE 0.2: message_id is required for all non-heartbeat events.
  * P2: Contract Validation
  * Each event type has specific required fields that must be present.
  * This enforces the frontend-backend contract.
+ *
+ * Note: Uses string keys to support both new and legacy event types.
  */
-export const EVENT_CONTRACTS: Record<SSEEventType, string[]> = {
-  // Agent thinking events
-  thought: ['content', 'timestamp'],
+export const EVENT_CONTRACTS: Record<string, string[]> = {
+  // Session initialization (HARD RULE 0.2)
+  session_start: ['session_id', 'task_type', 'message_id'],
+
+  // Routing decision
+  routing_decision: ['route', 'confidence', 'message_id'],
+
+  // Phase switching
+  phase: ['phase', 'label', 'message_id'],
+
+  // Reasoning stream
+  reasoning: ['delta', 'seq', 'message_id'],
+
+  // Message stream
+  message: ['delta', 'seq', 'message_id'],
 
   // Tool execution events
-  tool_call: ['tool', 'timestamp'],
-  tool_result: ['tool', 'result', 'timestamp'],
-
-  // User confirmation events
-  confirmation_required: ['operation', 'risk_level', 'timestamp'],
-
-  // Final response
-  message: ['content', 'timestamp'],
-
-  // Stream completion
-  done: ['timestamp'],
-
-  // Error events
-  error: ['error', 'timestamp'],
+  tool_call: ['id', 'tool', 'label', 'status', 'message_id'],
+  tool_result: ['id', 'tool', 'label', 'status', 'message_id'],
 
   // Citation events
-  citation: ['source', 'timestamp'],
+  citation: ['paper_id', 'title', 'message_id'],
+
+  // User confirmation events
+  confirmation_required: ['operation', 'risk_level', 'message_id'],
+
+  // Cancel events
+  cancel: ['reason', 'message_id'],
+
+  // Stream completion
+  done: ['finish_reason', 'message_id'],
+
+  // Error events
+  error: ['code', 'message', 'message_id'],
 
   // Heartbeat - no required fields (keepalive)
   heartbeat: [],
 
-  // P2 additions: routing and thinking status
-  routing_decision: ['complexity', 'reasoning', 'method', 'mode', 'sequence', 'timestamp', 'session_id'],
+  // Legacy events (deprecated - kept for backward compatibility)
+  thought: ['content', 'timestamp'],
   thinking_status: ['status', 'summary', 'sequence', 'timestamp', 'session_id'],
 };
 
@@ -88,7 +107,9 @@ export const EVENT_CONTRACTS: Record<SSEEventType, string[]> = {
  * Handles standard SSE format:
  * - id: <uuid> (optional)
  * - event: <type>
- * - data: <json>
+ * - data: <json with message_id>
+ *
+ * HARD RULE 0.2: Extracts message_id from data payload.
  *
  * @param sseText - Raw SSE text (single event)
  * @returns Parsed event or null if invalid
@@ -134,10 +155,17 @@ export function parseSSELine(sseText: string): ParsedSSEEvent | null {
     }
   }
 
+  // Extract message_id (HARD RULE 0.2)
+  const messageId = data.message_id as string | undefined;
+  if (!messageId && eventType !== 'heartbeat') {
+    console.warn('[SSE Parser] Event missing message_id:', eventType);
+  }
+
   return {
     id,
     type: eventType,
     data,
+    message_id: messageId,
     raw: sseText,
   };
 }
@@ -328,6 +356,7 @@ export function createSSEParser(config: SSEParserConfig) {
 
 /**
  * Convert parsed event to SSEEvent format (for compatibility with existing code)
+ * Includes message_id for event correlation (HARD RULE 0.2)
  */
 export function toSSEEvent(parsed: ParsedSSEEvent): SSEEvent {
   return {
@@ -338,6 +367,7 @@ export function toSSEEvent(parsed: ParsedSSEEvent): SSEEvent {
     result: parsed.data.result,
     event: parsed.type,
     data: parsed.data,
+    message_id: parsed.message_id,
   };
 }
 

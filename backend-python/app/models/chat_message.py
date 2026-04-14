@@ -4,6 +4,18 @@ Defines request/response schemas for:
 - Chat message creation with role and content
 - Chat message responses with complete message state
 - Message role enum for agent conversations
+
+Phase 5.2 (2026-04-14): Added thinking-related fields for future persistence.
+These fields are RESERVED but NOT IMPLEMENTED in this phase:
+- reasoning_content: Agent reasoning/thinking content
+- current_phase: Current processing phase
+- tool_timeline: Tool call execution timeline
+- citations: Source citations for responses
+- stream_status: Streaming status indicator
+- cost: API cost in USD
+
+NOTE: This phase does NOT implement persistence. Fields are nullable placeholders
+for Phase 2 implementation (thinking history across sessions).
 """
 
 from datetime import datetime
@@ -65,7 +77,11 @@ class ChatMessageCreate(ChatMessageBase):
 
 
 class ChatMessageResponse(BaseModel):
-    """Complete chat message data for API responses."""
+    """Complete chat message data for API responses.
+
+    Phase 5.2: Added thinking-related nullable fields for future persistence.
+    These fields are NOT used in current phase - only structural placeholders.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -115,6 +131,51 @@ class ChatMessageResponse(BaseModel):
     created_at: datetime = Field(
         ...,
         description="Message creation timestamp",
+    )
+
+    # =================================================================
+    # Phase 5.2: Thinking-related fields (RESERVED, NOT IMPLEMENTED)
+    # These are nullable placeholders for future thinking persistence.
+    # Current phase: Only session-internal thinking display, no DB writes.
+    # =================================================================
+
+    # Agent reasoning/thinking content
+    reasoning_content: Optional[str] = Field(
+        default=None,
+        description="Phase 5.2 reserved: Agent reasoning content (not implemented)",
+    )
+
+    # Current processing phase (e.g., 'planning', 'searching', 'synthesizing')
+    current_phase: Optional[str] = Field(
+        default=None,
+        description="Phase 5.2 reserved: Current agent phase (not implemented)",
+        max_length=50,
+    )
+
+    # Tool call execution timeline (JSON array of tool events)
+    tool_timeline: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Phase 5.2 reserved: Tool execution timeline (not implemented)",
+    )
+
+    # Source citations for agent responses
+    citations: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Phase 5.2 reserved: Response citations (not implemented)",
+    )
+
+    # Streaming status indicator
+    stream_status: Optional[str] = Field(
+        default=None,
+        description="Phase 5.2 reserved: Stream status (not implemented)",
+        max_length=20,
+    )
+
+    # API cost in USD
+    cost: Optional[float] = Field(
+        default=None,
+        description="Phase 5.2 reserved: API cost in USD (not implemented)",
+        ge=0,
     )
 
 

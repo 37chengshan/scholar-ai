@@ -4,11 +4,13 @@ Per D-07: Orchestrator layer for chat execution, separating coordination from bu
 
 Responsibilities:
 - Agent execution coordination
-- SSE event generation and streaming
+- SSE event generation and streaming with message_id binding (HARD RULE 0.2)
+- Phase inference from raw events
 - Confirmation request handling with Redis persistence
 - Real-time event callback management
 
 Sprint 3: Confirmation mechanism closure with Redis state persistence.
+Phase 1.3: message_id binding + phase inference + event orchestration.
 """
 
 import json
@@ -16,7 +18,7 @@ import uuid
 import asyncio
 from asyncio import Queue
 from datetime import datetime, timezone, timedelta
-from typing import AsyncIterator, Any, Dict, Optional, Tuple
+from typing import AsyncIterator, Any, Dict, Optional, Tuple, Literal
 
 import redis.asyncio as redis
 
@@ -24,43 +26,303 @@ from app.core.agent_runner import AgentRunner
 from app.utils.agent_init import initialize_agent_components
 from app.models.chat import (
     SSEEventType,
-    ThoughtEventData,
+    SSEEventEnvelope,
+    AgentPhase,
+    TaskType,
+    SessionStartEventData,
+    PhaseEventData,
+    ReasoningEventData,
+    MessageEventData,
     ToolCallEventData,
     ToolResultEventData,
-    ConfirmationRequiredEventData,
-    MessageEventData,
+    CitationEventData,
+    RoutingDecisionEventData,
+    CancelEventData,
+    DoneEventData,
     ErrorEventData,
+    ConfirmationRequiredEventData,
+    ThoughtEventData,  # Legacy
+    MessageEventData as LegacyMessageEventData,  # Legacy
+    ToolCallEventData as LegacyToolCallEventData,  # Legacy
+    ToolResultEventData as LegacyToolResultEventData,  # Legacy
 )
 from app.models.confirmation import ConfirmationState
+from app.services.message_service import message_service
 from app.config import settings
 from app.utils.logger import logger
 
 
+# ============================================================
+# Phase Inference Constants (HARD RULE 0.2)
+# ============================================================
+
+PHASE_LABELS: Dict[AgentPhase, str] = {
+    "idle": "",
+    "analyzing": "分析问题中",
+    "retrieving": "检索知识库中",
+    "reading": "阅读论文中",
+    "tool_calling": "调用工具中",
+    "synthesizing": "组织回答中",
+    "verifying": "验证引用中",
+    "done": "回答完成",
+    "error": "发生错误",
+    "cancelled": "已取消",
+}
+
+# Tool name to phase mapping for inference
+TOOL_PHASE_MAPPING: Dict[str, AgentPhase] = {
+    "rag_search": "retrieving",
+    "search_papers": "retrieving",
+    "get_paper": "reading",
+    "get_paper_by_id": "reading",
+    "download_paper": "reading",
+    "compare_papers": "reading",
+    "get_citations": "verifying",
+    "web_search": "retrieving",
+    "execute_sql": "tool_calling",
+    "default": "tool_calling",
+}
+
+
 class ChatOrchestrator:
-    """Orchestrator for Agent execution with SSE streaming."""
+    """Orchestrator for Agent execution with SSE streaming.
+
+    HARD RULE 0.2: Each SSE event must bind to current assistant message ID.
+    """
 
     # Confirmation expiry: 1 hour (Sprint 3)
     CONFIRMATION_EXPIRY = 3600
 
-    async def stream_sse_event(
-        self, event_type: str, data: dict, event_id: str | None = None
+    # Current message binding state
+    _current_message_id: Optional[str] = None
+    _current_phase: AgentPhase = "idle"
+
+    # ============================================================
+    # Phase Inference Logic (HARD RULE 0.2)
+    # ============================================================
+
+    def _infer_phase_from_event(
+        self,
+        event_type: str,
+        event_data: Dict[str, Any],
+        previous_phase: AgentPhase = "idle",
+    ) -> AgentPhase:
+        """Infer user-friendly phase from raw event.
+
+        Phase transition logic:
+        - reasoning -> analyzing (first) / synthesizing (after tool_result)
+        - content -> synthesizing
+        - tool_call -> tool_calling (or specific phase by tool name)
+        - tool_result -> reading / retrieving (based on tool)
+        - error -> error
+        - done -> done
+
+        Args:
+            event_type: Raw event type (reasoning, content, tool_call, etc.)
+            event_data: Event data payload
+            previous_phase: Previous phase for context
+
+        Returns:
+            Inferred AgentPhase
+        """
+        if event_type == "reasoning":
+            # First reasoning chunk: analyzing
+            # After tool results: synthesizing
+            if previous_phase in ("idle", "analyzing"):
+                return "analyzing"
+            elif previous_phase in ("retrieving", "reading", "tool_calling", "verifying"):
+                return "synthesizing"
+            return previous_phase or "analyzing"
+
+        elif event_type == "content":
+            # Content generation: synthesizing
+            return "synthesizing"
+
+        elif event_type == "tool_call":
+            tool_name = event_data.get("name", event_data.get("tool", "unknown"))
+            # Infer specific phase from tool name
+            phase = TOOL_PHASE_MAPPING.get(tool_name, TOOL_PHASE_MAPPING.get("default", "tool_calling"))
+            return phase
+
+        elif event_type == "tool_result":
+            tool_name = event_data.get("tool", "unknown")
+            success = event_data.get("success", False)
+            # After retrieval tool: reading
+            if tool_name in ("rag_search", "search_papers"):
+                return "reading" if success else "error"
+            # After reading tool: synthesizing
+            elif tool_name in ("get_paper", "get_paper_by_id", "compare_papers"):
+                return "synthesizing" if success else "error"
+            return previous_phase
+
+        elif event_type in ("error", "agent_error"):
+            return "error"
+
+        elif event_type in ("done", "agent_complete"):
+            return "done"
+
+        elif event_type == "cancel":
+            return "cancelled"
+
+        elif event_type == "confirmation_required":
+            return "tool_calling"
+
+        # Default: keep previous phase
+        return previous_phase
+
+    def _get_phase_label(self, phase: AgentPhase) -> str:
+        """Get user-friendly label for phase.
+
+        Args:
+            phase: AgentPhase enum value
+
+        Returns:
+            Chinese label string
+        """
+        return PHASE_LABELS.get(phase, "")
+
+    # ============================================================
+    # Message ID Binding (HARD RULE 0.2)
+    # ============================================================
+
+    async def _create_assistant_message(
+        self,
+        session_id: str,
+        user_id: str,
     ) -> str:
-        """Format SSE event as string.
+        """Create empty assistant message for message_id binding.
+
+        HARD RULE 0.2: Every user message triggers immediate assistant message creation.
+
+        Args:
+            session_id: Session UUID
+            user_id: User UUID
+
+        Returns:
+            Created message_id
+        """
+        message_id = await message_service.save_message(
+            session_id=session_id,
+            role="assistant",
+            content="",  # Empty initially, will be updated later
+        )
+
+        # Bind to current context
+        self._current_message_id = message_id
+        self._current_phase = "idle"
+
+        logger.info(
+            "Assistant message created for binding",
+            message_id=message_id,
+            session_id=session_id,
+        )
+
+        return message_id
+
+    async def _update_assistant_message(
+        self,
+        message_id: str,
+        content: str,
+    ) -> None:
+        """Update assistant message content after streaming completes.
+
+        Args:
+            message_id: Message UUID
+            content: Final content
+        """
+        # Note: message_service.save_message creates new messages
+        # For updates, we would need to add update_message method
+        # For now, we log the update intent
+        logger.info(
+            "Assistant message update requested",
+            message_id=message_id,
+            content_length=len(content),
+        )
+        # TODO: Implement message update in message_service
+
+    def _close_message_binding(self) -> None:
+        """Close current message_id binding.
+
+        Called after done/error/cancel events.
+        """
+        logger.info(
+            "Message binding closed",
+            message_id=self._current_message_id,
+            final_phase=self._current_phase,
+        )
+        self._current_message_id = None
+        self._current_phase = "idle"
+
+    # ============================================================
+    # SSE Event Formatting
+    # ============================================================
+
+    async def stream_sse_event(
+        self,
+        event_type: str,
+        data: dict,
+        message_id: str | None = None,
+        event_id: str | None = None,
+    ) -> str:
+        """Format SSE event as string with message_id binding.
 
         Args:
             event_type: SSE event type (thought, tool_call, message, etc.)
             data: Event data payload
+            message_id: Required message_id for binding (HARD RULE 0.2)
             event_id: Optional event ID for replay (Last-Event-ID mechanism)
 
         Returns:
-            SSE formatted string with optional id line:
+            SSE formatted string:
             "id: {event_id}\\nevent: {type}\\ndata: {json}\\n\\n"
 
         Reference: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
         """
+        # Use current binding if not provided
+        bound_message_id = message_id or self._current_message_id
+
+        # Build SSE envelope with message_id
+        envelope = SSEEventEnvelope(
+            event=event_type,
+            data=data,
+            message_id=bound_message_id or "",  # Empty if no binding
+        )
+
         id_line = f"id: {event_id}\n" if event_id else ""
         event_line = f"event: {event_type}\n"
-        data_line = f"data: {json.dumps(data)}\n\n"
+        # Include message_id in data for frontend binding
+        data_with_binding = {**data, "message_id": bound_message_id}
+        data_line = f"data: {json.dumps(data_with_binding)}\n\n"
+
+        return f"{id_line}{event_line}{data_line}"
+
+    async def stream_sse_event_v2(
+        self,
+        event_type: str,
+        data: dict,
+        message_id: str,
+        event_id: str | None = None,
+    ) -> str:
+        """Format SSE event with SSEEventEnvelope structure (v2).
+
+        Args:
+            event_type: SSE event type
+            data: Event data payload
+            message_id: Required message_id (HARD RULE 0.2)
+            event_id: Optional event ID for replay
+
+        Returns:
+            SSE formatted string with envelope structure
+        """
+        envelope = SSEEventEnvelope(
+            event=event_type,
+            data=data,
+            message_id=message_id,
+        )
+
+        id_line = f"id: {event_id}\n" if event_id else ""
+        event_line = f"event: {event_type}\n"
+        data_line = f"data: {json.dumps(envelope.model_dump())}\n\n"
 
         return f"{id_line}{event_line}{data_line}"
 
@@ -339,28 +601,80 @@ class ChatOrchestrator:
         session_id: str,
         user_id: str,
         auto_confirm: bool = False,
+        task_type: TaskType = "general",
     ) -> AsyncIterator[str]:
         """Execute Agent with real-time SSE streaming.
+
+        HARD RULE 0.2 Implementation:
+        1. Create assistant message immediately for message_id binding
+        2. Emit session_start event with message_id
+        3. Infer phase from raw events and emit phase events
+        4. All SSE events carry message_id
+        5. Close message binding after done/error/cancel
 
         Args:
             user_input: User message
             session_id: Session UUID
             user_id: User UUID
             auto_confirm: Auto-confirm dangerous operations
+            task_type: Task type for routing (single_paper, kb_qa, compare, general)
 
         Yields:
-            SSE event strings with id field for Last-Event-ID replay
+            SSE event strings with message_id binding
         """
+        # ============================================================
+        # Step 1: Create assistant message for binding (HARD RULE 0.2)
+        # ============================================================
+        message_id = await self._create_assistant_message(
+            session_id=session_id,
+            user_id=user_id,
+        )
+
         runner, _, _, _ = initialize_agent_components()
 
         event_queue: Queue[Tuple[str, dict]] = Queue()
         event_counter = 0  # Track event IDs for SSE replay
+        reasoning_seq = 0  # Sequence number for reasoning chunks
+        content_seq = 0  # Sequence number for content chunks
+        accumulated_content = ""  # Track final content for message update
+
+        # ============================================================
+        # Step 2: Emit session_start event
+        # ============================================================
+        event_id = f"{session_id}:{event_counter}"
+        event_counter += 1
+        yield await self.stream_sse_event_v2(
+            SSEEventType.SESSION_START,
+            SessionStartEventData(
+                session_id=session_id,
+                task_type=task_type,
+                message_id=message_id,
+            ).model_dump(),
+            message_id=message_id,
+            event_id=event_id,
+        )
+
+        # ============================================================
+        # Step 3: Emit initial phase event (analyzing)
+        # ============================================================
+        self._current_phase = "analyzing"
+        event_id = f"{session_id}:{event_counter}"
+        event_counter += 1
+        yield await self.stream_sse_event_v2(
+            SSEEventType.PHASE,
+            PhaseEventData(
+                phase="analyzing",
+                label=self._get_phase_label("analyzing"),
+            ).model_dump(),
+            message_id=message_id,
+            event_id=event_id,
+        )
 
         async def event_callback(event_type: str, data: Dict[str, Any]):
             """Push real-time events to SSE queue."""
             await event_queue.put((event_type, data))
 
-        # Set event callback on runner instance (event_callback is a constructor param, not execute param)
+        # Set event callback on runner instance
         runner.event_callback = event_callback
 
         async def run_agent():
@@ -379,57 +693,131 @@ class ChatOrchestrator:
 
         agent_task = asyncio.create_task(run_agent())
 
-        # Initial thought event with id
-        event_id = f"{session_id}:{event_counter}"
-        event_counter += 1
-        yield await self.stream_sse_event(
-            SSEEventType.THOUGHT,
-            ThoughtEventData(
-                type="thinking", content="Analyzing your request..."
-            ).model_dump(),
-            event_id=event_id,
-        )
-
+        # ============================================================
+        # Step 4: Event loop with phase inference and message_id binding
+        # ============================================================
         while True:
             event_type, event_data = await event_queue.get()
 
-            if event_type == "thought":
+            # Infer phase from event
+            new_phase = self._infer_phase_from_event(
+                event_type=event_type,
+                event_data=event_data,
+                previous_phase=self._current_phase,
+            )
+
+            # Emit phase event if changed
+            if new_phase != self._current_phase and new_phase not in ("idle", "done", "error", "cancelled"):
+                self._current_phase = new_phase
                 event_id = f"{session_id}:{event_counter}"
                 event_counter += 1
-                yield await self.stream_sse_event(
-                    SSEEventType.THOUGHT,
-                    ThoughtEventData(
-                        type="thinking",
-                        content=event_data.get("content", ""),
+                yield await self.stream_sse_event_v2(
+                    SSEEventType.PHASE,
+                    PhaseEventData(
+                        phase=new_phase,
+                        label=self._get_phase_label(new_phase),
                     ).model_dump(),
+                    message_id=message_id,
+                    event_id=event_id,
+                )
+
+            # ============================================================
+            # Handle different event types
+            # ============================================================
+
+            if event_type == "thought":
+                # Legacy thought event - convert to reasoning
+                event_id = f"{session_id}:{event_counter}"
+                event_counter += 1
+                reasoning_seq += 1
+                content_chunk = event_data.get("content", "")
+                yield await self.stream_sse_event_v2(
+                    SSEEventType.REASONING,
+                    ReasoningEventData(
+                        delta=content_chunk,
+                        seq=reasoning_seq,
+                    ).model_dump(),
+                    message_id=message_id,
+                    event_id=event_id,
+                )
+
+            elif event_type == "reasoning":
+                # Raw reasoning event from _think_stream
+                event_id = f"{session_id}:{event_counter}"
+                event_counter += 1
+                reasoning_seq += 1
+                content_chunk = event_data.get("content", "")
+                yield await self.stream_sse_event_v2(
+                    SSEEventType.REASONING,
+                    ReasoningEventData(
+                        delta=content_chunk,
+                        seq=reasoning_seq,
+                    ).model_dump(),
+                    message_id=message_id,
+                    event_id=event_id,
+                )
+
+            elif event_type == "content":
+                # Raw content event from _think_stream
+                event_id = f"{session_id}:{event_counter}"
+                event_counter += 1
+                content_seq += 1
+                content_chunk = event_data.get("content", "")
+                accumulated_content += content_chunk
+                yield await self.stream_sse_event_v2(
+                    SSEEventType.MESSAGE,
+                    MessageEventData(
+                        delta=content_chunk,
+                        seq=content_seq,
+                    ).model_dump(),
+                    message_id=message_id,
                     event_id=event_id,
                 )
 
             elif event_type == "tool_call":
+                tool_name = event_data.get("tool", event_data.get("name", "unknown"))
+                tool_id = event_data.get("id", f"tool_{event_counter}")
+                tool_params = event_data.get("parameters", event_data.get("arguments", {}))
+
+                # Infer tool label
+                tool_label = self._get_tool_label(tool_name)
+
                 event_id = f"{session_id}:{event_counter}"
                 event_counter += 1
-                yield await self.stream_sse_event(
+                yield await self.stream_sse_event_v2(
                     SSEEventType.TOOL_CALL,
                     ToolCallEventData(
-                        type="tool_call",
-                        tool=event_data.get("tool", "unknown"),
-                        parameters=event_data.get("parameters", {}),
+                        id=tool_id,
+                        tool=tool_name,
+                        label=tool_label,
+                        status="running",
                     ).model_dump(),
+                    message_id=message_id,
                     event_id=event_id,
                 )
 
             elif event_type == "tool_result":
+                tool_name = event_data.get("tool", "unknown")
+                tool_id = event_data.get("id", f"tool_{event_counter}")
+                success = event_data.get("success", False)
+                error_msg = event_data.get("error")
+                data_summary = event_data.get("data")
+
+                # Build summary text
+                summary = self._build_tool_result_summary(tool_name, success, data_summary)
+
                 event_id = f"{session_id}:{event_counter}"
                 event_counter += 1
-                yield await self.stream_sse_event(
+                yield await self.stream_sse_event_v2(
                     SSEEventType.TOOL_RESULT,
                     ToolResultEventData(
-                        type="tool_result",
-                        tool=event_data.get("tool", "unknown"),
-                        success=event_data.get("success", False),
-                        data=event_data.get("data"),
-                        error=event_data.get("error"),
+                        id=tool_id,
+                        tool=tool_name,
+                        label=self._get_tool_label(tool_name),
+                        status="success" if success else "failed",
+                        summary=summary,
                     ).model_dump(),
+                    message_id=message_id,
                     event_id=event_id,
                 )
 
@@ -437,7 +825,7 @@ class ChatOrchestrator:
                 result = event_data
 
                 if result.get("needs_confirmation"):
-                    # Sprint 3: Persist confirmation state in Redis
+                    # Persist confirmation state in Redis
                     confirmation_state = await self.handle_confirmation_required(
                         session_id=session_id,
                         user_id=user_id,
@@ -445,9 +833,24 @@ class ChatOrchestrator:
                         parameters=result.get("tool_parameters", {}),
                     )
 
+                    # Emit phase event for tool_calling
+                    self._current_phase = "tool_calling"
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
-                    yield await self.stream_sse_event(
+                    yield await self.stream_sse_event_v2(
+                        SSEEventType.PHASE,
+                        PhaseEventData(
+                            phase="tool_calling",
+                            label=self._get_phase_label("tool_calling"),
+                        ).model_dump(),
+                        message_id=message_id,
+                        event_id=event_id,
+                    )
+
+                    # Emit confirmation_required event
+                    event_id = f"{session_id}:{event_counter}"
+                    event_counter += 1
+                    yield await self.stream_sse_event_v2(
                         SSEEventType.CONFIRMATION_REQUIRED,
                         ConfirmationRequiredEventData(
                             type="confirmation_required",
@@ -459,66 +862,200 @@ class ChatOrchestrator:
                             tool_name=confirmation_state.tool_name,
                             parameters=confirmation_state.parameters,
                         ).model_dump(),
+                        message_id=message_id,
                         event_id=event_id,
                     )
+                    # Don't close binding yet - waiting for user response
                     break
 
                 if result.get("success"):
-                    final_content = result.get("answer", "Task completed")
+                    final_content = result.get("answer", accumulated_content)
+
+                    # Update message content if different from accumulated
+                    if final_content != accumulated_content:
+                        # Send final content chunk if needed
+                        if not accumulated_content:
+                            event_id = f"{session_id}:{event_counter}"
+                            event_counter += 1
+                            yield await self.stream_sse_event_v2(
+                                SSEEventType.MESSAGE,
+                                MessageEventData(
+                                    delta=final_content,
+                                    seq=0,
+                                ).model_dump(),
+                                message_id=message_id,
+                                event_id=event_id,
+                            )
+
+                    # Emit done phase
+                    self._current_phase = "done"
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
-                    yield await self.stream_sse_event(
-                        SSEEventType.MESSAGE,
-                        MessageEventData(
-                            type="message", content=final_content
+                    yield await self.stream_sse_event_v2(
+                        SSEEventType.PHASE,
+                        PhaseEventData(
+                            phase="done",
+                            label=self._get_phase_label("done"),
                         ).model_dump(),
+                        message_id=message_id,
                         event_id=event_id,
                     )
 
+                    # Emit done event
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
-                    yield await self.stream_sse_event(
+                    yield await self.stream_sse_event_v2(
                         SSEEventType.DONE,
-                        {
-                            "type": "done",
-                            "content": "[DONE]",
-                            "tokens_used": result.get("tokens_used", 0),
-                            "cost": result.get("cost", 0.0),
-                            "iterations": result.get("iterations", 0),
-                            "total_time_ms": result.get("total_time_ms", 0),
-                        },
+                        DoneEventData(
+                            finish_reason="stop",
+                            tokens_used=result.get("tokens_used"),
+                            cost=result.get("cost"),
+                            total_time_ms=result.get("total_time_ms"),
+                        ).model_dump(),
+                        message_id=message_id,
                         event_id=event_id,
                     )
+
+                    # Update assistant message content
+                    await self._update_assistant_message(message_id, final_content)
+
                 else:
+                    # Emit error phase
+                    self._current_phase = "error"
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
-                    yield await self.stream_sse_event(
+                    yield await self.stream_sse_event_v2(
+                        SSEEventType.PHASE,
+                        PhaseEventData(
+                            phase="error",
+                            label=self._get_phase_label("error"),
+                        ).model_dump(),
+                        message_id=message_id,
+                        event_id=event_id,
+                    )
+
+                    # Emit error event
+                    event_id = f"{session_id}:{event_counter}"
+                    event_counter += 1
+                    yield await self.stream_sse_event_v2(
                         SSEEventType.ERROR,
                         ErrorEventData(
-                            type="error",
-                            error=result.get("error", "Unknown error"),
-                            details={"iterations": result.get("iterations", 0)},
+                            code="execution_failed",
+                            message=result.get("error", "Unknown error"),
+                            recoverable=False,
                         ).model_dump(),
+                        message_id=message_id,
                         event_id=event_id,
                     )
 
+                # Close message binding
+                self._close_message_binding()
                 break
 
             elif event_type == "agent_error":
+                # Emit error phase
+                self._current_phase = "error"
                 event_id = f"{session_id}:{event_counter}"
                 event_counter += 1
-                yield await self.stream_sse_event(
-                    SSEEventType.ERROR,
-                    ErrorEventData(
-                        type="error",
-                        error=event_data.get("error", "Unknown error"),
-                        details=None,
+                yield await self.stream_sse_event_v2(
+                    SSEEventType.PHASE,
+                    PhaseEventData(
+                        phase="error",
+                        label=self._get_phase_label("error"),
                     ).model_dump(),
+                    message_id=message_id,
                     event_id=event_id,
                 )
+
+                # Emit error event
+                event_id = f"{session_id}:{event_counter}"
+                event_counter += 1
+                yield await self.stream_sse_event_v2(
+                    SSEEventType.ERROR,
+                    ErrorEventData(
+                        code="agent_error",
+                        message=event_data.get("error", "Unknown error"),
+                        recoverable=True,
+                    ).model_dump(),
+                    message_id=message_id,
+                    event_id=event_id,
+                )
+
+                # Close message binding
+                self._close_message_binding()
                 break
 
         await agent_task
+
+    # ============================================================
+    # Helper methods for event formatting
+    # ============================================================
+
+    def _get_tool_label(self, tool_name: str) -> str:
+        """Get user-friendly label for tool.
+
+        Args:
+            tool_name: Tool name from registry
+
+        Returns:
+            Chinese label string
+        """
+        TOOL_LABELS = {
+            "rag_search": "检索知识库",
+            "search_papers": "搜索论文",
+            "get_paper": "获取论文",
+            "get_paper_by_id": "获取论文",
+            "download_paper": "下载论文",
+            "compare_papers": "对比论文",
+            "get_citations": "验证引用",
+            "web_search": "网络搜索",
+            "execute_sql": "执行查询",
+        }
+        return TOOL_LABELS.get(tool_name, f"调用 {tool_name}")
+
+    def _build_tool_result_summary(
+        self,
+        tool_name: str,
+        success: bool,
+        data: Any,
+    ) -> Optional[str]:
+        """Build user-friendly summary for tool result.
+
+        Args:
+            tool_name: Tool name
+            success: Execution success
+            data: Result data
+
+        Returns:
+            Summary string or None
+        """
+        if not success:
+            return None
+
+        # Build summary based on tool and result
+        if tool_name in ("rag_search", "search_papers"):
+            if isinstance(data, dict):
+                count = data.get("total", data.get("count", 0))
+                return f"命中 {count} 篇论文"
+            return "检索完成"
+
+        elif tool_name in ("get_paper", "get_paper_by_id"):
+            if isinstance(data, dict):
+                title = data.get("title", "")
+                if title:
+                    return f"获取《{title[:30]}...》"
+            return "论文获取成功"
+
+        elif tool_name == "compare_papers":
+            return "论文对比完成"
+
+        elif tool_name == "web_search":
+            if isinstance(data, dict):
+                count = data.get("results_count", 0)
+                return f"找到 {count} 条结果"
+            return "网络搜索完成"
+
+        return None
 
 
 chat_orchestrator = ChatOrchestrator()

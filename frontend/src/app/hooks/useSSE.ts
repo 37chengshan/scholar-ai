@@ -29,7 +29,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { sseService, SSEEvent } from '@/services/sseService';
+import { sseService, SSEEvent, SSEEventEnvelope, SSEEventType } from '@/services/sseService';
 import { ToolCall, PaperCitation, TokenUsage } from '@/types/chat';
 
 /**
@@ -141,29 +141,43 @@ export function useSSE(): UseSSEReturn {
     setConfirmation(null);
 
     sseService.connect(url, {
-      onMessage: (event: SSEEvent) => {
+      onMessage: (event: SSEEvent | SSEEventEnvelope) => {
+        // Normalize event to SSEEvent format for consistent handling
+        const normalizedEvent: SSEEvent = 'event' in event
+          ? {
+              type: event.event as SSEEventType,
+              content: event.data,
+              timestamp: (event.data as any).timestamp,
+              tool: (event.data as any).tool,
+              result: (event.data as any).result || (event.data as any).data,
+              event: event.event,
+              data: event.data,
+              message_id: event.message_id,
+            }
+          : event;
+
         // Debug: Log received event
-        console.log('[useSSE] Event received:', event.type, event.content);
+        console.log('[useSSE] Event received:', normalizedEvent.type, normalizedEvent.content);
 
         // Add message to list
-        setMessages((prev) => [...prev, event]);
+        setMessages((prev) => [...prev, normalizedEvent]);
 
         // Accumulate message content for streaming text
-        // Use event.content for actual content (not event.type which is SSE event type)
-        if (event.type === 'message') {
-          const content = event.content?.content || event.content || '';
+        // Use normalizedEvent.content for actual content (not normalizedEvent.type which is SSE event type)
+        if (normalizedEvent.type === 'message') {
+          const content = normalizedEvent.content?.content || normalizedEvent.content || '';
           console.log('[useSSE] Message content:', content);
           if (typeof content === 'string') {
             accumulatedContent.current += content;
           }
         }
 
-        // Handle tool_call events - extract from event.content
-        if (event.type === 'tool_call') {
+        // Handle tool_call events - extract from normalizedEvent.content
+        if (normalizedEvent.type === 'tool_call') {
           const toolCall: ToolCall = {
             id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            tool: event.content.tool || event.tool || 'unknown',
-            parameters: event.content.parameters || {},
+            tool: normalizedEvent.content.tool || normalizedEvent.tool || 'unknown',
+            parameters: normalizedEvent.content.parameters || {},
             status: 'running',
             startedAt: Date.now(),
           };
@@ -171,15 +185,15 @@ export function useSSE(): UseSSEReturn {
           setToolCalls(toolCallsRef.current);
         }
 
-        // Handle tool_result events - extract from event.content
-        if (event.type === 'tool_result') {
-          const toolName = event.content.tool || event.tool || 'unknown';
+        // Handle tool_result events - extract from normalizedEvent.content
+        if (normalizedEvent.type === 'tool_result') {
+          const toolName = normalizedEvent.content.tool || normalizedEvent.tool || 'unknown';
           const toolCallsCopy = [...toolCallsRef.current];
           for (let i = toolCallsCopy.length - 1; i >= 0; i--) {
             const tc = toolCallsCopy[i];
             if (tc.tool === toolName && tc.status === 'running') {
-              tc.status = event.content.success !== false ? 'success' : 'error';
-              tc.result = event.content.data ?? event.content.result ?? event.result;
+              tc.status = normalizedEvent.content.success !== false ? 'success' : 'error';
+              tc.result = normalizedEvent.content.data ?? normalizedEvent.content.result ?? normalizedEvent.result;
               tc.completedAt = Date.now();
               tc.duration = tc.completedAt - tc.startedAt;
               break;
@@ -189,20 +203,20 @@ export function useSSE(): UseSSEReturn {
           setToolCalls(toolCallsCopy);
         }
 
-        // Handle confirmation_required events - extract from event.content (Sprint 3: Add confirmation_id)
-        if (event.type === 'confirmation_required') {
+        // Handle confirmation_required events - extract from normalizedEvent.content (Sprint 3: Add confirmation_id)
+        if (normalizedEvent.type === 'confirmation_required') {
           setConfirmation({
-            confirmation_id: event.content.confirmation_id || '',  // Required for backend resumption
-            tool: event.content.tool_name || event.content.tool || 'unknown',
-            params: event.content.parameters || event.content.params || {},
+            confirmation_id: normalizedEvent.content.confirmation_id || '',  // Required for backend resumption
+            tool: normalizedEvent.content.tool_name || normalizedEvent.content.tool || 'unknown',
+            params: normalizedEvent.content.parameters || normalizedEvent.content.params || {},
           });
           setIsConnected(false);
           sseService.disconnect();
         }
 
-        // Handle citation events - extract from event.content
-        if (event.type === 'citation') {
-          const citationData = event.content || event.data;
+        // Handle citation events - extract from normalizedEvent.content
+        if (normalizedEvent.type === 'citation') {
+          const citationData = normalizedEvent.content || normalizedEvent.data;
           if (citationData && Array.isArray(citationData)) {
             const citations: PaperCitation[] = citationData.map((c: any) => ({
               paper_id: c.paper_id || c.id || '',

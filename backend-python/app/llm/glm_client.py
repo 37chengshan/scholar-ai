@@ -186,65 +186,89 @@ class GLM45AirClient:
         self,
         system_prompt: str,
         messages: List[Dict[str, Any]],
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        enable_thinking: bool = True
     ):
         """Stream GLM-4.5-Air response with reasoning_content support.
-        
+
         Yields chunks with:
-        - type: "reasoning" or "content"
+        - type: "reasoning" or "content" or "tool_call"
         - content: Chunk text
-        
+        - tool_call: Tool call data (if type is "tool_call")
+
         Args:
             system_prompt: System prompt
             messages: Conversation messages
             temperature: Optional temperature override
-            
+            enable_thinking: Enable thinking mode (default True)
+
         Yields:
             Dict with type and content
         """
         logger.info(
             "Starting GLM-4.5-Air stream",
-            message_count=len(messages)
+            message_count=len(messages),
+            enable_thinking=enable_thinking
         )
-        
+
         # Prepare messages
         full_messages = [
             {"role": "system", "content": system_prompt},
             *messages
         ]
-        
+
         # Use provided temperature or default
         temp = temperature if temperature is not None else self.temperature
-        
+
         try:
+            # Build API call parameters
+            api_params = {
+                "model": self.model,
+                "messages": full_messages,
+                "max_tokens": self.max_tokens,
+                "temperature": temp,
+                "stream": True
+            }
+
+            # Enable thinking mode for reasoning_content (HARD RULE 0.1)
+            # See: https://bigmodel.cn/dev/api/normal-model/glm-4
+            if enable_thinking:
+                api_params["thinking"] = {"type": "enabled"}
+
             # Stream response (run in thread pool)
             response = await asyncio.to_thread(
                 self.client.chat.completions.create,
-                model=self.model,
-                messages=full_messages,
-                max_tokens=self.max_tokens,
-                temperature=temp,
-                stream=True
+                **api_params
             )
             
-            # Process stream chunks
+            # Process stream chunks (单流双通道 - HARD RULE 0.1)
             for chunk in response:
                 delta = chunk.choices[0].delta
-                
-                # Check for reasoning_content (GLM-4.5 specific)
+
+                # Check for reasoning_content (GLM-4.5 thinking mode)
                 if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
                     yield {
                         "type": "reasoning",
                         "content": delta.reasoning_content
                     }
-                
+
                 # Check for regular content
                 if hasattr(delta, 'content') and delta.content:
                     yield {
                         "type": "content",
                         "content": delta.content
                     }
-            
+
+                # Check for tool_calls (单流双通道 - 从同一条流获取)
+                if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                    for tool_call in delta.tool_calls:
+                        yield {
+                            "type": "tool_call",
+                            "id": tool_call.id,
+                            "name": tool_call.function.name if tool_call.function else None,
+                            "arguments": tool_call.function.arguments if tool_call.function else None
+                        }
+
             logger.info("Stream completed")
             
         except Exception as e:
