@@ -1,0 +1,169 @@
+{
+  "version": "1.0",
+  "description": "Golden queries for retrieval and answer quality evaluation per D-14",
+  "papers": [
+    {
+      "paper_id": "test-paper-001",
+      "title": "Test Paper: Introduction to Machine Learning",
+      "queries": [
+        {
+          "id": "q1",
+          "query": "What is the main contribution of this paper?",
+          "expected_chunks": ["chunk-001", "chunk-002"],
+          "expected_sections": ["Introduction", "Conclusion"],
+          "query_type": "single"
+        },
+        {
+          "id": "q2",
+          "query": "How does the proposed method compare to baseline?",
+          "expected_chunks": ["chunk-003", "chunk-004", "chunk-005"],
+          "expected_sections": ["Methods", "Results"],
+          "query_type": "compare"
+        },
+        {
+          "id": "q3",
+          "query": "What are the key findings from the experiments?",
+          "expected_chunks": ["chunk-006", "chunk-007"],
+          "expected_sections": ["Results", "Discussion"],
+          "query_type": "single"
+        },
+        {
+          "id": "q4",
+          "query": "What methodology was used in this study?",
+          "expected_chunks": ["chunk-008", "chunk-009"],
+          "expected_sections": ["Methods", "Methodology"],
+          "query_type": "single"
+        },
+        {
+          "id": "q5",
+          "query": "How does this approach differ from previous work?",
+          "expected_chunks": ["chunk-010", "chunk-011", "chunk-012"],
+          "expected_sections": ["Introduction", "Related Work"],
+          "query_type": "compare"
+        }
+      ]
+    },
+    {
+      "paper_id": "test-paper-002",
+      "title": "Test Paper: Deep Learning for Image Recognition",
+      "queries": [
+        {
+          "id": "q6",
+          "query": "What architecture is proposed for image classification?",
+          "expected_chunks": ["chunk-020", "chunk-021"],
+          "expected_sections": ["Methods", "Architecture"],
+          "query_type": "single"
+        },
+        {
+          "id": "q7",
+          "query": "What improvements were made compared to ResNet?",
+          "expected_chunks": ["chunk-022", "chunk-023", "chunk-024"],
+          "expected_sections": ["Results", "Comparison"],
+          "query_type": "compare"
+        },
+        {
+          "id": "q8",
+          "query": "How has the model evolved across different versions?",
+          "expected_chunks": ["chunk-025", "chunk-026", "chunk-027"],
+          "expected_sections": ["Introduction", "Evolution", "Results"],
+          "query_type": "evolution"
+        },
+        {
+          "id": "q9",
+          "query": "What datasets were used for evaluation?",
+          "expected_chunks": ["chunk-028", "chunk-029"],
+          "expected_sections": ["Methods", "Experiments"],
+          "query_type": "single"
+        }
+      ]
+    },
+    {
+      "paper_id": "test-paper-003",
+      "title": "Test Paper: Natural Language Processing Advances",
+      "queries": [
+        {
+          "id": "q10",
+          "query": "What are the main contributions of this research?",
+          "expected_chunks": ["chunk-030", "chunk-031"],
+          "expected_sections": ["Introduction", "Abstract"],
+          "query_type": "single"
+        },
+        {
+          "id": "q11",
+          "query": "How does the transformer architecture improve over RNNs?",
+          "expected_chunks": ["chunk-032", "chunk-033", "chunk-034"],
+          "expected_sections": ["Methods", "Architecture", "Results"],
+          "query_type": "compare"
+        },
+        {
+          "id": "q12",
+          "query": "What preprocessing steps are applied to the input text?",
+          "expected_chunks": ["chunk-035", "chunk-036"],
+          "expected_sections": ["Methods", "Preprocessing"],
+          "query_type": "single"
+        }
+      ]
+    }
+  ],
+  "multimodal_queries": [
+    {
+      "id": "mq1",
+      "query": "What does Figure 3 show about performance?",
+      "expected_content_type": ["image", "text"],
+      "expected_figure_id": "fig-003",
+      "expected_sections": ["Results", "Figures"]
+    },
+    {
+      "id": "mq2",
+      "query": "What data is presented in Table 2?",
+      "expected_content_type": ["table", "text"],
+      "expected_table_id": "tbl-002",
+      "expected_sections": ["Results", "Tables"]
+    },
+    {
+      "id": "mq3",
+      "query": "What can be learned from the architecture diagram?",
+      "expected_content_type": ["image", "text"],
+      "expected_figure_id": "fig-001",
+      "expected_sections": ["Methods", "Architecture"]
+    },
+    {
+      "id": "mq4",
+      "query": "What metrics are compared in the performance chart?",
+      "expected_content_type": ["image", "text"],
+      "expected_figure_id": "fig-005",
+      "expected_sections": ["Results", "Comparison"]
+    }
+  ],
+  "cross_paper_queries": [
+    {
+      "id": "cp1",
+      "query": "How do YOLO and SSD differ in their object detection approaches?",
+      "paper_ids": ["test-paper-001", "test-paper-002"],
+      "expected_chunks": ["chunk-001", "chunk-020"],
+      "expected_sections": ["Methods"],
+      "query_type": "compare"
+    },
+    {
+      "id": "cp2",
+      "query": "What are the common preprocessing steps across these papers?",
+      "paper_ids": ["test-paper-001", "test-paper-002", "test-paper-003"],
+      "expected_chunks": ["chunk-008", "chunk-028", "chunk-035"],
+      "expected_sections": ["Methods"],
+      "query_type": "cross_paper"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-14",
+    "total_queries": 12,
+    "total_multimodal_queries": 4,
+    "total_cross_paper_queries": 2,
+    "query_types": {
+      "single": 7,
+      "compare": 3,
+      "evolution": 1,
+      "cross_paper": 2,
+      "multimodal": 4
+    }
+  }
+}
