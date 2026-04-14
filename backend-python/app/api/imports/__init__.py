@@ -19,6 +19,7 @@ Wave 3 endpoints per D-06:
 from app.api.imports.jobs import router as jobs_router
 from app.api.imports.sources import router as sources_router
 from app.api.imports.dedupe import router as dedupe_router
+from app.api.imports.batches import router as batches_router
 
 from fastapi import APIRouter
 
@@ -27,5 +28,6 @@ router = APIRouter()
 router.include_router(jobs_router)
 router.include_router(sources_router)
 router.include_router(dedupe_router)
+router.include_router(batches_router)
 
 __all__ = ["router"]

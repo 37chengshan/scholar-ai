@@ -40,6 +40,7 @@ class ImportJobService:
         source_ref_raw: str,
         db: AsyncSession,
         options: Dict[str, Any] = None,
+        batch_id: Optional[str] = None,
     ) -> ImportJob:
         """Create ImportJob with appropriate initial next_action.
 
@@ -49,6 +50,7 @@ class ImportJobService:
             source_type: Source type (local_file/arxiv/pdf_url/doi/semantic_scholar)
             source_ref_raw: User's raw input (filename or external reference)
             options: Import options (autoAttachToKb, dedupePolicy, etc.)
+            batch_id: Optional batch ID for batch imports (Wave 3)
             db: Database session
 
         Returns:
@@ -87,6 +89,7 @@ class ImportJobService:
             id=job_id,
             user_id=user_id,
             knowledge_base_id=kb_id,
+            batch_id=batch_id,  # Wave 3 linkage
             source_type=source_type,
             source_ref_raw=source_ref_raw,
             status=initial_status,
