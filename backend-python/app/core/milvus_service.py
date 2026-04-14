@@ -930,20 +930,79 @@ class MilvusService:
                 })
         return formatted
 
+    def _build_expr_from_constraints(
+        self,
+        constraints: Any,
+        year_paper_ids: Optional[List[str]] = None,
+    ) -> str:
+        """Build Milvus expr string from SearchConstraints.
+
+        Per D-07: Pushdown all available constraints to Milvus.
+
+        Args:
+            constraints: SearchConstraints object
+            year_paper_ids: Paper IDs matching year filter (from PostgreSQL bridge)
+
+        Returns:
+            Milvus expr string
+        """
+        conditions = []
+
+        # Always include user_id
+        conditions.append(f"user_id == '{constraints.user_id}'")
+
+        # Content type filter
+        if constraints.content_types:
+            types_expr = ", ".join([f"'{t}'" for t in constraints.content_types])
+            conditions.append(f"content_type in [{types_expr}]")
+
+        # Section filter
+        if constraints.section:
+            conditions.append(f"section == '{constraints.section}'")
+
+        # Paper IDs filter (combined with year_paper_ids)
+        effective_paper_ids = constraints.paper_ids
+        if year_paper_ids:
+            if effective_paper_ids:
+                effective_paper_ids = list(set(effective_paper_ids) & set(year_paper_ids))
+            else:
+                effective_paper_ids = year_paper_ids
+
+        if effective_paper_ids:
+            if len(effective_paper_ids) > 100:
+                logger.warning(f"Too many paper_ids ({len(effective_paper_ids)}), limiting expr")
+                effective_paper_ids = effective_paper_ids[:100]
+
+            ids_expr = ", ".join([f"'{pid}'" for pid in effective_paper_ids])
+            conditions.append(f"paper_id in [{ids_expr}]")
+
+        # Quality score filter
+        if constraints.min_quality_score:
+            conditions.append(f"quality_score >= {constraints.min_quality_score}")
+
+        # Per D-09: Default to indexable content
+        conditions.append("indexable == true")
+
+        expr = " and ".join(conditions)
+        logger.debug(f"Milvus expr built: {expr[:200]}...")
+        return expr
+
     def search_contents_v2(
         self,
         embedding: List[float],
         user_id: Optional[str] = None,
         content_type: Optional[str] = None,
-        top_k: int = 10
+        top_k: int = 10,
+        constraints: Optional[Any] = None,
     ) -> List[Dict[str, Any]]:
         """Search paper_contents_v2 collection with 2048-dim embeddings.
 
         Args:
             embedding: 2048-dim query embedding (Qwen3VL)
-            user_id: Optional user filter
-            content_type: Optional content type filter ('image'/'table'/'text')
+            user_id: Optional user filter (legacy, use constraints instead)
+            content_type: Optional content type filter (legacy)
             top_k: Number of results
+            constraints: Optional SearchConstraints for filter pushdown
 
         Returns:
             List of content items with distance scores
@@ -955,14 +1014,17 @@ class MilvusService:
             "params": {"nprobe": 10}
         }
 
-        # Per D-09: Default to indexable content only
-        conditions = ["indexable == true"]
-        if user_id:
-            conditions.append(f"user_id == '{user_id}'")
-        if content_type:
-            conditions.append(f"content_type == '{content_type}'")
-
-        expr = " and ".join(conditions)
+        # Build expr from constraints if provided
+        if constraints:
+            expr = self._build_expr_from_constraints(constraints)
+        else:
+            # Legacy fallback
+            conditions = ["indexable == true"]
+            if user_id:
+                conditions.append(f"user_id == '{user_id}'")
+            if content_type:
+                conditions.append(f"content_type == '{content_type}'")
+            expr = " and ".join(conditions)
 
         results = collection.search(
             data=[embedding],

@@ -33,7 +33,7 @@ from app.core.modality_fusion import detect_intent as detect_modality_intent, we
 from app.core.intent_rules import detect_intent as detect_query_intent
 from app.core.synonyms import expand_query
 from app.core.query_metadata_extractor import extract_metadata_filters
-from app.models.retrieval import RetrievedChunk
+from app.models.retrieval import RetrievedChunk, SearchConstraints
 from app.utils.logger import logger
 
 
@@ -79,6 +79,35 @@ class MultimodalSearchService:
             content_type=hit.get("content_type", "text"),
             quality_score=hit.get("quality_score"),
             raw_data=hit.get("raw_data"),
+        )
+
+    def compile_to_constraints(
+        self,
+        metadata_filters: Dict[str, Any],
+        user_id: str,
+        paper_ids: List[str],
+    ) -> SearchConstraints:
+        """Compile metadata filters into SearchConstraints.
+
+        Per D-07: Convert extracted filters to structured constraints
+        for Milvus expr pushdown.
+
+        Args:
+            metadata_filters: Dict from query_metadata_extractor
+            user_id: User UUID for isolation
+            paper_ids: Target paper IDs
+
+        Returns:
+            SearchConstraints for retrieval
+        """
+        return SearchConstraints(
+            user_id=user_id,
+            paper_ids=paper_ids,
+            year_from=metadata_filters.get("year_from"),
+            year_to=metadata_filters.get("year_to"),
+            section=metadata_filters.get("section"),
+            content_types=metadata_filters.get("content_types", []),
+            min_quality_score=metadata_filters.get("min_quality_score"),
         )
 
     def _format_compare_response(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
