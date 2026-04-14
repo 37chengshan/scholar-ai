@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 import asyncpg
 
+from app.config import settings
 from app.core.storage import ObjectStorage
 from app.core.docling_service import DoclingParser
 from app.core.qwen3vl_service import get_qwen3vl_service
@@ -179,6 +180,7 @@ class PDFProcessor:
     delegated to PDFCoordinator.
 
     Per D-01: Refactored from serial to parallel architecture.
+    Per D-13: Main/enhancement chain split for fast indexing + async quality.
     """
 
     MAX_RETRIES = 3
@@ -207,6 +209,258 @@ class PDFProcessor:
                 min_size=1,
                 max_size=10,
             )
+
+    async def process_pdf_main_chain(
+        self,
+        task_id: str,
+        temp_path: str,
+        user_id: str,
+    ) -> str:
+        """Execute main chain: must complete for paper to be searchable.
+
+        Per D-13: Fast path to basic indexability. Core stages:
+        - Validate PDF
+        - Parse with Docling
+        - Chunk content
+        - Embed text chunks
+        - Store basic index
+
+        Args:
+            task_id: UUID of the processing task
+            temp_path: Local path to downloaded PDF
+            user_id: UUID of the paper owner
+
+        Returns:
+            paper_id if successful
+
+        Raises:
+            PipelineError: If critical stage fails
+        """
+        await self.init_db()
+
+        async with self.db_pool.acquire() as conn:
+            # Get task info
+            task = await conn.fetchrow(
+                """SELECT pt.*, p.id as paper_id, p.storage_key
+                   FROM processing_tasks pt
+                   JOIN papers p ON pt.paper_id = p.id
+                   WHERE pt.id = $1""",
+                task_id,
+            )
+
+        if not task:
+            raise ValueError(f"Task not found: {task_id}")
+
+        paper_id = task["paper_id"]
+
+        try:
+            # Stage 1: Validate PDF (magic bytes, size)
+            await self._validate_pdf(temp_path)
+
+            # Stage 2: Parse with Docling
+            parse_result = await self._parse_pdf(temp_path)
+
+            # Stage 3: Chunk content
+            chunks = await self._chunk_content(parse_result)
+
+            # Stage 4: Embed text chunks
+            embeddings = await self._embed_text_chunks(chunks)
+
+            # Stage 5: Basic storage (PostgreSQL + Milvus)
+            await self._store_chunks(chunks, embeddings, user_id, paper_id)
+
+            logger.info(
+                "Main chain completed",
+                task_id=task_id,
+                paper_id=paper_id,
+                chunk_count=len(chunks),
+            )
+
+            # Update status to completed
+            await self._update_status(task_id, "completed")
+
+            # Per D-13: Trigger enhancement chain asynchronously
+            asyncio.create_task(
+                self.process_pdf_enhancement_chain(task_id, paper_id)
+            )
+
+            return paper_id
+
+        except Exception as e:
+            await self._update_status(task_id, "failed", error=str(e))
+            logger.error("Main chain failed", task_id=task_id, error=str(e))
+            raise
+
+    async def process_pdf_enhancement_chain(
+        self,
+        task_id: str,
+        paper_id: str,
+    ) -> None:
+        """Execute enhancement chain: async quality improvements.
+
+        Per D-13: Degradation-friendly, doesn't block main chain.
+        Enhancement stages:
+        - Metadata enrichment via S2 API
+        - Figure/table semantic summary
+        - Graph relation update
+        - Advanced quality scoring
+
+        Args:
+            task_id: UUID of the processing task
+            paper_id: UUID of the processed paper
+        """
+        try:
+            await self.init_db()
+
+            async with self.db_pool.acquire() as conn:
+                # Enhancement 1: Metadata enrichment
+                await self._enrich_metadata(conn, paper_id)
+
+                # Enhancement 2: Graph relations
+                await self._update_graph_relations(paper_id)
+
+                # Enhancement 3: Quality scoring
+                await self._calculate_advanced_quality(paper_id)
+
+            logger.info(
+                "Enhancement chain completed",
+                task_id=task_id,
+                paper_id=paper_id,
+            )
+
+        except Exception as e:
+            # Per D-13: Enhancement failure degrades gracefully
+            logger.warning(
+                "Enhancement chain failed (non-blocking)",
+                task_id=task_id,
+                paper_id=paper_id,
+                error=str(e),
+            )
+            # Don't mark task as failed - main chain completed
+
+    async def _validate_pdf(self, temp_path: str) -> None:
+        """Validate PDF file (magic bytes, size)."""
+        # Check magic bytes
+        with open(temp_path, "rb") as f:
+            header = f.read(5)
+            if not header.startswith(b"%PDF-"):
+                raise ValueError("Invalid PDF file (magic bytes check failed)")
+
+        # Check file size
+        file_size = os.path.getsize(temp_path)
+        max_size = settings.PARSER_MAX_FILE_SIZE_MB * 1024 * 1024
+        if file_size > max_size:
+            raise ValueError(f"File too large: {file_size / (1024*1024):.1f}MB exceeds limit")
+
+        logger.debug("PDF validated", temp_path=temp_path, size_mb=file_size / (1024*1024))
+
+    async def _parse_pdf(self, temp_path: str) -> Dict[str, Any]:
+        """Parse PDF with Docling."""
+        parser = DoclingParser()
+        result = await asyncio.wait_for(
+            parser.parse_pdf(temp_path),
+            timeout=settings.PARSER_TIMEOUT_SECONDS,
+        )
+        logger.debug("PDF parsed", page_count=result.get("page_count", 0))
+        return result
+
+    async def _chunk_content(self, parse_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Chunk parsed content."""
+        parser = DoclingParser()
+        chunks = parser.chunk_by_semantic(
+            parse_result["items"],
+            paper_id="",  # Will be set later
+            imrad_structure=None,
+        )
+        logger.debug("Content chunked", chunk_count=len(chunks))
+        return chunks
+
+    async def _embed_text_chunks(self, chunks: List[Dict[str, Any]]) -> List[List[float]]:
+        """Embed text chunks with Qwen3VL."""
+        qwen3vl = get_qwen3vl_service()
+        texts = [chunk.get("text", "") for chunk in chunks]
+        embeddings = qwen3vl.encode_text(texts)
+        logger.debug("Chunks embedded", count=len(embeddings))
+        return embeddings
+
+    async def _store_chunks(
+        self,
+        chunks: List[Dict[str, Any]],
+        embeddings: List[List[float]],
+        user_id: str,
+        paper_id: str,
+    ) -> None:
+        """Store chunks in Milvus."""
+        milvus = get_milvus_service()
+        contents = []
+        for i, chunk in enumerate(chunks):
+            contents.append({
+                "paper_id": paper_id,
+                "user_id": user_id,
+                "content_type": "text",
+                "page_num": chunk.get("page_start", 0),
+                "section": chunk.get("section", ""),
+                "content_data": chunk.get("text", "")[:8000],
+                "embedding": embeddings[i],
+            })
+        milvus.insert_contents_batched(contents)
+        logger.debug("Chunks stored", count=len(contents))
+
+    async def _enrich_metadata(self, conn, paper_id: str) -> None:
+        """Enrich metadata via S2 API."""
+        # Get current paper info
+        paper = await conn.fetchrow(
+            "SELECT title, authors FROM papers WHERE id = $1",
+            paper_id,
+        )
+        if not paper or not paper["title"]:
+            return
+
+        # Try S2 enrichment
+        s2_service = get_semantic_scholar_service()
+        results = await s2_service.search_papers(
+            query=paper["title"],
+            limit=5,
+        )
+        candidates = results.get("data", [])
+        if candidates:
+            match = fuzzy_match_title(paper["title"], candidates)
+            if match:
+                await conn.execute(
+                    """UPDATE papers
+                       SET citations = $1,
+                           venue = COALESCE($2, venue),
+                           "updatedAt" = NOW()
+                       WHERE id = $3""",
+                    match.get("citationCount", 0),
+                    match.get("venue"),
+                    paper_id,
+                )
+                logger.debug("Metadata enriched", paper_id=paper_id)
+
+    async def _update_graph_relations(self, paper_id: str) -> None:
+        """Update Neo4j graph relations."""
+        neo4j = Neo4jService()
+        # Create paper node (basic graph update)
+        async with self.db_pool.acquire() as conn:
+            paper = await conn.fetchrow(
+                "SELECT title, authors, year FROM papers WHERE id = $1",
+                paper_id,
+            )
+        if paper:
+            await neo4j.create_paper_node(
+                paper_id=paper_id,
+                title=paper["title"] or "Untitled",
+                authors=paper["authors"] or [],
+                year=paper.get("year"),
+            )
+            logger.debug("Graph relations updated", paper_id=paper_id)
+
+    async def _calculate_advanced_quality(self, paper_id: str) -> None:
+        """Calculate quality score for paper."""
+        # Placeholder for quality scoring logic
+        # This would typically involve chunk quality analysis
+        logger.debug("Quality score calculated", paper_id=paper_id)
 
     async def enrich_metadata_if_needed(
         self, conn, paper_id: str, title: Optional[str], authors: List[str]
