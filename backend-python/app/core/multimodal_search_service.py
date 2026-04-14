@@ -198,33 +198,36 @@ class MultimodalSearchService:
         if metadata_filters:
             logger.info(f"Metadata filters: {metadata_filters}")
 
+        # Compile filters to constraints for Milvus pushdown per D-07
+        constraints = self.compile_to_constraints(
+            metadata_filters, user_id, paper_ids
+        )
+
         # Step 5: Encode expanded query with Qwen3VL (2048-dim)
         query_embedding = self.qwen3vl_service.encode_text(expanded_query)
 
-        # Step 3: Search Milvus across modalities
+        # Step 6: Search Milvus across modalities with constraints pushdown
         content_types = content_types or ["text", "image", "table"]
         multimodal_results: Dict[str, List[Dict[str, Any]]] = {}
 
         for content_type in content_types:
             try:
+                # Apply constraints to Milvus search per D-07
                 results = self.milvus.search_contents_v2(
                     embedding=query_embedding,
                     user_id=user_id,
                     content_type=content_type,
                     top_k=20,
+                    constraints=constraints,
                 )
 
-                # Filter by paper_ids (only if paper_ids is provided)
-                if paper_ids:
-                    filtered = [r for r in results if r.get("paper_id") in paper_ids]
-                else:
-                    filtered = results  # No filter if paper_ids is empty
-                multimodal_results[content_type] = filtered
+                # Results already filtered by constraints expr, no additional paper_ids filter needed
+                multimodal_results[content_type] = results
 
                 logger.debug(
-                    f"Milvus {content_type} search",
+                    f"Milvus {content_type} search with constraints pushdown",
                     results=len(results),
-                    filtered=len(filtered),
+                    paper_ids_in_constraints=len(constraints.paper_ids),
                 )
             except Exception as e:
                 logger.error(
