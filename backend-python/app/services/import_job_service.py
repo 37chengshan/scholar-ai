@@ -38,8 +38,8 @@ class ImportJobService:
         kb_id: str,
         source_type: str,
         source_ref_raw: str,
-        options: Dict[str, Any] = None,
         db: AsyncSession,
+        options: Dict[str, Any] = None,
     ) -> ImportJob:
         """Create ImportJob with appropriate initial next_action.
 
@@ -156,8 +156,8 @@ class ImportJobService:
         status: str,
         stage: str,
         progress: int,
-        next_action: Optional[Dict[str, Any]] = None,
         db: AsyncSession,
+        next_action: Optional[Dict[str, Any]] = None,
     ) -> ImportJob:
         """Update state machine with optional next_action.
 
@@ -205,11 +205,11 @@ class ImportJobService:
     async def list_jobs(
         self,
         user_id: str,
+        db: AsyncSession,
         kb_id: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
-        db: AsyncSession,
     ) -> List[ImportJob]:
         """List jobs with filters.
 
@@ -241,9 +241,9 @@ class ImportJobService:
         storage_key: str,
         sha256: str,
         size_bytes: int,
+        db: AsyncSession,
         filename: Optional[str] = None,
         mime_type: Optional[str] = None,
-        db: AsyncSession,
     ) -> ImportJob:
         """Set file info after upload, update next_action to null.
 
@@ -294,8 +294,8 @@ class ImportJobService:
         job: ImportJob,
         error_code: str,
         error_message: str,
-        error_detail: Optional[Dict[str, Any]] = None,
         db: AsyncSession,
+        error_detail: Optional[Dict[str, Any]] = None,
     ) -> ImportJob:
         """Set error state with next_action for retry.
 
@@ -375,8 +375,8 @@ class ImportJobService:
         self,
         job: ImportJob,
         paper_id: str,
-        processing_task_id: Optional[str] = None,
         db: AsyncSession,
+        processing_task_id: Optional[str] = None,
     ) -> ImportJob:
         """Set completed state after paper creation.
 

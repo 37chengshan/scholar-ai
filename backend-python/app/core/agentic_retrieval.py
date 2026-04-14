@@ -544,7 +544,8 @@ Provide a concise synthesis that:
                 text_preview = chunk.get('text', '')[:150]
                 score = chunk.get('score', 0)
 
-                citation = f"[{paper_title[:30]}, {section or f'Page {page_num or \"N/A\"}'}]"
+                page_display = f"Page {page_num or 'N/A'}"
+                citation = f"[{paper_title[:30]}, {section or page_display}]"
                 blocks_text += f"- {text_preview} {citation} (score: {score:.2f})\n"
 
         # Call LLM for final synthesis with structured evidence
