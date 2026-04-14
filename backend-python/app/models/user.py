@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from app.models.reading_progress import ReadingProgress
     from app.models.api_key import ApiKey
     from app.models.import_job import ImportJob
+    from app.models.import_batch import ImportBatch
 
 
 class User(Base):
@@ -120,6 +121,9 @@ class User(Base):
     )
     import_jobs: Mapped[List["ImportJob"]] = relationship(
         "ImportJob", back_populates="user", cascade="all, delete-orphan"
+    )
+    import_batches: Mapped[List["ImportBatch"]] = relationship(
+        "ImportBatch", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

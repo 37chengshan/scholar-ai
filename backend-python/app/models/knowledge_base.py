@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.paper import Paper
     from app.models.import_job import ImportJob
+    from app.models.import_batch import ImportBatch
 
 
 class KnowledgeBase(Base):
@@ -87,6 +88,9 @@ class KnowledgeBase(Base):
     )
     import_jobs: Mapped[List["ImportJob"]] = relationship(
         "ImportJob", back_populates="knowledge_base", cascade="all, delete-orphan"
+    )
+    import_batches: Mapped[List["ImportBatch"]] = relationship(
+        "ImportBatch", back_populates="knowledge_base", cascade="all, delete-orphan"
     )
 
     __table_args__ = (

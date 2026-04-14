@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from app.models.paper import Paper
     from app.models.knowledge_base import KnowledgeBase
     from app.models.task import ProcessingTask
+    from app.models.import_batch import ImportBatch
 
 
 class ImportJob(Base):
@@ -201,6 +202,9 @@ class ImportJob(Base):
     paper: Mapped[Optional["Paper"]] = relationship("Paper", back_populates="import_jobs")
     processing_task: Mapped[Optional["ProcessingTask"]] = relationship(
         "ProcessingTask", back_populates="import_jobs"
+    )
+    batch: Mapped[Optional["ImportBatch"]] = relationship(
+        "ImportBatch", back_populates="import_jobs"
     )
 
     # Indexes per gpt意见.md Section 6.3
