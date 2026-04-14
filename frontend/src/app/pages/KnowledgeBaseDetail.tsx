@@ -14,7 +14,8 @@ import {
   Library,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
+import { ImportDialog } from "../components/ImportDialog";
+import { ImportQueueList } from "../components/ImportQueueList";
 import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
 import { PaperListItem } from "../components/PaperListItem";
@@ -570,7 +571,14 @@ export function KnowledgeBaseDetail() {
         </Tabs>
       </div>
 
-      <ImportKnowledgeDialog
+      {/* Import Queue List - embedded import history */}
+      <div className="max-w-7xl mx-auto px-6 pb-8 relative z-10">
+        <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] p-6">
+          <ImportQueueList kbId={kb.id} />
+        </div>
+      </div>
+
+      <ImportDialog
         open={isImportModalOpen}
         onOpenChange={setIsImportModalOpen}
         knowledgeBaseId={kb.id}

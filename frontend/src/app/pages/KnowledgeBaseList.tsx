@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive, Loader2 } from "lucide-react";
 import { KnowledgeBaseCard } from "../components/KnowledgeBaseCard";
 import { CreateKnowledgeBaseDialog } from "../components/CreateKnowledgeBaseDialog";
-import { ImportKnowledgeDialog } from "../components/ImportKnowledgeDialog";
+import { ImportDialog } from "../components/ImportDialog";
 import { EmptyState } from "../components/EmptyState";
 import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
@@ -532,7 +532,7 @@ export function KnowledgeBaseList() {
 
       {/* Import Dialog */}
       {importTarget && (
-        <ImportKnowledgeDialog
+        <ImportDialog
           open={!!importTarget}
           onOpenChange={(open) => {
             if (!open) setImportTarget(null);

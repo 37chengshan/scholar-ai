@@ -12,6 +12,10 @@
 import apiClient from '@/utils/apiClient';
 import { ApiResponse } from '@/utils/apiClient';
 
+// Export importApi for ImportJob operations
+export { importApi } from './importApi';
+export type { ImportJob, SourceType, SourceResolution } from './importApi';
+
 // KB Types
 export interface KnowledgeBase {
   id: string;
