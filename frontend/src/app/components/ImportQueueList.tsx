@@ -2,19 +2,24 @@
  * Import Queue List Component
  *
  * Embedded in KB detail page showing all import jobs with:
- * - Progress tracking with 5s polling
+ * - Progress tracking with 5s polling (SSE available in Wave 5)
  * - Status grouping (running, awaiting, completed, failed)
  * - Retry/cancel actions
- * - DedupeDialog placeholder for Wave 5
+ * - DedupeDecisionDialog for awaiting_user_action jobs (Wave 5)
  *
- * Wave 4: Polling-based (SSE deferred to Wave 5)
+ * Wave 5: Added DedupeDecisionDialog integration
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
-import { importApi, ImportJob } from '@/services/importApi';
+import {
+  importApi,
+  ImportJob,
+  DedupeDecisionRequest,
+} from '@/services/importApi';
 import { ImportJobRow } from './ImportJobRow';
+import { DedupeDecisionDialog } from './DedupeDecisionDialog';
 import { useNavigate } from 'react-router';
 import { cn } from './ui/utils';
 
@@ -54,6 +59,11 @@ export function ImportQueueList({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(initiallyExpanded);
+
+  // DedupeDialog state (Wave 5)
+  const [dedupeDialogOpen, setDedupeDialogOpen] = useState(false);
+  const [selectedDedupeJob, setSelectedDedupeJob] = useState<ImportJob | null>(null);
+  const [dedupeLoading, setDedupeLoading] = useState(false);
 
   // Poll for updates every 5s for running jobs
   const fetchJobs = useCallback(async () => {
@@ -103,6 +113,35 @@ export function ImportQueueList({
   // View paper result
   const viewPaper = (paperId: string) => {
     navigate(`/read/${paperId}`);
+  };
+
+  // Handle dedupe decision (Wave 5)
+  const openDedupeDialog = (job: ImportJob) => {
+    setSelectedDedupeJob(job);
+    setDedupeDialogOpen(true);
+  };
+
+  const handleDedupeDecision = async (decision: DedupeDecisionRequest) => {
+    if (!selectedDedupeJob) return;
+
+    setDedupeLoading(true);
+    try {
+      await importApi.submitDedupeDecision(selectedDedupeJob.importJobId, decision);
+
+      // Close dialog and refresh
+      setDedupeDialogOpen(false);
+      setSelectedDedupeJob(null);
+      await fetchJobs();
+
+      // If reuse_existing, the job is completed - notify parent
+      if (decision.decision === 'reuse_existing' && onJobComplete) {
+        onJobComplete(selectedDedupeJob);
+      }
+    } catch (err: any) {
+      // Error handled by apiClient interceptor
+    } finally {
+      setDedupeLoading(false);
+    }
   };
 
   // Group jobs by status
@@ -193,10 +232,11 @@ export function ImportQueueList({
             </div>
           )}
 
-          {/* Awaiting user action - Wave 5 will add DedupeDialog trigger */}
+          {/* Awaiting user action - DedupeDialog trigger (Wave 5) */}
           {awaitingJobs.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-yellow-600 flex items-center gap-2">
+                <AlertTriangle className="h-3 w-3" />
                 需要确认 ({awaitingJobs.length})
               </h4>
               <div className="space-y-2">
@@ -205,13 +245,11 @@ export function ImportQueueList({
                     key={job.importJobId}
                     job={job}
                     awaitingAction
-                    actionMessage="等待去重决策"
+                    actionMessage="发现重复论文，需要决策"
+                    onDedupe={() => openDedupeDialog(job)}
                   />
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground italic">
-                去重决策对话框将在 Wave 5 实现
-              </p>
             </div>
           )}
 
@@ -277,6 +315,24 @@ export function ImportQueueList({
           )}
         </div>
       )}
+
+      {/* DedupeDecisionDialog (Wave 5) */}
+      <DedupeDecisionDialog
+        open={dedupeDialogOpen}
+        onOpenChange={setDedupeDialogOpen}
+        job={selectedDedupeJob!}
+        matchedPaper={
+          selectedDedupeJob?.dedupe?.matchedPaperId
+            ? {
+                id: selectedDedupeJob.dedupe.matchedPaperId,
+                title: '已匹配的论文', // Will be fetched in future enhancement
+              }
+            : undefined
+        }
+        matchType={selectedDedupeJob?.dedupe?.matchType}
+        onDecision={handleDedupeDecision}
+        isLoading={dedupeLoading}
+      />
     </div>
   );
 }

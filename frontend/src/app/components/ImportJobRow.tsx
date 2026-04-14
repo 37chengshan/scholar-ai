@@ -10,7 +10,7 @@
  * - Action buttons: Retry, Cancel, View Result
  */
 
-import { Loader2, CheckCircle, AlertCircle, Clock, RotateCcw, XCircle, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, Clock, RotateCcw, XCircle, ExternalLink, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { cn } from './ui/utils';
@@ -46,6 +46,7 @@ interface ImportJobRowProps {
   onRetry?: () => void;
   onCancel?: () => void;
   onViewResult?: () => void;
+  onDedupe?: () => void; // Wave 5: Dedupe decision trigger
 }
 
 // Source type labels
@@ -78,6 +79,7 @@ export function ImportJobRow({
   onRetry,
   onCancel,
   onViewResult,
+  onDedupe,
 }: ImportJobRowProps) {
   const stageLabel = STAGE_LABELS[job.stage] || job.stage;
   const sourceLabel = SOURCE_TYPE_LABELS[job.sourceType] || job.sourceType;
@@ -171,6 +173,19 @@ export function ImportJobRow({
 
       {/* Action buttons */}
       <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Wave 5: Dedupe decision button */}
+        {onDedupe && awaitingAction && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDedupe}
+            className="h-7 text-xs bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+          >
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            处理
+          </Button>
+        )}
+
         {onRetry && job.status === 'failed' && (
           <Button
             variant="outline"

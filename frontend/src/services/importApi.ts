@@ -2,7 +2,8 @@
  * Import Job API Service
  *
  * Provides ImportJob CRUD, source resolution, retry, cancel operations.
- * Wave 4: Core ImportJob API methods (no dedupe-decision, no SSE yet)
+ * Wave 4: Core ImportJob API methods
+ * Wave 5: Added submitDedupeDecision and SSE streaming
  *
  * Endpoints:
  * - Create: POST /api/v1/knowledge-bases/{kbId}/imports
@@ -14,10 +15,8 @@
  * - Batch Import: POST /api/v1/knowledge-bases/{kbId}/imports/batch
  * - Retry: POST /api/v1/import-jobs/{jobId}/retry
  * - Cancel: POST /api/v1/import-jobs/{jobId}/cancel
- *
- * Wave 5 deferred:
- * - submitDedupeDecision: POST /api/v1/import-jobs/{jobId}/dedupe-decision
- * - streamProgress: GET /api/v1/import-jobs/{jobId}/stream (SSE)
+ * - Dedupe Decision: POST /api/v1/import-jobs/{jobId}/dedupe-decision (Wave 5)
+ * - SSE Stream: GET /api/v1/import-jobs/{jobId}/stream (Wave 5)
  */
 import apiClient from '@/utils/apiClient';
 import { ApiResponse } from '@/utils/apiClient';
@@ -123,6 +122,14 @@ export interface BatchResolutionItem {
   errorMessage?: string;
   normalized?: SourceResolution['normalizedSource'];
   preview?: SourceResolution['preview'];
+}
+
+// Wave 5: Dedupe decision types
+export type DedupeDecisionType = 'reuse_existing' | 'import_as_new_version' | 'force_new_paper' | 'cancel';
+
+export interface DedupeDecisionRequest {
+  decision: DedupeDecisionType;
+  matchedPaperId?: string;
 }
 
 // === API Methods ===
@@ -246,9 +253,28 @@ export const importApi = {
     return { success: true, data: response.data };
   },
 
-  // Wave 5 - deferred:
-  // submitDedupeDecision: async (jobId: string, request: DedupeDecisionRequest): Promise<ApiResponse<ImportJob>> => { ... }
-  // streamProgress: async (jobId: string): Promise<EventSource> => { ... } // SSE
+  /**
+   * Submit dedupe decision (Wave 5)
+   * Per gpt意见.md Section 2.5: 4 decision options
+   */
+  submitDedupeDecision: async (
+    jobId: string,
+    request: DedupeDecisionRequest
+  ): Promise<ApiResponse<{ importJobId: string; status: string }>> => {
+    const response = await apiClient.post(
+      `/api/v1/import-jobs/${jobId}/dedupe-decision`,
+      request
+    );
+    return { success: true, data: response.data };
+  },
+
+  /**
+   * SSE stream for progress updates (Wave 5)
+   * Returns EventSource URL for real-time updates
+   */
+  getStreamUrl: (jobId: string): string => {
+    return `/api/v1/import-jobs/${jobId}/stream`;
+  },
 };
 
 export default importApi;
