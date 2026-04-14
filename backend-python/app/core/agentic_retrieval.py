@@ -599,17 +599,132 @@ Based on {len(all_results)} rounds of retrieval:
 
         return "\n".join(summaries)
 
+    def _build_context_with_citations(
+        self,
+        chunks: List[Dict[str, Any]],
+    ) -> str:
+        """Build formatted context string with citation markers.
+
+        Args:
+            chunks: List of chunks with paper_title, section, page, content, similarity
+
+        Returns:
+            Formatted context string with [Paper Title, Section] citation markers
+
+        Citation format:
+            - [paper_title, section] when section available
+            - [paper_title, Page {page}] when section missing
+            - [paper_id, section/page] when paper_title missing
+
+        Truncation strategy:
+            - High similarity (>0.85): extend to 300 chars
+            - Normal similarity: truncate to 200 chars at sentence boundary
+        """
+        if not chunks:
+            return ""
+
+        context_parts = []
+
+        for chunk in chunks:
+            content = chunk.get("content", "")
+            similarity = chunk.get("similarity", 0)
+
+            # Build citation marker
+            paper_title = chunk.get("paper_title") or chunk.get("paper_id", "Unknown")
+            section = chunk.get("section")
+
+            if section:
+                citation = f"[{paper_title}, {section}]"
+            else:
+                page = chunk.get("page")
+                citation = f"[{paper_title}, Page {page}]" if page else f"[{paper_title}]"
+
+            # Truncate content based on similarity threshold
+            high_similarity_threshold = 0.85
+            if similarity > high_similarity_threshold:
+                max_length = 300
+            else:
+                max_length = 200
+
+            truncated = self._truncate_at_sentence_boundary(content, max_length)
+
+            # Format chunk with citation
+            context_parts.append(f"{truncated} {citation}")
+
+        return "\n".join(context_parts)
+
+    def _truncate_at_sentence_boundary(
+        self,
+        content: str,
+        max_length: int,
+    ) -> str:
+        """Truncate content at sentence boundary.
+
+        Args:
+            content: Full content string
+            max_length: Maximum desired length
+
+        Returns:
+            Truncated content ending at sentence boundary (or max_length if no boundary)
+        """
+        if len(content) <= max_length:
+            return content
+
+        # Look for sentence boundary near the end of max_length range
+        # Prefer boundary in the last 50 chars of the range
+        truncated = content[:max_length]
+
+        # Look for sentence endings (. ! ?) in the last portion
+        search_range_start = max(max_length - 100, max_length // 2)
+        search_portion = truncated[search_range_start:]
+
+        sentence_enders = [".", "!", "?"]
+        last_boundary = -1
+
+        for ender in sentence_enders:
+            pos = search_portion.rfind(ender)  # Use rfind for last occurrence
+            if pos != -1:
+                # Adjust position to full truncated string
+                full_pos = search_range_start + pos
+                if full_pos > last_boundary:
+                    last_boundary = full_pos
+
+        # If found a boundary in search range, truncate there
+        if last_boundary > search_range_start:
+            return truncated[:last_boundary + 1]
+
+        # No good boundary found near end, use max_length with ellipsis
+        return truncated + "..."
+
+    def _build_citation(self, chunk: Dict[str, Any]) -> str:
+        """Build citation string for a single chunk.
+
+        Args:
+            chunk: Chunk dict with paper_title, paper_id, section, page
+
+        Returns:
+            Citation string like "[Paper Title, Section]" or "[Paper Title, Page 5]"
+        """
+        paper_title = chunk.get("paper_title") or chunk.get("paper_id", "Unknown")
+        section = chunk.get("section")
+
+        if section:
+            return f"[{paper_title}, {section}]"
+        else:
+            page = chunk.get("page")
+            return f"[{paper_title}, Page {page}]" if page else f"[{paper_title}]"
+
     def _collect_sources(
         self,
         all_results: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        """Collect and deduplicate sources from all rounds.
+        """Collect and deduplicate sources from all rounds with citations.
 
         Args:
             all_results: All round results
 
         Returns:
-            Deduplicated list of sources
+            Deduplicated list of sources with citation field
         """
         seen_chunks = set()
         sources = []
@@ -618,19 +733,29 @@ Based on {len(all_results)} rounds of retrieval:
             round_results = round_data.get("results", [])
 
             for result in round_results:
+                # Skip failed results
+                if not result.get("success", True):
+                    continue
+
                 for chunk in result.get("chunks", []):
                     chunk_id = chunk.get("id") or chunk.get("chunk_id")
 
                     if chunk_id and chunk_id not in seen_chunks:
                         seen_chunks.add(chunk_id)
+
+                        # Build citation for this chunk
+                        citation = self._build_citation(chunk)
+
                         sources.append(
                             {
                                 "chunk_id": chunk_id,
                                 "paper_id": chunk.get("paper_id"),
+                                "paper_title": chunk.get("paper_title"),
                                 "content_preview": chunk.get("content", "")[:300],
                                 "page": chunk.get("page"),
                                 "similarity": chunk.get("similarity"),
                                 "section": chunk.get("section"),
+                                "citation": citation,
                             }
                         )
 
