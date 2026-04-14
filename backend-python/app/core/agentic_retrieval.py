@@ -204,6 +204,94 @@ class AgenticRetrievalOrchestrator:
             },
         }
 
+    def _build_evidence_blocks(
+        self,
+        chunks: List[Dict[str, Any]],
+        query: str,
+        num_blocks: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Group chunks into evidence blocks for structured synthesis.
+
+        Per D-15: LLM receives evidence blocks, not loose context.
+
+        Args:
+            chunks: Retrieved chunks with unified fields
+            query: Original query for topic extraction
+            num_blocks: Number of evidence blocks to create
+
+        Returns:
+            List of evidence blocks:
+            [
+                {
+                    "claim_topic": "...",
+                    "supporting_chunks": [
+                        {"paper_title": "...", "section": "...", "page_num": 5, "text": "...", "score": 0.89}
+                    ]
+                }
+            ]
+        """
+        if not chunks:
+            return []
+
+        # Group chunks by section for topical coherence
+        section_groups: Dict[str, List[Dict]] = {}
+        for chunk in chunks:
+            section = chunk.get("section") or chunk.get("content_section") or "General"
+            if section not in section_groups:
+                section_groups[section] = []
+            section_groups[section].append(chunk)
+
+        # Create evidence blocks
+        blocks = []
+
+        # First block: highest-scoring chunks across all sections
+        top_chunks = sorted(chunks, key=lambda x: x.get("score", x.get("similarity", 0)), reverse=True)[:3]
+        if top_chunks:
+            blocks.append({
+                "claim_topic": f"Key findings for '{query[:50]}...'",
+                "supporting_chunks": [
+                    {
+                        "paper_title": c.get("paper_title", c.get("paper_id", "Unknown")),
+                        "section": c.get("section", c.get("content_section", "N/A")),
+                        "page_num": c.get("page_num", c.get("page")),
+                        "text": (c.get("content", c.get("content_data", ""))[:200] if c.get("content", c.get("content_data", "")) else ""),
+                        "score": c.get("score", c.get("similarity", 0)),
+                    }
+                    for c in top_chunks
+                ],
+            })
+
+        # Additional blocks: per-section evidence
+        for section, section_chunks in section_groups.items():
+            if section == "General":
+                continue
+            if len(blocks) >= num_blocks:
+                break
+
+            sorted_chunks = sorted(section_chunks, key=lambda x: x.get("score", x.get("similarity", 0)), reverse=True)[:2]
+            if sorted_chunks:
+                blocks.append({
+                    "claim_topic": f"Evidence from {section}",
+                    "supporting_chunks": [
+                        {
+                            "paper_title": c.get("paper_title", c.get("paper_id", "Unknown")),
+                            "section": c.get("section", c.get("content_section", section)),
+                            "page_num": c.get("page_num", c.get("page")),
+                            "text": (c.get("content", c.get("content_data", ""))[:150] if c.get("content", c.get("content_data", "")) else ""),
+                            "score": c.get("score", c.get("similarity", 0)),
+                        }
+                        for c in sorted_chunks
+                    ],
+                })
+
+        logger.info(
+            "Evidence blocks built",
+            blocks=len(blocks),
+            total_chunks=len(chunks),
+        )
+
+        return blocks
+
     async def _execute_subquestions_parallel(
         self,
         sub_questions: List[Dict[str, Any]],
@@ -419,7 +507,9 @@ Provide a concise synthesis that:
         query_type: QueryType,
         all_results: List[Dict[str, Any]],
     ) -> str:
-        """Generate final synthesis across all rounds.
+        """Generate final synthesis across all rounds using evidence blocks.
+
+        Per D-15: LLM receives structured evidence blocks, not loose context.
 
         Args:
             query: Original query
@@ -427,36 +517,37 @@ Provide a concise synthesis that:
             all_results: All round results
 
         Returns:
-            Final synthesized answer
+            Final synthesized answer with citations
         """
-        # Combine all round results
-        combined_context = []
+        # Build evidence blocks from all chunks
+        all_chunks = []
         for round_data in all_results:
-            round_num = round_data.get("round", 0)
             round_results = round_data.get("results", [])
-
-            round_context = []
             for result in round_results:
-                if not result.get("success", True):
-                    continue
-                chunks = result.get("chunks", [])
-                if chunks:
-                    round_context.append(
-                        f"- {result.get('sub_question', 'N/A')}: "
-                        f"{result.get('summary', 'N/A')[:200]}"
-                    )
+                if result.get("success", True):
+                    chunks = result.get("chunks", [])
+                    all_chunks.extend(chunks)
 
-            if round_context:
-                combined_context.append(
-                    f"Round {round_num}:\n" + "\n".join(round_context)
-                )
+        evidence_blocks = self._build_evidence_blocks(all_chunks, query)
 
-        if not combined_context:
+        if not evidence_blocks:
             return "No relevant information found across all retrieval rounds."
 
-        full_context = "\n\n".join(combined_context)
+        # Format blocks for LLM
+        blocks_text = ""
+        for block in evidence_blocks:
+            blocks_text += f"\n## {block['claim_topic']}\n"
+            for chunk in block['supporting_chunks']:
+                paper_title = chunk.get('paper_title', 'Unknown')
+                section = chunk.get('section', 'N/A')
+                page_num = chunk.get('page_num')
+                text_preview = chunk.get('text', '')[:150]
+                score = chunk.get('score', 0)
 
-        # Call LLM for final synthesis
+                citation = f"[{paper_title[:30]}, {section or f'Page {page_num or \"N/A\"}'}]"
+                blocks_text += f"- {text_preview} {citation} (score: {score:.2f})\n"
+
+        # Call LLM for final synthesis with structured evidence
         try:
             from app.utils.zhipu_client import get_llm_client
 
@@ -478,23 +569,29 @@ Provide a concise synthesis that:
 2. Integrates all retrieved information
 3. Cites specific findings where relevant"""
 
-            prompt = f"""Generate a final synthesized answer based on all retrieval rounds.
+            prompt = f"""Answer the query using ONLY the provided evidence blocks.
 
-Original query: {query}
+Query: {query}
 Query type: {query_type}
 
-Retrieved information across {len(all_results)} rounds:
-{full_context}
+EVIDENCE BLOCKS:
+{blocks_text}
+
+REQUIREMENTS:
+1. Every factual statement MUST cite evidence using [Paper Title, Section] format
+2. Use evidence blocks - each block is a coherent claim with supporting sources
+3. Minimum citation density: one citation per 2-3 sentences
+4. If evidence is insufficient, state what is missing
 
 {synthesis_instruction}
 
-Format your response with clear sections and bullet points where appropriate."""
+Your answer:"""
 
             response = await llm_client.chat_completion(
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert research synthesis assistant.",
+                        "content": "You are an expert research synthesis assistant. Always cite sources using [Paper Title, Section] format.",
                     },
                     {"role": "user", "content": prompt},
                 ],
@@ -509,12 +606,11 @@ Format your response with clear sections and bullet points where appropriate."""
             # Fallback: simple concatenation with markdown formatting
             return f"""## Synthesis
 
-Based on {len(all_results)} rounds of retrieval:
+Based on {len(all_results)} rounds of retrieval with {len(evidence_blocks)} evidence blocks:
 
-{full_context}
+{blocks_text}
 
-*Note: LLM synthesis failed, showing raw retrieved information.*
-"""
+*Note: LLM synthesis failed, showing structured evidence blocks.*"""
 
     async def _refine_subquestions(
         self,
