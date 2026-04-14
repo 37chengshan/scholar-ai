@@ -20,10 +20,9 @@ from app.utils.problem_detail import Errors
 from app.utils.cache import (
     get_cached_response,
     set_cached_response,
-    get_conversation_session,
-    save_conversation_session,
-    delete_conversation_session
 )
+from app.utils.session_manager import session_manager
+from app.models.session import SessionUpdate
 from app.core.agentic_retrieval import AgenticRetrievalOrchestrator
 from app.core.streaming import (
     stream_rag_response,
@@ -110,21 +109,24 @@ async def rag_query(
     RAG问答 (阻塞式)
 
     - 基于论文内容进行问答
-    - 支持引用溯源
+    - 支持引用溯源（使用 [Paper Title, Section] 格式）
     - 支持跨文档查询
     - 1小时缓存相同查询
     - 支持多轮对话 (通过conversation_id)
-    - 使用统一MultimodalSearchService with query understanding
+    - 使用 AgenticRetrievalOrchestrator 进行引用格式化处理
     """
     try:
         logger.info(f"RAG query: {request.question}, type: {request.query_type}, user: {user_id}")
 
-        # Check cache first
+        # Check cache first (with user_id and version per D-04)
         paper_ids = request.paper_ids or []
         cached = await get_cached_response(
-            request.question,
-            paper_ids,
-            request.query_type
+            user_id=user_id,
+            query=request.question,
+            paper_ids=paper_ids,
+            query_type=request.query_type,
+            retrieval_version="v2",
+            index_version="v1"
         )
 
         if cached:
@@ -138,105 +140,58 @@ async def rag_query(
                 cached=True
             )
 
-        # Use unified MultimodalSearchService (per D-15)
-        service = get_multimodal_search_service()
+        # Use AgenticRetrievalOrchestrator for proper citation formatting
+        orchestrator = AgenticRetrievalOrchestrator(max_rounds=1)
 
-        # Execute multimodal search with query understanding
-        result = await service.search(
+        result = await orchestrator.retrieve(
             query=request.question,
+            query_type=request.query_type,
             paper_ids=paper_ids,
             user_id=user_id,
-            top_k=request.top_k,
-            use_reranker=True,
+            top_k_per_subquestion=request.top_k,
         )
 
-        # Build answer using LLM with retrieved context
-        context_chunks = result.get("results", [])[:5]  # Top 5 chunks
-        context_text = "\n\n---\n\n".join([
-            f"[{i+1}] {chunk.get('content_data', '')}" 
-            for i, chunk in enumerate(context_chunks)
-        ])
-        
-        # Use ZhipuAI to generate answer
-        from app.utils.zhipu_client import ZhipuLLMClient
-        llm_client = ZhipuLLMClient()
-        
-        system_prompt = """You are a helpful research assistant. Answer the user's question based on the provided context from academic papers.
-        
-Instructions:
-1. Provide a clear, accurate answer based on the context
-2. Cite relevant parts using [1], [2], etc.
-3. If the context doesn't contain enough information, say so
-4. Keep the answer concise but comprehensive
-5. Use markdown formatting for better readability"""
+        # Extract answer and sources from orchestrator result
+        answer = result.get("answer", "")
+        sources = result.get("sources", [])
 
-        user_message = f"""Context from papers:
-{context_text}
-
-Question: {request.question}
-
-Please provide a comprehensive answer based on the context above."""
-
-        llm_response = await llm_client.chat_completion(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
-            max_tokens=1024,
-            temperature=0.7
-        )
-        
-        # Extract answer from ZhipuAI response
-        if hasattr(llm_response, 'choices') and llm_response.choices:
-            answer = llm_response.choices[0].message.content
-        else:
-            answer = "Unable to generate answer"
-
-        # Format sources from results
-        sources = []
-        for res in result.get("results", [])[:5]:  # Top 5 sources
-            sources.append({
-                "paper_id": res.get("paper_id"),
-                "chunk_id": res.get("id"),
-                "content_preview": res.get("content_data", "")[:200],
-                "score": res.get("score", 0.0),
-                "page": res.get("page_num"),
-                "content_type": res.get("content_type"),
-            })
-
-        # Calculate confidence from top results
+        # Calculate confidence from top sources
         confidence = 0.0
         if sources:
-            confidence = min(sum(s.get("score", 0.0) for s in sources[:3]) / len(sources[:3]), 1.0)
+            similarities = [s.get("similarity", 0.0) for s in sources[:3]]
+            confidence = min(sum(similarities) / len(similarities), 1.0) if similarities else 0.0
 
-        # Build response with query understanding fields (per D-15)
+        # Build response (expanded_query/intent not available from orchestrator)
         response = RAGQueryResponse(
             answer=answer,
             query=request.question,
-            expanded_query=result.get("expanded_query"),
-            intent=result.get("intent"),
-            metadata_filters=result.get("metadata_filters"),
+            expanded_query=None,  # Not available from AgenticRetrievalOrchestrator
+            intent=request.query_type,  # Use query_type as intent
+            metadata_filters=None,  # Not available from AgenticRetrievalOrchestrator
             sources=sources,
             confidence=confidence,
             conversation_id=request.conversation_id,
             cached=False
         )
 
-        # Cache the response
+        # Cache the response (with user_id and version per D-04)
         await set_cached_response(
-            request.question,
-            paper_ids,
-            {
+            user_id=user_id,
+            query=request.question,
+            paper_ids=paper_ids,
+            response={
                 "answer": answer,
                 "sources": sources,
                 "confidence": confidence
             },
-            request.query_type
+            query_type=request.query_type,
+            retrieval_version="v2",
+            index_version="v1"
         )
 
-        # Update conversation if conversation_id provided
+        # Update conversation if conversation_id provided (with user_id per D-05)
         if request.conversation_id:
-            await _update_conversation(request, answer, sources)
+            await _update_conversation(request, answer, sources, user_id)
 
         return response
 
@@ -271,11 +226,14 @@ async def rag_query_stream(
 
         paper_ids = request.paper_ids or []
 
-        # Check cache for instant response
+        # Check cache for instant response (with user_id and version per D-04)
         cached = await get_cached_response(
-            request.question,
-            paper_ids,
-            request.query_type
+            user_id=user_id,
+            query=request.question,
+            paper_ids=paper_ids,
+            query_type=request.query_type,
+            retrieval_version="v2",
+            index_version="v1"
         )
 
         if cached:
@@ -339,38 +297,40 @@ async def rag_query_stream(
 
 @router.post("/session", response_model=ConversationSessionResponse)
 async def create_conversation_session(
-    paper_ids: Optional[List[str]] = None
+    paper_ids: Optional[List[str]] = None,
+    user_id: str = CurrentUserId
 ):
     """
     创建新的对话会话
 
-    - 生成唯一session_id
+    - 使用 SessionManager 创建会话并绑定用户所有权
     - 关联论文列表
     - 支持多轮对话上下文保持
     """
     try:
-        session_id = str(uuid.uuid4())
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        # Use SessionManager instead of direct Redis operations per D-05
+        title = f"RAG Session ({len(paper_ids or [])} papers)"
+        session = await session_manager.create_session(
+            user_id=user_id,
+            title=title
+        )
 
-        session_data = {
-            "session_id": session_id,
-            "messages": [],
-            "paper_ids": paper_ids or [],
-            "created_at": now,
-            "updated_at": now
-        }
+        # Store paper_ids in metadata if provided
+        if paper_ids:
+            await session_manager.update_session(
+                session_id=session.id,
+                updates=SessionUpdate(metadata={"paper_ids": paper_ids})
+            )
 
-        await save_conversation_session(session_id, session_data)
-
-        logger.info(f"Created conversation session: {session_id}")
+        logger.info(f"Created conversation session: {session.id} for user: {user_id}")
 
         return ConversationSessionResponse(
-            session_id=session_id,
-            messages=[],
+            session_id=session.id,
+            messages=[],  # SessionManager doesn't store messages in session object
             paper_ids=paper_ids or [],
-            created_at=now,
-            updated_at=now,
-            message_count=0
+            created_at=session.created_at.isoformat(),
+            updated_at=session.updated_at.isoformat(),
+            message_count=session.message_count
         )
 
     except Exception as e:
@@ -382,15 +342,20 @@ async def create_conversation_session(
 
 
 @router.get("/session/{session_id}", response_model=ConversationSessionResponse)
-async def get_conversation(session_id: str):
+async def get_conversation(
+    session_id: str,
+    user_id: str = CurrentUserId
+):
     """
     获取对话会话详情
 
     - 返回完整对话历史
     - 包含关联论文列表
+    - 验证会话所有权 (session.user_id == current_user_id)
     """
     try:
-        session = await get_conversation_session(session_id)
+        # Use SessionManager per D-05
+        session = await session_manager.get_session(session_id)
 
         if not session:
             raise HTTPException(
@@ -398,13 +363,24 @@ async def get_conversation(session_id: str):
                 detail=Errors.not_found(f"会话不存在: {session_id}")
             )
 
+        # Ownership check per D-05
+        if session.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=Errors.forbidden("Session access denied - not owned by current user")
+            )
+
+        # Get paper_ids from metadata
+        metadata = session.metadata or {}
+        paper_ids = metadata.get("paper_ids", [])
+
         return ConversationSessionResponse(
-            session_id=session["session_id"],
-            messages=session.get("messages", []),
-            paper_ids=session.get("paper_ids", []),
-            created_at=session.get("created_at", ""),
-            updated_at=session.get("updated_at", ""),
-            message_count=len(session.get("messages", []))
+            session_id=session.id,
+            messages=[],  # Messages stored separately, not in session object
+            paper_ids=paper_ids,
+            created_at=session.created_at.isoformat(),
+            updated_at=session.updated_at.isoformat(),
+            message_count=session.message_count
         )
 
     except HTTPException:
@@ -418,23 +394,43 @@ async def get_conversation(session_id: str):
 
 
 @router.delete("/session/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_conversation(session_id: str):
+async def delete_conversation(
+    session_id: str,
+    user_id: str = CurrentUserId
+):
     """
     删除对话会话
 
-    - 清除Redis中的会话数据
+    - 验证所有权后从 PostgreSQL 和 Redis 删除
     - 不可恢复
     """
     try:
-        success = await delete_conversation_session(session_id)
+        # Get session first to verify ownership per D-05
+        session = await session_manager.get_session(session_id)
 
-        if not success:
+        if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found(f"会话不存在: {session_id}")
             )
 
-        logger.info(f"Deleted conversation session: {session_id}")
+        # Ownership check per D-05
+        if session.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=Errors.forbidden("Session deletion denied - not owned by current user")
+            )
+
+        # Delete using SessionManager
+        success = await session_manager.delete_session(session_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=Errors.internal(f"删除会话失败")
+            )
+
+        logger.info(f"Deleted conversation session: {session_id} by user: {user_id}")
 
     except HTTPException:
         raise
@@ -512,60 +508,68 @@ async def agentic_search(
 async def _update_conversation(
     request: RAGQueryRequest,
     answer: str,
-    sources: List[dict]
+    sources: List[dict],
+    user_id: str
 ):
     """
-    Update conversation session with new exchange.
+    Update conversation session with strict ownership.
+
+    Per D-05: Never create ghost sessions - session must exist first.
 
     Args:
         request: The RAG query request
         answer: Assistant's answer
         sources: Citation sources
+        user_id: User UUID for ownership verification
     """
     if not request.conversation_id:
         return
 
-    session = await get_conversation_session(request.conversation_id)
+    # Get existing session from SessionManager
+    session = await session_manager.get_session(request.conversation_id)
 
+    # Per D-05: Session must exist and belong to user
     if not session:
-        # Create new session if it doesn't exist
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        session = {
-            "session_id": request.conversation_id,
-            "messages": [],
-            "paper_ids": request.paper_ids or [],
-            "created_at": now,
-            "updated_at": now
-        }
+        logger.warning(
+            f"Session {request.conversation_id} not found - refusing to create ghost session"
+        )
+        return  # Don't auto-create ghost sessions
 
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if session.user_id != user_id:
+        logger.warning(
+            f"Session {request.conversation_id} ownership mismatch - user {user_id} cannot access"
+        )
+        return  # Security: don't update sessions owned by other users
 
-    # Add user message
-    session["messages"].append({
-        "role": "user",
-        "content": request.question,
-        "timestamp": now
-    })
+    # Update metadata with new exchange
+    from datetime import datetime
 
-    # Add assistant message
-    session["messages"].append({
+    metadata = session.metadata or {}
+    messages = metadata.get("messages", [])
+
+    now = datetime.utcnow().isoformat()
+
+    # Add messages
+    messages.append({"role": "user", "content": request.question, "timestamp": now})
+    messages.append({
         "role": "assistant",
         "content": answer,
         "citations": sources,
         "timestamp": now
     })
 
-    # Limit to last 20 messages (10 exchanges)
-    if len(session["messages"]) > 20:
-        session["messages"] = session["messages"][-20:]
+    # Keep last 20 messages
+    if len(messages) > 20:
+        messages = messages[-20:]
 
-    # Update paper_ids if changed
+    # Update paper_ids if new ones added
     if request.paper_ids:
-        session["paper_ids"] = list(set(
-            session.get("paper_ids", []) + request.paper_ids
-        ))
+        existing_ids = metadata.get("paper_ids", [])
+        metadata["paper_ids"] = list(set(existing_ids + request.paper_ids))
 
-    session["updated_at"] = now
+    metadata["messages"] = messages
 
-    # Save session
-    await save_conversation_session(request.conversation_id, session)
+    await session_manager.update_session(
+        session_id=request.conversation_id,
+        updates=SessionUpdate(metadata=metadata)
+    )
