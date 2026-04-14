@@ -33,6 +33,7 @@ from app.core.modality_fusion import detect_intent as detect_modality_intent, we
 from app.core.intent_rules import detect_intent as detect_query_intent
 from app.core.synonyms import expand_query
 from app.core.query_metadata_extractor import extract_metadata_filters
+from app.models.retrieval import RetrievedChunk
 from app.utils.logger import logger
 
 
@@ -53,6 +54,32 @@ class MultimodalSearchService:
         self.qwen3vl_service = get_qwen3vl_service()
         self.milvus = get_milvus_service()
         self.reranker = get_reranker_service()
+
+    def _normalize_hit(self, hit: Dict[str, Any]) -> RetrievedChunk:
+        """Normalize Milvus Raw Hit to unified RetrievedChunk schema.
+
+        Field mapping per Phase 40 D-02:
+        - content_data -> text (fallback: content)
+        - score -> score (fallback: similarity, distance)
+        - page_num -> page_num (fallback: page)
+
+        Args:
+            hit: Raw hit dict from Milvus search_contents_v2()
+
+        Returns:
+            RetrievedChunk with unified field names
+        """
+        return RetrievedChunk(
+            paper_id=hit.get("paper_id", ""),
+            paper_title=hit.get("paper_title"),
+            text=hit.get("content_data") or hit.get("content") or "",
+            score=float(hit.get("score") or hit.get("similarity") or (1 - hit.get("distance", 0.5))),
+            page_num=hit.get("page_num") or hit.get("page"),
+            section=hit.get("section"),
+            content_type=hit.get("content_type", "text"),
+            quality_score=hit.get("quality_score"),
+            raw_data=hit.get("raw_data"),
+        )
 
     def _format_compare_response(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Format results for compare intent - group by paper.
@@ -207,17 +234,19 @@ class MultimodalSearchService:
                 )
 
         # Step 6: Intent-based result formatting (per D-15)
-        final_results = fused[:top_k]
+        # Normalize fused results to unified schema per D-02
+        normalized_fused = [self._normalize_hit(r).model_dump() for r in fused]
+        final_results = normalized_fused[:top_k]
         additional_fields = {}
         
         if query_intent == "compare":
             # Add grouped_by_paper for compare intent
-            grouped_results = self._format_compare_response(fused[:top_k])
+            grouped_results = self._format_compare_response(normalized_fused[:top_k])
             additional_fields["grouped_by_paper"] = grouped_results
             logger.info("Applied compare formatting", groups=len(grouped_results))
         elif query_intent == "summary":
             # Add key_points for summary intent
-            summary_format = self._format_summary_response(fused)
+            summary_format = self._format_summary_response(normalized_fused)
             additional_fields["key_points"] = summary_format["key_points"]
             additional_fields["total_chunks"] = summary_format["total_chunks"]
             logger.info("Applied summary formatting", key_points=len(summary_format["key_points"]))

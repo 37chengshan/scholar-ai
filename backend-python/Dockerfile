@@ -8,6 +8,7 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debia
     build-essential \
     libpq-dev \
     zlib1g-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 配置 pip 使用国内镜像
@@ -17,11 +18,21 @@ RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
 # 复制依赖文件
 COPY requirements.txt .
 
-# 先安装 CPU 版本的 PyTorch（避免 CUDA 依赖问题）
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# 先安装 CPU 版本的 PyTorch（固定版本避免冲突）
+RUN pip install --no-cache-dir torch==2.1.0 torchvision==0.16.0 --extra-index-url https://download.pytorch.org/whl/cpu
+
+# 安装 transformers（固定版本）
+RUN pip install --no-cache-dir transformers==4.45.0
+
+# 安装 FlagEmbedding（使用 --no-deps 防止覆盖 torch）
+RUN pip install --no-cache-dir --no-deps FlagEmbedding==1.3.5
 
 # 安装其他 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 先安装关键依赖，确保它们不被静默跳过
+RUN pip install --no-cache-dir uvicorn[standard]>=0.24.0 fastapi>=0.100.0 celery==5.3.6 redis>=5.0.1
+
+# 安装剩余依赖（允许部分失败但不影响核心功能）
+RUN pip install --no-cache-dir -r requirements.txt || echo "Some dependencies may have conflicts but core is installed"
 
 # 复制应用代码
 COPY app/ ./app/

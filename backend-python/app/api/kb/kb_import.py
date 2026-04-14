@@ -31,6 +31,7 @@ from app.models.upload_history import UploadHistory
 from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 from app.utils.logger import logger
+from app.tasks.pdf_tasks import process_single_pdf_task
 
 
 router = APIRouter()
@@ -194,8 +195,14 @@ async def upload_pdf_to_kb(
         kb.paper_count += 1
         kb.updated_at = now
 
+        # Commit to ensure Paper/Task records are persisted before Celery task runs
+        await db.commit()
+
+        # Trigger Celery worker to process the PDF asynchronously
+        process_single_pdf_task.delay(paper_id)
+
         logger.info(
-            "Paper uploaded directly to knowledge base",
+            "Paper uploaded directly to knowledge base, Celery task triggered",
             user_id=user_id,
             kb_id=kb_id,
             paper_id=paper_id,

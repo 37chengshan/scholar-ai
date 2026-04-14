@@ -30,6 +30,7 @@ from app.middleware.auth import get_current_user
 from app.services.auth_service import User
 from app.utils.problem_detail import ProblemDetail, ErrorTypes
 from app.utils.logger import logger
+from app.config import settings
 
 
 router = APIRouter(tags=["Uploads"])
@@ -222,7 +223,7 @@ async def upload_single_file(
 
     # Generate storage key
     storage_key = f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid.uuid4()}.pdf"
-    local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+    local_storage_path = settings.LOCAL_STORAGE_PATH
     file_path = os.path.join(local_storage_path, storage_key)
 
     # Ensure directory exists

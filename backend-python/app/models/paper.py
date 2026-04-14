@@ -58,22 +58,39 @@ class Paper(Base):
     year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     abstract: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     doi: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    arxiv_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, name="arxivId")
+    arxiv_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, name="arxivId"
+    )
     pdf_url: Mapped[Optional[str]] = mapped_column(String, nullable=True, name="pdfUrl")
-    pdf_path: Mapped[Optional[str]] = mapped_column(String, nullable=True, name="pdfPath")
+    pdf_path: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, name="pdfPath"
+    )
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    imrad_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True, name="imradJson")
+    imrad_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON, nullable=True, name="imradJson"
+    )
     status: Mapped[str] = mapped_column(String, default="pending")
-    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="fileSize")
-    page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="pageCount")
+    file_size: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, name="fileSize"
+    )
+    page_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, name="pageCount"
+    )
     keywords: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
     venue: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     citations: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=func.now(), name="createdAt"
+        DateTime(timezone=True),
+        server_default=func.now(),
+        default=func.now(),
+        name="createdAt",
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=func.now(), onupdate=func.now(), name="updatedAt"
+        DateTime(timezone=True),
+        server_default=func.now(),
+        default=func.now(),
+        onupdate=func.now(),
+        name="updatedAt",
     )
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
     storage_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -97,18 +114,36 @@ class Paper(Base):
 
     # 子状态字段（Per Section 2 语义，统一 PostgreSQL Boolean）
     # is_search_ready: PostgreSQL + Milvus text chunks 成功
-    is_search_ready: Mapped[bool] = mapped_column(Boolean, default=False, name="isSearchReady")
+    is_search_ready: Mapped[bool] = mapped_column(
+        "issearchready", Boolean, default=False
+    )
     # is_multimodal_ready: Milvus images/tables 成功
-    is_multimodal_ready: Mapped[bool] = mapped_column(Boolean, default=False, name="isMultimodalReady")
+    is_multimodal_ready: Mapped[bool] = mapped_column(
+        "ismultimodalready", Boolean, default=False
+    )
     # is_notes_ready: reading_notes 字段有内容
-    is_notes_ready: Mapped[bool] = mapped_column(Boolean, default=False, name="isNotesReady")
+    is_notes_ready: Mapped[bool] = mapped_column(
+        "isnotesready", Boolean, default=False
+    )
 
     # 失败标记
-    notes_failed: Mapped[bool] = mapped_column(Boolean, default=False, name="notesFailed")
-    multimodal_failed: Mapped[bool] = mapped_column(Boolean, default=False, name="multimodalFailed")
+    notes_failed: Mapped[bool] = mapped_column(
+        "notesfailed", Boolean, default=False
+    )
+    multimodal_failed: Mapped[bool] = mapped_column(
+        "multimodalfailed", Boolean, default=False
+    )
 
     # trace_id（继承自 task，贯穿日志）
-    trace_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, name="traceId")
+    trace_id: Mapped[Optional[str]] = mapped_column(
+        "traceId", String(36), nullable=True
+    )
+
+    # Semantic Scholar integration fields
+    s2_paper_id: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, unique=True
+    )
+    citation_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="papers")
@@ -144,9 +179,11 @@ class Paper(Base):
 
     __table_args__ = (
         UniqueConstraint("userId", "title", name="unique_user_title"),
+        UniqueConstraint("s2_paper_id", name="idx_papers_s2_paper_id"),
         Index("idx_papers_userId", "userId"),
         Index("idx_papers_starred", "starred"),
         Index("idx_papers_batch_id", "batch_id"),
+        Index("idx_papers_citation_count", citation_count),
     )
 
     def __repr__(self) -> str:
@@ -166,13 +203,20 @@ class PaperChunk(Base):
     )
     content: Mapped[str] = mapped_column(Text)
     section: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    page_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="pageStart")
-    page_end: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, name="pageEnd")
+    page_start: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, name="pageStart"
+    )
+    page_end: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, name="pageEnd"
+    )
     is_table: Mapped[bool] = mapped_column(Boolean, default=False, name="isTable")
     is_figure: Mapped[bool] = mapped_column(Boolean, default=False, name="isFigure")
     is_formula: Mapped[bool] = mapped_column(Boolean, default=False, name="isFormula")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=func.now(), name="createdAt"
+        DateTime(timezone=True),
+        server_default=func.now(),
+        default=func.now(),
+        name="createdAt",
     )
     paper_id: Mapped[str] = mapped_column(ForeignKey("papers.id"), name="paperId")
 

@@ -30,9 +30,11 @@ target_metadata = Base.metadata
 
 # Override sqlalchemy.url from settings if available
 if settings.DATABASE_URL:
-    # Convert to sync URL for Alembic (it handles the async internally)
-    sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-    config.set_main_option("sqlalchemy.url", sync_url)
+    # Use async URL for Alembic async engine
+    db_url = settings.DATABASE_URL
+    if not db_url.startswith("postgresql+asyncpg://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    config.set_main_option("sqlalchemy.url", db_url)
 
 
 def run_migrations_offline() -> None:

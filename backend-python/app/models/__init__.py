@@ -78,6 +78,9 @@ from app.models.user_memory import UserMemory
 # API key
 from app.models.api_key import ApiKey
 
+# Retrieval schema (unified field names)
+from app.models.retrieval import RetrievedChunk, CitationSource, SearchConstraints
+
 
 # =============================================================================
 # Pydantic API Schemas (preserved from existing)
@@ -152,6 +155,10 @@ __all__ = [
     "TokenUsageLog",
     "UserMemory",
     "ApiKey",
+    # Retrieval schema
+    "RetrievedChunk",
+    "CitationSource",
+    "SearchConstraints",
     # Pydantic API Schemas
     "SessionBase",
     "SessionCreate",

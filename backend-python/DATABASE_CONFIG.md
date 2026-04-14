@@ -111,10 +111,11 @@ Pydantic 配置类，自动从 `.env.local` 加载环境变量。
 - 测试 Redis 缓存
 
 ### `scripts/init_database.py`
-初始化数据库结构的脚本：
-- 创建 PostgreSQL 表
-- 启用 pgvector 扩展
-- 创建 Neo4j 约束和索引
+> ⚠️ 已废弃。请使用 Alembic 迁移初始化数据库：
+> ```bash
+> alembic upgrade head
+> ```
+> 迁移文件位于 `alembic/versions/`，包含 006-A/B/C 完整 schema 定义。
 
 ---
 
