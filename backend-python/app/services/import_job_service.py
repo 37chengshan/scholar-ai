@@ -12,11 +12,16 @@ Methods:
 - set_file_info: Set file info after upload
 - set_error: Set error state with retry next_action
 - set_awaiting_dedupe: Set awaiting_user_action with dedupe decision next_action
+- set_resolution: Store source resolution (Wave 5)
+- set_metadata: Store resolved metadata (Wave 5)
+- create_processing_task: Create ProcessingTask (Wave 5)
+- track_processing_stages: Poll ProcessingTask status (Wave 5)
+- add_event: Log event for debugging (Wave 5)
 """
 
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -438,6 +443,258 @@ class ImportJobService:
         logger.info("ImportJob cancelled", job_id=job.id)
 
         return job
+
+    # =============================================================================
+    # Wave 5 Helper Methods: ProcessingTask Stage Tracking
+    # =============================================================================
+
+    async def set_resolution(
+        self,
+        job: ImportJob,
+        resolution: Any,
+        db: AsyncSession,
+    ) -> ImportJob:
+        """Store source resolution on ImportJob fields (NOT job.resolution - undefined).
+
+        Args:
+            job: ImportJob instance
+            resolution: SourceResolution from adapter
+            db: Database session
+
+        Returns:
+            Updated ImportJob
+        """
+        job.source_ref_normalized = resolution.canonical_id
+
+        if resolution.external_ids:
+            job.external_ids = resolution.external_ids
+
+            if resolution.external_ids.get("arxiv"):
+                job.external_source = "arxiv"
+                job.external_paper_id = resolution.external_ids["arxiv"]
+                job.external_version = str(resolution.version) if resolution.version else None
+            elif resolution.external_ids.get("doi"):
+                job.external_source = "doi"
+                job.external_paper_id = resolution.external_ids["doi"]
+            elif resolution.external_ids.get("s2"):
+                job.external_source = "s2"
+                job.external_paper_id = resolution.external_ids["s2"]
+
+        job.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(job)
+
+        logger.info(
+            "ImportJob resolution stored",
+            job_id=job.id,
+            canonical_id=resolution.canonical_id,
+            external_source=job.external_source,
+        )
+
+        return job
+
+    async def set_metadata(
+        self,
+        job: ImportJob,
+        metadata: Any,
+        db: AsyncSession,
+    ) -> ImportJob:
+        """Store resolved metadata on ImportJob fields.
+
+        Args:
+            job: ImportJob instance
+            metadata: MetadataPreview from adapter
+            db: Database session
+
+        Returns:
+            Updated ImportJob
+        """
+        if metadata:
+            job.resolved_title = metadata.title
+            job.resolved_authors = metadata.authors
+            job.resolved_year = metadata.year
+            job.resolved_abstract = metadata.abstract
+            job.resolved_venue = metadata.venue
+
+            if metadata.external_ids:
+                # Merge external IDs
+                if job.external_ids:
+                    job.external_ids = {**job.external_ids, **metadata.external_ids}
+                else:
+                    job.external_ids = metadata.external_ids
+
+        job.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(job)
+
+        logger.info(
+            "ImportJob metadata stored",
+            job_id=job.id,
+            title=job.resolved_title[:50] if job.resolved_title else None,
+        )
+
+        return job
+
+    async def create_processing_task(
+        self,
+        job: ImportJob,
+        paper_id: str,
+        db: AsyncSession,
+    ) -> str:
+        """Create ProcessingTask for paper parsing.
+
+        Args:
+            job: ImportJob instance
+            paper_id: Paper ID for the task
+            db: Database session
+
+        Returns:
+            ProcessingTask ID
+        """
+        from app.models.task import ProcessingTask
+        import uuid
+
+        task_id = str(uuid.uuid4())
+        task = ProcessingTask(
+            id=task_id,
+            paper_id=paper_id,
+            status="pending",
+            storage_key=job.storage_key or "",
+        )
+        db.add(task)
+        await db.commit()
+
+        logger.info(
+            "ProcessingTask created",
+            task_id=task_id,
+            paper_id=paper_id,
+            import_job_id=job.id,
+        )
+
+        return task_id
+
+    async def track_processing_stages(
+        self,
+        job: ImportJob,
+        processing_task_id: str,
+        db: AsyncSession,
+    ) -> None:
+        """Poll ProcessingTask and update ImportJob stages.
+
+        CRITICAL: ImportJob tracks parsing/chunking/embedding/indexing stages
+        based on ProcessingTask checkpoint/status.
+        ImportJob is NOT completed until ProcessingTask.status == 'completed'.
+        The final completion is done by on_processing_task_complete callback.
+
+        Args:
+            job: ImportJob instance
+            processing_task_id: ProcessingTask ID to track
+            db: Database session
+        """
+        from app.models.task import ProcessingTask
+        import asyncio
+
+        max_wait_seconds = 3600  # 1 hour max
+        poll_interval = 5  # 5 seconds between polls
+        waited = 0
+
+        while waited < max_wait_seconds:
+            # Get ProcessingTask status
+            result = await db.execute(
+                select(ProcessingTask).where(ProcessingTask.id == processing_task_id)
+            )
+            task = result.scalar_one_or_none()
+
+            if not task:
+                logger.error(f"ProcessingTask {processing_task_id} not found")
+                await self.set_error(
+                    job,
+                    error_code="TASK_NOT_FOUND",
+                    error_message="ProcessingTask disappeared",
+                    db=db,
+                )
+                return
+
+            # Update ImportJob stage based on ProcessingTask checkpoint_stage
+            checkpoint = task.checkpoint_stage
+
+            if checkpoint == "parsed":
+                await self.update_status(job, stage="parsing", progress=60, db=db)
+            elif checkpoint == "chunked":
+                await self.update_status(job, stage="chunking", progress=70, db=db)
+            elif checkpoint == "embedded":
+                await self.update_status(job, stage="embedding", progress=80, db=db)
+            elif checkpoint == "indexed":
+                await self.update_status(job, stage="indexing", progress=90, db=db)
+
+            # Check if completed
+            if task.status == "completed":
+                await self.update_status(job, stage="finalizing", progress=95, db=db)
+                # Final completion is done by callback, not here
+                logger.info(
+                    f"ImportJob {job.id} finalizing - ProcessingTask completed",
+                    processing_task_id=processing_task_id,
+                )
+                return
+
+            # Check if failed
+            if task.status == "failed":
+                await self.set_error(
+                    job,
+                    error_code="PROCESSING_FAILED",
+                    error_message=task.error_message or "Processing failed",
+                    db=db,
+                )
+                return
+
+            await asyncio.sleep(poll_interval)
+            waited += poll_interval
+
+            # Refresh job from DB to check for cancellation
+            await db.refresh(job)
+            if job.status == "cancelled":
+                logger.info(f"ImportJob {job.id} cancelled during processing")
+                return
+
+        # Timeout
+        await self.set_error(
+            job,
+            error_code="PROCESSING_TIMEOUT",
+            error_message="Processing took too long (>1 hour)",
+            db=db,
+        )
+
+    async def add_event(
+        self,
+        job: ImportJob,
+        level: str,
+        event_type: str,
+        message: str,
+        db: AsyncSession,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Log ImportJob event for debugging.
+
+        Wave 3 deferred import_job_events table, so this logs to logger for now.
+
+        Args:
+            job: ImportJob instance
+            level: Log level (info/warn/error)
+            event_type: Event type (source_resolved, pdf_downloaded, dedupe_hit, etc.)
+            message: Event message
+            db: Database session
+            payload: Optional event payload
+        """
+        # For now, just log to logger. import_job_events table deferred.
+        log_method = logger.info if level == "info" else logger.warning if level == "warn" else logger.error
+        log_method(
+            f"ImportJob event: {event_type}",
+            job_id=job.id,
+            level=level,
+            event_type=event_type,
+            message=message,
+            payload=payload,
+        )
 
 
 __all__ = ["ImportJobService"]
