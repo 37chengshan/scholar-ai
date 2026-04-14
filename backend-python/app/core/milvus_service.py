@@ -11,7 +11,7 @@ Provides:
 
 import re
 import time
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any, Optional
 from functools import wraps
 
 from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType
@@ -19,9 +19,6 @@ from pymilvus.exceptions import MilvusException
 
 from app.config import settings
 from app.utils.logger import logger
-
-if TYPE_CHECKING:
-    from app.models.retrieval import SearchConstraints
 
 
 def retry_with_backoff(max_retries: int = 5, base_delay: float = 1.0):
@@ -910,79 +907,19 @@ class MilvusService:
                 })
         return formatted
 
-    def _build_expr_from_constraints(
-        self,
-        constraints: "SearchConstraints",
-        year_paper_ids: Optional[List[str]] = None,
-    ) -> str:
-        """Build Milvus expr string from SearchConstraints.
-
-        Per D-07: Pushdown all available constraints to Milvus.
-
-        Args:
-            constraints: SearchConstraints object
-            year_paper_ids: Paper IDs matching year filter (from PostgreSQL)
-
-        Returns:
-            Milvus expr string
-        """
-        conditions = []
-
-        # Always include user_id
-        conditions.append(f"user_id == '{constraints.user_id}'")
-
-        # Content type filter
-        if constraints.content_types:
-            types_expr = ", ".join([f"'{t}'" for t in constraints.content_types])
-            conditions.append(f"content_type in [{types_expr}]")
-
-        # Section filter
-        if constraints.section:
-            conditions.append(f"section == '{constraints.section}'")
-
-        # Paper IDs filter (combined with year_paper_ids)
-        effective_paper_ids = constraints.paper_ids
-        if year_paper_ids:
-            # Intersection of user-specified and year-filtered
-            if effective_paper_ids:
-                effective_paper_ids = list(set(effective_paper_ids) & set(year_paper_ids))
-            else:
-                effective_paper_ids = year_paper_ids
-
-        if effective_paper_ids:
-            # Limit to avoid overly long expr
-            if len(effective_paper_ids) > 100:
-                logger.warning(f"Too many paper_ids ({len(effective_paper_ids)}), limiting expr")
-                effective_paper_ids = effective_paper_ids[:100]
-
-            ids_expr = ", ".join([f"'{pid}'" for pid in effective_paper_ids])
-            conditions.append(f"paper_id in [{ids_expr}]")
-
-        # Quality score filter
-        if constraints.min_quality_score:
-            conditions.append(f"quality_score >= {constraints.min_quality_score}")
-
-        expr = " and ".join(conditions)
-        logger.debug(f"Milvus expr: {expr[:200]}...")
-        return expr
-
     def search_contents_v2(
         self,
         embedding: List[float],
-        constraints: Optional["SearchConstraints"] = None,
         user_id: Optional[str] = None,
         content_type: Optional[str] = None,
-        year_paper_ids: Optional[List[str]] = None,
         top_k: int = 10
     ) -> List[Dict[str, Any]]:
         """Search paper_contents_v2 collection with 2048-dim embeddings.
 
         Args:
             embedding: 2048-dim query embedding (Qwen3VL)
-            constraints: SearchConstraints for metadata filtering (per D-07)
-            user_id: Optional user filter (backward compat)
-            content_type: Optional content type filter (backward compat)
-            year_paper_ids: Paper IDs matching year filter from PostgreSQL
+            user_id: Optional user filter
+            content_type: Optional content type filter ('image'/'table'/'text')
             top_k: Number of results
 
         Returns:
@@ -995,17 +932,13 @@ class MilvusService:
             "params": {"nprobe": 10}
         }
 
-        # Build expr from constraints (per D-07)
-        if constraints:
-            expr = self._build_expr_from_constraints(constraints, year_paper_ids)
-        else:
-            # Legacy fallback for backward compat
-            conditions = []
-            if user_id:
-                conditions.append(f"user_id == '{user_id}'")
-            if content_type:
-                conditions.append(f"content_type == '{content_type}'")
-            expr = " and ".join(conditions) if conditions else None
+        conditions = []
+        if user_id:
+            conditions.append(f"user_id == '{user_id}'")
+        if content_type:
+            conditions.append(f"content_type == '{content_type}'")
+
+        expr = " and ".join(conditions) if conditions else None
 
         results = collection.search(
             data=[embedding],

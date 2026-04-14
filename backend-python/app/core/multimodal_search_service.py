@@ -6,26 +6,22 @@ Provides:
 - Weighted RRF fusion of multimodal results
 - Optional ReRanker integration for improved relevance
 - Query understanding integration (intent, expansion, metadata)
-- Metadata filters pushdown to Milvus expr (per D-07)
 
 Search flow:
 1. Detect query intent (question/compare/summary/evolution) via intent_rules
 2. Detect modality intent (image/table/default) via modality_fusion
 3. Expand query with synonyms
 4. Extract metadata filters
-5. Compile filters to SearchConstraints for Milvus expr pushdown (per D-07)
-6. Query PostgreSQL for year-filtered paper_ids (bridge pattern)
-7. Encode expanded query with Qwen3VL
-8. Search Milvus across modalities with constraints-based expr
-9. Apply weighted RRF fusion
-10. Optionally rerank with BGE-Reranker-large
+5. Encode expanded query with BGE-M3
+6. Search Milvus across modalities (text, image, table)
+7. Apply weighted RRF fusion
+8. Optionally rerank with BGE-Reranker-large
 
 Requirements:
 - RAG-03: Image search endpoint
 - RAG-04: Table search endpoint
 - RAG-05: Cross-modal fusion
 - RAG-06: Query understanding integration (per D-15)
-- PR-04: Metadata filters pushdown to Milvus expr (per D-07)
 """
 
 from typing import Any, Dict, List, Optional
@@ -37,7 +33,6 @@ from app.core.modality_fusion import detect_intent as detect_modality_intent, we
 from app.core.intent_rules import detect_intent as detect_query_intent
 from app.core.synonyms import expand_query
 from app.core.query_metadata_extractor import extract_metadata_filters
-from app.models.retrieval import RetrievedChunk, SearchConstraints
 from app.utils.logger import logger
 
 
@@ -59,120 +54,6 @@ class MultimodalSearchService:
         self.milvus = get_milvus_service()
         self.reranker = get_reranker_service()
 
-    def compile_to_constraints(
-        self,
-        metadata_filters: Dict[str, Any],
-        user_id: str,
-        paper_ids: List[str],
-    ) -> SearchConstraints:
-        """Compile metadata filters into SearchConstraints.
-
-        Per D-07: Convert extracted filters to structured constraints
-        for Milvus expr pushdown.
-
-        Args:
-            metadata_filters: Dict from query_metadata_extractor
-            user_id: User UUID for isolation
-            paper_ids: Target paper IDs
-
-        Returns:
-            SearchConstraints for retrieval
-        """
-        # Extract year range if present
-        year_from = None
-        year_to = None
-        year_range = metadata_filters.get("year_range")
-        if year_range and isinstance(year_range, tuple):
-            year_from, year_to = year_range
-
-        return SearchConstraints(
-            user_id=user_id,
-            paper_ids=paper_ids,
-            year_from=year_from,
-            year_to=year_to,
-            section=metadata_filters.get("section"),
-            content_types=metadata_filters.get("content_types", []),
-            min_quality_score=metadata_filters.get("min_quality_score"),
-        )
-
-    async def _get_papers_by_year(
-        self,
-        year_from: Optional[int],
-        year_to: Optional[int],
-        user_id: str,
-    ) -> List[str]:
-        """Query PostgreSQL for paper IDs matching year range.
-
-        Per D-07: Short-term solution - year is paper-level metadata,
-        not in Milvus contents collection.
-
-        Args:
-            year_from: Minimum year
-            year_to: Maximum year
-            user_id: User for ownership check
-
-        Returns:
-            List of paper IDs matching year criteria
-        """
-        if not year_from and not year_to:
-            return []
-
-        from app.database import AsyncSessionLocal
-        from sqlalchemy import select
-        from app.models.paper import Paper
-
-        try:
-            async with AsyncSessionLocal() as db:
-                # Build query with year filters
-                query = select(Paper.id).where(Paper.user_id == user_id)
-
-                if year_from:
-                    query = query.where(Paper.year >= year_from)
-                if year_to:
-                    query = query.where(Paper.year <= year_to)
-
-                result = await db.execute(query)
-                paper_ids = [str(row.id) for row in result]
-
-                logger.info(
-                    "Year filter bridge",
-                    year_from=year_from,
-                    year_to=year_to,
-                    matching_papers=len(paper_ids),
-                )
-
-                return paper_ids
-
-        except Exception as e:
-            logger.error(f"Year filter query failed: {e}")
-            return []  # Fail-open: don't block search on year filter failure
-
-    def _normalize_hit(self, hit: Dict[str, Any]) -> RetrievedChunk:
-        """Normalize Milvus Raw Hit to unified RetrievedChunk schema.
-
-        Field mapping per Phase 40 D-02:
-        - content_data -> text (fallback: content)
-        - score -> score (fallback: similarity, distance)
-        - page_num -> page_num (fallback: page)
-
-        Args:
-            hit: Raw hit dict from Milvus search_contents_v2()
-
-        Returns:
-            RetrievedChunk with unified field names
-        """
-        return RetrievedChunk(
-            paper_id=hit.get("paper_id", ""),
-            paper_title=hit.get("paper_title"),
-            text=hit.get("content_data") or hit.get("content") or "",
-            score=float(hit.get("score") or hit.get("similarity") or (1 - hit.get("distance", 0.5))),
-            page_num=hit.get("page_num") or hit.get("page"),
-            section=hit.get("section"),
-            content_type=hit.get("content_type", "text"),
-            quality_score=hit.get("quality_score"),
-            raw_data=hit.get("raw_data"),
-        )
-
     def _format_compare_response(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Format results for compare intent - group by paper.
 
@@ -185,13 +66,13 @@ class MultimodalSearchService:
             List grouped by paper_id: [{"paper_id": pid, "results": [...]}, ...]
         """
         grouped: Dict[str, List[Dict[str, Any]]] = {}
-
+        
         for result in results:
             paper_id = result.get("paper_id", "unknown")
             if paper_id not in grouped:
                 grouped[paper_id] = []
             grouped[paper_id].append(result)
-
+        
         # Convert to list format
         return [
             {"paper_id": paper_id, "results": paper_results}
@@ -261,50 +142,33 @@ class MultimodalSearchService:
         if metadata_filters:
             logger.info(f"Metadata filters: {metadata_filters}")
 
-        # Compile to constraints for Milvus expr pushdown (per D-07)
-        constraints = self.compile_to_constraints(metadata_filters, user_id, paper_ids)
-
-        # Get year-filtered paper_ids from PostgreSQL bridge (per D-07)
-        year_paper_ids = []
-        if constraints.year_from or constraints.year_to:
-            year_paper_ids = await self._get_papers_by_year(
-                constraints.year_from,
-                constraints.year_to,
-                user_id,
-            )
-
         # Step 5: Encode expanded query with Qwen3VL (2048-dim)
         query_embedding = self.qwen3vl_service.encode_text(expanded_query)
 
-        # Step 6: Search Milvus with constraints-based expr (per D-07)
+        # Step 3: Search Milvus across modalities
         content_types = content_types or ["text", "image", "table"]
         multimodal_results: Dict[str, List[Dict[str, Any]]] = {}
 
         for content_type in content_types:
             try:
-                # Create constraints with single content_type for this iteration
-                constraints_with_type = SearchConstraints(
-                    user_id=constraints.user_id,
-                    paper_ids=constraints.paper_ids,
-                    year_from=constraints.year_from,
-                    year_to=constraints.year_to,
-                    section=constraints.section,
-                    content_types=[content_type],
-                    min_quality_score=constraints.min_quality_score,
-                )
-
                 results = self.milvus.search_contents_v2(
                     embedding=query_embedding,
-                    constraints=constraints_with_type,
-                    year_paper_ids=year_paper_ids,
+                    user_id=user_id,
+                    content_type=content_type,
                     top_k=20,
                 )
 
-                multimodal_results[content_type] = results
+                # Filter by paper_ids (only if paper_ids is provided)
+                if paper_ids:
+                    filtered = [r for r in results if r.get("paper_id") in paper_ids]
+                else:
+                    filtered = results  # No filter if paper_ids is empty
+                multimodal_results[content_type] = filtered
 
                 logger.debug(
                     f"Milvus {content_type} search",
                     results=len(results),
+                    filtered=len(filtered),
                 )
             except Exception as e:
                 logger.error(
@@ -313,7 +177,7 @@ class MultimodalSearchService:
                 )
                 multimodal_results[content_type] = []
 
-        # Step 7: Weighted RRF fusion
+        # Step 4: Weighted RRF fusion
         fused = weighted_rrf_fusion(multimodal_results, weights)
 
         logger.info(
@@ -322,7 +186,7 @@ class MultimodalSearchService:
             intent=query_intent,
         )
 
-        # Step 8: ReRanker (optional)
+        # Step 5: ReRanker (optional)
         if use_reranker and len(fused) > 10:
             try:
                 # Extract content for reranking
@@ -342,20 +206,18 @@ class MultimodalSearchService:
                     error=str(e),
                 )
 
-        # Step 9: Intent-based result formatting (per D-15)
-        # Normalize fused results to unified schema per D-02
-        normalized_fused = [self._normalize_hit(r).model_dump() for r in fused]
-        final_results = normalized_fused[:top_k]
+        # Step 6: Intent-based result formatting (per D-15)
+        final_results = fused[:top_k]
         additional_fields = {}
-
+        
         if query_intent == "compare":
             # Add grouped_by_paper for compare intent
-            grouped_results = self._format_compare_response(normalized_fused[:top_k])
+            grouped_results = self._format_compare_response(fused[:top_k])
             additional_fields["grouped_by_paper"] = grouped_results
             logger.info("Applied compare formatting", groups=len(grouped_results))
         elif query_intent == "summary":
             # Add key_points for summary intent
-            summary_format = self._format_summary_response(normalized_fused)
+            summary_format = self._format_summary_response(fused)
             additional_fields["key_points"] = summary_format["key_points"]
             additional_fields["total_chunks"] = summary_format["total_chunks"]
             logger.info("Applied summary formatting", key_points=len(summary_format["key_points"]))
@@ -371,10 +233,10 @@ class MultimodalSearchService:
             "results": final_results,
             "total_count": len(fused),
         }
-
+        
         # Add intent-specific fields
         response.update(additional_fields)
-
+        
         return response
 
     def _apply_reranking(
