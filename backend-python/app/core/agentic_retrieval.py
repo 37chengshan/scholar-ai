@@ -25,6 +25,7 @@ from app.core.query_decomposer import (
     QueryType,
 )
 from app.core.multimodal_search_service import get_multimodal_search_service
+from app.core.milvus_service import get_milvus_service
 
 
 class AgenticRetrievalOrchestrator:
@@ -54,6 +55,8 @@ class AgenticRetrievalOrchestrator:
         self.decomposer = decomposer or QueryDecomposer()
         self.convergence_checker = convergence_checker or ConvergenceChecker()
         self.search_service = get_multimodal_search_service()
+        # Per D-10: Milvus service for fetching adjacent chunks
+        self.milvus = get_milvus_service()
 
     async def retrieve(
         self,
@@ -572,8 +575,11 @@ Based on {len(all_results)} rounds of retrieval:
     ) -> str:
         """Generate a simple summary of chunks.
 
+        Per D-10: Uses context_prefix for lightweight context hint.
+        Full adjacent fetch happens in _build_context_with_citations.
+
         Args:
-            chunks: Retrieved chunks (now with unified field names)
+            chunks: Retrieved chunks (now with unified field names and adjacency fields)
             question: Sub-question
 
         Returns:
@@ -592,10 +598,16 @@ Based on {len(all_results)} rounds of retrieval:
             score = chunk.get("score", chunk.get("similarity", 0.0))
             paper_id = chunk.get("paper_id", "unknown")
 
-            # Truncate content
-            content_preview = text[:150] + "..." if len(text) > 150 else text
+            # Per D-10: Use context_prefix as lightweight hint
+            context_prefix = chunk.get("context_prefix", "")
+            if context_prefix:
+                # Show lightweight context hint in summary
+                display_text = f"...{context_prefix[-30:]} | {text[:100]}..."
+            else:
+                display_text = text[:150] + "..." if len(text) > 150 else text
+
             summaries.append(
-                f"[Source {i + 1} from {paper_id[:8]}... (score {score:.2f})]: {content_preview}"
+                f"[Source {i + 1} from {paper_id[:8]}... (score {score:.2f})]: {display_text}"
             )
 
         return "\n".join(summaries)
@@ -644,6 +656,104 @@ Based on {len(all_results)} rounds of retrieval:
         sources.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         return sources
+
+    async def _fetch_adjacent_chunks(
+        self,
+        chunk: Dict[str, Any],
+        paper_id: str,
+        user_id: str,
+    ) -> Dict[str, str]:
+        """Fetch adjacent chunks for context assembly per D-10.
+
+        Per D-10: Synthesis fetches adjacent chunks on demand, not overlap duplication.
+
+        Args:
+            chunk: Current chunk with prev_chunk_id and next_chunk_id
+            paper_id: Paper ID for scoped fetch
+            user_id: User ID for ownership verification
+
+        Returns:
+            Dict with prev_text and next_text
+        """
+        prev_text = chunk.get("context_prefix", "")  # Lightweight hint already stored
+        next_text = ""
+
+        prev_chunk_id = chunk.get("prev_chunk_id")
+        next_chunk_id = chunk.get("next_chunk_id")
+
+        # Filter out empty strings (Milvus returns "" for None values)
+        if prev_chunk_id and prev_chunk_id != "":
+            # Check if context_prefix is sufficient (less than 100 chars)
+            if len(prev_text) < 100:
+                try:
+                    # Fetch by chunk_id
+                    prev_chunks = self.milvus.search_by_chunk_ids(
+                        chunk_ids=[prev_chunk_id],
+                        paper_id=paper_id,
+                        user_id=user_id,
+                    )
+                    if prev_chunks:
+                        prev_text = prev_chunks[0].get("text", "")[-150:]  # Last 150 chars
+                except Exception as e:
+                    logger.warning(f"Failed to fetch prev chunk: {e}")
+
+        if next_chunk_id and next_chunk_id != "":
+            try:
+                next_chunks = self.milvus.search_by_chunk_ids(
+                    chunk_ids=[next_chunk_id],
+                    paper_id=paper_id,
+                    user_id=user_id,
+                )
+                if next_chunks:
+                    next_text = next_chunks[0].get("text", "")[:150]  # First 150 chars
+            except Exception as e:
+                logger.warning(f"Failed to fetch next chunk: {e}")
+
+        return {
+            "prev_text": prev_text,
+            "next_text": next_text,
+        }
+
+    async def _build_context_with_citations(
+        self,
+        chunks: List[Dict[str, Any]],
+        query: str,
+        paper_id: str,
+        user_id: str,
+    ) -> str:
+        """Build context with adjacent chunk assembly per D-10.
+
+        Per D-10: Fetch adjacent chunks on demand for context.
+
+        Args:
+            chunks: Retrieved chunks
+            query: Original query
+            paper_id: Paper ID for scoped fetch
+            user_id: User ID for ownership
+
+        Returns:
+            Context string with citations
+        """
+        context_parts = []
+
+        for chunk in chunks[:10]:  # Top 10 chunks
+            text = chunk.get("text", chunk.get("content_data", ""))
+            score = chunk.get("score", 0)
+            section = chunk.get("section", "")
+            chunk_paper_id = chunk.get("paper_id", paper_id)
+
+            # Per D-10: Fetch adjacent chunks for context
+            adjacent = await self._fetch_adjacent_chunks(chunk, chunk_paper_id, user_id)
+
+            # Build full context
+            full_text = adjacent["prev_text"] + " " + text + " " + adjacent["next_text"]
+
+            # Add citation marker
+            citation = f"[{chunk_paper_id[:8]}..., {section or f'Page {chunk.get(\"page_num\", \"N/A\")}'}]"
+
+            context_parts.append(f"{full_text} {citation}")
+
+        return "\n\n".join(context_parts)
 
 
 # Convenience function for direct usage
