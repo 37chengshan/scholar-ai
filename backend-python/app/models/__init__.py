@@ -49,6 +49,9 @@ from app.models.project import Project
 # KnowledgeBase
 from app.models.knowledge_base import KnowledgeBase
 
+# ImportJob (Wave 1 per D-03)
+from app.models.import_job import ImportJob
+
 # Reading progress
 from app.models.reading_progress import ReadingProgress
 
@@ -144,6 +147,7 @@ __all__ = [
     "Annotation",
     "Project",
     "KnowledgeBase",
+    "ImportJob",
     "ReadingProgress",
     "Session",
     "ChatMessage",

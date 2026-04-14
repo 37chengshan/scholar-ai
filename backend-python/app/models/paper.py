@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from app.models.batch import PaperBatch
     from app.models.project import Project
     from app.models.knowledge_base import KnowledgeBase
+    from app.models.import_job import ImportJob
 
 
 class Paper(Base):
@@ -175,6 +176,9 @@ class Paper(Base):
     )
     notes_tasks: Mapped[Optional["NotesTask"]] = relationship(
         "NotesTask", back_populates="paper", uselist=False
+    )
+    import_jobs: Mapped[List["ImportJob"]] = relationship(
+        "ImportJob", back_populates="paper"
     )
 
     __table_args__ = (

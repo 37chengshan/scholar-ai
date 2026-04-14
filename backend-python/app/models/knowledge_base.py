@@ -20,6 +20,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.paper import Paper
+    from app.models.import_job import ImportJob
 
 
 class KnowledgeBase(Base):
@@ -83,6 +84,9 @@ class KnowledgeBase(Base):
         "Paper",
         back_populates="knowledge_base",
         foreign_keys="[Paper.knowledge_base_id]",
+    )
+    import_jobs: Mapped[List["ImportJob"]] = relationship(
+        "ImportJob", back_populates="knowledge_base", cascade="all, delete-orphan"
     )
 
     __table_args__ = (

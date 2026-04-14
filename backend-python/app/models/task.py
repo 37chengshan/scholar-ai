@@ -20,6 +20,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.paper import Paper
+    from app.models.import_job import ImportJob
 
 
 class ParseTaskStage(str, Enum):
@@ -107,6 +108,9 @@ class ProcessingTask(Base):
 
     # Relationships
     paper: Mapped["Paper"] = relationship("Paper", back_populates="processing_task")
+    import_jobs: Mapped[List["ImportJob"]] = relationship(
+        "ImportJob", back_populates="processing_task"
+    )
 
     __table_args__ = (
         Index("idx_processing_tasks_paper_id", "paper_id"),
