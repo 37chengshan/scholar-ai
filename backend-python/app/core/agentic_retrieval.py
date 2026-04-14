@@ -630,14 +630,7 @@ Based on {len(all_results)} rounds of retrieval:
             similarity = chunk.get("similarity", 0)
 
             # Build citation marker
-            paper_title = chunk.get("paper_title") or chunk.get("paper_id", "Unknown")
-            section = chunk.get("section")
-
-            if section:
-                citation = f"[{paper_title}, {section}]"
-            else:
-                page = chunk.get("page")
-                citation = f"[{paper_title}, Page {page}]" if page else f"[{paper_title}]"
+            citation = self._build_citation(chunk)
 
             # Truncate content based on similarity threshold
             high_similarity_threshold = 0.85
