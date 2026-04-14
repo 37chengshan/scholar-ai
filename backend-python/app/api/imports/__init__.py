@@ -9,10 +9,16 @@ Wave 1 endpoints per D-01/D-03/D-08:
 Wave 2 endpoints per D-02:
 - POST /import-sources/resolve - Resolve single source
 - POST /import-sources/resolve-batch - Resolve multiple sources
+
+Wave 3 endpoints per D-06:
+- POST /import-jobs/{job_id}/dedupe-decision - Submit dedupe decision
+- POST /knowledge-bases/{kb_id}/imports/batch - Batch import
+- GET /import-batches/{batch_id} - Get batch status
 """
 
 from app.api.imports.jobs import router as jobs_router
 from app.api.imports.sources import router as sources_router
+from app.api.imports.dedupe import router as dedupe_router
 
 from fastapi import APIRouter
 
@@ -20,5 +26,6 @@ from fastapi import APIRouter
 router = APIRouter()
 router.include_router(jobs_router)
 router.include_router(sources_router)
+router.include_router(dedupe_router)
 
 __all__ = ["router"]
