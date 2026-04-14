@@ -521,6 +521,10 @@ class DoclingParser:
             merged, chunk_size, max_size=chunk_size + 100
         )
 
+        # Per D-10: Add adjacency fields for context assembly
+        # Store clean text only, no overlap duplication
+        merged = self._add_adjacency_fields(merged, paper_id)
+
         logger.info(
             "Semantic chunking complete",
             input_items=len(items),
@@ -533,6 +537,7 @@ class DoclingParser:
             if merged
             else 0,
             quality_score=quality_report.score,
+            linked_pairs=len(merged) - 1 if merged else 0,  # Adjacency links count
         )
 
         return merged
@@ -764,6 +769,87 @@ class DoclingParser:
         }
 
         return ChunkQualityReport(metrics)
+
+    def _add_adjacency_fields(
+        self,
+        chunks: List[Dict[str, Any]],
+        paper_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Add adjacency relationship fields to chunks per D-10.
+
+        Per D-10: Replace overlap duplication with adjacency relationship.
+        - Clean text stored (no overlap duplication)
+        - prev_chunk_id, next_chunk_id link adjacent chunks
+        - context_prefix = last 50 chars of previous chunk (lightweight hint)
+
+        Args:
+            chunks: List of merged chunks
+            paper_id: Paper UUID for chunk_id generation
+
+        Returns:
+            Chunks with adjacency fields added
+        """
+        import uuid
+
+        if not chunks:
+            return chunks
+
+        chunk_id_prefix = f"{paper_id}-chunk"
+
+        # First pass: assign chunk_ids and context_prefix
+        for i, chunk in enumerate(chunks):
+            chunk_id = f"{chunk_id_prefix}-{i + 1}"
+            chunk["chunk_id"] = chunk_id
+
+            # Set context_prefix from previous chunk's text end
+            if i > 0:
+                prev_text = chunks[i - 1].get("text", "")
+                context_prefix = prev_text[-50:] if len(prev_text) > 50 else prev_text
+                chunk["context_prefix"] = context_prefix
+            else:
+                chunk["context_prefix"] = ""
+
+            # Initialize prev/next IDs (will be set in second pass)
+            chunk["prev_chunk_id"] = None
+            chunk["next_chunk_id"] = None
+
+        # Second pass: link adjacent chunks
+        for i, chunk in enumerate(chunks):
+            if i > 0:
+                chunk["prev_chunk_id"] = chunks[i - 1]["chunk_id"]
+            if i < len(chunks) - 1:
+                chunk["next_chunk_id"] = chunks[i + 1]["chunk_id"]
+
+        # Clean overlap-related fields that are no longer needed
+        # Keep word_count but remove overlap tracking (per D-10: no duplication)
+        for chunk in chunks:
+            if "overlap" in chunk:
+                # Remove the overlap text that was prepended during merging
+                # Per D-10: Store clean text only
+                overlap_count = chunk.get("overlap", 0)
+                if overlap_count > 0:
+                    # The overlap text was prepended in _merge_small_chunks_with_overlap
+                    # We need to remove it to get clean text
+                    # The overlap text was: overlap_text + "\n\n" + original_text
+                    # We need to find where the original text starts
+                    text = chunk["text"]
+                    # Find the first newline after the overlap portion
+                    # The overlap was prepended with "\n\n" separator
+                    parts = text.split("\n\n")
+                    if len(parts) > 1:
+                        # First part is overlap, rest is original
+                        # We want to keep only the original text
+                        chunk["text"] = "\n\n".join(parts[1:])
+                del chunk["overlap"]
+
+        logger.debug(
+            "Added adjacency fields to chunks",
+            paper_id=paper_id,
+            chunk_count=len(chunks),
+            linked_pairs=len(chunks) - 1 if len(chunks) > 1 else 0,
+        )
+
+        return chunks
 
     def _assign_section(
         self,
