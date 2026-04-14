@@ -431,26 +431,23 @@ class DoclingParser:
         self,
         items: List[Dict[str, Any]],
         paper_id: str,
-        section_spans: Optional[Dict] = None,  # NEW: Section spans from extract_imrad_structure()
         imrad_structure: Optional[Dict] = None,
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Chunk text with semantic awareness, overlap, and quality optimization.
 
-        Per D-03, D-06: Advanced semantic chunking with:
+        Per D-03: Advanced semantic chunking with:
         - Config-driven chunk size (default 500 words)
         - Overlap mechanism (default 100 words)
         - Semantic boundary protection
-        - IMRaD-adaptive chunk sizes via section_spans
-        - Section-first chunking flow
+        - IMRaD-adaptive chunk sizes
         - Quality evaluation
 
         Args:
             items: Parsed items from Docling
             paper_id: Paper UUID
-            section_spans: Section spans from extract_imrad_structure() (preferred)
-            imrad_structure: IMRaD section info (legacy, use section_spans instead)
+            imrad_structure: IMRaD section info (optional)
             chunk_size: Override config chunk size (optional)
             chunk_overlap: Override config overlap (optional)
 
@@ -458,13 +455,9 @@ class DoclingParser:
             List of chunks with page tracking, section info, and overlap tracking
         """
         from app.config import settings
-        from app.core.imrad_extractor import get_section_chunk_params
 
         chunk_size = chunk_size or settings.CHUNK_SIZE
         chunk_overlap = chunk_overlap or settings.CHUNK_OVERLAP
-
-        # Use section_spans if available, fall back to imrad_structure
-        section_info = section_spans or imrad_structure
 
         chunks = []
 
@@ -479,20 +472,19 @@ class DoclingParser:
             if word_count < 1:
                 continue
 
-            # Per D-06: Pass page for range matching in _assign_section
             section = (
-                self._assign_section(text, section_info, page=page) if section_info else ""
+                self._assign_section(text, imrad_structure) if imrad_structure else ""
             )
 
             has_equations = self._has_equations(text)
             has_figures = "figure" in text.lower() or "table" in text.lower()
             has_special_boundaries = self._detect_special_boundaries(text)
 
-            # Per D-06: Use section-specific chunk sizes from SECTION_CHUNK_SIZES
             adaptive_size = chunk_size
-            if section:
-                section_params = get_section_chunk_params(section)
-                adaptive_size = chunk_size or section_params["size"]
+            if imrad_structure and section:
+                adaptive_size = self._adaptive_chunk_size_by_section(
+                    section, chunk_size
+                )
 
             chunks.append(
                 {
@@ -521,10 +513,6 @@ class DoclingParser:
             merged, chunk_size, max_size=chunk_size + 100
         )
 
-        # Per D-10: Add adjacency fields for context assembly
-        # Store clean text only, no overlap duplication
-        merged = self._add_adjacency_fields(merged, paper_id)
-
         logger.info(
             "Semantic chunking complete",
             input_items=len(items),
@@ -537,7 +525,6 @@ class DoclingParser:
             if merged
             else 0,
             quality_score=quality_report.score,
-            linked_pairs=len(merged) - 1 if merged else 0,  # Adjacency links count
         )
 
         return merged
@@ -770,196 +757,19 @@ class DoclingParser:
 
         return ChunkQualityReport(metrics)
 
-    def _add_adjacency_fields(
-        self,
-        chunks: List[Dict[str, Any]],
-        paper_id: str,
-    ) -> List[Dict[str, Any]]:
-        """Add adjacency relationship fields to chunks per D-10.
+    def _assign_section(self, text: str, imrad_structure: dict) -> str:
+        """Assign section based on IMRaD structure.
 
-        Per D-10: Replace overlap duplication with adjacency relationship.
-        - Clean text stored (no overlap duplication)
-        - prev_chunk_id, next_chunk_id link adjacent chunks
-        - context_prefix = last 50 chars of previous chunk (lightweight hint)
+        This is a placeholder - actual section assignment
+        will be done by PDF worker with page information.
 
-        Args:
-            chunks: List of merged chunks
-            paper_id: Paper UUID for chunk_id generation
-
-        Returns:
-            Chunks with adjacency fields added
+        Returns empty string instead of None to prevent None-related errors.
         """
-        import uuid
-
-        if not chunks:
-            return chunks
-
-        chunk_id_prefix = f"{paper_id}-chunk"
-
-        # First pass: assign chunk_ids and context_prefix
-        for i, chunk in enumerate(chunks):
-            chunk_id = f"{chunk_id_prefix}-{i + 1}"
-            chunk["chunk_id"] = chunk_id
-
-            # Set context_prefix from previous chunk's text end
-            if i > 0:
-                prev_text = chunks[i - 1].get("text", "")
-                context_prefix = prev_text[-50:] if len(prev_text) > 50 else prev_text
-                chunk["context_prefix"] = context_prefix
-            else:
-                chunk["context_prefix"] = ""
-
-            # Initialize prev/next IDs (will be set in second pass)
-            chunk["prev_chunk_id"] = None
-            chunk["next_chunk_id"] = None
-
-        # Second pass: link adjacent chunks
-        for i, chunk in enumerate(chunks):
-            if i > 0:
-                chunk["prev_chunk_id"] = chunks[i - 1]["chunk_id"]
-            if i < len(chunks) - 1:
-                chunk["next_chunk_id"] = chunks[i + 1]["chunk_id"]
-
-        # Clean overlap-related fields that are no longer needed
-        # Keep word_count but remove overlap tracking (per D-10: no duplication)
-        for chunk in chunks:
-            if "overlap" in chunk:
-                # Remove the overlap text that was prepended during merging
-                # Per D-10: Store clean text only
-                overlap_count = chunk.get("overlap", 0)
-                if overlap_count > 0:
-                    # The overlap text was prepended in _merge_small_chunks_with_overlap
-                    # We need to remove it to get clean text
-                    # The overlap text was: overlap_text + "\n\n" + original_text
-                    # We need to find where the original text starts
-                    text = chunk["text"]
-                    # Find the first newline after the overlap portion
-                    # The overlap was prepended with "\n\n" separator
-                    parts = text.split("\n\n")
-                    if len(parts) > 1:
-                        # First part is overlap, rest is original
-                        # We want to keep only the original text
-                        chunk["text"] = "\n\n".join(parts[1:])
-                del chunk["overlap"]
-
-        logger.debug(
-            "Added adjacency fields to chunks",
-            paper_id=paper_id,
-            chunk_count=len(chunks),
-            linked_pairs=len(chunks) - 1 if len(chunks) > 1 else 0,
-        )
-
-        return chunks
-
-    def _assign_section(
-        self,
-        text: str,
-        imrad_structure: dict,
-        page: Optional[int] = None,
-    ) -> str:
-        """Assign section based on IMRaD structure with priority logic.
-
-        Per D-06: Priority order:
-        1. heading命中 (highest confidence)
-        2. page range命中 (medium confidence)
-        3. IMRaD anchor命中
-        4. Keyword rules兜底
-
-        Args:
-            text: Text to check for heading/keywords
-            imrad_structure: Section spans from extract_imrad_structure()
-            page: Page number for range matching
-
-        Returns:
-            Section name (not empty string)
-        """
-        # Priority 1: Check for heading match
-        heading_section = self._detect_heading_in_text(text)
-        if heading_section:
-            return heading_section
-
-        # Priority 2: Check page range match
-        if page and imrad_structure:
-            for section_name, section_data in imrad_structure.items():
-                if section_name.startswith("_"):
-                    continue
-                if isinstance(section_data, dict):
-                    # Support both page_start/page_end and start_page/end_page formats
-                    start = section_data.get("page_start") or section_data.get("start_page", 0)
-                    end = section_data.get("page_end") or section_data.get("end_page", 999)
-                    if start is not None and end is not None and start <= page <= end:
-                        confidence = section_data.get("confidence", 0.5)
-                        if confidence >= 0.7:
-                            return section_name
-
-        # Priority 3: Check anchor mentions
-        if imrad_structure:
-            for section_name, section_data in imrad_structure.items():
-                if section_name.startswith("_"):
-                    continue
-                anchors = section_data.get("anchors", [])
-                if anchors:
-                    for anchor in anchors:
-                        if isinstance(anchor, str) and anchor.lower() in text.lower():
-                            return section_name
-
-        # Priority 4: Keyword fallback
-        return self._detect_section_keywords_in_text(text) or ""
-
-    def _detect_heading_in_text(self, text: str) -> Optional[str]:
-        """Detect if text starts with a section heading.
-
-        Per D-06: Heading detection with high confidence.
-        Headings are typically:
-        - Short (< 50 chars)
-        - Start with number or keyword
-        - End without punctuation
-        """
-        from app.core.imrad_extractor import IMRAD_PATTERNS
-
-        text = text.strip()
-        if len(text) > 50:
-            return None
-
-        # Check for numbered headings: "1. Introduction", "2 Methods"
-        numbered_match = re.match(r"^(\d+)[.\s]*([a-zA-Z]+)", text)
-        if numbered_match:
-            keyword = numbered_match.group(2).lower()
-            for section, patterns in IMRAD_PATTERNS.items():
-                if any(re.search(p, keyword, re.IGNORECASE) for p in patterns):
-                    return section
-
-        # Check for keyword headings
-        for section, patterns in IMRAD_PATTERNS.items():
-            for pattern in patterns:
-                try:
-                    if re.match(pattern, text.lower(), re.IGNORECASE):
-                        return section
-                except re.error:
-                    continue
-
-        return None
-
-    def _detect_section_keywords_in_text(self, text: str) -> Optional[str]:
-        """Detect section from content keywords (fallback).
-
-        Per D-06: Keyword fallback when heading and page range don't match.
-        More lenient than heading detection - looks for section
-        keywords in first ~100 chars of content.
-        """
-        from app.core.imrad_extractor import IMRAD_PATTERNS
-
-        text_preview = text[:100].lower()
-
-        for section, patterns in IMRAD_PATTERNS.items():
-            for pattern in patterns:
-                try:
-                    if re.search(pattern, text_preview, re.IGNORECASE):
-                        return section
-                except re.error:
-                    continue
-
-        return None
+        for section_name, section_data in imrad_structure.items():
+            if section_name.startswith("_"):
+                continue
+            pass
+        return ""  # Fix: Return empty string instead of None
 
     async def extract_imrad(self, markdown: str) -> dict:
         """

@@ -542,7 +542,7 @@ class MilvusService:
     def create_collection_v2(self) -> None:
         """Create paper_contents_v2 collection with 2048-dim embeddings per D-09.
 
-        Per D-10: Added adjacency fields for context assembly.
+        Per D-09: Added indexable and embedding_status fields for embedding failure handling.
         """
         fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
@@ -559,11 +559,9 @@ class MilvusService:
             FieldSchema(name="content_data", dtype=DataType.VARCHAR, max_length=32000),  # Increased from 8000 to 32000
             FieldSchema(name="raw_data", dtype=DataType.JSON),
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim),
-            # Per D-10: Adjacency fields for context assembly
-            FieldSchema(name="chunk_id", dtype=DataType.VARCHAR, max_length=128, default_value=""),
-            FieldSchema(name="prev_chunk_id", dtype=DataType.VARCHAR, max_length=128, default_value=""),
-            FieldSchema(name="next_chunk_id", dtype=DataType.VARCHAR, max_length=128, default_value=""),
-            FieldSchema(name="context_prefix", dtype=DataType.VARCHAR, max_length=200, default_value=""),
+            # Per D-09: New fields for embedding failure handling
+            FieldSchema(name="indexable", dtype=DataType.BOOL, default_value=True),
+            FieldSchema(name="embedding_status", dtype=DataType.VARCHAR, max_length=32),
         ]
         
         schema = CollectionSchema(fields, "Multimodal content with Qwen3-VL embeddings")
@@ -768,21 +766,36 @@ class MilvusService:
         for i in range(0, len(data), batch_size):
             batch = data[i:i + batch_size]
             batch_num = (i // batch_size) + 1
-            
+
             retries = 0
             while retries < max_retries:
                 try:
                     # Prepare entities with quality scoring
                     entities = []
+                    skipped_count = 0
+
                     for idx, item in enumerate(batch):
+                        embedding = item.get("embedding")
+
+                        # Per D-09: Skip failed embeddings, don't use zero-vector
+                        if not embedding or all(v == 0.0 for v in embedding):
+                            logger.warning(
+                                "Skipping embedding-failed item",
+                                paper_id=item.get("paper_id"),
+                                content_type=item.get("content_type"),
+                            )
+                            skipped_count += 1
+                            continue  # Don't insert
+
                         quality_score = calculate_chunk_quality(item)
-                        
+
                         page_num = item.get("page_num", 0)
                         if page_num is None:
                             page_num = 0
                         if isinstance(page_num, list):
                             page_num = page_num[0] if page_num else 0
-                        
+
+                        # Build entity with indexable=True (default) per D-09
                         entity = {
                             "paper_id": item["paper_id"],
                             "user_id": item["user_id"],
@@ -796,12 +809,9 @@ class MilvusService:
                             "extraction_version": 2,
                             "content_data": str(item.get("content_data", item.get("text", "")))[:8000],
                             "raw_data": item.get("raw_data", {}),
-                            "embedding": item["embedding"],
-                            # Per D-10: Adjacency fields for context assembly
-                            "chunk_id": item.get("chunk_id") or "",
-                            "prev_chunk_id": item.get("prev_chunk_id") or "",
-                            "next_chunk_id": item.get("next_chunk_id") or "",
-                            "context_prefix": item.get("context_prefix") or "",
+                            "embedding": embedding,
+                            "indexable": True,  # Per D-09: New field
+                            "embedding_status": "success",  # Per D-09: New field
                         }
                         entities.append(entity)
                     
@@ -945,13 +955,14 @@ class MilvusService:
             "params": {"nprobe": 10}
         }
 
-        conditions = []
+        # Per D-09: Default to indexable content only
+        conditions = ["indexable == true"]
         if user_id:
             conditions.append(f"user_id == '{user_id}'")
         if content_type:
             conditions.append(f"content_type == '{content_type}'")
 
-        expr = " and ".join(conditions) if conditions else None
+        expr = " and ".join(conditions)
 
         results = collection.search(
             data=[embedding],
@@ -961,9 +972,7 @@ class MilvusService:
             expr=expr,
             output_fields=[
                 "paper_id", "page_num", "content_type", "section",
-                "content_data", "raw_data", "quality_score",
-                # Per D-10: Adjacency fields for context assembly
-                "chunk_id", "prev_chunk_id", "next_chunk_id", "context_prefix",
+                "content_data", "raw_data", "quality_score"
             ]
         )
 
@@ -978,69 +987,10 @@ class MilvusService:
                     "page_num": hit.entity.get("page_num"),
                     "content_type": hit.entity.get("content_type"),
                     "section": hit.entity.get("section"),
-                    "text": hit.entity.get("content_data"),  # Unified field name per D-03
                     "content_data": hit.entity.get("content_data"),
                     "raw_data": hit.entity.get("raw_data"),
                     "quality_score": hit.entity.get("quality_score"),
-                    # Per D-10: Adjacency fields for context assembly
-                    "chunk_id": hit.entity.get("chunk_id"),
-                    "prev_chunk_id": hit.entity.get("prev_chunk_id"),
-                    "next_chunk_id": hit.entity.get("next_chunk_id"),
-                    "context_prefix": hit.entity.get("context_prefix"),
                 })
-        return formatted
-
-    def search_by_chunk_ids(
-        self,
-        chunk_ids: List[str],
-        paper_id: str,
-        user_id: str,
-    ) -> List[Dict[str, Any]]:
-        """Fetch chunks by chunk_id for adjacency lookup.
-
-        Per D-10: Needed for fetching adjacent chunks in synthesis layer.
-
-        Args:
-            chunk_ids: List of chunk IDs to fetch
-            paper_id: Paper ID for scoped fetch
-            user_id: User ID for ownership verification
-
-        Returns:
-            List of chunks with text and metadata
-        """
-        if not chunk_ids:
-            return []
-
-        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
-
-        # Build expr for chunk_ids lookup
-        ids_expr = ", ".join([f"'{cid}'" for cid in chunk_ids])
-        expr = f"paper_id == '{paper_id}' and user_id == '{user_id}' and chunk_id in [{ids_expr}]"
-
-        try:
-            results = collection.query(
-                expr=expr,
-                output_fields=["chunk_id", "content_data", "section", "page_num"],
-                limit=len(chunk_ids),
-            )
-
-            return [
-                {
-                    "chunk_id": r.get("chunk_id"),
-                    "text": r.get("content_data"),
-                    "section": r.get("section"),
-                    "page_num": r.get("page_num"),
-                }
-                for r in results
-            ]
-        except Exception as e:
-            logger.warning(
-                "Failed to fetch chunks by chunk_ids",
-                chunk_ids=chunk_ids,
-                paper_id=paper_id,
-                error=str(e),
-            )
-            return []
         return formatted
 
     def delete_by_paper_contents(self, paper_id: str) -> None:

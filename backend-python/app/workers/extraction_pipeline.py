@@ -56,6 +56,166 @@ class ExtractionPipeline:
         self.table_extractor = TableExtractor()
         self.storage = ObjectStorage()
 
+    def _generate_figure_evidence_text(
+        self,
+        caption: str,
+        page_items: List[Dict],
+        page_num: int,
+        figure_id: Optional[str] = None,
+    ) -> str:
+        """Generate evidence-ready text for figure retrieval.
+
+        Per D-08: Figures should be answerable, not just locatable.
+
+        Args:
+            caption: Figure caption text
+            page_items: All items on the same page
+            page_num: Page number
+            figure_id: Figure identifier (e.g., "Figure 1")
+
+        Returns:
+            Evidence text for Milvus content_data
+        """
+        # Find anchor sentences (where figure is referenced)
+        anchor_sentences = []
+        surrounding_text = []
+
+        for item in page_items:
+            text = item.get("text", "")
+            if not text:
+                continue
+
+            # Check for figure reference
+            if re.search(r"Figure\s+\d+|Fig\.?\s+\d+", text):
+                # Extract sentence containing reference
+                sentences = text.split(". ")
+                for sentence in sentences:
+                    if re.search(r"Figure\s+\d+|Fig\.?\s+\d+", sentence):
+                        anchor_sentences.append(sentence.strip())
+
+            # Collect surrounding context (non-caption text)
+            if len(surrounding_text) < 2 and len(text) > 50:
+                surrounding_text.append(text[:200])
+
+        # Build evidence text per D-08 format
+        evidence_parts = []
+
+        evidence_parts.append(f"Figure caption: {caption}")
+
+        if anchor_sentences:
+            anchors_str = " | ".join(anchor_sentences[:3])  # Limit to 3
+            evidence_parts.append(f"Referenced in text: {anchors_str}")
+
+        if surrounding_text:
+            context_str = surrounding_text[0][:150] if surrounding_text else ""
+            evidence_parts.append(f"Nearby explanation: {context_str}")
+
+        evidence_text = "\n".join(evidence_parts)
+
+        logger.debug(
+            "Figure evidence generated",
+            caption_len=len(caption),
+            anchors=len(anchor_sentences),
+            page=page_num,
+        )
+
+        return evidence_text
+
+    def _generate_table_evidence_text(
+        self,
+        caption: str,
+        table_data: Dict,
+        headers: List[str],
+        rows: List[List[Any]],
+    ) -> str:
+        """Generate evidence-ready text for table retrieval.
+
+        Per D-08: Tables should be answerable with their content, not just locatable.
+
+        Args:
+            caption: Table caption
+            table_data: Structured table data
+            headers: Column headers
+            rows: Table rows
+
+        Returns:
+            Evidence text for Milvus content_data
+        """
+        evidence_parts = []
+
+        # Caption
+        evidence_parts.append(f"Table caption: {caption}")
+
+        # Headers
+        if headers:
+            headers_str = " | ".join(headers[:10])  # Limit columns
+            evidence_parts.append(f"Columns: {headers_str}")
+
+        # Key rows summary (deterministic)
+        if rows and len(rows) > 0:
+            # Take first 3 rows as sample
+            top_rows = rows[:3]
+            top_rows_str = self._summarize_rows(top_rows, headers)
+            evidence_parts.append(f"Key rows: {top_rows_str}")
+
+        # Main takeaway (deterministic summarizer)
+        takeaway = self._generate_table_takeaway(headers, rows)
+        evidence_parts.append(f"Main takeaway: {takeaway}")
+
+        evidence_text = "\n".join(evidence_parts)
+
+        logger.debug(
+            "Table evidence generated",
+            caption_len=len(caption),
+            headers=len(headers),
+            rows=len(rows),
+        )
+
+        return evidence_text
+
+    def _summarize_rows(self, rows: List[List[Any]], headers: List[str]) -> str:
+        """Summarize table rows for evidence text."""
+        summaries = []
+        for row in rows[:3]:
+            if len(row) <= len(headers):
+                row_str = " | ".join([str(v)[:30] for v in row])
+                summaries.append(row_str)
+        return "; ".join(summaries) if summaries else "N/A"
+
+    def _generate_table_takeaway(self, headers: List[str], rows: List[List[Any]]) -> str:
+        """Generate deterministic table takeaway.
+
+        Per D-08: Lightweight summarizer, not heavy LLM.
+        """
+        # Look for result patterns (best/max/min)
+        takeaway_parts = []
+
+        numeric_headers = []
+        for i, header in enumerate(headers):
+            if any(kw in header.lower() for kw in ["score", "rate", "value", "accuracy", "performance", "time", "cost"]):
+                numeric_headers.append((i, header))
+
+        if numeric_headers and rows:
+            # Find max/min values
+            for col_idx, header in numeric_headers:
+                values = []
+                for row in rows:
+                    try:
+                        val = float(row[col_idx])
+                        values.append(val)
+                    except (ValueError, IndexError):
+                        continue
+
+                if values:
+                    max_val = max(values)
+                    min_val = min(values)
+                    takeaway_parts.append(f"{header}: range {min_val:.2f}-{max_val:.2f}")
+
+        if takeaway_parts:
+            return "Results: " + ", ".join(takeaway_parts[:3])
+        else:
+            return f"Contains {len(rows)} data rows across {len(headers)} columns"
+
     async def extract(self, ctx: PipelineContext) -> PipelineContext:
         """Execute all extraction tasks in parallel.
 
@@ -196,6 +356,8 @@ class ExtractionPipeline:
         )
 
         # Step 2: Generate embeddings for each image
+        all_items = ctx.parse_result["items"]
+
         for idx, img_data in enumerate(images):
             try:
                 # Per D-01: Direct pixel encoding with Qwen3VL
@@ -219,13 +381,35 @@ class ExtractionPipeline:
                     )
                     storage_key = None
 
+                # Per D-08: Generate evidence-ready text for figure retrieval
+                # Filter items by page number to get context
+                page_items = [
+                    item for item in all_items
+                    if item.get("page") == img_data.page_num
+                ]
+
+                # Extract caption if available
+                caption = ""
+                if hasattr(img_data, 'caption') and img_data.caption:
+                    caption = img_data.caption
+                elif hasattr(img_data, 'text') and img_data.text:
+                    caption = img_data.text
+
+                # Generate evidence text
+                content_data = self._generate_figure_evidence_text(
+                    caption=caption,
+                    page_items=page_items,
+                    page_num=img_data.page_num,
+                    figure_id=None,
+                )
+
                 results.append({
                     "paper_id": ctx.paper_id,
                     "user_id": ctx.user_id,
                     "page_num": img_data.page_num,
                     "content_type": "image",
                     "section": "",  # Fix: Add empty section field for consistency
-                    "content_data": f"Figure on page {img_data.page_num}",
+                    "content_data": content_data,
                     "embedding": embedding,
                     "raw_data": {
                         "bbox": img_data.bbox if hasattr(img_data, 'bbox') else None,
@@ -239,21 +423,12 @@ class ExtractionPipeline:
 
             except Exception as e:
                 logger.warning(
-                    "Image embedding failed",
+                    "Image embedding failed - skipping per D-09",
                     page=img_data.page_num,
                     error=str(e)
                 )
-                # Use zero-vector placeholder per D-15
-                results.append({
-                    "paper_id": ctx.paper_id,
-                    "user_id": ctx.user_id,
-                    "page_num": img_data.page_num,
-                    "content_type": "image",
-                    "section": "",  # Fix: Add empty section field for consistency
-                    "content_data": f"Figure on page {img_data.page_num}",
-                    "embedding": [0.0] * self.EMBEDDING_DIM,
-                    "raw_data": {"error": str(e)}
-                })
+                # Per D-09: Skip failed embeddings, don't use zero-vector fallback
+                # Item is not added to results - will not be indexed
 
             finally:
                 # Close image to free memory
@@ -314,17 +489,23 @@ class ExtractionPipeline:
                     headers = table_data.headers
 
                 if hasattr(table_data, 'rows'):
-                    rows = table_data.rows[:3]  # Max 3 rows per D-02
+                    rows = table_data.rows  # Keep all rows for evidence text
 
-                # Generate embedding via Qwen3VL
+                # Generate embedding via Qwen3VL (use first 3 rows for embedding)
+                embedding_rows = rows[:3] if rows else []
                 embedding = self.qwen3vl.encode_table(
                     caption=caption,
                     headers=headers,
-                    rows=rows
+                    rows=embedding_rows
                 )
 
-                # Build content data
-                content_data = caption if caption else f"Table with {len(headers)} columns"
+                # Per D-08: Generate evidence-ready text for table retrieval
+                content_data = self._generate_table_evidence_text(
+                    caption=caption,
+                    table_data={},  # Structured data already in headers/rows
+                    headers=headers,
+                    rows=rows,
+                )
 
                 results.append({
                     "paper_id": ctx.paper_id,
@@ -342,21 +523,12 @@ class ExtractionPipeline:
 
             except Exception as e:
                 logger.warning(
-                    "Table embedding failed",
+                    "Table embedding failed - skipping per D-09",
                     page=table_data.page_num if hasattr(table_data, 'page_num') else 0,
                     error=str(e)
                 )
-                # Use zero-vector placeholder per D-15
-                results.append({
-                    "paper_id": ctx.paper_id,
-                    "user_id": ctx.user_id,
-                    "page_num": table_data.page_num if hasattr(table_data, 'page_num') else 0,
-                    "content_type": "table",
-                    "section": "",  # Fix: Add empty section field for consistency
-                    "content_data": "Table (embedding failed)",
-                    "embedding": [0.0] * self.EMBEDDING_DIM,
-                    "raw_data": {"error": str(e)}
-                })
+                # Per D-09: Skip failed embeddings, don't use zero-vector fallback
+                # Item is not added to results - will not be indexed
 
         logger.info(
             "Table extraction complete",
