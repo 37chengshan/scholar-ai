@@ -18,7 +18,8 @@ celery_app = Celery(
     broker='redis://localhost:6379/1',      # Broker: Redis DB 1
     backend='redis://localhost:6379/2',     # Backend: Redis DB 2
     include=[
-        'app.tasks.pdf_tasks',  # Will be created in Plan 02
+        'app.tasks.pdf_tasks',  # PDF processing tasks
+        'app.workers.import_worker',  # ImportJob processing worker (Wave 5)
     ]
 )
 
