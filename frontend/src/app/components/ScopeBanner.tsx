@@ -10,32 +10,37 @@ interface ScopeBannerProps {
 }
 
 export function ScopeBanner({ type, title, errorMessage }: ScopeBannerProps) {
+  // Return null for default/null states
+  if (type === null) return null;
+
   // D-04: Colors - single_paper: green, full_kb: blue, error: red
-  const bgColor = {
+  const bgColor: Record<string, string> = {
     single_paper: 'bg-[#22c55e]',
     full_kb: 'bg-[#3b82f6]',
     error: 'bg-[#ef4444]',
-  }[type || ''] || 'bg-gray-500';
+  };
+  const bgColorValue = bgColor[type] || 'bg-gray-500';
 
-  const Icon = {
+  // D-04: Icons
+  const iconMap: Record<string, typeof FileText> = {
     single_paper: FileText,
     full_kb: Database,
     error: AlertTriangle,
-  }[type || ''] || FileText;
+  };
+  const Icon = iconMap[type] || FileText;
 
   // D-05: 文案
-  const message = {
+  const messageMap: Record<string, string> = {
     single_paper: `📄 单论文模式 — ${title || '加载中...'}`,
     full_kb: `📚 全库模式 — ${title || '加载中...'}`,
     error: `⚠️ 作用域无效 — ${errorMessage || '参数无效'}`,
-  }[type || ''] || null;
-
-  if (!type || type === 'default') return null;
+  };
+  const message = messageMap[type] || null;
 
   return (
     <div className={cn(
       'w-full py-2 px-4 flex items-center justify-center gap-2 text-white text-sm font-medium',
-      bgColor
+      bgColorValue
     )}>
       <Icon className="w-4 h-4" />
       <span>{message}</span>

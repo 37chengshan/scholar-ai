@@ -19,7 +19,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Plus,
@@ -68,6 +68,9 @@ import {
 } from "../../services/sseService";
 import { API_BASE_URL } from "@/config/api";
 import { toast } from "sonner";
+import { ScopeBanner, ScopeType } from '../components/ScopeBanner';
+import * as papersApi from '@/services/papersApi';
+import { kbApi } from '@/services/kbApi';
 
 // ============================================================================
 // Extended ChatMessage for UI State
@@ -141,6 +144,85 @@ export function Chat() {
   const sseServiceRef = useRef<SSEService | null>(null);
   const currentMessageIdRef = useRef<string>(""); // ref for stale closure fix
 
+  // D-07: Single source of truth for scope (banner AND SSE body use same state)
+  const [searchParams] = useSearchParams();
+  const paperId = searchParams.get('paperId');
+  const kbId = searchParams.get('kbId');
+
+  interface ChatScope {
+    type: ScopeType;
+    id: string | null;
+    title?: string;
+    errorMessage?: string;
+  }
+
+  const [scope, setScope] = useState<ChatScope>({ type: null, id: null });
+  const [scopeLoading, setScopeLoading] = useState(false);
+
+  // D-05 + D-07: Parse URL params once at component top, store in state
+  useEffect(() => {
+    const validateScope = async () => {
+      if (!paperId && !kbId) {
+        setScope({ type: null, id: null });
+        return;
+      }
+
+      setScopeLoading(true);
+      try {
+        // D-08: Validate priority - paperId first, then kbId
+        if (paperId) {
+          // Validate paperId exists and user has access
+          // papersApi.get returns Promise<Paper> (throws on error)
+          try {
+            const paper = await papersApi.get(paperId);
+            setScope({
+              type: 'single_paper',
+              id: paperId,
+              title: paper.title || '未知论文',
+            });
+          } catch (err) {
+            setScope({
+              type: 'error',
+              id: paperId,
+              errorMessage: `${paperId} 不存在或无权访问`,
+            });
+          }
+          setScopeLoading(false);
+          return;
+        }
+
+        if (kbId) {
+          // Validate kbId exists and user has access
+          const kbRes = await kbApi.get(kbId);
+          if (kbRes.success && kbRes.data) {
+            setScope({
+              type: 'full_kb',
+              id: kbId,
+              title: kbRes.data.name,
+            });
+          } else {
+            setScope({
+              type: 'error',
+              id: kbId,
+              errorMessage: `${kbId} 不存在或无权访问`,
+            });
+          }
+          setScopeLoading(false);
+          return;
+        }
+      } catch (err) {
+        setScope({
+          type: 'error',
+          id: paperId || kbId,
+          errorMessage: '作用域验证失败',
+        });
+        setScopeLoading(false);
+      }
+    };
+
+    void validateScope();
+  }, [paperId, kbId]);
+
   const { language } = useLanguage();
 
   // useChatStream hook for state machine + buffer + throttle (HARD RULE 0.3, 0.4)
@@ -152,13 +234,14 @@ export function Chat() {
     cancelStream,
     reset,
     forceFlush,
+    getBufferedContent,
   } = useChatStream({
     throttleMs: 100,
     onPhaseChange: (phase, label) => {
-      console.log("[Chat] Phase changed:", phase, label);
+      console.debug("[Chat] Phase changed:", phase, label);
     },
     onComplete: (state) => {
-      console.log("[Chat] Stream complete:", state);
+      console.debug("[Chat] Stream complete");
     },
     onError: (error) => {
       toast.error(isZh ? `错误: ${error.message}` : `Error: ${error.message}`);
@@ -208,11 +291,18 @@ export function Chat() {
   }, []);
 
   // Sync localMessages with sessionMessages
+  // NOTE: Skip sync when streaming (placeholderId is set) to prevent overwriting
+  // the in-progress streaming message. After stream completes, the final message
+  // is added via addMessage which triggers this sync, but we want to preserve
+  // the localMessages state from onDone which has the buffered content.
   useEffect(() => {
+    // Don't sync during streaming - localMessages has the streaming state
+    if (placeholderId) return;
+
     if (sessionMessages.length > 0) {
       setLocalMessages(sessionMessages.map((m) => ({ ...m })));
     }
-  }, [sessionMessages]);
+  }, [sessionMessages, placeholderId]);
 
   const handleNewSession = useCallback(async () => {
     // Disconnect current SSE if connected
@@ -290,6 +380,12 @@ export function Chat() {
     if (!input.trim() || streamState.streamStatus === "streaming" || sending)
       return;
 
+    // D-08: Block SSE send if scope is invalid
+    if (scope.type === 'error') {
+      toast.error(scope.errorMessage || '当前作用域无效');
+      return;
+    }
+
     setSending(true);
 
     try {
@@ -340,9 +436,12 @@ export function Chat() {
 
       // 3. Start SSE connection
       const url = `${API_BASE_URL}/api/v1/chat/stream`;
+      // D-06: Add scope params to SSE body
       const body = {
         message: input.trim(),
         session_id: sessionId,
+        ...(scope.type === 'single_paper' && scope.id && { paperId: scope.id }),
+        ...(scope.type === 'full_kb' && scope.id && { kbId: scope.id }),
       };
 
       if (!sseServiceRef.current) {
@@ -364,10 +463,9 @@ export function Chat() {
             const eventData =
               legacyEvent.content || legacyEvent.data || envelopeEvent.data;
 
-            console.log(
+            console.debug(
               "[Chat] SSE event received:",
               eventType,
-              eventMessageId,
             );
 
             // HARD RULE 0.2: Validate message_id
@@ -376,6 +474,11 @@ export function Chat() {
               setCurrentMessageId(eventMessageId);
               currentMessageIdRef.current = eventMessageId;
               setPlaceholderId(eventMessageId);
+
+              // Initialize useChatStream's message_id tracking (HARD RULE 0.2)
+              const sessionId = eventData?.session_id || "";
+              const taskType = eventData?.task_type || "general";
+              startStream(sessionId, taskType, eventMessageId);
 
               // Update placeholder ID to real message_id
               setLocalMessages((prev) =>
@@ -423,17 +526,29 @@ export function Chat() {
             });
 
             // Update placeholder message with stream state
-            setLocalMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== (placeholderId || currentMessageId)) return m;
+            // NOTE: Use currentMessageIdRef.current (synchronous ref) instead of
+            // placeholderId/currentMessageId (stale closure state) for message matching.
+            // Use getBufferedContent() for content (state + pending buffer) since
+            // throttle delays the reducer dispatch.
+            const streamingMsgId = currentMessageIdRef.current;
+            const buffered = getBufferedContent();
 
-                // Build updated message from stream state
+            // DEBUG: Log matching
+            console.debug("[Chat] setLocalMessages update, streamingMsgId:", streamingMsgId);
+
+            setLocalMessages((prev) => {
+              // DEBUG: Log prev messages
+              console.debug("[Chat] setLocalMessages prev messages count:", prev.length);
+              return prev.map((m) => {
+                if (m.id !== streamingMsgId) return m;
+
+                // Build updated message from buffered content (state + pending buffer)
                 const updated: ExtendedChatMessage = {
                   ...m,
-                  content: streamState.contentBuffer,
-                  reasoningBuffer: streamState.reasoningBuffer,
-                  streamStatus: streamState.streamStatus,
-                  toolTimeline: streamState.toolTimeline.map((t) => ({
+                  content: buffered.content,
+                  reasoningBuffer: buffered.reasoning,
+                  streamStatus: streamStateRef.current.streamStatus,
+                  toolTimeline: streamStateRef.current.toolTimeline.map((t) => ({
                     id: t.id,
                     tool: t.tool,
                     label: t.label,
@@ -443,7 +558,7 @@ export function Chat() {
                     duration: t.duration,
                     summary: t.summary,
                   })),
-                  citations: streamState.citations.map((c) => ({
+                  citations: streamStateRef.current.citations.map((c) => ({
                     paper_id: c.paper_id,
                     title: c.title,
                     authors: c.authors,
@@ -455,18 +570,20 @@ export function Chat() {
                   })),
                 };
 
+                console.debug("[Chat] Updated message:", updated.id);
                 return updated;
-              }),
-            );
+              });
+            });
           },
           onError: (error: Error) => {
             console.error("[Chat] SSE error:", error);
             forceFlush();
 
             // Update placeholder to error state
+            const errorMsgId = currentMessageIdRef.current;
             setLocalMessages((prev) =>
               prev.map((m) =>
-                m.id === (placeholderId || currentMessageId)
+                m.id === errorMsgId
                   ? { ...m, streamStatus: "error" }
                   : m,
               ),
@@ -476,18 +593,27 @@ export function Chat() {
             toast.error(isZh ? "发送消息失败" : "Failed to send message");
           },
           onDone: (data) => {
-            console.log("[Chat] SSE stream done");
+            console.debug("[Chat] SSE stream done");
+
+            // Capture buffered content BEFORE forceFlush (which clears refs)
+            const finalBuffered = getBufferedContent();
+            console.debug("[Chat] onDone buffered content length:", finalBuffered.content.length);
+
             forceFlush();
 
+            const doneMsgId = currentMessageIdRef.current;
             // Update placeholder to completed state
             setLocalMessages((prev) =>
               prev.map((m) => {
-                if (m.id !== (placeholderId || currentMessageId)) return m;
+                if (m.id !== doneMsgId) return m;
+
+                const finalContent = finalBuffered.content || streamStateRef.current.contentBuffer;
+                const finalReasoning = finalBuffered.reasoning || streamStateRef.current.reasoningBuffer;
 
                 const finalMessage: ExtendedChatMessage = {
                   ...m,
-                  content: streamStateRef.current.contentBuffer,
-                  reasoningBuffer: streamStateRef.current.reasoningBuffer,
+                  content: finalContent,
+                  reasoningBuffer: finalReasoning,
                   streamStatus: "completed",
                   tokensUsed:
                     data?.tokens_used || streamStateRef.current.tokensUsed,
@@ -501,7 +627,7 @@ export function Chat() {
                   id: m.id,
                   session_id: m.session_id,
                   role: "assistant",
-                  content: streamStateRef.current.contentBuffer,
+                  content: finalContent,
                   created_at: new Date().toISOString(),
                 } as SessionChatMessage);
 
@@ -543,9 +669,12 @@ export function Chat() {
     addMessage,
     handleSSEEvent,
     forceFlush,
+    getBufferedContent,
     isZh,
     placeholderId,
     currentMessageId,
+    startStream,
+    scope,
   ]);
 
   // ============================================================================
@@ -637,9 +766,10 @@ export function Chat() {
       forceFlush();
 
       // Update placeholder to cancelled state
+      const cancelMsgId = currentMessageIdRef.current;
       setLocalMessages((prev) =>
         prev.map((m) =>
-          m.id === (placeholderId || currentMessageId)
+          m.id === cancelMsgId
             ? { ...m, streamStatus: "cancelled" }
             : m,
         ),
@@ -781,6 +911,13 @@ export function Chat() {
           </div>
         </div>
 
+        {/* D-03: Scope banner - below header, above messages */}
+        <ScopeBanner
+          type={scope.type}
+          title={scope.title}
+          errorMessage={scope.errorMessage}
+        />
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {localMessages.length === 0 ? (
@@ -792,7 +929,7 @@ export function Chat() {
               <p className="text-sm text-muted-foreground/60">{t.sendFirst}</p>
             </div>
           ) : (
-            <div className="space-y-4 max-w-4xl mx-auto">
+            <div className="space-y-6 max-w-4xl mx-auto">
               {localMessages
                 .filter((m) => m.role === "user" || m.role === "assistant")
                 .map((msg) => {
@@ -821,15 +958,17 @@ export function Chat() {
                           (msg.reasoningBuffer ||
                             streamState.reasoningBuffer) &&
                           msg.isThinkingExpanded && (
+                            <div className="mt-4">
                             <ThinkingProcess
                               steps={thinkingSteps}
                               duration={
-                                (streamState.endedAt || Date.now()) -
-                                (streamState.startedAt || Date.now()) / 1000
+                                ((streamState.endedAt || Date.now()) -
+                                (streamState.startedAt || Date.now())) / 1000
                               }
                               onComplete={() => {}}
                               autoCollapse={true}
                             />
+                            </div>
                           )}
 
                         {/* Tool Call Cards for streaming messages */}
@@ -860,10 +999,10 @@ export function Chat() {
                         {/* Message Content */}
                         <div
                           className={clsx(
-                            "max-w-[100%] rounded-2xl px-4 py-3",
+                            "max-w-[100%] rounded-2xl px-4 py-3 shadow-md border",
                             msg.role === "user"
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted",
+                              ? "bg-primary text-primary-foreground border-primary/20"
+                              : "bg-muted border-primary/10 border-l-2",
                           )}
                         >
                           {((msg.citations?.length ?? 0) > 0 ||
