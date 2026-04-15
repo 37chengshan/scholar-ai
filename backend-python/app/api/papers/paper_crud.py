@@ -51,6 +51,7 @@ class PaperUpdateRequest(BaseModel):
     keywords: Optional[list] = None
     starred: Optional[bool] = None
     projectId: Optional[str] = None
+    readingNotes: Optional[str] = None
 
 
 @router.get("/", response_model=PaperListResponse)
@@ -426,6 +427,8 @@ async def update_paper(
         paper.starred = body.starred
     if body.projectId is not None:
         paper.project_id = body.projectId
+    if body.readingNotes is not None:
+        paper.reading_notes = body.readingNotes
 
     paper.updated_at = datetime.now(timezone.utc)
     await db.refresh(paper)

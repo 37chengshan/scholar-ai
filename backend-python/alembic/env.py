@@ -23,8 +23,15 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-from app.database import Base
+# -----------------------------------------------------------------------
+# IMPORTANT: Import all ORM model modules so that their Table objects are
+# registered with Base.metadata before Alembic inspects it.
+# Without these imports, `alembic revision --autogenerate` produces empty
+# (or destructive) migrations because Base.metadata contains no tables.
+# -----------------------------------------------------------------------
+import app.models  # noqa: F401 – side-effect import, registers all ORM models
 from app.config import settings
+from app.database import Base
 
 target_metadata = Base.metadata
 

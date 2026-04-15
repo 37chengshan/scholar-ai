@@ -5,19 +5,18 @@ Provides comparison analysis across user-specified dimensions.
 
 import json
 import os
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, validator
-from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.utils.logger import logger
 from app.database import get_db
 from app.deps import CurrentUserId
-from app.utils.zhipu_client import get_llm_client
-from app.utils.problem_detail import Errors
 from app.models.paper import Paper, PaperChunk
+from app.utils.logger import logger
+from app.utils.problem_detail import Errors
+from app.utils.zhipu_client import get_llm_client
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -61,7 +60,8 @@ class CompareRequest(BaseModel):
         default=True, description="Include abstract in comparison context"
     )
 
-    @validator("dimensions")
+    @field_validator("dimensions")
+    @classmethod
     def validate_dimensions(cls, v):
         """Validate dimension names."""
         invalid = [d for d in v if d.lower() not in VALID_DIMENSIONS]

@@ -49,8 +49,7 @@ async def validate_jwt_token(token: str) -> Optional[str]:
 
         logger.debug("JWT token validated", user_id=user_id)
         return user_id
-
-except JWTError as e:
+    except JWTError as e:
         logger.warning(
             "JWT validation failed",
             error=str(e),

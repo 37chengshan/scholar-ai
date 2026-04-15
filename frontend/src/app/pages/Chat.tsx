@@ -18,9 +18,9 @@
  * - 0.4: Separate buffers for reasoning (think panel) and content (assistant message)
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useNavigate } from "react-router";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Plus,
   Search,
@@ -33,23 +33,41 @@ import {
   MessageSquare,
   ChevronLeft,
   Square,
-} from 'lucide-react';
-import { clsx } from 'clsx';
-import { useLanguage } from '../contexts/LanguageContext';
-import { useChatStream, ChatStreamState, StreamStatus } from '../hooks/useChatStream';
-import { useSessions, ChatMessage as SessionChatMessage } from '../hooks/useSessions';
-import { ChatMessage as RichChatMessage } from '../components/ChatMessageCard';
-import { ThinkingProcess, ThinkingStep } from '../components/ThinkingProcess';
-import { TypingText } from '../components/TypingText';
-import { ToolCallCard } from '../components/ToolCallCard';
-import { CitationsPanel, renderContentWithCitations } from '../components/CitationsPanel';
-import { TokenMonitor } from '../components/TokenMonitor';
-import { ConfirmationDialog } from '../components/ConfirmationDialog';
-import { ConfirmDialog } from '../components/ConfirmDialog';
-import { AgentStateSidebar, AgentUIState, ExecutionStep } from '../components/AgentStateSidebar';
-import { SSEService, SSEEvent, SSEEventEnvelope } from '../../services/sseService';
-import { API_BASE_URL } from '@/config/api';
-import { toast } from 'sonner';
+} from "lucide-react";
+import { clsx } from "clsx";
+import { useLanguage } from "../contexts/LanguageContext";
+import {
+  useChatStream,
+  ChatStreamState,
+  StreamStatus,
+} from "../hooks/useChatStream";
+import {
+  useSessions,
+  ChatMessage as SessionChatMessage,
+} from "../hooks/useSessions";
+import { ChatMessage as RichChatMessage } from "../components/ChatMessageCard";
+import { ThinkingProcess, ThinkingStep } from "../components/ThinkingProcess";
+import { TypingText } from "../components/TypingText";
+import { ToolCallCard } from "../components/ToolCallCard";
+import {
+  CitationsPanel,
+  renderContentWithCitations,
+} from "../components/CitationsPanel";
+import { TokenMonitor } from "../components/TokenMonitor";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import {
+  AgentStateSidebar,
+  AgentUIState,
+  ExecutionStep,
+} from "../components/AgentStateSidebar";
+import {
+  SSEService,
+  SSEEvent,
+  SSEEventEnvelope,
+} from "../../services/sseService";
+import { API_BASE_URL } from "@/config/api";
+import { toast } from "sonner";
 
 // ============================================================================
 // Extended ChatMessage for UI State
@@ -62,7 +80,7 @@ interface ToolTimelineItem {
   id: string;
   tool: string;
   label: string;
-  status: 'pending' | 'running' | 'success' | 'error';
+  status: "pending" | "running" | "success" | "error";
   startedAt: number;
   completedAt?: number;
   duration?: number;
@@ -80,7 +98,7 @@ interface CitationItem {
   snippet?: string;
   page?: number;
   score?: number;
-  content_type?: 'text' | 'table' | 'figure';
+  content_type?: "text" | "table" | "figure";
   chunk_id?: string;
 }
 
@@ -107,18 +125,21 @@ interface ExtendedChatMessage extends SessionChatMessage {
 
 export function Chat() {
   const navigate = useNavigate();
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [agentUIState, setAgentUIState] = useState<AgentUIState>('IDLE');
+  const [agentUIState, setAgentUIState] = useState<AgentUIState>("IDLE");
   const [sending, setSending] = useState(false); // 防止重复发送
   const [sessionTokens, setSessionTokens] = useState(0); // 当前session的token
   const [sessionCost, setSessionCost] = useState(0); // 当前session的花费
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // 删除确认对话框
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null); // 待删除的会话ID
-  const [currentMessageId, setCurrentMessageId] = useState<string>(''); // 当前流消息的 message_id (HARD RULE 0.2)
-  const [selectedMessage, setSelectedMessage] = useState<RichChatMessage | undefined>(undefined); // Phase 4.1: 选中的历史消息
+  const [currentMessageId, setCurrentMessageId] = useState<string>(""); // 当前流消息的 message_id (HARD RULE 0.2)
+  const [selectedMessage, setSelectedMessage] = useState<
+    RichChatMessage | undefined
+  >(undefined); // Phase 4.1: 选中的历史消息
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sseServiceRef = useRef<SSEService | null>(null);
+  const currentMessageIdRef = useRef<string>(""); // ref for stale closure fix
 
   const { language } = useLanguage();
 
@@ -134,15 +155,16 @@ export function Chat() {
   } = useChatStream({
     throttleMs: 100,
     onPhaseChange: (phase, label) => {
-      console.log('[Chat] Phase changed:', phase, label);
+      console.log("[Chat] Phase changed:", phase, label);
     },
     onComplete: (state) => {
-      console.log('[Chat] Stream complete:', state);
+      console.log("[Chat] Stream complete:", state);
     },
     onError: (error) => {
       toast.error(isZh ? `错误: ${error.message}` : `Error: ${error.message}`);
     },
   });
+  const streamStateRef = useRef(streamState); // ref for stale closure fix in onDone
 
   const {
     sessions,
@@ -159,22 +181,22 @@ export function Chat() {
   const [localMessages, setLocalMessages] = useState<ExtendedChatMessage[]>([]);
   const [placeholderId, setPlaceholderId] = useState<string | null>(null);
 
-  const isZh = language === 'zh';
+  const isZh = language === "zh";
 
   const t = {
-    terminal: isZh ? '终端对话' : 'Terminal',
-    sessions: isZh ? '会话列表' : 'Sessions',
-    search: isZh ? '搜索...' : 'Search...',
-    history: isZh ? '历史记录' : 'History',
-    newChat: isZh ? '新对话' : 'New Chat',
-    placeholder: isZh ? '给 ScholarAI 发送消息...' : 'Message ScholarAI...',
-    verify: isZh ? '请验证输出结果。' : 'Verify outputs.',
-    noMessages: isZh ? '开始新对话' : 'Start a new conversation',
-    sendFirst: isZh ? '发送您的第一条消息' : 'Send your first message',
-    streaming: isZh ? '流式响应中...' : 'Streaming...',
-    deleteConfirm: isZh ? '确定删除此对话？' : 'Delete this conversation?',
-    stop: isZh ? '停止' : 'Stop',
-    thinking: isZh ? '思考中...' : 'Thinking...',
+    terminal: isZh ? "终端对话" : "Terminal",
+    sessions: isZh ? "会话列表" : "Sessions",
+    search: isZh ? "搜索..." : "Search...",
+    history: isZh ? "历史记录" : "History",
+    newChat: isZh ? "新对话" : "New Chat",
+    placeholder: isZh ? "给 ScholarAI 发送消息..." : "Message ScholarAI...",
+    verify: isZh ? "请验证输出结果。" : "Verify outputs.",
+    noMessages: isZh ? "开始新对话" : "Start a new conversation",
+    sendFirst: isZh ? "发送您的第一条消息" : "Send your first message",
+    streaming: isZh ? "流式响应中..." : "Streaming...",
+    deleteConfirm: isZh ? "确定删除此对话？" : "Delete this conversation?",
+    stop: isZh ? "停止" : "Stop",
+    thinking: isZh ? "思考中..." : "Thinking...",
   };
 
   // Initialize SSEService instance
@@ -188,7 +210,7 @@ export function Chat() {
   // Sync localMessages with sessionMessages
   useEffect(() => {
     if (sessionMessages.length > 0) {
-      setLocalMessages(sessionMessages.map(m => ({ ...m })));
+      setLocalMessages(sessionMessages.map((m) => ({ ...m })));
     }
   }, [sessionMessages]);
 
@@ -197,7 +219,7 @@ export function Chat() {
     if (sseServiceRef.current) {
       sseServiceRef.current.disconnect();
     }
-    const session = await createSession(isZh ? '新对话' : 'New Chat');
+    const session = await createSession(isZh ? "新对话" : "New Chat");
     if (session) {
       setLocalMessages([]);
       setPlaceholderId(null);
@@ -207,32 +229,38 @@ export function Chat() {
     }
   }, [createSession, isZh, reset]);
 
-  const handleSwitchSession = useCallback(async (sessionId: string) => {
-    // Disconnect current SSE if connected
-    if (sseServiceRef.current) {
-      sseServiceRef.current.disconnect();
-    }
-    await switchSession(sessionId);
-    setLocalMessages([]);
-    setPlaceholderId(null);
-    setSessionTokens(0); // 重置token计数
-    setSessionCost(0); // 重置cost计数
-    reset(); // Reset stream state
-  }, [switchSession, reset]);
+  const handleSwitchSession = useCallback(
+    async (sessionId: string) => {
+      // Disconnect current SSE if connected
+      if (sseServiceRef.current) {
+        sseServiceRef.current.disconnect();
+      }
+      await switchSession(sessionId);
+      setLocalMessages([]);
+      setPlaceholderId(null);
+      setSessionTokens(0); // 重置token计数
+      setSessionCost(0); // 重置cost计数
+      reset(); // Reset stream state
+    },
+    [switchSession, reset],
+  );
 
-  const handleDeleteSession = useCallback(async (sessionId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSessionToDelete(sessionId);
-    setShowDeleteConfirm(true);
-  }, []);
+  const handleDeleteSession = useCallback(
+    async (sessionId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setSessionToDelete(sessionId);
+      setShowDeleteConfirm(true);
+    },
+    [],
+  );
 
   const confirmDeleteSession = useCallback(async () => {
     if (!sessionToDelete) return;
     try {
       await deleteSession(sessionToDelete);
-      toast.success(isZh ? '对话已删除' : 'Session deleted');
+      toast.success(isZh ? "对话已删除" : "Session deleted");
     } catch (err) {
-      toast.error(isZh ? '删除失败' : 'Delete failed');
+      toast.error(isZh ? "删除失败" : "Delete failed");
     }
     setShowDeleteConfirm(false);
     setSessionToDelete(null);
@@ -259,7 +287,8 @@ export function Chat() {
    * 6. On done, finalize placeholder to completed message
    */
   const handleSend = useCallback(async () => {
-    if (!input.trim() || streamState.streamStatus === 'streaming' || sending) return;
+    if (!input.trim() || streamState.streamStatus === "streaming" || sending)
+      return;
 
     setSending(true);
 
@@ -277,13 +306,13 @@ export function Chat() {
       const userMessage: ExtendedChatMessage = {
         id: `user-${Date.now()}`,
         session_id: sessionId,
-        role: 'user',
+        role: "user",
         content: input.trim(),
         created_at: new Date().toISOString(),
       };
 
       // Add to local state and session
-      setLocalMessages(prev => [...prev, userMessage]);
+      setLocalMessages((prev) => [...prev, userMessage]);
       addMessage(userMessage as SessionChatMessage);
 
       // 2. Create placeholder assistant message (HARD RULE 0.2)
@@ -291,22 +320,23 @@ export function Chat() {
       const placeholderMessage: ExtendedChatMessage = {
         id: placeholderMessageId,
         session_id: sessionId,
-        role: 'assistant',
-        content: '',
+        role: "assistant",
+        content: "",
         created_at: new Date().toISOString(),
-        streamStatus: 'streaming',
-        reasoningBuffer: '',
+        streamStatus: "streaming",
+        reasoningBuffer: "",
         isThinkingExpanded: true, // Streaming default expanded
         toolTimeline: [],
         citations: [],
       };
 
-      setLocalMessages(prev => [...prev, placeholderMessage]);
+      setLocalMessages((prev) => [...prev, placeholderMessage]);
       setPlaceholderId(placeholderMessageId);
-      setCurrentMessageId(''); // Will be set from session_start event
+      setCurrentMessageId(""); // Will be set from session_start event
+      currentMessageIdRef.current = ""; // Reset ref too
 
       // Clear input
-      setInput('');
+      setInput("");
 
       // 3. Start SSE connection
       const url = `${API_BASE_URL}/api/v1/chat/stream`;
@@ -319,149 +349,187 @@ export function Chat() {
         sseServiceRef.current = new SSEService();
       }
 
-      sseServiceRef.current.connect(url, {
-        onMessage: (event: SSEEvent | SSEEventEnvelope) => {
-          // Handle both legacy SSEEvent and new SSEEventEnvelope format
-          const legacyEvent = event as SSEEvent;
-          const envelopeEvent = event as SSEEventEnvelope;
+      sseServiceRef.current.connect(
+        url,
+        {
+          onMessage: (event: SSEEvent | SSEEventEnvelope) => {
+            // Handle both legacy SSEEvent and new SSEEventEnvelope format
+            const legacyEvent = event as SSEEvent;
+            const envelopeEvent = event as SSEEventEnvelope;
 
-          // Get event type and message_id from either format
-          const eventType = legacyEvent.type || envelopeEvent.event || '';
-          const eventMessageId = legacyEvent.message_id || envelopeEvent.message_id || '';
-          const eventData = legacyEvent.content || legacyEvent.data || envelopeEvent.data;
+            // Get event type and message_id from either format
+            const eventType = legacyEvent.type || envelopeEvent.event || "";
+            const eventMessageId =
+              legacyEvent.message_id || envelopeEvent.message_id || "";
+            const eventData =
+              legacyEvent.content || legacyEvent.data || envelopeEvent.data;
 
-          console.log('[Chat] SSE event received:', eventType, eventMessageId);
+            console.log(
+              "[Chat] SSE event received:",
+              eventType,
+              eventMessageId,
+            );
 
-          // HARD RULE 0.2: Validate message_id
-          // On session_start, capture message_id and update placeholder
-          if (eventType === 'session_start' && eventMessageId) {
-            setCurrentMessageId(eventMessageId);
-            setPlaceholderId(eventMessageId);
+            // HARD RULE 0.2: Validate message_id
+            // On session_start, capture message_id and update placeholder
+            if (eventType === "session_start" && eventMessageId) {
+              setCurrentMessageId(eventMessageId);
+              currentMessageIdRef.current = eventMessageId;
+              setPlaceholderId(eventMessageId);
 
-            // Update placeholder ID to real message_id
-            setLocalMessages(prev => prev.map(m =>
-              m.id === placeholderMessageId
-                ? { ...m, id: eventMessageId }
-                : m
-            ));
-            return;
-          }
+              // Update placeholder ID to real message_id
+              setLocalMessages((prev) =>
+                prev.map((m) =>
+                  m.id === placeholderMessageId
+                    ? { ...m, id: eventMessageId }
+                    : m,
+                ),
+              );
+              return;
+            }
 
-          // Skip events without message_id (except heartbeat)
-          if (!eventMessageId && eventType !== 'heartbeat') {
-            console.warn('[Chat] Event missing message_id, ignoring:', eventType);
-            return;
-          }
+            // Skip events without message_id (except heartbeat)
+            if (!eventMessageId && eventType !== "heartbeat") {
+              console.warn(
+                "[Chat] Event missing message_id, ignoring:",
+                eventType,
+              );
+              return;
+            }
 
-          // HARD RULE 0.2: Ignore events with wrong message_id
-          if (eventMessageId && currentMessageId && eventMessageId !== currentMessageId) {
-            console.warn('[Chat] Event message_id mismatch. Expected:', currentMessageId, 'Got:', eventMessageId);
-            return;
-          }
+            // HARD RULE 0.2: Ignore events with wrong message_id
+            if (
+              eventMessageId &&
+              currentMessageIdRef.current &&
+              eventMessageId !== currentMessageIdRef.current
+            ) {
+              console.warn(
+                "[Chat] Event message_id mismatch. Expected:",
+                currentMessageId,
+                "Got:",
+                eventMessageId,
+              );
+              return;
+            }
 
-          // Convert to SSEEventEnvelope and handle
-          handleSSEEvent({
-            message_id: eventMessageId,
-            event_type: eventType,
-            data: eventData,
-            timestamp: legacyEvent.timestamp ? new Date(legacyEvent.timestamp).getTime() : Date.now(),
-          });
+            // Convert to SSEEventEnvelope and handle
+            handleSSEEvent({
+              message_id: eventMessageId,
+              event_type: eventType,
+              data: eventData,
+              timestamp: legacyEvent.timestamp
+                ? new Date(legacyEvent.timestamp).getTime()
+                : Date.now(),
+            });
 
-          // Update placeholder message with stream state
-          setLocalMessages(prev => prev.map(m => {
-            if (m.id !== (placeholderId || currentMessageId)) return m;
+            // Update placeholder message with stream state
+            setLocalMessages((prev) =>
+              prev.map((m) => {
+                if (m.id !== (placeholderId || currentMessageId)) return m;
 
-            // Build updated message from stream state
-            const updated: ExtendedChatMessage = {
-              ...m,
-              content: streamState.contentBuffer,
-              reasoningBuffer: streamState.reasoningBuffer,
-              streamStatus: streamState.streamStatus,
-              toolTimeline: streamState.toolTimeline.map(t => ({
-                id: t.id,
-                tool: t.tool,
-                label: t.label,
-                status: t.status,
-                startedAt: t.startedAt,
-                completedAt: t.completedAt,
-                duration: t.duration,
-                summary: t.summary,
-              })),
-              citations: streamState.citations.map(c => ({
-                paper_id: c.paper_id,
-                title: c.title,
-                authors: c.authors,
-                year: c.year,
-                snippet: c.snippet,
-                page: c.page,
-                score: c.score,
-                content_type: c.content_type,
-              })),
-            };
+                // Build updated message from stream state
+                const updated: ExtendedChatMessage = {
+                  ...m,
+                  content: streamState.contentBuffer,
+                  reasoningBuffer: streamState.reasoningBuffer,
+                  streamStatus: streamState.streamStatus,
+                  toolTimeline: streamState.toolTimeline.map((t) => ({
+                    id: t.id,
+                    tool: t.tool,
+                    label: t.label,
+                    status: t.status,
+                    startedAt: t.startedAt,
+                    completedAt: t.completedAt,
+                    duration: t.duration,
+                    summary: t.summary,
+                  })),
+                  citations: streamState.citations.map((c) => ({
+                    paper_id: c.paper_id,
+                    title: c.title,
+                    authors: c.authors,
+                    year: c.year,
+                    snippet: c.snippet,
+                    page: c.page,
+                    score: c.score,
+                    content_type: c.content_type,
+                  })),
+                };
 
-            return updated;
-          }));
+                return updated;
+              }),
+            );
+          },
+          onError: (error: Error) => {
+            console.error("[Chat] SSE error:", error);
+            forceFlush();
+
+            // Update placeholder to error state
+            setLocalMessages((prev) =>
+              prev.map((m) =>
+                m.id === (placeholderId || currentMessageId)
+                  ? { ...m, streamStatus: "error" }
+                  : m,
+              ),
+            );
+
+            setAgentUIState("DONE");
+            toast.error(isZh ? "发送消息失败" : "Failed to send message");
+          },
+          onDone: (data) => {
+            console.log("[Chat] SSE stream done");
+            forceFlush();
+
+            // Update placeholder to completed state
+            setLocalMessages((prev) =>
+              prev.map((m) => {
+                if (m.id !== (placeholderId || currentMessageId)) return m;
+
+                const finalMessage: ExtendedChatMessage = {
+                  ...m,
+                  content: streamStateRef.current.contentBuffer,
+                  reasoningBuffer: streamStateRef.current.reasoningBuffer,
+                  streamStatus: "completed",
+                  tokensUsed:
+                    data?.tokens_used || streamStateRef.current.tokensUsed,
+                  cost: data?.cost || streamStateRef.current.cost,
+                  toolTimeline: streamStateRef.current.toolTimeline,
+                  citations: streamStateRef.current.citations,
+                };
+
+                // Add to session as final message
+                addMessage({
+                  id: m.id,
+                  session_id: m.session_id,
+                  role: "assistant",
+                  content: streamStateRef.current.contentBuffer,
+                  created_at: new Date().toISOString(),
+                } as SessionChatMessage);
+
+                return finalMessage;
+              }),
+            );
+
+            // Update session totals
+            setSessionTokens(
+              (prev) =>
+                prev + (data?.tokens_used || streamStateRef.current.tokensUsed),
+            );
+            setSessionCost(
+              (prev) => prev + (data?.cost || streamStateRef.current.cost),
+            );
+
+            setPlaceholderId(null);
+            setAgentUIState("DONE");
+          },
         },
-        onError: (error: Error) => {
-          console.error('[Chat] SSE error:', error);
-          forceFlush();
-
-          // Update placeholder to error state
-          setLocalMessages(prev => prev.map(m =>
-            m.id === (placeholderId || currentMessageId)
-              ? { ...m, streamStatus: 'error' }
-              : m
-          ));
-
-          setAgentUIState('DONE');
-          toast.error(isZh ? '发送消息失败' : 'Failed to send message');
-        },
-        onDone: (data) => {
-          console.log('[Chat] SSE stream done');
-          forceFlush();
-
-          // Update placeholder to completed state
-          setLocalMessages(prev => prev.map(m => {
-            if (m.id !== (placeholderId || currentMessageId)) return m;
-
-            const finalMessage: ExtendedChatMessage = {
-              ...m,
-              content: streamState.contentBuffer,
-              reasoningBuffer: streamState.reasoningBuffer,
-              streamStatus: 'completed',
-              tokensUsed: data?.tokens_used || streamState.tokensUsed,
-              cost: data?.cost || streamState.cost,
-              toolTimeline: streamState.toolTimeline,
-              citations: streamState.citations,
-            };
-
-            // Add to session as final message
-            addMessage({
-              id: m.id,
-              session_id: m.session_id,
-              role: 'assistant',
-              content: streamState.contentBuffer,
-              created_at: new Date().toISOString(),
-            } as SessionChatMessage);
-
-            return finalMessage;
-          }));
-
-          // Update session totals
-          setSessionTokens(prev => prev + (data?.tokens_used || streamState.tokensUsed));
-          setSessionCost(prev => prev + (data?.cost || streamState.cost));
-
-          setPlaceholderId(null);
-          setAgentUIState('DONE');
-        },
-      }, body);
-
+        body,
+      );
     } catch (error) {
-      console.error('[Chat] Send error:', error);
-      toast.error(isZh ? '发送消息失败' : 'Failed to send message');
+      console.error("[Chat] Send error:", error);
+      toast.error(isZh ? "发送消息失败" : "Failed to send message");
 
       // Remove placeholder on error
-      setLocalMessages(prev => prev.filter(m => m.id !== placeholderId));
+      setLocalMessages((prev) => prev.filter((m) => m.id !== placeholderId));
       setPlaceholderId(null);
     } finally {
       setSending(false);
@@ -484,23 +552,38 @@ export function Chat() {
   // UI Effects
   // ============================================================================
 
+  // Cleanup SSE on unmount
+  useEffect(() => {
+    return () => {
+      if (sseServiceRef.current) {
+        sseServiceRef.current.disconnect();
+        sseServiceRef.current = null;
+      }
+    };
+  }, []); // Empty deps - only on unmount
+
+  // Keep streamStateRef in sync with streamState for use in stale closures
+  useEffect(() => {
+    streamStateRef.current = streamState;
+  }, [streamState]);
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [localMessages, streamState.contentBuffer]);
 
   // Update agent UI state based on stream state
   useEffect(() => {
-    if (streamState.streamStatus === 'streaming') {
-      setAgentUIState('RUNNING');
-    } else if (streamState.streamStatus === 'completed') {
-      setAgentUIState('DONE');
-    } else if (streamState.streamStatus === 'error') {
-      setAgentUIState('DONE');
+    if (streamState.streamStatus === "streaming") {
+      setAgentUIState("RUNNING");
+    } else if (streamState.streamStatus === "completed") {
+      setAgentUIState("DONE");
+    } else if (streamState.streamStatus === "error") {
+      setAgentUIState("DONE");
     } else {
-      setAgentUIState('IDLE');
+      setAgentUIState("IDLE");
     }
   }, [streamState.streamStatus]);
 
@@ -509,29 +592,38 @@ export function Chat() {
     if (!streamState.reasoningBuffer) return [];
 
     // Split reasoning buffer into steps
-    const lines = streamState.reasoningBuffer.split('\n').filter(Boolean);
+    const lines = streamState.reasoningBuffer.split("\n").filter(Boolean);
     return lines.map((line, idx) => ({
-      type: 'thinking',
+      type: "thinking",
       content: line,
-      timestamp: streamState.startedAt ? streamState.startedAt + idx * 100 : undefined,
+      timestamp: streamState.startedAt
+        ? streamState.startedAt + idx * 100
+        : undefined,
     }));
   }, [streamState.reasoningBuffer, streamState.startedAt]);
 
   // Compute execution steps for sidebar from tool timeline
   const executionSteps = useMemo<ExecutionStep[]>(() => {
-    return streamState.toolTimeline.map(item => ({
+    return streamState.toolTimeline.map((item) => ({
       tool: item.tool,
       action: item.label || item.tool,
-      status: item.status === 'running' ? 'running' :
-              item.status === 'success' ? 'completed' :
-              item.status === 'error' ? 'failed' : 'running',
+      status:
+        item.status === "running"
+          ? "running"
+          : item.status === "success"
+            ? "completed"
+            : item.status === "error"
+              ? "failed"
+              : "running",
       timestamp: item.startedAt,
-      duration: item.completedAt ? item.completedAt - item.startedAt : undefined,
+      duration: item.completedAt
+        ? item.completedAt - item.startedAt
+        : undefined,
     }));
   }, [streamState.toolTimeline]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -541,46 +633,53 @@ export function Chat() {
   const handleStop = useCallback(() => {
     if (sseServiceRef.current) {
       sseServiceRef.current.disconnect();
-      cancelStream('User stopped');
+      cancelStream("User stopped");
       forceFlush();
 
       // Update placeholder to cancelled state
-      setLocalMessages(prev => prev.map(m =>
-        m.id === (placeholderId || currentMessageId)
-          ? { ...m, streamStatus: 'cancelled' }
-          : m
-      ));
+      setLocalMessages((prev) =>
+        prev.map((m) =>
+          m.id === (placeholderId || currentMessageId)
+            ? { ...m, streamStatus: "cancelled" }
+            : m,
+        ),
+      );
 
-      setAgentUIState('DONE');
+      setAgentUIState("DONE");
       setPlaceholderId(null);
     }
   }, [cancelStream, forceFlush, placeholderId, currentMessageId]);
 
   // Citation click handler — navigate to read page with specific page
-  const handleCitationClick = useCallback((index: number) => {
-    // Get the citation at this index
-    const citation = streamState.citations[index];
-    if (citation) {
-      // Navigate to read page with the specific page number
-      const page = citation.page || 1;
-      navigate(`/read/${citation.paper_id}?page=${page}`);
-    }
-  }, [streamState.citations, navigate]);
+  const handleCitationClick = useCallback(
+    (index: number) => {
+      // Get the citation at this index
+      const citation = streamState.citations[index];
+      if (citation) {
+        // Navigate to read page with the specific page number
+        const page = citation.page || 1;
+        navigate(`/read/${citation.paper_id}?page=${page}`);
+      }
+    },
+    [streamState.citations, navigate],
+  );
 
   // Toggle thinking panel expand/collapse
   const toggleExpand = useCallback((messageId: string) => {
-    setLocalMessages(prev => prev.map(m =>
-      m.id === messageId
-        ? { ...m, isThinkingExpanded: !m.isThinkingExpanded }
-        : m
-    ));
+    setLocalMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? { ...m, isThinkingExpanded: !m.isThinkingExpanded }
+          : m,
+      ),
+    );
   }, []);
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleTimeString(isZh ? 'zh-CN' : 'en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleTimeString(isZh ? "zh-CN" : "en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -620,7 +719,7 @@ export function Chat() {
           <div className="text-xs font-medium text-muted-foreground mb-2 px-2">
             {t.history}
           </div>
-          
+
           {loading && sessions.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -636,22 +735,26 @@ export function Chat() {
                   key={session.id}
                   onClick={() => handleSwitchSession(session.id)}
                   className={clsx(
-                    'w-full text-left px-3 py-2.5 rounded-lg transition-all group flex items-start gap-2 cursor-pointer',
+                    "w-full text-left px-3 py-2.5 rounded-lg transition-all group flex items-start gap-2 cursor-pointer",
                     currentSession?.id === session.id
-                      ? 'bg-primary/10 border border-primary/30'
-                      : 'hover:bg-muted border border-transparent'
+                      ? "bg-primary/10 border border-primary/30"
+                      : "hover:bg-muted border border-transparent",
                   )}
                 >
                   <MessageSquare className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className={clsx(
-                      'text-sm font-medium truncate',
-                      currentSession?.id === session.id ? 'text-primary' : 'text-foreground'
-                    )}>
+                    <div
+                      className={clsx(
+                        "text-sm font-medium truncate",
+                        currentSession?.id === session.id
+                          ? "text-primary"
+                          : "text-foreground",
+                      )}
+                    >
                       {session.title}
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {session.messageCount} {isZh ? '条消息' : 'messages'}
+                      {session.messageCount} {isZh ? "条消息" : "messages"}
                     </div>
                   </div>
                   <button
@@ -683,128 +786,177 @@ export function Chat() {
           {localMessages.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center h-full text-center">
               <Bot className="w-16 h-16 text-primary/20 mb-4" />
-              <p className="text-lg font-serif text-muted-foreground mb-2">{t.noMessages}</p>
+              <p className="text-lg font-serif text-muted-foreground mb-2">
+                {t.noMessages}
+              </p>
               <p className="text-sm text-muted-foreground/60">{t.sendFirst}</p>
             </div>
           ) : (
             <div className="space-y-4 max-w-4xl mx-auto">
-              {localMessages.filter(m => m.role === 'user' || m.role === 'assistant').map((msg) => {
-                const isStreaming = msg.streamStatus === 'streaming';
-                const isPlaceholder = msg.id.startsWith('placeholder-') || msg.id === currentMessageId;
+              {localMessages
+                .filter((m) => m.role === "user" || m.role === "assistant")
+                .map((msg) => {
+                  const isStreaming = msg.streamStatus === "streaming";
+                  const isPlaceholder =
+                    msg.id.startsWith("placeholder-") ||
+                    msg.id === currentMessageId;
 
-                return (
-                  <div key={msg.id} className={clsx(
-                    'flex gap-3',
-                    msg.role === 'user' ? 'justify-end' : 'justify-start'
-                  )}>
-                    {msg.role === 'assistant' && (
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-4 h-4 text-primary" />
-                      </div>
-                    )}
-
-                    <div className="flex-1 max-w-[80%] space-y-2">
-                      {/* Thinking Process for streaming messages */}
-                      {isStreaming && (msg.reasoningBuffer || streamState.reasoningBuffer) && msg.isThinkingExpanded && (
-                        <ThinkingProcess
-                          steps={thinkingSteps}
-                          duration={(streamState.endedAt || Date.now()) - (streamState.startedAt || Date.now()) / 1000}
-                          onComplete={() => {}}
-                          autoCollapse={true}
-                        />
+                  return (
+                    <div
+                      key={msg.id}
+                      className={clsx(
+                        "flex gap-3",
+                        msg.role === "user" ? "justify-end" : "justify-start",
                       )}
-
-                      {/* Tool Call Cards for streaming messages */}
-                      {isStreaming && ((msg.toolTimeline?.length ?? 0) > 0 || streamState.toolTimeline.length > 0) && (
-                        <div className="space-y-2">
-                          {(msg.toolTimeline || streamState.toolTimeline).map(tc => (
-                            <ToolCallCard key={tc.id} toolCall={{
-                              id: tc.id,
-                              tool: tc.tool,
-                              parameters: {},
-                              status: tc.status,
-                              startedAt: tc.startedAt,
-                              completedAt: tc.completedAt,
-                              duration: tc.duration,
-                              result: tc.summary,
-                            }} />
-                          ))}
+                    >
+                      {msg.role === "assistant" && (
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-4 h-4 text-primary" />
                         </div>
                       )}
 
-                      {/* Message Content */}
-                      <div className={clsx(
-                        'max-w-[100%] rounded-2xl px-4 py-3',
-                        msg.role === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted'
-                      )}>
-                        {((msg.citations?.length ?? 0) > 0 || streamState.citations.length > 0) && msg.content ? (
-                          renderContentWithCitations(msg.content, handleCitationClick)
-                        ) : msg.content ? (
-                          isStreaming ? (
-                            <TypingText text={msg.content} className="text-sm" />
-                          ) : (
-                            <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-                          )
-                        ) : isStreaming ? (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            {t.thinking}
-                          </div>
-                        ) : null}
+                      <div className="flex-1 max-w-[80%] space-y-2">
+                        {/* Thinking Process for streaming messages */}
+                        {isStreaming &&
+                          (msg.reasoningBuffer ||
+                            streamState.reasoningBuffer) &&
+                          msg.isThinkingExpanded && (
+                            <ThinkingProcess
+                              steps={thinkingSteps}
+                              duration={
+                                (streamState.endedAt || Date.now()) -
+                                (streamState.startedAt || Date.now()) / 1000
+                              }
+                              onComplete={() => {}}
+                              autoCollapse={true}
+                            />
+                          )}
 
-                        <div className={clsx(
-                          'text-xs mt-1.5',
-                          msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                        )}>
-                          {formatTime(msg.created_at)}
-                        </div>
-                      </div>
+                        {/* Tool Call Cards for streaming messages */}
+                        {isStreaming &&
+                          ((msg.toolTimeline?.length ?? 0) > 0 ||
+                            streamState.toolTimeline.length > 0) && (
+                            <div className="space-y-2">
+                              {(
+                                msg.toolTimeline || streamState.toolTimeline
+                              ).map((tc) => (
+                                <ToolCallCard
+                                  key={tc.id}
+                                  toolCall={{
+                                    id: tc.id,
+                                    tool: tc.tool,
+                                    parameters: {},
+                                    status: tc.status,
+                                    startedAt: tc.startedAt,
+                                    completedAt: tc.completedAt,
+                                    duration: tc.duration,
+                                    result: tc.summary,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          )}
 
-                      {/* Citations Panel */}
-                      {((msg.citations?.length ?? 0) > 0 || (isPlaceholder && streamState.citations.length > 0)) && (
-                        <CitationsPanel citations={(msg.citations || streamState.citations).map(c => ({
-                          paper_id: c.paper_id,
-                          title: c.title,
-                          authors: c.authors || [],
-                          year: c.year || 0,
-                          page: c.page || 0,
-                          snippet: c.snippet || '',
-                          score: c.score || 0,
-                          content_type: c.content_type || 'text',
-                          chunk_id: c.chunk_id,
-                        }))} />
-                      )}
-
-                      {/* Message-level token usage */}
-                      {(msg.tokensUsed || streamState.tokensUsed) && !isStreaming && (
-                        <div className="text-xs text-muted-foreground font-mono mt-1">
-                          Token: {(msg.tokensUsed || streamState.tokensUsed).toLocaleString()}
-                          {(msg.cost || streamState.cost) > 0 && ` · ¥${(msg.cost || streamState.cost).toFixed(4)}`}
-                        </div>
-                      )}
-
-                      {/* Stop button for streaming messages */}
-                      {isStreaming && (
-                        <button
-                          onClick={handleStop}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        {/* Message Content */}
+                        <div
+                          className={clsx(
+                            "max-w-[100%] rounded-2xl px-4 py-3",
+                            msg.role === "user"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted",
+                          )}
                         >
-                          <Square className="w-3 h-3" />
-                          {t.stop}
-                        </button>
+                          {((msg.citations?.length ?? 0) > 0 ||
+                            streamState.citations.length > 0) &&
+                          msg.content ? (
+                            renderContentWithCitations(
+                              msg.content,
+                              handleCitationClick,
+                            )
+                          ) : msg.content ? (
+                            isStreaming ? (
+                              <TypingText
+                                text={msg.content}
+                                className="text-sm"
+                              />
+                            ) : (
+                              <div className="text-sm whitespace-pre-wrap">
+                                {msg.content}
+                              </div>
+                            )
+                          ) : isStreaming ? (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              {t.thinking}
+                            </div>
+                          ) : null}
+
+                          <div
+                            className={clsx(
+                              "text-xs mt-1.5",
+                              msg.role === "user"
+                                ? "text-primary-foreground/70"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {formatTime(msg.created_at)}
+                          </div>
+                        </div>
+
+                        {/* Citations Panel */}
+                        {((msg.citations?.length ?? 0) > 0 ||
+                          (isPlaceholder &&
+                            streamState.citations.length > 0)) && (
+                          <CitationsPanel
+                            citations={(
+                              msg.citations || streamState.citations
+                            ).map((c) => ({
+                              paper_id: c.paper_id,
+                              title: c.title,
+                              authors: c.authors || [],
+                              year: c.year || 0,
+                              page: c.page || 0,
+                              snippet: c.snippet || "",
+                              score: c.score || 0,
+                              content_type: c.content_type || "text",
+                              chunk_id: c.chunk_id,
+                            }))}
+                          />
+                        )}
+
+                        {/* Message-level token usage */}
+                        {(msg.tokensUsed || streamState.tokensUsed) &&
+                          !isStreaming && (
+                            <div className="text-xs text-muted-foreground font-mono mt-1">
+                              Token:{" "}
+                              {(
+                                msg.tokensUsed || streamState.tokensUsed
+                              ).toLocaleString()}
+                              {(msg.cost || streamState.cost) > 0 &&
+                                ` · ¥${(msg.cost || streamState.cost).toFixed(4)}`}
+                            </div>
+                          )}
+
+                        {/* Stop button for streaming messages */}
+                        {isStreaming && (
+                          <button
+                            onClick={handleStop}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Square className="w-3 h-3" />
+                            {t.stop}
+                          </button>
+                        )}
+                      </div>
+
+                      {msg.role === "user" && (
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                        </div>
                       )}
                     </div>
-
-                    {msg.role === 'user' && (
-                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
 
               {/* Scroll anchor */}
               <div ref={messagesEndRef} />
@@ -830,24 +982,30 @@ export function Chat() {
                 placeholder={t.placeholder}
                 className="flex-1 p-2 text-sm bg-transparent resize-none focus:outline-none min-h-[40px] max-h-[120px]"
                 rows={1}
-                disabled={streamState.streamStatus === 'streaming' || sending}
+                disabled={streamState.streamStatus === "streaming" || sending}
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
-                  target.style.height = 'auto';
+                  target.style.height = "auto";
                   target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
                 }}
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || streamState.streamStatus === 'streaming' || sending}
+                disabled={
+                  !input.trim() ||
+                  streamState.streamStatus === "streaming" ||
+                  sending
+                }
                 className={clsx(
-                  'w-10 h-10 rounded-lg flex items-center justify-center transition-all',
-                  input.trim() && streamState.streamStatus !== 'streaming' && !sending
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'bg-muted text-muted-foreground'
+                  "w-10 h-10 rounded-lg flex items-center justify-center transition-all",
+                  input.trim() &&
+                    streamState.streamStatus !== "streaming" &&
+                    !sending
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-muted text-muted-foreground",
                 )}
               >
-                {streamState.streamStatus === 'streaming' || sending ? (
+                {streamState.streamStatus === "streaming" || sending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
@@ -858,7 +1016,7 @@ export function Chat() {
               <span className="flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" /> {t.verify}
               </span>
-              <span>Return {isZh ? '发送' : 'to send'}</span>
+              <span>Return {isZh ? "发送" : "to send"}</span>
             </div>
           </div>
         </div>
@@ -876,14 +1034,22 @@ export function Chat() {
             {/* Agent State Sidebar - Phase 4.1: Data source priority */}
             <AgentStateSidebar
               selectedMessage={selectedMessage}
-              currentRunningState={streamState.streamStatus === 'streaming' ? streamState : undefined}
+              currentRunningState={
+                streamState.streamStatus === "streaming"
+                  ? streamState
+                  : undefined
+              }
               onStop={handleStop}
             />
 
             {/* Token Monitor - session level */}
             {sessionTokens > 0 && (
               <div className="border-t border-border/50 p-4">
-                <TokenMonitor tokens={sessionTokens} cost={sessionCost} limit={128000} />
+                <TokenMonitor
+                  tokens={sessionTokens}
+                  cost={sessionCost}
+                  limit={128000}
+                />
               </div>
             )}
           </motion.div>
@@ -894,15 +1060,19 @@ export function Chat() {
       {/* Delete Session Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
-        title={isZh ? '删除对话' : 'Delete Session'}
-        message={isZh ? '确定要删除这个对话吗？删除后将无法恢复。' : 'Are you sure you want to delete this session? This cannot be undone.'}
-        confirmLabel={isZh ? '删除' : 'Delete'}
-        cancelLabel={isZh ? '取消' : 'Cancel'}
+        title={isZh ? "删除对话" : "Delete Session"}
+        message={
+          isZh
+            ? "确定要删除这个对话吗？删除后将无法恢复。"
+            : "Are you sure you want to delete this session? This cannot be undone."
+        }
+        confirmLabel={isZh ? "删除" : "Delete"}
+        cancelLabel={isZh ? "取消" : "Cancel"}
         variant="danger"
         onConfirm={confirmDeleteSession}
         onCancel={cancelDeleteSession}
       />
-      
+
       {/* Toggle Right Panel Button (when hidden) */}
       {!showRightPanel && (
         <button

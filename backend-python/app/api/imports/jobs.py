@@ -16,7 +16,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import status as http_status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,7 +86,7 @@ async def create_import_job(
 
         if not kb:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Knowledge base not found"),
             )
 
@@ -127,13 +128,13 @@ async def create_import_job(
         raise
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=Errors.validation(str(e)),
         )
     except Exception as e:
         logger.error("Failed to create ImportJob", error=str(e), kb_id=kb_id)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to create import job: {str(e)}"),
         )
 
@@ -165,26 +166,26 @@ async def upload_file_to_job(
 
         if not job:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Import job not found"),
             )
 
         if job.source_type != "local_file":
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("Only local_file jobs accept uploads"),
             )
 
         if job.status != "created":
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation(f"Job not in created status (current: {job.status})"),
             )
 
         # Validate file
         if not file.filename or not file.filename.lower().endswith(".pdf"):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("Only PDF files are accepted"),
             )
 
@@ -194,7 +195,7 @@ async def upload_file_to_job(
         # Validate magic bytes
         if not content.startswith(b"%PDF-"):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("Invalid PDF: magic bytes check failed"),
             )
 
@@ -202,7 +203,7 @@ async def upload_file_to_job(
         max_size = 50 * 1024 * 1024  # 50MB
         if len(content) > max_size:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("File exceeds 50MB limit"),
             )
 
@@ -264,7 +265,7 @@ async def upload_file_to_job(
     except Exception as e:
         logger.error("Failed to upload file to ImportJob", error=str(e), job_id=job_id)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to upload file: {str(e)}"),
         )
 
@@ -287,7 +288,7 @@ async def get_import_job(
 
         if not job:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Import job not found"),
             )
 
@@ -343,7 +344,7 @@ async def get_import_job(
     except Exception as e:
         logger.error("Failed to get ImportJob", error=str(e), job_id=job_id)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to get import job: {str(e)}"),
         )
 
@@ -399,10 +400,12 @@ async def list_import_jobs(
                 "offset": offset,
             },
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to list ImportJobs", error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to list import jobs: {str(e)}"),
         )
 
@@ -448,13 +451,13 @@ async def retry_import_job(
 
         if not job:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Import job not found"),
             )
 
         if job.status != "failed":
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("Only failed jobs can be retried"),
             )
 
@@ -496,7 +499,7 @@ async def retry_import_job(
     except Exception as e:
         logger.error("Failed to retry ImportJob", error=str(e), job_id=job_id)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to retry import job: {str(e)}"),
         )
 
@@ -526,13 +529,13 @@ async def cancel_import_job(
 
         if not job:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Import job not found"),
             )
 
         if job.status in ["completed", "cancelled"]:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("Cannot cancel completed or already cancelled job"),
             )
 
@@ -567,7 +570,7 @@ async def cancel_import_job(
     except Exception as e:
         logger.error("Failed to cancel ImportJob", error=str(e), job_id=job_id)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to cancel import job: {str(e)}"),
         )
 

@@ -18,10 +18,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.user import User
-    from app.models.paper import Paper
-    from app.models.import_job import ImportJob
     from app.models.import_batch import ImportBatch
+    from app.models.import_job import ImportJob
+    from app.models.knowledge_base_paper import KnowledgeBasePaper
+    from app.models.paper import Paper
+    from app.models.user import User
 
 
 class KnowledgeBase(Base):
@@ -91,6 +92,11 @@ class KnowledgeBase(Base):
     )
     import_batches: Mapped[List["ImportBatch"]] = relationship(
         "ImportBatch", back_populates="knowledge_base", cascade="all, delete-orphan"
+    )
+    knowledge_base_papers: Mapped[List["KnowledgeBasePaper"]] = relationship(
+        "KnowledgeBasePaper",
+        back_populates="knowledge_base",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (

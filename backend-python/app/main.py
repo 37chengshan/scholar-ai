@@ -71,7 +71,11 @@ from app.api.papers import router as papers_router
 from app.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
-from app.database import init_sqlalchemy_engine, close_sqlalchemy_engine
+from app.database import (
+    init_sqlalchemy_engine,
+    ensure_non_production_tables,
+    close_sqlalchemy_engine,
+)
 from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker.factory import get_reranker_service
@@ -160,6 +164,14 @@ async def lifespan(app: FastAPI):
         logger.info("✅ SQLAlchemy PostgreSQL initialized")
     except Exception as e:
         logger.error(f"❌ SQLAlchemy initialization failed: {e}")
+        raise
+
+    try:
+        await ensure_non_production_tables(
+            ("knowledge_base_papers", "import_batches", "import_jobs")
+        )
+    except Exception as e:
+        logger.error(f"❌ Non-production schema bootstrap failed: {e}")
         raise
 
     # 2. Neo4j + Redis

@@ -1,13 +1,5 @@
 /**
- * Annotations API Service
- *
- * Annotation management API calls:
- * - list(): Get annotations for a paper
- * - create(): Create new annotation (highlight, note, bookmark)
- * - update(): Update annotation content or color
- * - delete(): Delete annotation
- *
- * All endpoints require authentication.
+ * Annotation management API calls with backend field normalization.
  */
 
 import apiClient from '@/utils/apiClient';
@@ -39,60 +31,53 @@ export interface UpdateAnnotationData {
   color?: string;
 }
 
-/**
- * List annotations for a paper
- *
- * GET /api/annotations/:paperId
- * Returns all annotations for a paper by the current user
- *
- * @param paperId - Paper ID
- * @returns Array of annotations
- */
+interface RawAnnotation {
+  id: string;
+  paper_id: string;
+  user_id: string;
+  type: 'highlight' | 'note' | 'bookmark';
+  page_number: number;
+  position: any;
+  content?: string | null;
+  color?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function normalizeAnnotation(annotation: RawAnnotation): Annotation {
+  return {
+    id: annotation.id,
+    paperId: annotation.paper_id,
+    userId: annotation.user_id,
+    type: annotation.type,
+    pageNumber: annotation.page_number,
+    position: annotation.position,
+    content: annotation.content ?? null,
+    color: annotation.color,
+    createdAt: annotation.created_at,
+    updatedAt: annotation.updated_at,
+  };
+}
+
+/** List annotations for a paper */
 export async function list(paperId: string): Promise<Annotation[]> {
-  const response = await apiClient.get<Annotation[]>(`/api/v1/annotations/${paperId}`);
-
-  return response.data;
+  const response = await apiClient.get<RawAnnotation[]>(`/api/v1/annotations/${paperId}`);
+  return (response.data || []).map(normalizeAnnotation);
 }
 
-/**
- * Create annotation
- *
- * POST /api/annotations
- * Creates a new annotation (highlight, note, or bookmark)
- *
- * @param data - Annotation data
- * @returns Created annotation
- */
+/** Create annotation */
 export async function create(data: CreateAnnotationData): Promise<Annotation> {
-  const response = await apiClient.post<Annotation>('/api/v1/annotations', data);
-
-  return response.data;
+  const response = await apiClient.post<RawAnnotation>('/api/v1/annotations', data);
+  return normalizeAnnotation(response.data);
 }
 
-/**
- * Update annotation
- *
- * PATCH /api/annotations/:id
- * Updates annotation content or color
- *
- * @param id - Annotation ID
- * @param data - Update data
- * @returns Updated annotation
- */
+/** Update annotation */
 export async function update(id: string, data: UpdateAnnotationData): Promise<Annotation> {
-  const response = await apiClient.patch<Annotation>(`/api/v1/annotations/${id}`, data);
-
-  return response.data;
+  const response = await apiClient.patch<RawAnnotation>(`/api/v1/annotations/${id}`, data);
+  return normalizeAnnotation(response.data);
 }
 
-/**
- * Delete annotation
- *
- * DELETE /api/annotations/:id
- * Removes annotation permanently
- *
- * @param id - Annotation ID
- */
+/** Delete annotation */
 export async function deleteAnnotation(id: string): Promise<void> {
   await apiClient.delete(`/api/v1/annotations/${id}`);
 }

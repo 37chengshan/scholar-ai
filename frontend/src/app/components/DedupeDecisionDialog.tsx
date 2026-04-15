@@ -19,8 +19,8 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+} from '@/app/components/ui/dialog';
+import { Button } from '@/app/components/ui/button';
 import { CheckCircle, Layers, FilePlus, XCircle, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {

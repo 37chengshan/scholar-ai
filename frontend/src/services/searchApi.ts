@@ -86,11 +86,14 @@ export async function searchAuthors(
   limit: number = 10,
   offset: number = 0
 ): Promise<{ data: AuthorSearchResult[]; total?: number }> {
-  const response = await apiClient.get<{ data: AuthorSearchResult[]; total?: number }>('/api/v1/semantic-scholar/author', {
+  const response = await apiClient.get<{ data?: AuthorSearchResult[]; total?: number }>('/api/v1/semantic-scholar/author/search', {
     params: { query, limit, offset },
   });
 
-  return response.data || { data: [] };
+  return {
+    data: response.data?.data || [],
+    total: response.data?.total,
+  };
 }
 
 /**
@@ -110,11 +113,14 @@ export async function getAuthorPapers(
   limit: number = 10,
   offset: number = 0
 ): Promise<{ data: AuthorPaper[]; next?: number }> {
-  const response = await apiClient.get<{ data: AuthorPaper[]; next?: number }>(`/api/v1/semantic-scholar/author/${authorId}/papers`, {
+  const response = await apiClient.get<{ data?: AuthorPaper[]; next?: number }>(`/api/v1/semantic-scholar/author/${authorId}/papers`, {
     params: { limit, offset },
   });
 
-  return response.data || { data: [] };
+  return {
+    data: response.data?.data || [],
+    next: response.data?.next,
+  };
 }
 
 // ============================================================

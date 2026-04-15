@@ -19,6 +19,20 @@ from typing import List
 
 from app.config import settings
 
+# Default development origins when no specific hosts are configured.
+# Browser spec: credentials=True is incompatible with wildcard origin ["*"].
+# These cover the Vite dev server, common CRA port, and Node gateway.
+_DEV_ORIGINS: List[str] = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:4000",
+    "http://localhost:8000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:4000",
+    "http://127.0.0.1:8000",
+]
+
 
 def get_cors_config() -> dict:
     """Get CORS configuration for FastAPI.
@@ -26,7 +40,11 @@ def get_cors_config() -> dict:
     Returns a dict suitable for passing to CORSMiddleware.
 
     Configuration:
-        allow_origins: ALLOWED_HOSTS from settings, or ["*"] for development
+        allow_origins: ALLOWED_HOSTS from settings.
+                       When the setting contains ["*"] (wildcard), it is
+                       automatically replaced with a safe set of localhost
+                       origins so that allow_credentials=True remains valid.
+                       In production, ALLOWED_HOSTS must list explicit origins.
         allow_credentials: True (required for httpOnly cookies)
         allow_methods: All standard HTTP methods
         allow_headers: Content-Type, Authorization, X-Request-ID, Accept, Origin
@@ -43,26 +61,35 @@ def get_cors_config() -> dict:
     Security Warning:
         In production, ALLOWED_HOSTS should be a list of specific origins:
         - ["https://app.example.com", "https://admin.example.com"]
-        - NOT ["*"] with credentials=True (browser security violation)
+        - NOT ["*"] with credentials=True (browser security violation per
+          the Fetch spec – browsers will reject such responses outright).
     """
-    # Get origins from settings
-    # In development, this may be ["*"]
-    # In production, should be specific frontend URLs
-    allow_origins: List[str] = settings.ALLOWED_HOSTS
+    # Get origins from settings.
+    # In development this is typically ["*"]; production must use explicit URLs.
+    configured: List[str] = list(settings.ALLOWED_HOSTS)
 
-    # CORS configuration matching Node.js backend
+    # -----------------------------------------------------------------------
+    # Critical fix: the Fetch/CORS spec forbids pairing
+    #   Access-Control-Allow-Origin: *
+    # with
+    #   Access-Control-Allow-Credentials: true
+    # Browsers reject such responses with a CORS error.
+    # When the administrator has left the default wildcard, fall back to an
+    # explicit list of localhost origins that cover all common dev setups.
+    # -----------------------------------------------------------------------
+    if "*" in configured or configured == ["*"]:
+        allow_origins: List[str] = _DEV_ORIGINS
+    else:
+        allow_origins = configured
+
     return {
-        # Origins allowed to make requests
-        # IMPORTANT: In production, use specific origins, not ["*"]
+        # Origins permitted to make credentialed cross-origin requests.
         "allow_origins": allow_origins,
-
-        # Allow cookies to be sent with requests
-        # REQUIRED for httpOnly cookie-based authentication
-        # WARNING: Cannot use ["*"] origins with credentials=True
+        # Allow cookies / Authorization headers to be sent with requests.
+        # REQUIRED for httpOnly cookie-based authentication.
+        # WARNING: Must never be combined with allow_origins=["*"].
         "allow_credentials": True,
-
-        # HTTP methods allowed
-        # Include all methods used by the API
+        # HTTP methods allowed by the API.
         "allow_methods": [
             "GET",
             "POST",
@@ -71,9 +98,7 @@ def get_cors_config() -> dict:
             "DELETE",
             "OPTIONS",
         ],
-
-        # Headers allowed in requests
-        # Include headers used by authentication and logging
+        # Request headers the client is allowed to send.
         "allow_headers": [
             "Content-Type",
             "Authorization",
@@ -82,13 +107,10 @@ def get_cors_config() -> dict:
             "Origin",
             "Cookie",
         ],
-
-        # Headers exposed to client-side JavaScript
-        # X-Request-ID for request tracing
+        # Response headers the client-side JavaScript may access.
         "expose_headers": ["X-Request-ID"],
-
-        # Preflight request cache duration in seconds
-        # Reduce preflight requests for repeated API calls
+        # Cache preflight (OPTIONS) responses for 10 minutes to reduce
+        # round-trips on repeat API calls.
         "max_age": 600,
     }
 

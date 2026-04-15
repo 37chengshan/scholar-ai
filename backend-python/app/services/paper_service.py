@@ -20,11 +20,11 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.paper import Paper, PaperChunk
 from app.models.annotation import Annotation
+from app.models.paper import Paper, PaperChunk
 from app.models.reading_progress import ReadingProgress
 from app.utils.logger import logger
-from app.utils.problem_detail import ProblemDetail, ErrorTypes, create_error
+from app.utils.problem_detail import ErrorTypes, ProblemDetail, create_error
 
 
 class PaperService:
@@ -96,7 +96,7 @@ class PaperService:
                 or_(
                     Paper.title.ilike(search_term),
                     Paper.abstract.ilike(search_term),
-                    Paper.authors.cast(text, "").ilike(search_term),
+                    func.array_to_string(Paper.authors, ",").ilike(search_term),
                 )
             )
 
@@ -271,9 +271,17 @@ class PaperService:
 
         # Update fields
         updatable_fields = [
-            "title", "authors", "year", "abstract",
-            "doi", "arxiv_id", "starred", "project_id",
-            "reading_notes", "keywords", "venue",
+            "title",
+            "authors",
+            "year",
+            "abstract",
+            "doi",
+            "arxiv_id",
+            "starred",
+            "project_id",
+            "reading_notes",
+            "keywords",
+            "venue",
         ]
 
         for field in updatable_fields:
@@ -352,17 +360,14 @@ class PaperService:
 
         # Build search query
         search_term = f"%{query}%"
-        sql_query = (
-            select(Paper)
-            .where(
-                Paper.user_id == user_id,
-                or_(
-                    Paper.title.ilike(search_term),
-                    Paper.abstract.ilike(search_term),
-                    Paper.authors.cast(text, "").ilike(search_term),
-                    Paper.keywords.cast(text, "").ilike(search_term),
-                ),
-            )
+        sql_query = select(Paper).where(
+            Paper.user_id == user_id,
+            or_(
+                Paper.title.ilike(search_term),
+                Paper.abstract.ilike(search_term),
+                func.array_to_string(Paper.authors, ",").ilike(search_term),
+                func.array_to_string(Paper.keywords, ",").ilike(search_term),
+            ),
         )
 
         # Apply additional filters

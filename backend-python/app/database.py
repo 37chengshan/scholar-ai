@@ -23,7 +23,7 @@ Usage:
         return result.scalars().all()
 """
 
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Iterable
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
@@ -191,6 +191,55 @@ async def init_sqlalchemy_engine() -> None:
     logger.info("SQLAlchemy engine initialized and connection verified")
 
 
+def _load_model_metadata() -> None:
+    """Import ORM models so Base.metadata includes non-eager tables.
+
+    Some local environments rely on SQLAlchemy table creation instead of having
+    every Alembic revision applied already. Importing app.models ensures
+    metadata contains optional import-system tables such as import_batches.
+    """
+    import app.models  # noqa: F401
+
+
+async def ensure_non_production_tables(table_names: Iterable[str]) -> None:
+    """Create a bounded set of missing tables for local/non-production use.
+
+    This is intentionally scoped to additive tables used by the import flow so
+    local brownfield databases can recover without forcing a full reset.
+    """
+    if settings.ENVIRONMENT == "production":
+        return
+
+    requested_names = tuple(table_names)
+    _load_model_metadata()
+
+    requested_tables = [
+        Base.metadata.tables[name]
+        for name in requested_names
+        if name in Base.metadata.tables
+    ]
+
+    if not requested_tables:
+        logger.warning(
+            "No SQLAlchemy tables resolved for non-production bootstrap",
+            table_names=list(requested_names),
+        )
+        return
+
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            lambda sync_conn: Base.metadata.create_all(
+                sync_conn,
+                tables=requested_tables,
+            )
+        )
+
+    logger.info(
+        "Ensured non-production SQLAlchemy tables",
+        table_names=[table.name for table in requested_tables],
+    )
+
+
 async def close_sqlalchemy_engine() -> None:
     """Dispose SQLAlchemy engine.
 
@@ -212,5 +261,6 @@ __all__ = [
     "init_db",
     "drop_db",
     "init_sqlalchemy_engine",
+    "ensure_non_production_tables",
     "close_sqlalchemy_engine",
 ]

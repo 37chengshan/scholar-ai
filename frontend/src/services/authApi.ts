@@ -14,12 +14,55 @@
 import apiClient from '@/utils/apiClient';
 import type { User } from '@/types';
 
+interface RawUser {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string | null;
+  roles?: string[];
+  email_verified?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  emailVerified?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface AuthPayload {
+  user?: RawUser;
+  meta?: {
+    request_id?: string;
+    timestamp?: string;
+  };
+}
+
 export interface LoginResult {
   user: User;
   meta?: {
     request_id?: string;
     timestamp?: string;
   };
+}
+
+function normalizeUser(raw: RawUser): User {
+  return {
+    id: raw.id,
+    email: raw.email,
+    name: raw.name,
+    avatar: raw.avatar ?? null,
+    roles: raw.roles ?? [],
+    emailVerified: raw.emailVerified ?? raw.email_verified ?? false,
+    createdAt: raw.createdAt ?? raw.created_at,
+    updatedAt: raw.updatedAt ?? raw.updated_at,
+  };
+}
+
+function extractUserPayload(payload: RawUser | AuthPayload): User {
+  if ('user' in payload && payload.user) {
+    return normalizeUser(payload.user);
+  }
+
+  return normalizeUser(payload as RawUser);
 }
 
 /**
@@ -29,114 +72,61 @@ export interface LoginResult {
  * Backend sets HttpOnly cookies (accessToken + refreshToken)
  *
  * Note: Uses OAuth2 password flow (form-data: username=email, password)
- *
- * @param email - User email
- * @param password - User password
- * @returns Login response with user data
  */
 export async function login(email: string, password: string): Promise<LoginResult> {
-  // OAuth2 password flow requires form-data with 'username' field
   const formData = new URLSearchParams();
   formData.append('username', email);
   formData.append('password', password);
 
-  const response = await apiClient.post<LoginResult>('/api/v1/auth/login', formData, {
+  const response = await apiClient.post<AuthPayload>('/api/v1/auth/login', formData, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
   });
 
-  return response.data as LoginResult;
+  return {
+    user: extractUserPayload(response.data),
+    meta: 'meta' in response.data ? response.data.meta : undefined,
+  };
 }
 
-/**
- * Logout - Clear session and cookies
- *
- * POST /api/auth/logout
- * Backend clears cookies and invalidates tokens
- */
+/** Logout - Clear session and cookies */
 export async function logout(): Promise<void> {
   await apiClient.post('/api/v1/auth/logout');
 }
 
-/**
- * Refresh access token
- *
- * POST /api/auth/refresh
- * Backend rotates refresh token and sets new cookies
- *
- * Note: This is automatically called by apiClient interceptor on 401 errors.
- * Manual calls are rarely needed.
- */
+/** Refresh access token */
 export async function refresh(): Promise<void> {
   await apiClient.post('/api/v1/auth/refresh');
 }
 
-/**
- * Get current authenticated user
- *
- * GET /api/auth/me
- * Returns user info if valid session exists
- *
- * @returns Current user data
- */
+/** Get current authenticated user */
 export async function me(): Promise<User> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: User;
-  }>('/api/v1/auth/me');
-
-  return response.data as unknown as User;
+  const response = await apiClient.get<RawUser>('/api/v1/auth/me');
+  return extractUserPayload(response.data);
 }
 
-/**
- * Register new user
- *
- * POST /api/auth/register
- *
- * @param email - User email
- * @param password - User password (min 8 chars, requires uppercase, lowercase, number)
- * @param name - User display name
- * @returns Created user data
- */
+/** Register new user */
 export async function register(
   email: string,
   password: string,
   name: string
 ): Promise<User> {
-  const response = await apiClient.post<{
-    success: boolean;
-    data: User;
-  }>('/api/v1/auth/register', {
+  const response = await apiClient.post<AuthPayload>('/api/v1/auth/register', {
     email,
     password,
     name,
   });
 
-  return response.data as unknown as User;
+  return extractUserPayload(response.data);
 }
 
-/**
- * Request password reset
- *
- * POST /api/auth/forgot-password
- * Sends reset link to user's email
- *
- * @param email - User email
- */
+/** Request password reset */
 export async function forgotPassword(email: string): Promise<void> {
   await apiClient.post('/api/v1/auth/forgot-password', { email });
 }
 
-/**
- * Reset password with token
- *
- * POST /api/auth/reset-password
- * Validates token and updates password
- *
- * @param token - Reset token from email link
- * @param password - New password (min 8 chars)
- */
+/** Reset password with token */
 export async function resetPassword(token: string, password: string): Promise<void> {
   await apiClient.post('/api/v1/auth/reset-password', {
     token,

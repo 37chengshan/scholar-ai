@@ -8,27 +8,32 @@ Provides:
 - Graph traversal for paper chunks
 """
 
-import os
 from typing import Any, Dict, List, Optional
 
+from app.config import settings
 from app.utils.logger import logger
 
 
 class Neo4jService:
     """Service for Neo4j graph database operations."""
 
-    def __init__(self, uri: Optional[str] = None, user: Optional[str] = None, password: Optional[str] = None):
+    def __init__(
+        self,
+        uri: Optional[str] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+    ):
         """
         Initialize Neo4j service.
 
         Args:
-            uri: Neo4j URI (defaults to NEO4J_URI env var)
-            user: Neo4j username (defaults to NEO4J_USER env var)
-            password: Neo4j password (defaults to NEO4J_PASSWORD env var)
+            uri: Neo4j URI (defaults to settings.NEO4J_URI)
+            user: Neo4j username (defaults to settings.NEO4J_USER)
+            password: Neo4j password (defaults to settings.NEO4J_PASSWORD)
         """
-        self.uri = uri or os.getenv("NEO4J_URI", "bolt://localhost:7687")
-        self.user = user or os.getenv("NEO4J_USER", "neo4j")
-        self.password = password or os.getenv("NEO4J_PASSWORD", "password")
+        self.uri = uri or settings.NEO4J_URI
+        self.user = user or settings.NEO4J_USER
+        self.password = password or settings.NEO4J_PASSWORD
         self._driver = None
 
     @property
@@ -37,9 +42,9 @@ class Neo4jService:
         if self._driver is None:
             try:
                 from neo4j import AsyncGraphDatabase
+
                 self._driver = AsyncGraphDatabase.driver(
-                    self.uri,
-                    auth=(self.user, self.password)
+                    self.uri, auth=(self.user, self.password)
                 )
                 logger.info("Neo4j driver initialized", uri=self.uri)
             except Exception as e:
@@ -60,7 +65,7 @@ class Neo4jService:
         title: str,
         authors: Optional[List[str]] = None,
         year: Optional[int] = None,
-        doi: Optional[str] = None
+        doi: Optional[str] = None,
     ) -> None:
         """
         Create Paper node in Neo4j.
@@ -83,7 +88,7 @@ class Neo4jService:
                 paper_id=paper_id,
                 title=title,
                 year=year,
-                doi=doi
+                doi=doi,
             )
 
             # Create author nodes and relationships
@@ -95,20 +100,18 @@ class Neo4jService:
                            MATCH (p:Paper {id: $paper_id})
                            MERGE (a)-[:WROTE]->(p)""",
                         author=author,
-                        paper_id=paper_id
+                        paper_id=paper_id,
                     )
 
             logger.info(
                 "Created paper node in Neo4j",
                 paper_id=paper_id,
                 title=title[:50],
-                author_count=len(authors) if authors else 0
+                author_count=len(authors) if authors else 0,
             )
 
     async def create_chunk_nodes(
-        self,
-        paper_id: str,
-        chunks: List[Dict[str, Any]]
+        self, paper_id: str, chunks: List[Dict[str, Any]]
     ) -> None:
         """
         Create Chunk nodes with BELONGS_TO relationships.
@@ -140,7 +143,7 @@ class Neo4jService:
                     chunk_id=chunk_id,
                     content=chunk.get("text", "")[:1000],  # Summary only
                     section=chunk.get("section"),
-                    page=chunk.get("page_start")
+                    page=chunk.get("page_start"),
                 )
 
                 # Create NEXT_CHUNK relationship for ordering
@@ -150,7 +153,7 @@ class Neo4jService:
                            MATCH (c2:Chunk {id: $curr_id})
                            MERGE (c1)-[:NEXT_CHUNK]->(c2)""",
                         prev_id=prev_chunk_id,
-                        curr_id=chunk_id
+                        curr_id=chunk_id,
                     )
 
                 prev_chunk_id = chunk_id
@@ -159,13 +162,11 @@ class Neo4jService:
             logger.info(
                 "Created chunk nodes in Neo4j",
                 paper_id=paper_id,
-                chunk_count=chunk_count
+                chunk_count=chunk_count,
             )
 
     async def create_section_nodes(
-        self,
-        paper_id: str,
-        imrad_structure: Dict[str, Any]
+        self, paper_id: str, imrad_structure: Dict[str, Any]
     ) -> None:
         """
         Create Section nodes for IMRaD structure.
@@ -182,9 +183,21 @@ class Neo4jService:
                 if section_name.startswith("_"):
                     continue
 
-                content = section_data.get("content", "") if isinstance(section_data, dict) else ""
-                page_start = section_data.get("page_start") if isinstance(section_data, dict) else None
-                page_end = section_data.get("page_end") if isinstance(section_data, dict) else None
+                content = (
+                    section_data.get("content", "")
+                    if isinstance(section_data, dict)
+                    else ""
+                )
+                page_start = (
+                    section_data.get("page_start")
+                    if isinstance(section_data, dict)
+                    else None
+                )
+                page_end = (
+                    section_data.get("page_end")
+                    if isinstance(section_data, dict)
+                    else None
+                )
 
                 if not content or len(content) < 10:
                     continue
@@ -201,7 +214,7 @@ class Neo4jService:
                     section_name=section_name.capitalize(),
                     summary=content[:500],
                     page_start=page_start,
-                    page_end=page_end
+                    page_end=page_end,
                 )
 
                 section_count += 1
@@ -209,14 +222,11 @@ class Neo4jService:
             logger.info(
                 "Created section nodes in Neo4j",
                 paper_id=paper_id,
-                section_count=section_count
+                section_count=section_count,
             )
 
     async def create_citation_relationship(
-        self,
-        from_paper_id: str,
-        to_paper_id: str,
-        context: Optional[str] = None
+        self, from_paper_id: str, to_paper_id: str, context: Optional[str] = None
     ) -> None:
         """
         Create CITES relationship between papers.
@@ -235,19 +245,17 @@ class Neo4jService:
                        r.created_at = datetime()""",
                 from_id=from_paper_id,
                 to_id=to_paper_id,
-                context=context
+                context=context,
             )
 
             logger.info(
                 "Created citation relationship",
                 from_paper=from_paper_id,
-                to_paper=to_paper_id
+                to_paper=to_paper_id,
             )
 
     async def get_paper_chunks(
-        self,
-        paper_id: str,
-        section: Optional[str] = None
+        self, paper_id: str, section: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Retrieve chunks for a paper via graph traversal.
@@ -268,7 +276,7 @@ class Neo4jService:
                               c.section as section, c.page as page
                        ORDER BY c.page""",
                     paper_id=paper_id,
-                    section=section
+                    section=section,
                 )
             else:
                 result = await session.run(
@@ -276,16 +284,13 @@ class Neo4jService:
                        RETURN c.id as id, c.content as content,
                               c.section as section, c.page as page
                        ORDER BY c.page""",
-                    paper_id=paper_id
+                    paper_id=paper_id,
                 )
 
             records = await result.data()
             return [dict(record) for record in records]
 
-    async def get_paper_with_chunks(
-        self,
-        paper_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_paper_with_chunks(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """
         Get paper with all related chunks and sections.
 
@@ -301,7 +306,7 @@ class Neo4jService:
                 """MATCH (p:Paper {id: $paper_id})
                    RETURN p.id as id, p.title as title,
                           p.year as year, p.doi as doi""",
-                paper_id=paper_id
+                paper_id=paper_id,
             )
             paper_data = await paper_result.single()
 
@@ -314,7 +319,7 @@ class Neo4jService:
                    RETURN c.id as id, c.content as content,
                           c.section as section, c.page as page
                    ORDER BY c.page""",
-                paper_id=paper_id
+                paper_id=paper_id,
             )
             chunks = await chunks_result.data()
 
@@ -323,7 +328,7 @@ class Neo4jService:
                 """MATCH (s:Section)-[:PART_OF]->(p:Paper {id: $paper_id})
                    RETURN s.name as name, s.content_summary as summary,
                           s.page_start as page_start, s.page_end as page_end""",
-                paper_id=paper_id
+                paper_id=paper_id,
             )
             sections = await sections_result.data()
 
@@ -331,7 +336,7 @@ class Neo4jService:
             authors_result = await session.run(
                 """MATCH (a:Author)-[:WROTE]->(p:Paper {id: $paper_id})
                    RETURN a.name as name""",
-                paper_id=paper_id
+                paper_id=paper_id,
             )
             authors = [r["name"] for r in await authors_result.data()]
 
@@ -357,13 +362,13 @@ class Neo4jService:
             await session.run(
                 """MATCH (c:Chunk)-[:BELONGS_TO]->(p:Paper {id: $paper_id})
                    DETACH DELETE c""",
-                paper_id=paper_id
+                paper_id=paper_id,
             )
 
             await session.run(
                 """MATCH (s:Section)-[:PART_OF]->(p:Paper {id: $paper_id})
                    DETACH DELETE s""",
-                paper_id=paper_id
+                paper_id=paper_id,
             )
 
             # Delete paper (authors remain as they may be linked to other papers)
@@ -372,7 +377,7 @@ class Neo4jService:
                    OPTIONAL MATCH (p)-[r]-()
                    DELETE r, p
                    RETURN count(p) as deleted""",
-                paper_id=paper_id
+                paper_id=paper_id,
             )
 
             record = await result.single()
@@ -381,15 +386,13 @@ class Neo4jService:
             logger.info(
                 "Deleted paper graph from Neo4j",
                 paper_id=paper_id,
-                deleted=deleted_count
+                deleted=deleted_count,
             )
 
             return deleted_count > 0
 
     async def search_by_title(
-        self,
-        title_query: str,
-        limit: int = 10
+        self, title_query: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
         Search papers by title.
@@ -409,7 +412,7 @@ class Neo4jService:
                           p.year as year, p.doi as doi
                    LIMIT $limit""",
                 query=title_query,
-                limit=limit
+                limit=limit,
             )
 
             records = await result.data()
@@ -417,17 +420,24 @@ class Neo4jService:
 
     # Entity Node Methods
 
-    async def create_method_node(self, name: str, category: Optional[str] = None) -> str:
+    async def create_method_node(
+        self, name: str, category: Optional[str] = None
+    ) -> str:
         """Create or merge Method node, return node ID."""
         canonical = name.lower().strip()
         async with self.driver.session() as session:
-            result = await session.run("""
+            result = await session.run(
+                """
                 MERGE (m:Method {canonical_name: $canonical})
                 SET m.name = $name,
                     m.category = $category,
                     m.updated_at = datetime()
                 RETURN m.canonical_name as id
-            """, canonical=canonical, name=name, category=category)
+            """,
+                canonical=canonical,
+                name=name,
+                category=category,
+            )
             record = await result.single()
             return record["id"] if record else canonical
 
@@ -435,27 +445,39 @@ class Neo4jService:
         """Create or merge Dataset node, return node ID."""
         canonical = name.lower().strip()
         async with self.driver.session() as session:
-            result = await session.run("""
+            result = await session.run(
+                """
                 MERGE (d:Dataset {canonical_name: $canonical})
                 SET d.name = $name,
                     d.domain = $domain,
                     d.updated_at = datetime()
                 RETURN d.canonical_name as id
-            """, canonical=canonical, name=name, domain=domain)
+            """,
+                canonical=canonical,
+                name=name,
+                domain=domain,
+            )
             record = await result.single()
             return record["id"] if record else canonical
 
-    async def create_metric_node(self, name: str, description: Optional[str] = None) -> str:
+    async def create_metric_node(
+        self, name: str, description: Optional[str] = None
+    ) -> str:
         """Create or merge Metric node, return node ID."""
         canonical = name.lower().strip()
         async with self.driver.session() as session:
-            result = await session.run("""
+            result = await session.run(
+                """
                 MERGE (m:Metric {canonical_name: $canonical})
                 SET m.name = $name,
                     m.description = $description,
                     m.updated_at = datetime()
                 RETURN m.canonical_name as id
-            """, canonical=canonical, name=name, description=description)
+            """,
+                canonical=canonical,
+                name=name,
+                description=description,
+            )
             record = await result.single()
             return record["id"] if record else canonical
 
@@ -463,20 +485,25 @@ class Neo4jService:
         self,
         name: str,
         venue_type: Optional[str] = None,
-        abbreviation: Optional[str] = None
+        abbreviation: Optional[str] = None,
     ) -> str:
         """Create or merge Venue node, return node ID."""
         canonical = name.lower().strip()
         async with self.driver.session() as session:
-            result = await session.run("""
+            result = await session.run(
+                """
                 MERGE (v:Venue {canonical_name: $canonical})
                 SET v.name = $name,
                     v.type = $venue_type,
                     v.abbreviation = $abbreviation,
                     v.updated_at = datetime()
                 RETURN v.canonical_name as id
-            """, canonical=canonical, name=name, venue_type=venue_type,
-                abbreviation=abbreviation)
+            """,
+                canonical=canonical,
+                name=name,
+                venue_type=venue_type,
+                abbreviation=abbreviation,
+            )
             record = await result.single()
             return record["id"] if record else canonical
 
@@ -487,66 +514,75 @@ class Neo4jService:
         paper_id: str,
         method_canonical: str,
         confidence: float = 0.9,
-        context: Optional[str] = None
+        context: Optional[str] = None,
     ) -> None:
         """Create USES relationship from Paper to Method."""
         async with self.driver.session() as session:
-            await session.run("""
+            await session.run(
+                """
                 MATCH (p:Paper {id: $paper_id})
                 MATCH (m:Method {canonical_name: $method_canonical})
                 MERGE (p)-[r:USES]->(m)
                 SET r.confidence = $confidence,
                     r.context = $context,
                     r.updated_at = datetime()
-            """, paper_id=paper_id, method_canonical=method_canonical,
-                confidence=confidence, context=context)
+            """,
+                paper_id=paper_id,
+                method_canonical=method_canonical,
+                confidence=confidence,
+                context=context,
+            )
 
     async def create_evaluated_on_relationship(
-        self,
-        method_canonical: str,
-        dataset_canonical: str,
-        confidence: float = 0.9
+        self, method_canonical: str, dataset_canonical: str, confidence: float = 0.9
     ) -> None:
         """Create EVALUATED_ON relationship from Method to Dataset."""
         async with self.driver.session() as session:
-            await session.run("""
+            await session.run(
+                """
                 MATCH (m:Method {canonical_name: $method_canonical})
                 MATCH (d:Dataset {canonical_name: $dataset_canonical})
                 MERGE (m)-[r:EVALUATED_ON]->(d)
                 SET r.confidence = $confidence,
                     r.updated_at = datetime()
-            """, method_canonical=method_canonical, dataset_canonical=dataset_canonical,
-                confidence=confidence)
+            """,
+                method_canonical=method_canonical,
+                dataset_canonical=dataset_canonical,
+                confidence=confidence,
+            )
 
     async def create_published_in_relationship(
-        self,
-        paper_id: str,
-        venue_canonical: str
+        self, paper_id: str, venue_canonical: str
     ) -> None:
         """Create PUBLISHED_IN relationship from Paper to Venue."""
         async with self.driver.session() as session:
-            await session.run("""
+            await session.run(
+                """
                 MATCH (p:Paper {id: $paper_id})
                 MATCH (v:Venue {canonical_name: $venue_canonical})
                 MERGE (p)-[r:PUBLISHED_IN]->(v)
                 SET r.updated_at = datetime()
-            """, paper_id=paper_id, venue_canonical=venue_canonical)
+            """,
+                paper_id=paper_id,
+                venue_canonical=venue_canonical,
+            )
 
     async def create_coauthor_relationship(
-        self,
-        author1: str,
-        author2: str,
-        paper_id: Optional[str] = None
+        self, author1: str, author2: str, paper_id: Optional[str] = None
     ) -> None:
         """Create/Update COAUTHOR relationship between authors."""
         async with self.driver.session() as session:
-            await session.run("""
+            await session.run(
+                """
                 MATCH (a1:Author {name: $author1})
                 MATCH (a2:Author {name: $author2})
                 MERGE (a1)-[r:COAUTHOR]-(a2)
                 SET r.count = coalesce(r.count, 0) + 1,
                     r.updated_at = datetime()
-            """, author1=author1, author2=author2)
+            """,
+                author1=author1,
+                author2=author2,
+            )
 
 
 # Convenience functions
@@ -556,7 +592,7 @@ async def create_paper_graph(
     authors: List[str],
     chunks: List[Dict[str, Any]],
     imrad_structure: Dict[str, Any],
-    year: Optional[int] = None
+    year: Optional[int] = None,
 ) -> None:
     """
     Create complete paper graph in Neo4j.

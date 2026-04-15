@@ -30,17 +30,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.user import User
-    from app.models.task import ProcessingTask
-    from app.models.notes_task import NotesTask
     from app.models.annotation import Annotation
-    from app.models.reading_progress import ReadingProgress
-    from app.models.upload_history import UploadHistory
-    from app.models.query import Query
     from app.models.batch import PaperBatch
-    from app.models.project import Project
-    from app.models.knowledge_base import KnowledgeBase
     from app.models.import_job import ImportJob
+    from app.models.knowledge_base import KnowledgeBase
+    from app.models.knowledge_base_paper import KnowledgeBasePaper
+    from app.models.notes_task import NotesTask
+    from app.models.project import Project
+    from app.models.query import Query
+    from app.models.reading_progress import ReadingProgress
+    from app.models.task import ProcessingTask
+    from app.models.upload_history import UploadHistory
+    from app.models.user import User
 
 
 class Paper(Base):
@@ -123,14 +124,10 @@ class Paper(Base):
         "ismultimodalready", Boolean, default=False
     )
     # is_notes_ready: reading_notes 字段有内容
-    is_notes_ready: Mapped[bool] = mapped_column(
-        "isnotesready", Boolean, default=False
-    )
+    is_notes_ready: Mapped[bool] = mapped_column("isnotesready", Boolean, default=False)
 
     # 失败标记
-    notes_failed: Mapped[bool] = mapped_column(
-        "notesfailed", Boolean, default=False
-    )
+    notes_failed: Mapped[bool] = mapped_column("notesfailed", Boolean, default=False)
     multimodal_failed: Mapped[bool] = mapped_column(
         "multimodalfailed", Boolean, default=False
     )
@@ -179,6 +176,11 @@ class Paper(Base):
     )
     import_jobs: Mapped[List["ImportJob"]] = relationship(
         "ImportJob", back_populates="paper"
+    )
+    knowledge_base_papers: Mapped[List["KnowledgeBasePaper"]] = relationship(
+        "KnowledgeBasePaper",
+        back_populates="paper",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (

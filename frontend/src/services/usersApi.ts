@@ -17,6 +17,30 @@
 import apiClient from '@/utils/apiClient';
 import type { User, UserSettings, ApiKey, DashboardStats } from '@/types';
 
+interface RawUser {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string | null;
+  roles?: string[];
+  email_verified?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+function normalizeUser(user: RawUser): User {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatar: user.avatar ?? null,
+    roles: user.roles ?? [],
+    emailVerified: user.email_verified ?? false,
+    createdAt: user.created_at ?? undefined,
+    updatedAt: user.updated_at ?? undefined,
+  };
+}
+
 /**
  * Get user profile
  *
@@ -26,8 +50,8 @@ import type { User, UserSettings, ApiKey, DashboardStats } from '@/types';
  * @returns User profile
  */
 export async function getProfile(): Promise<User> {
-  const response = await apiClient.get<User>('/api/v1/users/me');
-  return response.data;
+  const response = await apiClient.get<RawUser>('/api/v1/users/me');
+  return normalizeUser(response.data);
 }
 
 /**
@@ -46,8 +70,8 @@ export async function updateProfile(data: {
   email?: string;
   avatar?: string | null;
 }): Promise<User> {
-  const response = await apiClient.patch<User>('/api/v1/users/me', data);
-  return response.data;
+  const response = await apiClient.patch<RawUser>('/api/v1/users/me', data);
+  return normalizeUser(response.data);
 }
 
 /**
@@ -187,7 +211,7 @@ export async function deleteApiKey(
   keyId: string,
   currentPassword: string
 ): Promise<void> {
-  await apiClient.delete(`/api/users/me/api-keys/${keyId}`, {
+  await apiClient.delete(`/api/v1/users/me/api-keys/${keyId}`, {
     data: {
       currentPassword,
     },

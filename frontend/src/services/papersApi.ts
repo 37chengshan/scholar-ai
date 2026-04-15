@@ -1,24 +1,87 @@
 /**
  * Papers API Service
  *
- * Paper management API calls:
- * - list(): Get paginated papers list
- * - get(): Get paper details
- * - delete(): Delete paper (requires re-auth)
- * - getStatus(): Get processing status
- * - toggleStar(): Toggle paper starred status
- *
- * All endpoints require authentication.
+ * Normalizes backend paper payloads so pages can consistently use camelCase.
  */
 
 import apiClient from '@/utils/apiClient';
-import type { PapersListResponse, Paper, PapersQueryParams, ProcessingTaskStatus } from '@/types';
+import type {
+  PapersListResponse,
+  Paper,
+  PaperWithProgress,
+  PapersQueryParams,
+  ProcessingTaskStatus,
+} from '@/types';
+
+interface RawPaper {
+  id: string;
+  title: string;
+  authors: string[];
+  year?: number | null;
+  abstract?: string | null;
+  doi?: string | null;
+  arxiv_id?: string | null;
+  arxivId?: string | null;
+  status: string;
+  processingStatus?: string;
+  progress?: number;
+  storage_key?: string | null;
+  storageKey?: string | null;
+  file_size?: number | null;
+  fileSize?: number | null;
+  page_count?: number | null;
+  pageCount?: number | null;
+  keywords?: string[];
+  venue?: string | null;
+  citations?: number | null;
+  starred?: boolean;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+  processingError?: string | null;
+  reading_notes?: string | null;
+  readingNotes?: string | null;
+}
+
+function normalizePaper(raw: RawPaper): PaperWithProgress {
+  return {
+    id: raw.id,
+    title: raw.title,
+    authors: raw.authors ?? [],
+    year: raw.year ?? null,
+    abstract: raw.abstract ?? null,
+    doi: raw.doi ?? null,
+    arxivId: raw.arxivId ?? raw.arxiv_id ?? null,
+    status: raw.status as Paper['status'],
+    processingStatus: raw.processingStatus,
+    progress: raw.progress ?? 0,
+    storageKey: raw.storageKey ?? raw.storage_key ?? null,
+    fileSize: raw.fileSize ?? raw.file_size ?? null,
+    pageCount: raw.pageCount ?? raw.page_count ?? null,
+    keywords: raw.keywords ?? [],
+    venue: raw.venue ?? null,
+    citations: raw.citations ?? null,
+    starred: raw.starred ?? false,
+    createdAt: raw.createdAt ?? raw.created_at ?? '',
+    updatedAt: raw.updatedAt ?? raw.updated_at ?? '',
+    processingError: raw.processingError ?? null,
+    lastUpdated: raw.updatedAt ?? raw.updated_at ?? '',
+    readingNotes: raw.readingNotes ?? raw.reading_notes ?? null,
+  } as PaperWithProgress & { readingNotes?: string | null };
+}
 
 /**
  * Get paginated papers list
  */
 export async function list(params?: PapersQueryParams): Promise<PapersListResponse> {
-  const response = await apiClient.get<PapersListResponse>('/api/v1/papers', {
+  const response = await apiClient.get<{
+    papers: RawPaper[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages?: number;
+  }>('/api/v1/papers', {
     params: {
       page: params?.page || 1,
       limit: params?.limit || 20,
@@ -34,25 +97,23 @@ export async function list(params?: PapersQueryParams): Promise<PapersListRespon
 
   return {
     success: true,
-    data: response.data,
-  } as unknown as PapersListResponse;
+    data: {
+      papers: (response.data.papers || []).map(normalizePaper),
+      total: response.data.total || 0,
+      page: response.data.page || 1,
+      limit: response.data.limit || params?.limit || 20,
+      totalPages: response.data.totalPages || 0,
+    },
+  } as PapersListResponse;
 }
 
-/**
- * Get paper details
- */
+/** Get paper details */
 export async function get(id: string): Promise<Paper> {
-  const response = await apiClient.get<{
-    success: boolean;
-    data: Paper;
-  }>(`/api/v1/papers/${id}`);
-
-  return response.data as unknown as Paper;
+  const response = await apiClient.get<RawPaper>(`/api/v1/papers/${id}`);
+  return normalizePaper(response.data) as Paper;
 }
 
-/**
- * Delete paper
- */
+/** Delete paper */
 export async function deletePaper(id: string): Promise<void> {
   await apiClient.delete(`/api/v1/papers/${id}`);
 }
@@ -67,26 +128,17 @@ export async function batchDelete(paperIds: string[]): Promise<{
   message: string;
 }> {
   const response = await apiClient.post<{
-    success: boolean;
-    data: {
-      deletedCount: number;
-      requestedCount: number;
-      message: string;
-    };
+    deletedCount: number;
+    requestedCount: number;
+    message: string;
   }>('/api/v1/papers/batch-delete', {
     paperIds,
   });
 
-  return response.data as unknown as {
-    deletedCount: number;
-    requestedCount: number;
-    message: string;
-  };
+  return response.data;
 }
 
-/**
- * Batch star/unstar papers
- */
+/** Batch star/unstar papers */
 export async function batchStar(
   paperIds: string[],
   starred: boolean
@@ -97,29 +149,19 @@ export async function batchStar(
   message: string;
 }> {
   const response = await apiClient.post<{
-    success: boolean;
-    data: {
-      updatedCount: number;
-      requestedCount: number;
-      starred: boolean;
-      message: string;
-    };
+    updatedCount: number;
+    requestedCount: number;
+    starred: boolean;
+    message: string;
   }>('/api/v1/papers/batch/star', {
     paperIds,
     starred,
   });
 
-  return response.data as unknown as {
-    updatedCount: number;
-    requestedCount: number;
-    starred: boolean;
-    message: string;
-  };
+  return response.data;
 }
 
-/**
- * Get paper processing status
- */
+/** Get paper processing status */
 export async function getStatus(id: string): Promise<{
   paperId: string;
   title?: string;
@@ -130,31 +172,25 @@ export async function getStatus(id: string): Promise<{
   completedAt?: string | null;
 }> {
   const response = await apiClient.get<{
-    success: boolean;
-    data: {
-      paperId: string;
-      status: ProcessingTaskStatus | string;
-      progress: number;
-      errorMessage?: string | null;
-      updatedAt: string;
-      completedAt?: string | null;
-    };
-  }>(`/api/v1/papers/${id}/status`);
-
-  return response.data as unknown as {
     paperId: string;
-    title?: string;
     status: ProcessingTaskStatus | string;
     progress: number;
     errorMessage?: string | null;
-    updatedAt: string;
+    updatedAt?: string;
     completedAt?: string | null;
+  }>(`/api/v1/papers/${id}/status`);
+
+  return {
+    paperId: response.data.paperId,
+    status: response.data.status,
+    progress: response.data.progress,
+    errorMessage: response.data.errorMessage ?? null,
+    updatedAt: response.data.updatedAt || '',
+    completedAt: response.data.completedAt ?? null,
   };
 }
 
-/**
- * Get paper reading notes
- */
+/** Get paper reading notes */
 export async function getSummary(id: string): Promise<{
   paperId: string;
   summary?: string | null;
@@ -163,28 +199,17 @@ export async function getSummary(id: string): Promise<{
   hasNotes: boolean;
 }> {
   const response = await apiClient.get<{
-    success: boolean;
-    data: {
-      paperId: string;
-      summary?: string | null;
-      imrad?: any | null;
-      status: string;
-      hasNotes: boolean;
-    };
-  }>(`/api/v1/papers/${id}/summary`);
-
-  return response.data as unknown as {
     paperId: string;
     summary?: string | null;
     imrad?: any | null;
     status: string;
     hasNotes: boolean;
-  };
+  }>(`/api/v1/papers/${id}/summary`);
+
+  return response.data;
 }
 
-/**
- * Regenerate paper reading notes
- */
+/** Regenerate paper reading notes */
 export async function regenerateNotes(
   id: string,
   modificationRequest?: string
@@ -194,76 +219,41 @@ export async function regenerateNotes(
   message: string;
 }> {
   const response = await apiClient.post<{
-    success: boolean;
-    data: {
-      paperId: string;
-      status: string;
-      message: string;
-    };
+    paperId: string;
+    status: string;
+    message: string;
   }>(`/api/v1/papers/${id}/regenerate-notes`, {
     modificationRequest,
   });
 
-  return response.data as unknown as {
-    paperId: string;
-    status: string;
-    message: string;
-  };
+  return response.data;
 }
 
-/**
- * Export paper notes as Markdown
- */
+/** Export paper notes as Markdown */
 export async function exportNotes(id: string): Promise<string> {
   const response = await apiClient.get(`/api/v1/papers/${id}/notes/export`, {
     responseType: 'text',
   });
 
-  return response.data as unknown as string;
+  return response.data as string;
 }
 
-/**
- * Toggle paper starred status
- */
+/** Toggle paper starred status */
 export async function toggleStar(id: string, starred: boolean): Promise<Paper> {
-  const response = await apiClient.patch<{
-    success: boolean;
-    data: Paper;
-  }>(`/api/v1/papers/${id}/starred`, {
+  const response = await apiClient.patch<RawPaper>(`/api/v1/papers/${id}/starred`, {
     starred,
   });
 
-  return response.data as unknown as Paper;
+  return normalizePaper(response.data) as Paper;
 }
 
-/**
- * Update paper fields
- */
+/** Update paper fields */
 export async function update(id: string, data: { readingNotes?: string }): Promise<Paper> {
-  const response = await apiClient.patch<{
-    success: boolean;
-    data: Paper;
-  }>(`/api/v1/papers/${id}`, data);
-
-  return response.data as unknown as Paper;
+  const response = await apiClient.patch<RawPaper>(`/api/v1/papers/${id}`, data);
+  return normalizePaper(response.data) as Paper;
 }
 
-/**
- * Get PDF download URL
- */
+/** Get PDF download URL */
 export function getPdfUrl(id: string): string {
-  return `${apiClient.defaults.baseURL}/api/v1/papers/${id}/download`;
+  return `${apiClient.defaults.baseURL || ''}/api/v1/papers/${id}/download`;
 }
-
-/**
- * External paper import is handled by kbApi, not papersApi.
- *
- * Import workflow:
- * 1. Search external papers via searchApi.unified() or searchApi.searchAuthors()
- * 2. Select target knowledge base (KB)
- * 3. Import via kbApi.importFromArxiv() or kbApi.importFromUrl()
- *
- * See Search.tsx handleImportToKB() for implementation example.
- *
- * Future enhancement: Add papersApi.importToDefaultKB() for quick import without KB selection.
- */
