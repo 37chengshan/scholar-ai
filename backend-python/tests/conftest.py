@@ -18,6 +18,7 @@ from httpx import AsyncClient
 # Set test environment before importing app
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_PUBLIC_KEY", "test-public-key")
+os.environ.setdefault("ZHIPU_API_KEY", "sk-test-zhipu")
 
 # Set correct Qwen model path (absolute path from project root)
 # The model is at /Users/cc/scholar-ai-deploy/schlar ai/Qwen/Qwen3-VL-Embedding-2B
@@ -34,6 +35,13 @@ if 'qwen_vl_utils' not in sys.modules:
     sys.modules['qwen_vl_utils'] = MagicMock()
     sys.modules['qwen_vl_utils.vision_process'] = MagicMock()
     sys.modules['qwen_vl_utils.vision_process'].process_vision_info = MagicMock(return_value=None)
+
+# Mock ZhipuAI client to avoid API key validation errors during tests
+# The real ZhipuAI client raises ValueError if ZHIPU_API_KEY is empty
+if 'app.utils.zhipu_client' not in sys.modules:
+    mock_zhipu_module = MagicMock()
+    mock_zhipu_module.ZhipuAI = MagicMock()
+    sys.modules['app.utils.zhipu_client'] = mock_zhipu_module
 
 
 @pytest.fixture(scope="session")
