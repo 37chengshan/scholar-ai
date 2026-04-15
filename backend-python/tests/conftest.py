@@ -43,6 +43,19 @@ if 'app.utils.zhipu_client' not in sys.modules:
     mock_zhipu_module.ZhipuAI = MagicMock()
     sys.modules['app.utils.zhipu_client'] = mock_zhipu_module
 
+# Mock Qwen3VL service to avoid model loading errors in CI
+# The actual model files are not present in CI environment
+if 'app.core.qwen3vl_service' not in sys.modules:
+    mock_qwen_module = MagicMock()
+    mock_qwen_module.Qwen3VLMultimodalEmbedding = MagicMock()
+    mock_qwen_module.get_qwen3vl_service = MagicMock(return_value=MagicMock())
+    sys.modules['app.core.qwen3vl_service'] = mock_qwen_module
+
+# Set fallback paths for Qwen models (used by embedding config tests)
+# These are only used during import, actual model loading is mocked above
+os.environ.setdefault("QWEN3VL_EMBEDDING_MODEL_PATH", "/tmp/qwen3-vl-embedding")
+os.environ.setdefault("QWEN3VL_RERANKER_MODEL_PATH", "/tmp/qwen3-vl-reranker")
+
 
 @pytest.fixture(scope="session")
 def app() -> FastAPI:
