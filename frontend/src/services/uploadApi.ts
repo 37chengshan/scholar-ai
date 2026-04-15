@@ -85,9 +85,9 @@ export async function uploadFile(
       size: number;
       message: string;
     };
-  }>(`/api/v1/papers/upload/local/${storageKey}`, file, {
+  }>(`/api/v1/papers/upload/local/${storageKey}`, formData, {
     headers: {
-      'Content-Type': 'application/octet-stream',
+      'Content-Type': 'multipart/form-data',
     },
     onUploadProgress: (progressEvent) => {
       if (onProgress && progressEvent.total) {

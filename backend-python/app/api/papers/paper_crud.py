@@ -474,4 +474,100 @@ async def delete_paper(
     return {"success": True, "data": {"message": "Paper deleted successfully"}}
 
 
+class BatchDeleteRequest(BaseModel):
+    """Request to delete multiple papers."""
+    paper_ids: list[str] = Field(..., min_length=1, max_length=100)
+
+
+class BatchStarRequest(BaseModel):
+    """Request to star/unstar multiple papers."""
+    paper_ids: list[str] = Field(..., min_length=1, max_length=100)
+    starred: bool = Field(..., description="True to star, False to unstar")
+
+
+@router.post("/batch-delete")
+async def batch_delete_papers(
+    request: Request,
+    body: BatchDeleteRequest,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Delete multiple papers in a single request."""
+    instance = str(request.url.path)
+    user_id = current_user.id
+
+    paper_ids = body.paper_ids
+    requested_count = len(paper_ids)
+
+    # Verify ownership and delete
+    deleted_count = 0
+    for paper_id in paper_ids:
+        paper_query = select(Paper).where(
+            Paper.id == paper_id,
+            Paper.user_id == user_id,
+        )
+        paper_result = await db.execute(paper_query)
+        paper = paper_result.scalar_one_or_none()
+
+        if paper:
+            # Delete associated file if exists
+            storage_key = paper.storage_key
+            if storage_key:
+                file_path = f"{settings.LOCAL_STORAGE_PATH}/{storage_key}"
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+
+            await db.delete(paper)
+            deleted_count += 1
+
+    return {
+        "success": True,
+        "data": {
+            "deletedCount": deleted_count,
+            "requestedCount": requested_count,
+            "message": f"Successfully deleted {deleted_count} of {requested_count} papers",
+        },
+    }
+
+
+@router.post("/batch/star")
+async def batch_star_papers(
+    request: Request,
+    body: BatchStarRequest,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Star or unstar multiple papers in a single request."""
+    user_id = current_user.id
+
+    paper_ids = body.paper_ids
+    starred = body.starred
+    requested_count = len(paper_ids)
+
+    # Update all papers
+    for paper_id in paper_ids:
+        paper_query = select(Paper).where(
+            Paper.id == paper_id,
+            Paper.user_id == user_id,
+        )
+        paper_result = await db.execute(paper_query)
+        paper = paper_result.scalar_one_or_none()
+
+        if paper:
+            paper.starred = starred
+            paper.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "data": {
+            "updatedCount": requested_count,
+            "requestedCount": requested_count,
+            "starred": starred,
+            "message": f"Successfully updated starred status for {requested_count} papers",
+        },
+    }
+
+
 __all__ = ["router"]

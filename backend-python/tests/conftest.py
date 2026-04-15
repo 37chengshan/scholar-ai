@@ -18,6 +18,7 @@ from httpx import AsyncClient
 # Set test environment before importing app
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_PUBLIC_KEY", "test-public-key")
+os.environ.setdefault("ZHIPU_API_KEY", "sk-test-zhipu")
 
 # Set correct Qwen model path (absolute path from project root)
 # The model is at /Users/cc/scholar-ai-deploy/schlar ai/Qwen/Qwen3-VL-Embedding-2B
@@ -34,6 +35,26 @@ if 'qwen_vl_utils' not in sys.modules:
     sys.modules['qwen_vl_utils'] = MagicMock()
     sys.modules['qwen_vl_utils.vision_process'] = MagicMock()
     sys.modules['qwen_vl_utils.vision_process'].process_vision_info = MagicMock(return_value=None)
+
+# Mock ZhipuAI client to avoid API key validation errors during tests
+# The real ZhipuAI client raises ValueError if ZHIPU_API_KEY is empty
+if 'app.utils.zhipu_client' not in sys.modules:
+    mock_zhipu_module = MagicMock()
+    mock_zhipu_module.ZhipuAI = MagicMock()
+    sys.modules['app.utils.zhipu_client'] = mock_zhipu_module
+
+# Mock Qwen3VL service to avoid model loading errors in CI
+# The actual model files are not present in CI environment
+if 'app.core.qwen3vl_service' not in sys.modules:
+    mock_qwen_module = MagicMock()
+    mock_qwen_module.Qwen3VLMultimodalEmbedding = MagicMock()
+    mock_qwen_module.get_qwen3vl_service = MagicMock(return_value=MagicMock())
+    sys.modules['app.core.qwen3vl_service'] = mock_qwen_module
+
+# Set fallback paths for Qwen models (used by embedding config tests)
+# These are only used during import, actual model loading is mocked above
+os.environ.setdefault("QWEN3VL_EMBEDDING_MODEL_PATH", "/tmp/qwen3-vl-embedding")
+os.environ.setdefault("QWEN3VL_RERANKER_MODEL_PATH", "/tmp/qwen3-vl-reranker")
 
 
 @pytest.fixture(scope="session")

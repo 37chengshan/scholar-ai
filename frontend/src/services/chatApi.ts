@@ -5,11 +5,13 @@
  * - createSession(): Create new chat session
  * - getSessions(): List user's sessions
  * - getMessages(): Get session messages
+ * - streamMessage(): SSE streaming for real-time responses
  *
- * Note: SSE streaming will be implemented in Phase 15
+ * Note: SSE streaming implemented using sseService
  */
 
 import apiClient from '@/utils/apiClient';
+import { sseService, SSEEvent, SSEHandlers, DoneEventData } from './sseService';
 import type { Session, Message } from '@/types';
 
 /**
@@ -109,4 +111,37 @@ export async function updateSession(
   });
 
   return response.data;
+}
+
+/**
+ * Stream message to session using SSE
+ *
+ * POST /api/v1/chat/stream
+ * Creates user message and returns SSE stream for real-time AI responses
+ *
+ * @param sessionId - Session ID
+ * @param content - Message content
+ * @param handlers - SSE event handlers
+ * @returns void (events delivered via handlers)
+ */
+export function streamMessage(
+  sessionId: string,
+  content: string,
+  handlers: SSEHandlers
+): void {
+  sseService.connect(
+    '/api/v1/chat/stream',
+    handlers,
+    {
+      session_id: sessionId,
+      message: content,
+    }
+  );
+}
+
+/**
+ * Stop streaming
+ */
+export function stopStream(): void {
+  sseService.disconnect();
 }

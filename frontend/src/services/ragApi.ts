@@ -21,10 +21,11 @@ import type { QueryParams, QueryResult } from '@/types';
  */
 export async function query(params: QueryParams): Promise<QueryResult> {
   const response = await apiClient.post<QueryResult>('/api/v1/rag/query', {
-    query: params.query,
-    paperIds: params.paperIds,
-    topK: params.topK || 5,
-    queryType: params.queryType || 'single',
+    question: params.question,
+    paper_ids: params.paper_ids,
+    top_k: params.top_k || 10,
+    query_type: params.query_type || 'single',
+    conversation_id: params.conversation_id,
   });
 
   return response.data;
@@ -47,10 +48,10 @@ export async function queryPaper(
   topK?: number
 ): Promise<QueryResult> {
   return query({
-    query: queryText,
-    paperIds: [paperId],
-    topK: topK || 5,
-    queryType: 'single',
+    question: queryText,
+    paper_ids: [paperId],
+    top_k: topK || 10,
+    query_type: 'single',
   });
 }
 
@@ -69,10 +70,10 @@ export async function crossPaperQuery(
   queryText: string
 ): Promise<QueryResult> {
   return query({
-    query: queryText,
-    paperIds,
-    topK: 10,
-    queryType: 'cross_paper',
+    question: queryText,
+    paper_ids: paperIds,
+    top_k: 10,
+    query_type: 'cross_paper',
   });
 }
 
@@ -91,9 +92,9 @@ export async function evolutionQuery(
   paperIds?: string[]
 ): Promise<QueryResult> {
   return query({
-    query: queryText,
-    paperIds,
-    topK: 15,
-    queryType: 'evolution',
+    question: queryText,
+    paper_ids: paperIds,
+    top_k: 15,
+    query_type: 'evolution',
   });
 }

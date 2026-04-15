@@ -470,15 +470,17 @@ async def get_me(
     return AuthResponse(
         success=True,
         data={
-            "id": str(current_user.id),
-            "email": current_user.email,
-            "name": current_user.name,
-            "email_verified": current_user.email_verified,
-            "avatar": current_user.avatar,
-            "roles": current_user.roles,
-            "created_at": current_user.created_at.isoformat()
-            if current_user.created_at
-            else None,
+            "user": {
+                "id": str(current_user.id),
+                "email": current_user.email,
+                "name": current_user.name,
+                "email_verified": current_user.email_verified,
+                "avatar": current_user.avatar,
+                "roles": current_user.roles,
+                "created_at": current_user.created_at.isoformat()
+                if current_user.created_at
+                else None,
+            },
             "meta": {
                 "request_id": request_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
