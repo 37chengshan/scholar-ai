@@ -88,7 +88,7 @@ export async function list(params?: PapersQueryParams): Promise<PapersListRespon
       search: params?.search,
       sortBy: params?.sortBy || 'createdAt',
       sortOrder: params?.sortOrder || 'desc',
-      starred: params?.starred,
+      starred: params?.starred !== undefined ? String(params.starred) : undefined,
       readStatus: params?.readStatus,
       dateFrom: params?.dateFrom,
       dateTo: params?.dateTo,
@@ -241,7 +241,7 @@ export async function exportNotes(id: string): Promise<string> {
 /** Toggle paper starred status */
 export async function toggleStar(id: string, starred: boolean): Promise<Paper> {
   const response = await apiClient.patch<RawPaper>(`/api/v1/papers/${id}/starred`, {
-    starred,
+    starred: String(starred),
   });
 
   return normalizePaper(response.data) as Paper;

@@ -156,11 +156,14 @@ export const importApi = {
     jobId: string,
     file: File
   ): Promise<ApiResponse<{ storageKey: string; sha256: string; sizeBytes: number; importJobId: string; status: string; stage: string }>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
     const response = await apiClient.put(
       `/api/v1/import-jobs/${jobId}/file`,
-      file,
+      formData,
       {
-        headers: { 'Content-Type': 'application/pdf' }
+        headers: { 'Content-Type': 'multipart/form-data' }
       }
     );
     return { success: true, data: response.data };
@@ -205,7 +208,7 @@ export const importApi = {
    * Batch resolve multiple sources
    */
   resolveBatch: async (
-    items: { input: string }[]
+    items: string[]
   ): Promise<ApiResponse<{ items: BatchResolutionItem[] }>> => {
     const response = await apiClient.post(`/api/v1/import-sources/resolve-batch`, {
       items

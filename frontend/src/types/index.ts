@@ -210,10 +210,11 @@ export interface PapersQueryParams {
  * RAG query parameters
  */
 export interface QueryParams {
-  query: string;
-  paperIds?: string[];
-  topK?: number;
-  queryType?: 'single' | 'cross_paper' | 'evolution';
+  question: string;
+  paper_ids?: string[];
+  top_k?: number;
+  query_type?: 'single' | 'cross_paper' | 'evolution';
+  conversation_id?: string;
 }
 
 /**
@@ -221,14 +222,21 @@ export interface QueryParams {
  */
 export interface QueryResult {
   answer: string;
+  query?: string;
+  expanded_query?: string;
+  intent?: string;
+  metadata_filters?: Record<string, unknown>;
   sources: Array<{
     paperId: string;
-    paperTitle: string;
-    chunkId: string;
+    paperTitle?: string;
+    chunkId?: string;
     content: string;
     pageNumber?: number;
-    score: number;
+    score?: number;
   }>;
+  confidence?: number;
+  conversation_id?: string;
+  cached?: boolean;
   tokensUsed?: number;
 }
 
