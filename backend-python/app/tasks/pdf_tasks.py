@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.celery_config import celery_app
 from app.workers.pdf_worker import PDFProcessor
+from app.workers.import_worker import on_processing_task_complete
 from app.utils.logger import logger
 from app.database import AsyncSessionLocal
 from app.models import Paper, ProcessingTask, PaperBatch
@@ -200,6 +201,9 @@ async def process_single_pdf_async(paper_id: str, celery_task):
                     update(Paper).where(Paper.id == paper_id).values(status='completed')
                 )
                 await db.commit()
+
+                # Notify ImportJob that processing is complete
+                on_processing_task_complete.delay(task_id, paper_id)
 
                 # Update Celery state
                 celery_task.update_state(
