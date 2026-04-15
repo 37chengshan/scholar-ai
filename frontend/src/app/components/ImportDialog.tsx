@@ -288,8 +288,8 @@ export function ImportDialog({
 
           setFileState(fileItem.id, (current) => ({
             ...current,
-            progress: 100,
-            status: 'completed',
+            progress: 20,  // D-01: placeholder state, not real percentage
+            status: 'queued',  // D-01: queued not completed
           }));
         } catch (error) {
           const message = error instanceof Error ? error.message : '导入失败';
@@ -306,7 +306,7 @@ export function ImportDialog({
       handleOpenChange(false);
       navigate(`/knowledge-bases/${knowledgeBaseId}`);
       await onImportComplete?.();
-      toast.success(`已创建 ${files.length} 个导入任务`);
+      toast.success('已创建导入任务，将在后台处理');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导入失败');
     } finally {
@@ -613,7 +613,7 @@ export function ImportDialog({
               </div>
               <Progress
                 value={(completedCount / totalCount) * 100}
-                className="h-2 mb-3"
+                className="h-2 mb-3 animate-pulse"
               />
               <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
                 {files.map((file) => (
