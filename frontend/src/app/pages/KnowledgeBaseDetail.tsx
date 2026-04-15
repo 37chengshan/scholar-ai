@@ -19,14 +19,12 @@ import { ImportQueueList } from "../components/ImportQueueList";
 import { PaperTexture } from "../components/PaperTexture";
 import { Button } from "../components/ui/button";
 import { PaperListItem } from "../components/PaperListItem";
-import { UploadHistoryList } from "@/components/upload/UploadHistoryList";
-import { uploadHistoryApi } from "@/services/uploadHistoryApi";
+import { ImportJob, importApi } from "@/services/importApi";
 import {
   kbApi,
   KnowledgeBase,
   KBPaperListItem,
   KBSearchResult,
-  KBUploadHistoryRecord,
 } from "@/services/kbApi";
 import { toast } from "sonner";
 
@@ -43,8 +41,8 @@ export function KnowledgeBaseDetail() {
   const [loadingKB, setLoadingKB] = useState(true);
   const [papers, setPapers] = useState<KBPaperListItem[]>([]);
   const [papersLoading, setPapersLoading] = useState(false);
-  const [uploadRecords, setUploadRecords] = useState<KBUploadHistoryRecord[]>([]);
-  const [uploadHistoryLoading, setUploadHistoryLoading] = useState(false);
+  const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
+  const [importJobsLoading, setImportJobsLoading] = useState(false);
 
   const [messages, setMessages] = useState<
     { role: string; content: string; citations?: any[]; isError?: boolean }[]
@@ -104,59 +102,35 @@ export function KnowledgeBaseDetail() {
     }
   }, [kbId]);
 
-  const loadUploadHistory = useCallback(async (options?: { silent?: boolean }) => {
+  const loadImportJobs = useCallback(async (options?: { silent?: boolean }) => {
     if (!kbId) return;
-
-    if (!options?.silent) {
-      setUploadHistoryLoading(true);
-    }
+    if (!options?.silent) setImportJobsLoading(true);
     try {
-      const response = await kbApi.getUploadHistory(kbId, { limit: 20, offset: 0 });
+      const response = await importApi.list(kbId, { limit: 50 });
       if (response.success && response.data) {
-        setUploadRecords(response.data.records || []);
-      } else if (!options?.silent) {
-        toast.error("加载上传记录失败");
+        setImportJobs(response.data.jobs);
       }
-    } catch (err: any) {
-      if (!options?.silent) {
-        toast.error(err.message || "加载上传记录失败");
-      }
+    } catch (err) {
+      // silent fail - ImportQueueList at page bottom handles errors
     } finally {
-      if (!options?.silent) {
-        setUploadHistoryLoading(false);
-      }
+      if (!options?.silent) setImportJobsLoading(false);
     }
   }, [kbId]);
 
-  const handleDeleteUploadRecord = useCallback(async (id: string) => {
-    try {
-      await uploadHistoryApi.delete(id);
-      setUploadRecords((prev) => prev.filter((record) => record.id !== id));
-      toast.success("上传记录已删除");
-    } catch (err: any) {
-      toast.error(err.message || "删除上传记录失败");
-    }
-  }, []);
+  // Poll every 5 seconds for running jobs
+  useEffect(() => {
+    void loadImportJobs();
+    const interval = setInterval(() => void loadImportJobs(), 5000);
+    return () => clearInterval(interval);
+  }, [loadImportJobs]);
 
   const refreshKnowledgeBaseWorkspace = useCallback(async (options?: { silent?: boolean }) => {
     await Promise.all([
       loadKnowledgeBase(options),
       loadPapers(options),
-      loadUploadHistory(options),
+      loadImportJobs(options),  // D-02: unified polling
     ]);
-  }, [loadKnowledgeBase, loadPapers, loadUploadHistory]);
-
-  useEffect(() => {
-    if (!uploadRecords.some((record) => record.status === "PROCESSING")) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      void refreshKnowledgeBaseWorkspace({ silent: true });
-    }, 2000);
-
-    return () => window.clearInterval(timer);
-  }, [uploadRecords, refreshKnowledgeBaseWorkspace]);
+  }, [loadKnowledgeBase, loadPapers, loadImportJobs]);
 
   useEffect(() => {
     void refreshKnowledgeBaseWorkspace();
@@ -410,10 +384,9 @@ export function KnowledgeBaseDetail() {
                 <h3 className="font-serif text-xl font-semibold">知识库上传记录</h3>
                 <p className="text-sm text-zinc-500 mt-1">查看导入历史和真实处理状态</p>
               </div>
-              <UploadHistoryList
-                records={uploadRecords}
-                isLoading={uploadHistoryLoading}
-                onDelete={handleDeleteUploadRecord}
+              <ImportQueueList
+                kbId={kb.id}
+                initiallyExpanded={true}
               />
             </div>
           </TabsContent>
