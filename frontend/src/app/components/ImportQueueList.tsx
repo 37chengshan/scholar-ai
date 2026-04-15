@@ -47,12 +47,16 @@ interface ImportQueueListProps {
   kbId: string;
   onJobComplete?: (job: ImportJob) => void;
   initiallyExpanded?: boolean;
+  jobs?: ImportJob[];  // D-02: Optional - when provided, use these instead of internal polling
+  disablePolling?: boolean;  // D-02: Disable internal polling when jobs provided
 }
 
 export function ImportQueueList({
   kbId,
   onJobComplete,
   initiallyExpanded = true,
+  jobs: externalJobs,  // D-02: renamed to avoid conflict
+  disablePolling = false,  // D-02
 }: ImportQueueListProps) {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<ImportJob[]>([]);
@@ -83,10 +87,24 @@ export function ImportQueueList({
   }, [kbId]);
 
   useEffect(() => {
+    if (externalJobs) {
+      setJobs(externalJobs);
+      setLoading(false);
+      return;
+    }
+    if (disablePolling) return;
+    // Only poll when no external jobs provided
     fetchJobs();
     const interval = setInterval(fetchJobs, 5000);
     return () => clearInterval(interval);
-  }, [fetchJobs]);
+  }, [fetchJobs, externalJobs, disablePolling]);
+
+  // Sync with external jobs when they change
+  useEffect(() => {
+    if (externalJobs) {
+      setJobs(externalJobs);
+    }
+  }, [externalJobs]);
 
   // Retry failed job
   const retryJob = async (jobId: string) => {
