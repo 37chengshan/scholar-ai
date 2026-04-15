@@ -383,6 +383,7 @@ async def create_paper_from_job(job: ImportJob, db) -> str:
         venue=job.resolved_venue,
         storage_key=job.storage_key,
         status="processing",
+        knowledge_base_id=job.knowledge_base_id,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -401,18 +402,14 @@ async def create_paper_from_job(job: ImportJob, db) -> str:
 
 
 async def attach_paper_to_kb(job: ImportJob, paper_id: str, db):
-    """Attach paper to knowledge base."""
-    kb_paper = KnowledgeBasePaper(
-        id=str(uuid.uuid4()),
-        knowledge_base_id=job.knowledge_base_id,
-        paper_id=paper_id,
-        added_at=datetime.now(timezone.utc),
-    )
-    db.add(kb_paper)
-    await db.commit()
+    """Attach paper to knowledge base.
 
+    Note: Paper.knowledge_base_id is now set in create_paper_from_job().
+    KnowledgeBasePaper records are no longer created - the direct
+    paper.knowledge_base_id relationship is used instead.
+    """
     logger.info(
-        f"Paper {paper_id} attached to KB {job.knowledge_base_id}",
+        f"Paper {paper_id} uses KB {job.knowledge_base_id} (set in create_paper_from_job)",
         import_job_id=job.id,
     )
 
