@@ -10,7 +10,6 @@
  * Note: SSE streaming implemented using sseService
  */
 
-import apiClient from '@/utils/apiClient';
 import {
   sseService,
   SSEEvent,
@@ -19,14 +18,16 @@ import {
   SSEService,
 } from './sseService';
 import type { Session, Message } from '@/types';
+import type { ChatMode, ChatScope } from '@scholar-ai/types';
+import {
+  createChatApi,
+  createChatSessionsApi,
+  buildChatStreamBody,
+} from '@scholar-ai/sdk';
+import { sdkHttpClient } from './sdkHttpClient';
 
-export type ChatMode = 'auto' | 'rag' | 'agent';
-
-export interface ChatScope {
-  type: 'paper' | 'knowledge_base' | 'general';
-  paper_id?: string;
-  knowledge_base_id?: string;
-}
+const chatApiClient = createChatApi(sdkHttpClient);
+const chatSessionsApiClient = createChatSessionsApi(sdkHttpClient);
 
 /**
  * Create new chat session
@@ -37,9 +38,8 @@ export interface ChatScope {
  * @returns Created session
  */
 export async function createSession(): Promise<Session> {
-  const response = await apiClient.post<Session>('/api/v1/sessions');
-
-  return response.data;
+  const session = await chatApiClient.createSession();
+  return session as unknown as Session;
 }
 
 /**
@@ -51,9 +51,8 @@ export async function createSession(): Promise<Session> {
  * @returns Sessions list
  */
 export async function getSessions(): Promise<Session[]> {
-  const response = await apiClient.get<Session[]>('/api/v1/sessions');
-
-  return response.data;
+  const sessions = await chatApiClient.getSessions();
+  return sessions as unknown as Session[];
 }
 
 /**
@@ -66,9 +65,8 @@ export async function getSessions(): Promise<Session[]> {
  * @returns Messages list
  */
 export async function getMessages(sessionId: string): Promise<Message[]> {
-  const response = await apiClient.get<Message[]>(`/api/v1/sessions/${sessionId}/messages`);
-
-  return response.data;
+  const messages = await chatSessionsApiClient.getMessages(sessionId);
+  return messages as unknown as Message[];
 }
 
 /**
@@ -87,11 +85,8 @@ export async function sendMessage(
   sessionId: string,
   content: string
 ): Promise<Message> {
-  const response = await apiClient.post<Message>(`/api/v1/sessions/${sessionId}/messages`, {
-    content,
-  });
-
-  return response.data;
+  const message = await chatSessionsApiClient.sendMessage(sessionId, content);
+  return message as unknown as Message;
 }
 
 /**
@@ -103,7 +98,7 @@ export async function sendMessage(
  * @param sessionId - Session ID
  */
 export async function deleteSession(sessionId: string): Promise<void> {
-  await apiClient.delete(`/api/v1/sessions/${sessionId}`);
+  await chatApiClient.deleteSession(sessionId);
 }
 
 /**
@@ -120,11 +115,8 @@ export async function updateSession(
   sessionId: string,
   title: string
 ): Promise<Session> {
-  const response = await apiClient.patch<Session>(`/api/v1/sessions/${sessionId}`, {
-    title,
-  });
-
-  return response.data;
+  const session = await chatApiClient.updateSession(sessionId, title);
+  return session as unknown as Session;
 }
 
 /**
@@ -164,26 +156,8 @@ export function streamMessage(params: {
   handlers: SSEHandlers;
   streamService?: SSEService;
 }): void {
-  const {
-    sessionId,
-    message,
-    mode = 'auto',
-    scope,
-    context,
-    handlers,
-    streamService,
-  } = params;
-  const body: Record<string, unknown> = {
-    session_id: sessionId,
-    message,
-    mode,
-  };
-  if (scope) {
-    body.scope = scope;
-  }
-  if (context) {
-    body.context = context;
-  }
+  const { sessionId, message, mode = 'auto', scope, context, handlers, streamService } = params;
+  const body = buildChatStreamBody({ sessionId, message, mode, scope, context });
 
   const service = streamService ?? sseService;
   service.connect('/api/v1/chat/stream', handlers, body);

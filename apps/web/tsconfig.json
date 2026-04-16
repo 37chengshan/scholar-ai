@@ -23,7 +23,11 @@
     /* Path alias */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@scholar-ai/types": ["../../packages/types/src/index.ts"],
+      "@scholar-ai/types/*": ["../../packages/types/src/*"],
+      "@scholar-ai/sdk": ["../../packages/sdk/src/index.ts"],
+      "@scholar-ai/sdk/*": ["../../packages/sdk/src/*"]
     }
   },
   "include": ["src"],

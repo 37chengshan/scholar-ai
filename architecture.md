@@ -12,6 +12,8 @@
 
 - 系统总览：docs/architecture/system-overview.md
 - API 契约：docs/architecture/api-contract.md
+- 共享契约（types）：packages/types
+- 共享 SDK：packages/sdk
 - 资源模型：docs/domain/resources.md
 - 开发规范：docs/development/coding-standards.md
 - 文档校验：docs/development/documentation-validation.md

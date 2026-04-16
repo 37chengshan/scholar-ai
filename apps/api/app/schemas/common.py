@@ -16,6 +16,21 @@ class SuccessResponse(BaseModel, Generic[T]):
     data: T
 
 
+class ErrorDetail(BaseModel):
+    """Standard API error detail."""
+
+    code: str
+    message: str
+    details: object | None = None
+
+
+class FailureResponse(BaseModel):
+    """Standard failure envelope."""
+
+    success: bool = False
+    error: ErrorDetail
+
+
 class ListMeta(BaseModel):
     """Pagination metadata."""
 

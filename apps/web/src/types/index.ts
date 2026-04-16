@@ -5,6 +5,25 @@
  * Matches backend Prisma schema and API response formats.
  */
 
+// Shared cross-app contracts
+export type {
+  ChatMode,
+  ChatScope,
+  SessionDto,
+  MessageDto,
+  KnowledgeBaseDto,
+  KnowledgeBaseCreateDto,
+  KnowledgeBaseListParams,
+  KnowledgeBaseListResponse,
+  KnowledgeBasePaperDto,
+  KnowledgeBaseSearchHitDto,
+  ImportJobDto,
+  ImportJobStatus,
+  SourceType,
+  StreamEventEnvelope,
+  StreamEventType,
+} from '@scholar-ai/types';
+
 // Import types from sibling modules for local use
 import type {
   AgentPhase,
