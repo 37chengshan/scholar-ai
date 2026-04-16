@@ -108,7 +108,7 @@ services:
   # Unified FastAPI Backend
   backend:
     build:
-      context: ./backend-python
+      context: ./apps/api
       dockerfile: Dockerfile
     container_name: scholarai-backend
     env_file:
@@ -145,7 +145,7 @@ services:
   # Celery Worker for background PDF processing
   celery_worker:
     build:
-      context: ./backend-python
+      context: ./apps/api
       dockerfile: Dockerfile
     container_name: scholarai-celery-worker
     command: celery -A app.core.celery_config worker --loglevel=info --concurrency=8

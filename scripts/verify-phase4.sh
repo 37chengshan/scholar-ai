@@ -14,27 +14,27 @@ grep -q "camelCase" docs/architecture/api-contract.md
 echo "✓ API 契约文档关键字段存在"
 
 echo "[2/8] 检查后端通用响应壳..."
-test -f backend-python/app/schemas/common.py
-rg -n "ListResponse|ListMeta|SuccessResponse" backend-python/app/schemas/common.py -S >/dev/null
+test -f apps/api/app/schemas/common.py
+rg -n "ListResponse|ListMeta|SuccessResponse" apps/api/app/schemas/common.py -S >/dev/null
 echo "✓ common.py 响应壳存在"
 
 echo "[3/8] 检查 papers schema..."
-test -f backend-python/app/schemas/papers.py
+test -f apps/api/app/schemas/papers.py
 echo "✓ schemas/papers.py 存在"
 
 echo "[4/8] 检查前端 papers 类型与服务..."
-if [[ -f frontend/src/types/papers.ts ]]; then
-  rg -n "items|PaperListResponse" frontend/src/types/papers.ts -S >/dev/null || true
+if [[ -f apps/web/src/types/papers.ts ]]; then
+  rg -n "items|PaperListResponse" apps/web/src/types/papers.ts -S >/dev/null || true
 fi
-test -f frontend/src/services/papersApi.ts
+test -f apps/web/src/services/papersApi.ts
 echo "✓ 前端 papers 相关文件存在"
 
 echo "[5/8] 检查 papersApi 兼容逻辑不扩散..."
-compat_lines=$(rg -n "arxivId|arxiv_id|storageKey|storage_key|fileSize|file_size" frontend/src/services/papersApi.ts -S | wc -l | tr -d ' ')
+compat_lines=$(rg -n "arxivId|arxiv_id|storageKey|storage_key|fileSize|file_size" apps/web/src/services/papersApi.ts -S | wc -l | tr -d ' ')
 echo "ℹ papersApi 兼容字段匹配行数: $compat_lines"
 
 echo "[6/8] 检查 kbApi/papersApi 不返回 success 包装..."
-if rg -n "return \{ success" frontend/src/services/kbApi.ts frontend/src/services/papersApi.ts -S >/dev/null; then
+if rg -n "return \{ success" apps/web/src/services/kbApi.ts apps/web/src/services/papersApi.ts -S >/dev/null; then
   echo "✗ 发现 service 层返回 { success } 包装" >&2
   exit 1
 fi

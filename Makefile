@@ -30,9 +30,9 @@ help:
 # 安装依赖
 install:
 	@echo "📦 安装前端依赖..."
-	cd frontend && npm install
+	cd apps/web && npm install
 	@echo "📦 安装 Python 后端依赖..."
-	cd backend-python && pip install -r requirements.txt
+	cd apps/api && pip install -r requirements.txt
 	@echo "✅ 依赖安装完成"
 
 # 启动开发环境 (只启动数据库)
@@ -42,8 +42,8 @@ dev:
 	@echo "✅ 数据库已启动"
 	@echo ""
 	@echo "请手动启动其他服务:"
-	@echo "  1. cd backend-python && uvicorn app.main:app --reload --port 8000"
-	@echo "  2. cd frontend && npm run dev"
+	@echo "  1. cd apps/api && uvicorn app.main:app --reload --port 8000"
+	@echo "  2. cd apps/web && npm run dev"
 
 # Docker Compose 操作
 up:
@@ -72,7 +72,7 @@ build:
 # 数据库操作 (Python backend uses SQLAlchemy)
 db-migrate:
 	@echo "⚠️ Python backend uses SQLAlchemy auto-migration"
-	@echo "Run: cd backend-python && python -c 'from app.db.base import init_db; init_db()'"
+	@echo "Run: cd apps/api && python -c 'from app.db.base import init_db; init_db()'"
 
 db-reset:
 	@echo "⚠️ 重置数据库..."
@@ -85,8 +85,8 @@ db-reset:
 clean:
 	@echo "🧹 清理构建文件..."
 	docker-compose down -v
-	rm -rf frontend/dist
-	rm -rf frontend/node_modules
+	rm -rf apps/web/dist
+	rm -rf apps/web/node_modules
 	rm -rf node_modules
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".venv" -exec rm -rf {} + 2>/dev/null || true

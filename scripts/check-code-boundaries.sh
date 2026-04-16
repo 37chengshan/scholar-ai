@@ -12,8 +12,8 @@ fi
 # Frontend rule: pages/components should not directly call API clients.
 frontend_pattern='\bfetch\s*\(|apiClient\.|axios\.|new\s+EventSource\s*\('
 frontend_targets=(
-  "frontend/src/app/pages"
-  "frontend/src/app/components"
+  "apps/web/src/app/pages"
+  "apps/web/src/app/components"
 )
 
 for target in "${frontend_targets[@]}"; do
@@ -26,8 +26,8 @@ for target in "${frontend_targets[@]}"; do
 done
 
 # Frontend rule: avoid duplicate hook implementations across app/hooks and hooks.
-shared_hooks_dir="frontend/src/hooks"
-app_hooks_dir="frontend/src/app/hooks"
+shared_hooks_dir="apps/web/src/hooks"
+app_hooks_dir="apps/web/src/app/hooks"
 if [[ -d "$shared_hooks_dir" && -d "$app_hooks_dir" ]]; then
   while IFS= read -r shared_hook; do
     [[ -z "$shared_hook" ]] && continue
@@ -45,12 +45,12 @@ backend_pattern='await db\.(execute|add|add_all|delete|flush|refresh|commit|scal
 backend_db_files=()
 while IFS= read -r file; do
   [[ -n "$file" ]] && backend_db_files+=("$file")
-done < <(rg -n "$backend_pattern" backend-python/app/api -S | cut -d: -f1 | sort -u)
+done < <(rg -n "$backend_pattern" apps/api/app/api -S | cut -d: -f1 | sort -u)
 
 allowed_backend_files=()
 while IFS= read -r file; do
   [[ -n "$file" ]] && allowed_backend_files+=("$file")
-done < <(rg -n "^- backend-python/app/api/" "$baseline_file" -S | sed 's/^[0-9]*:- //' | sort -u)
+done < <(rg -n "^- apps/api/app/api/" "$baseline_file" -S | sed 's/^[0-9]*:- //' | sort -u)
 
 for file in "${backend_db_files[@]}"; do
   if [[ -z "$file" ]]; then

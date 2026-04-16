@@ -17,8 +17,8 @@ test -d .github/ISSUE_TEMPLATE
 echo "✓ 文件存在"
 
 echo "[2/5] 检查 apps README 内容..."
-grep -q "Current implementation lives in frontend" apps/web/README.md
-grep -q "Current implementation lives in backend-python" apps/api/README.md
+test -d apps/web/src
+test -d apps/api/app
 echo "✓ README 约束说明存在"
 
 echo "[3/5] 运行治理脚本..."

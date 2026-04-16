@@ -25,7 +25,7 @@ Deliver a stable engineering file architecture so future work stays under `schol
 
 ## Phase 3: Code Governance
 
-- Frontend: converge on `frontend/src/app` as the feature root.
+- Frontend: converge on `apps/web/src/app` as the feature root.
 - Backend: converge on grouped API packages and remove `_new` or `legacy` duplication.
   - 2026-04-16 progress: empty duplicate API directories `app/api/papers_new` and `app/api/search_new` retired.
   - Remaining backend compatibility holdout: `app/legacy/rag_service_deprecated.py`, still kept for legacy RAG test coverage.

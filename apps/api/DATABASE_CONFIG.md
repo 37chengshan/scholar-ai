@@ -5,7 +5,7 @@
 ### 1. 安装依赖
 
 ```bash
-cd backend-python
+cd apps/api
 pip install -r requirements.txt
 ```
 

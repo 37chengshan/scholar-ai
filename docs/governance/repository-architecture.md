@@ -20,10 +20,10 @@ scholar-ai/
 │   ├── plans/
 │   ├── reports/
 │   └── reference/
-├── frontend/
+├── apps/web/
 │   ├── src/app/
 │   └── src/{config,contexts,lib,mocks,services,stores,styles,test,types,utils}/
-├── backend-python/
+├── apps/api/
 │   ├── app/
 │   ├── tests/
 │   ├── alembic/
@@ -44,8 +44,8 @@ scholar-ai/
 - `docs/` replaces `doc/`.
 - `logs/` is the canonical home for archived runtime logs.
 - `docs/reports/` is the canonical home for review and delivery reports.
-- `frontend/src/app` is the canonical UI feature root.
-- `backend-python/app/api/{imports,kb,papers,search}` are the canonical grouped API areas.
+- `apps/web/src/app` is the canonical UI feature root.
+- `apps/api/app/api/{imports,kb,papers,search}` are the canonical grouped API areas.
 
 ## Cleanup Targets
 

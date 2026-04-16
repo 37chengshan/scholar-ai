@@ -8,10 +8,10 @@
 
 本文件适用于 scholar-ai 根目录下全部内容。
 
-逻辑边界映射：
+代码边界映射：
 
-- apps/web -> frontend
-- apps/api -> backend-python
+- apps/web -> 前端真实代码主路径
+- apps/api -> 后端真实代码主路径
 - infra -> docker-compose、nginx、部署脚本
 - tools -> 工具与脚本
 
@@ -32,19 +32,19 @@
 
 - 禁止新增根级 doc、tmp、legacy、_new、平行实现目录。
 - 禁止在根目录提交 *.pid、cookies.txt、临时日志、测试产物。
-- 当前阶段前端真实代码只允许落在 frontend，不允许在 apps/web 新增业务源码。
-- 当前阶段后端真实代码只允许落在 backend-python，不允许在 apps/api 新增业务源码。
+- 当前阶段前端真实代码只允许落在 apps/web，不允许在根级新增平行前端实现路径。
+- 当前阶段后端真实代码只允许落在 apps/api，不允许在根级新增平行后端实现路径。
 - 改接口必须同时检查并必要时更新：
   - docs/architecture/api-contract.md
   - docs/domain/resources.md
 - 改前端前必须检查：
   - docs/architecture/api-contract.md
-  - frontend/src/services
-  - frontend/src/app
+  - apps/web/src/services
+  - apps/web/src/app
 - 改后端前必须检查：
-  - backend-python/app/api
-  - backend-python/app/services
-  - backend-python/app/models
+  - apps/api/app/api
+  - apps/api/app/services
+  - apps/api/app/models
   - docs/architecture/api-contract.md
 - 新功能必须落到既定目录，不允许再开第二套实现路径。
 
@@ -58,8 +58,8 @@
 
 ## Verification
 
-- 前端改动：cd frontend && npm run type-check
-- 后端改动：cd backend-python && pytest -q tests/unit/test_services.py --maxfail=1
+- 前端改动：cd apps/web && npm run type-check
+- 后端改动：cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
 - 结构或流程改动：
   - bash scripts/check-doc-governance.sh
   - bash scripts/check-structure-boundaries.sh
@@ -72,4 +72,4 @@
 ## Open Questions
 
 - apps 与 packages 何时开始实质承接新代码，而非仅逻辑映射。
-- 是否引入统一 SDK 层承接 frontend 与 backend-python 的共享契约。
+- 是否引入统一 SDK 层承接 apps/web 与 apps/api 的共享契约。

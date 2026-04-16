@@ -43,7 +43,7 @@ cp .env.example .env
 #### 3. 启动 Python AI 服务
 
 ```bash
-cd backend-python
+cd apps/api
 
 # 创建虚拟环境
 python -m venv venv
@@ -59,7 +59,7 @@ uvicorn app.main:app --reload --port 8000
 #### 4. 启动前端
 
 ```bash
-cd frontend
+cd apps/web
 
 # 安装依赖
 npm install
@@ -76,11 +76,11 @@ scholar-ai/
 ├── .env                     # 环境变量
 ├── papers/                  # PDF 文件存储目录
 │
-├── frontend/                # React + Vite 前端
+├── apps/web/                # React + Vite 前端
 │   ├── src/
 │   └── ...
 │
-└── backend-python/          # Python AI 服务 (FastAPI)
+└── apps/api/          # Python AI 服务 (FastAPI)
     ├── app/
     │   ├── api/            # API 路由
     │   ├── core/           # 核心配置

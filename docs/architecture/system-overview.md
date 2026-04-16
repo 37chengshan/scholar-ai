@@ -6,12 +6,12 @@
 
 ## Scope
 
-覆盖 frontend、backend-python、异步任务、SSE 流式输出及外部运行时依赖。
+覆盖 apps/web、apps/api、异步任务、SSE 流式输出及外部运行时依赖。
 
-逻辑对齐（当前阶段不做物理迁移）：
+当前仓库主路径：
 
-- apps/web -> frontend
-- apps/api -> backend-python
+- apps/web -> Web 前端实现
+- apps/api -> API 后端实现
 - infra -> docker-compose、nginx、部署脚本
 - tools -> scripts 与开发辅助工具
 
@@ -26,16 +26,16 @@
 
 子系统清单：
 
-- Web 客户端：frontend（Vite + React）
-- API 后端：backend-python（FastAPI）
-- 异步任务：backend-python/app/tasks 与 backend-python/app/workers
+- Web 客户端：apps/web（Vite + React）
+- API 后端：apps/api（FastAPI）
+- 异步任务：apps/api/app/tasks 与 apps/api/app/workers
 - 持久化与检索：PostgreSQL/PGVector、Redis、Neo4j、Milvus
 
 前后端边界：
 
 - 前端页面只消费 service/hooks，不直接拼接 API 调用。
-- backend-python/app/api 只做协议与编排入口，不写重业务逻辑。
-- backend-python/app/services 承担业务编排，数据访问和模型调用在对应基础层完成。
+- apps/api/app/api 只做协议与编排入口，不写重业务逻辑。
+- apps/api/app/services 承担业务编排，数据访问和模型调用在对应基础层完成。
 
 数据流：
 

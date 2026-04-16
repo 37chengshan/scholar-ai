@@ -33,16 +33,16 @@ jobs:
       - name: Conditional frontend validation
         run: |
           set -euo pipefail
-          if [[ -d frontend ]]; then
-            if [[ ! -f frontend/package.json ]]; then
-              echo "frontend/package.json missing while frontend directory exists" >&2
+          if [[ -d apps/web ]]; then
+            if [[ ! -f apps/web/package.json ]]; then
+              echo "apps/web/package.json missing while apps/web directory exists" >&2
               exit 1
             fi
-            cd frontend
+            cd apps/web
             npm ci
             npm run type-check
           else
-            echo "skip frontend type-check (frontend directory not found)"
+            echo "skip frontend type-check (apps/web directory not found)"
           fi
 
   backend-pytest-smoke:
@@ -59,15 +59,15 @@ jobs:
       - name: Conditional backend smoke tests
         run: |
           set -euo pipefail
-          if [[ -d backend-python ]]; then
-            if [[ ! -f backend-python/pytest.ini ]]; then
-              echo "backend-python/pytest.ini missing while backend-python directory exists" >&2
+          if [[ -d apps/api ]]; then
+            if [[ ! -f apps/api/pytest.ini ]]; then
+              echo "apps/api/pytest.ini missing while apps/api directory exists" >&2
               exit 1
             fi
-            cd backend-python
+            cd apps/api
             python -m pip install --upgrade pip
             pip install -r requirements.txt
             pytest -q tests/unit/test_services.py --maxfail=1
           else
-            echo "skip backend pytest smoke (backend-python directory not found)"
+            echo "skip backend pytest smoke (apps/api directory not found)"
           fi

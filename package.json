@@ -9,7 +9,7 @@
     "check:docs": "bash scripts/check-doc-governance.sh",
     "check:boundaries": "bash scripts/check-structure-boundaries.sh",
     "check:governance": "bash scripts/check-governance.sh",
-    "type-check:web": "cd frontend && npm run type-check",
-    "test:api:smoke": "cd backend-python && pytest -q tests/unit/test_services.py --maxfail=1"
+    "type-check:web": "cd apps/web && npm run type-check",
+    "test:api:smoke": "cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1"
   }
 }

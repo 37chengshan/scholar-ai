@@ -1,6 +1,6 @@
 # Schema Inventory
 
-> **来源：** SQLAlchemy ORM 模型（`backend-python/app/models/`）  
+> **来源：** SQLAlchemy ORM 模型（`apps/api/app/models/`）  
 > **用途：** Alembic 迁移编写的唯一基准，评审基线  
 > **生成时间：** 2026-04-14  
 > **冻结点：** 迁移编码前必须以此文档为准，ORM 模型变更需同步更新本文档  

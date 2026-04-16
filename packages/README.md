@@ -11,7 +11,7 @@ Planned package scopes:
 ## Current Phase Rule
 
 - packages/* does not host active business implementation in current milestone.
-- frontend and backend-python remain the only active source paths.
+- apps/web and apps/api remain the only active source paths.
 
 ## Migration Criteria
 

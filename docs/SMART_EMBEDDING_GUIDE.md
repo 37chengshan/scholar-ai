@@ -87,7 +87,7 @@ embeddings = service.generate_embeddings_batch(papers)
 ## 文件结构
 
 ```
-backend-python/app/core/
+apps/api/app/core/
 ├── embedding_service.py              # 原始 Sentence Transformers
 ├── bge_embedding_service.py          # BGE-M3 (多语言)
 ├── specter2_embedding_service.py     # SPECTER 2 (英文) + Smart
