@@ -83,7 +83,15 @@ jobs:
         run: |
           set -euo pipefail
           PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test -c "SELECT 1;"
-          PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test -c "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN CREATE ROLE root LOGIN PASSWORD 'test_password'; END IF; END $$;"
+          PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN
+              CREATE ROLE root LOGIN PASSWORD 'test_password';
+            END IF;
+          END
+          $$;
+          SQL
           alembic upgrade head
 
       - name: Create test environment file
