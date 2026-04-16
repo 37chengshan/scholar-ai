@@ -10,14 +10,14 @@ import { motion } from 'motion/react';
 import { Activity, TrendingUp, Zap, DollarSign } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
-import apiClient from '@/utils/apiClient';
+import * as usersApi from '@/services/usersApi';
 
 interface TokenUsageData {
-  total_tokens: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_cost_cny: number;
-  request_count: number;
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalCostCny: number;
+  requestCount: number;
   daily_breakdown: Array<{
     date: string;
     tokens: number;
@@ -52,9 +52,12 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
 
   const fetchTokenUsage = async () => {
     try {
-      const response = await apiClient.get<TokenUsageData>('/api/v1/users/me/token-usage/monthly');
+      const monthlyUsage = await usersApi.getMonthlyTokenUsage();
 
-        setUsage(response.data);
+      setUsage({
+        ...monthlyUsage,
+        daily_breakdown: monthlyUsage.dailyBreakdown,
+      });
     } catch (error) {
       console.error('Failed to fetch token usage:', error);
     } finally {
@@ -117,7 +120,7 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
             </span>
           </div>
           <div className="text-2xl font-bold text-foreground">
-            {formatNumber(usage.total_tokens)}
+            {formatNumber(usage.totalTokens)}
           </div>
         </div>
 
@@ -130,7 +133,7 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
             </span>
           </div>
           <div className="text-2xl font-bold text-green-600">
-            {formatCurrency(usage.total_cost_cny)}
+            {formatCurrency(usage.totalCostCny)}
           </div>
         </div>
       </div>
@@ -139,15 +142,15 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
       <div className="space-y-2 mb-4">
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">{t.inputTokens}</span>
-          <span className="font-mono font-bold">{formatNumber(usage.input_tokens)}</span>
+          <span className="font-mono font-bold">{formatNumber(usage.inputTokens)}</span>
         </div>
         <div className="w-full bg-muted rounded-full h-1.5">
           <div
             className="bg-primary h-1.5 rounded-full"
             style={{
               width: `${
-                usage.total_tokens > 0
-                  ? (usage.input_tokens / usage.total_tokens) * 100
+                usage.totalTokens > 0
+                  ? (usage.inputTokens / usage.totalTokens) * 100
                   : 0
               }%`,
             }}
@@ -156,15 +159,15 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
 
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">{t.outputTokens}</span>
-          <span className="font-mono font-bold">{formatNumber(usage.output_tokens)}</span>
+          <span className="font-mono font-bold">{formatNumber(usage.outputTokens)}</span>
         </div>
         <div className="w-full bg-muted rounded-full h-1.5">
           <div
             className="bg-green-500 h-1.5 rounded-full"
             style={{
               width: `${
-                usage.total_tokens > 0
-                  ? (usage.output_tokens / usage.total_tokens) * 100
+                usage.totalTokens > 0
+                  ? (usage.outputTokens / usage.totalTokens) * 100
                   : 0
               }%`,
             }}
@@ -173,7 +176,7 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
 
         <div className="flex items-center justify-between text-xs pt-2 border-t border-border/50">
           <span className="text-muted-foreground">{t.requests}</span>
-          <span className="font-mono font-bold">{usage.request_count}</span>
+          <span className="font-mono font-bold">{usage.requestCount}</span>
         </div>
       </div>
 

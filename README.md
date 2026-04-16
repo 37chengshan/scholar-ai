@@ -1,143 +1,97 @@
-# ScholarAI 智读
+# ScholarAI
 
-> 让研究人员在 5 分钟内掌握一篇论文的精华，在 30 分钟内完成深度理解。
+ScholarAI 是面向学术阅读与知识工作流的全栈 AI 工程仓库，目标是形成可长期迭代维护的稳定架构。
 
-[![Status](https://img.shields.io/badge/状态-开发中-yellow)]()
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)]()
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)]()
-[![License](https://img.shields.io/badge/License-MIT-green)]()
+## Purpose
 
-ScholarAI 智读是一个学术论文智能阅读系统，帮助研究人员高效阅读、理解和分析学术论文。
+- 固定仓库边界，减少目录漂移和重复实现。
+- 用统一契约连接前端、后端、异步任务与测试流程。
+- 让文档、流程、CI 与代码结构一起演进。
 
-## 核心功能
+## Scope
 
-| 功能 | 状态 | 描述 |
-|------|:----:|------|
-| PDF 智能解析 | ✅ | 上传 PDF 自动提取结构、图表、IMRaD 章节 |
-| RAG 问答 | ✅ | 基于论文内容的智能问答，支持引用溯源 |
-| 知识图谱 | ✅ | 实体关系提取与 PageRank 分析（Neo4j） |
-| 论文对比 | ✅ | 多论文横向对比分析 |
-| 智能笔记 | ✅ | 富文本编辑器 + AI 辅助生成 |
-| 知识库管理 | ✅ | 论文分组、标签、导入去重 |
-| AI 对话 | ✅ | SSE 流式对话，支持多轮上下文 |
-| Semantic Scholar | ✅ | 外部论文搜索与元数据抓取 |
-| 多模态检索 | 🔄 | 图表/表格联合检索（Milvus 集成中） |
-| 阅读进度 | ✅ | 论文阅读位置跟踪与统计 |
-| 多 LLM 支持 | ✅ | LiteLLM 路由，支持 OpenAI / Claude / 智谱等 |
+- 本仓库当前采用逻辑对齐，不做 frontend 与 backend-python 的物理迁移。
+- 当前阶段唯一真实代码主路径：frontend 与 backend-python。
+- 逻辑映射如下：
+	- apps/web -> frontend
+	- apps/api -> backend-python
+	- infra -> docker-compose、nginx、部署脚本
+	- tools -> 打包与开发辅助工具
 
-## 技术栈
+## Source of Truth
 
-<table>
-<tr>
-<td width="50%">
+- 架构总览：docs/architecture/system-overview.md
+- API 契约：docs/architecture/api-contract.md
+- 资源域模型：docs/domain/resources.md
+- 开发规范：docs/development/coding-standards.md
+- 文档校验：docs/development/documentation-validation.md
+- PR 流程：docs/development/pr-process.md
+- 测试策略：docs/development/testing-strategy.md
+- 代码边界基线：docs/governance/code-boundary-baseline.md
+- Harness 治理：docs/governance/harness-engineering-playbook.md
+- 仓库协同地图：AGENTS.md
+- 架构导航入口：architecture.md
 
-**前端**
-- React 18 + TypeScript
-- Vite + Tailwind CSS v4
-- Radix UI + Material UI
-- Zustand + React Query
-- Tiptap 富文本编辑器
-- KaTeX / Mermaid / Recharts
+## Rules
 
-</td>
-<td width="50%">
+- 根目录只保留长期核心文件与核心目录，不放 *.pid、cookies.txt、临时日志和测试产物。
+- 新文档统一写入 docs，不再新增 doc、tmp、legacy、_new 平行目录。
+- apps/web 与 apps/api 当前只允许保留映射说明文档，不承接业务源码。
+- 前端页面不直接请求 API，必须通过 service 或 hooks。
+- 后端 router 不写业务编排，业务逻辑集中在 service 层。
+- 新接口必须符合统一响应格式与命名规范。
 
-**后端**
-- Python FastAPI（统一后端）
-- SQLAlchemy + PGVector
-- Neo4j 图数据库
-- Redis 缓存 + Celery 异步任务
-- Milvus 多模态向量存储
-- BGE-M3 / SPECTER2 Embedding
-- LiteLLM 多模型路由
+## Required Updates
 
-</td>
-</tr>
-</table>
+- 变更系统边界：同时更新 docs/architecture/system-overview.md 与 architecture.md。
+- 变更 API 形态：同时更新 docs/architecture/api-contract.md。
+- 变更资源生命周期：同时更新 docs/domain/resources.md。
+- 变更流程与规范：同时更新 docs/development 下对应文档。
 
-## 快速开始
+## Verification
 
-### 前置要求
+前置依赖：
 
-- Docker & Docker Compose
 - Node.js 20+
 - Python 3.11+
+- Docker / Docker Compose
 
-### 1. 克隆项目
-
-```bash
-git clone https://github.com/37chengshan/scholar-ai.git
-cd scholar-ai
-```
-
-### 2. 配置环境变量
+本地启动：
 
 ```bash
-cp .env.example .env
-# 编辑 .env，填入数据库密码、API Key 等
+make dev
+cd backend-python && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000
+cd frontend && npm install && npm run dev
 ```
 
-### 3. 启动服务
-
-**Docker 一键部署：**
+常用命令：
 
 ```bash
-docker-compose up -d
+bash scripts/check-doc-governance.sh
+bash scripts/check-structure-boundaries.sh
+bash scripts/check-code-boundaries.sh
+bash scripts/check-governance.sh
+cd frontend && npm run type-check
+cd frontend && npm run test:run
+cd backend-python && pytest
 ```
 
-**本地开发：**
+开发/测试/部署入口：
 
-```bash
-# 启动数据库
-docker-compose up -d postgres redis neo4j milvus-standalone
+- 开发入口：frontend 与 backend-python
+- 测试入口：tests 与 frontend/e2e
+- 部署入口：deploy-cloud.sh、deploy-cloud-fixed.sh、docker-compose.yml
 
-# 启动后端
-cd backend-python
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+目录说明：
 
-# 启动前端
-cd frontend
-npm install
-npm run dev
-```
+- frontend: Web 前端应用
+- backend-python: API 与异步任务后端
+- docs: 唯一文档系统
+- scripts: 运维与开发脚本
+- tests: 跨模块测试与评估
+- infra: 基础设施逻辑聚合入口
 
-服务地址：
-- 前端：http://localhost:3000
-- 后端 API：http://localhost:8000
-- API 文档：http://localhost:8000/docs
+## Open Questions
 
-## 项目结构
-
-```
-scholar-ai/
-├── backend-python/       # FastAPI 统一后端
-│   ├── app/
-│   │   ├── api/          # REST API 路由
-│   │   ├── core/         # 核心服务（RAG、图谱、嵌入）
-│   │   ├── models/       # 数据模型
-│   │   ├── services/     # 业务逻辑
-│   │   ├── workers/      # Celery 异步任务
-│   │   └── middleware/   # 认证、日志、错误处理
-│   └── tests/            # 测试
-├── frontend/             # React 前端
-│   └── src/
-│       ├── app/pages/    # 页面组件
-│       ├── components/   # 通用组件
-│       ├── services/     # API 调用
-│       ├── stores/       # Zustand 状态管理
-│       └── hooks/        # 自定义 Hooks
-├── docker-compose.yml    # 服务编排
-└── Makefile              # 开发命令
-```
-
-## 项目状态
-
-> **本项目正在积极开发中，尚未发布正式版本。**
->
-> 部分功能已可用，部分功能仍在开发中。欢迎 Star 关注进展，但暂不建议用于生产环境。
-
-## License
-
-MIT
+- frontend、backend-python 的物理迁移时机是否绑定下一个里程碑。
+- packages/ui、packages/types 的首批公共资产拆分边界是否先从新功能开始。

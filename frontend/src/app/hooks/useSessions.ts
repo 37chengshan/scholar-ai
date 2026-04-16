@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import apiClient from '../../utils/apiClient';
+import * as sessionsApi from '@/services/sessionsApi';
 
 export interface ChatSession {
   id: string;
@@ -61,12 +61,11 @@ export function useSessions(): UseSessionsReturn {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get('/api/v1/sessions?limit=50&status=active');
-      const data = response.data;
-      setSessions(data.sessions || []);
+      const data = await sessionsApi.listSessions(50, 'active');
+      setSessions(data || []);
       
-      if (data.sessions && data.sessions.length > 0) {
-        const lastSession = data.sessions[0];
+      if (data && data.length > 0) {
+        const lastSession = data[0];
         setCurrentSession(lastSession);
       }
     } catch (err) {
@@ -85,9 +84,8 @@ export function useSessions(): UseSessionsReturn {
       return;
     }
     try {
-      const response = await apiClient.get(`/api/v1/sessions/${sessionId}/messages?limit=100`);
-      const data = response.data;
-      const msgs = (data.messages || []).reverse();
+      const data = await sessionsApi.getSessionMessages(sessionId, 100);
+      const msgs = (data || []).reverse();
       setMessages(msgs);
     } catch (err) {
       setMessages([]); // No messages yet, that's OK
@@ -97,12 +95,7 @@ export function useSessions(): UseSessionsReturn {
   const createSession = useCallback(async (title?: string): Promise<ChatSession | null> => {
     setError(null);
     try {
-      const response = await apiClient.post('/api/v1/sessions', {
-        title: title || '新对话',
-        status: 'active'
-      });
-      
-      const session = response.data;
+      const session = await sessionsApi.createSession(title || '新对话');
       setSessions(prev => [session, ...prev]);
       setCurrentSession(session);
       setMessages([]); // New session has no messages
@@ -123,7 +116,7 @@ export function useSessions(): UseSessionsReturn {
 
   const deleteSession = useCallback(async (sessionId: string): Promise<boolean> => {
     try {
-      await apiClient.delete(`/api/v1/sessions/${sessionId}`);
+      await sessionsApi.deleteSession(sessionId);
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       if (currentSession?.id === sessionId) {
         setCurrentSession(null);
@@ -151,8 +144,10 @@ export function useSessions(): UseSessionsReturn {
     if (!currentSession) return;
     
     try {
-      const response = await apiClient.patch(`/api/v1/sessions/${currentSession.id}`, updates);
-      const updated = response.data;
+      const updated = await sessionsApi.updateSession(currentSession.id, {
+        title: updates.title,
+        status: updates.status,
+      });
       setCurrentSession(updated);
       setSessions(prev => prev.map(s => s.id === updated.id ? updated : s));
     } catch (err) {

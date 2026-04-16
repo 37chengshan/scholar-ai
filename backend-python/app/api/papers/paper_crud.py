@@ -11,19 +11,16 @@ Endpoints:
 - DELETE /api/v1/papers/{id} - Delete paper
 """
 
-import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, or_, text
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import Paper, ProcessingTask, PaperChunk, UploadHistory, ReadingProgress
 from app.services.auth_service import User
+from app.services.paper_service import PaperService
 from app.utils.problem_detail import ErrorTypes
-from app.config import settings
 
 from .paper_shared import (
     PaperListResponse,
@@ -32,9 +29,6 @@ from .paper_shared import (
     create_error_response,
     format_paper_response,
     datetime,
-    timezone,
-    uuid4,
-    logger,
 )
 
 
@@ -56,7 +50,6 @@ class PaperUpdateRequest(BaseModel):
 
 @router.get("/", response_model=PaperListResponse)
 async def list_papers(
-    request: Request,
     page: int = 1,
     limit: int = 20,
     starred: Optional[str] = None,
@@ -67,86 +60,62 @@ async def list_papers(
     db=Depends(get_db),
 ):
     """List papers with pagination and filters."""
-    instance = str(request.url.path)
     user_id = current_user.id
 
     page = max(1, page)
     limit = min(100, max(1, limit))
-    offset = (page - 1) * limit
 
-    query = (
-        select(Paper, ProcessingTask)
-        .outerjoin(ProcessingTask, Paper.id == ProcessingTask.paper_id)
-        .where(Paper.user_id == user_id)
-    )
-
+    starred_bool: Optional[bool] = None
     if starred is not None:
         if starred.lower() == "true":
-            query = query.where(Paper.starred == True)
+            starred_bool = True
         elif starred.lower() == "false":
-            query = query.where(Paper.starred == False)
+            starred_bool = False
 
+    date_from_dt = None
     if dateFrom:
         try:
             date_from_dt = datetime.fromisoformat(dateFrom)
-            query = query.where(Paper.created_at >= date_from_dt)
         except ValueError:
             pass
 
+    date_to_dt = None
     if dateTo:
         try:
             date_to_dt = datetime.fromisoformat(dateTo)
-            query = query.where(Paper.created_at <= date_to_dt)
         except ValueError:
             pass
 
-    if readStatus == "in-progress":
-        query = query.join(ReadingProgress, Paper.id == ReadingProgress.paper_id)
-        query = query.where(ReadingProgress.user_id == user_id)
-        query = query.where(ReadingProgress.current_page > 0)
-        query = query.where(
-            ReadingProgress.current_page
-            < func.coalesce(ReadingProgress.total_pages, 999999)
-        )
-    elif readStatus == "completed":
-        query = query.join(ReadingProgress, Paper.id == ReadingProgress.paper_id)
-        query = query.where(ReadingProgress.user_id == user_id)
-        query = query.where(
-            ReadingProgress.current_page
-            >= func.coalesce(ReadingProgress.total_pages, 0)
-        )
-    elif readStatus == "unread":
-        progress_subquery = (
-            select(ReadingProgress.paper_id)
-            .where(ReadingProgress.user_id == user_id)
-            .distinct()
-        )
-        query = query.where(Paper.id.not_in(progress_subquery))
-
-    query = query.order_by(Paper.created_at.desc())
-    query = query.offset(offset).limit(limit)
-
-    result = await db.execute(query)
-    rows = result.all()
+    result = await PaperService.list_papers_for_api(
+        db,
+        user_id,
+        page=page,
+        limit=limit,
+        starred=starred_bool,
+        read_status=readStatus,
+        date_from=date_from_dt,
+        date_to=date_to_dt,
+    )
 
     formatted_papers = []
-    for paper, task in rows:
-        paper_dict = format_paper_response(paper, task)
+    for paper in result["papers"]:
+        paper_dict = format_paper_response(paper, result["task_map"].get(paper.id))
         formatted_papers.append(paper_dict)
-
-    count_query = select(func.count(Paper.id)).where(Paper.user_id == user_id)
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-    total_pages = (total + limit - 1) // limit
 
     return PaperListResponse(
         success=True,
         data={
             "papers": formatted_papers,
-            "total": total,
-            "page": page,
-            "limit": limit,
-            "totalPages": total_pages,
+            "items": formatted_papers,
+            "total": result["total"],
+            "page": result["page"],
+            "limit": result["limit"],
+            "totalPages": result["total_pages"],
+            "meta": {
+                "limit": result["limit"],
+                "offset": (result["page"] - 1) * result["limit"],
+                "total": result["total"],
+            },
         },
     )
 
@@ -175,59 +144,32 @@ async def search_papers(
 
     page = max(1, page)
     limit = min(100, max(1, limit))
-    offset = (page - 1) * limit
-
-    search_term = f"%{q.lower()}%"
-    escaped_q = q.replace("'", "''")
-
-    query = (
-        select(Paper, ProcessingTask)
-        .outerjoin(ProcessingTask, Paper.id == ProcessingTask.paper_id)
-        .where(Paper.user_id == user_id)
-        .where(
-            or_(
-                func.lower(Paper.title).ilike(search_term),
-                func.lower(Paper.abstract).ilike(search_term),
-                text(
-                    f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{escaped_q}%'))"
-                ),
-            )
-        )
-        .order_by(Paper.created_at.desc())
-        .offset(offset)
-        .limit(limit)
+    result = await PaperService.search_papers_for_api(
+        db,
+        user_id,
+        query_text=q,
+        page=page,
+        limit=limit,
     )
 
-    result = await db.execute(query)
-    rows = result.all()
-
-    formatted_papers = [format_paper_response(p, t) for p, t in rows]
-
-    count_query = (
-        select(func.count(Paper.id))
-        .where(Paper.user_id == user_id)
-        .where(
-            or_(
-                func.lower(Paper.title).ilike(search_term),
-                func.lower(Paper.abstract).ilike(search_term),
-                text(
-                    f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{escaped_q}%'))"
-                ),
-            )
-        )
-    )
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-    total_pages = (total + limit - 1) // limit
+    formatted_papers = [
+        format_paper_response(p, result["task_map"].get(p.id)) for p in result["papers"]
+    ]
 
     return PaperListResponse(
         success=True,
         data={
             "papers": formatted_papers,
-            "total": total,
-            "page": page,
-            "limit": limit,
-            "totalPages": total_pages,
+            "items": formatted_papers,
+            "total": result["total"],
+            "page": result["page"],
+            "limit": result["limit"],
+            "totalPages": result["total_pages"],
+            "meta": {
+                "limit": result["limit"],
+                "offset": (result["page"] - 1) * result["limit"],
+                "total": result["total"],
+            },
             "query": q,
         },
     )
@@ -266,16 +208,14 @@ async def create_paper(
             instance=instance,
         )
 
-    title = filename.replace(".pdf", "").replace(".PDF", "")
-
-    existing_query = select(Paper).where(
-        Paper.user_id == user_id,
-        Paper.title == title,
-    )
-    existing_result = await db.execute(existing_query)
-    existing = existing_result.scalar_one_or_none()
-
-    if existing:
+    try:
+        create_data = await PaperService.create_paper_for_api(
+            db,
+            user_id,
+            filename=filename,
+        )
+    except ValueError as exc:
+        title = str(exc).replace("Duplicate paper title: ", "")
         raise create_error_response(
             status_code=status.HTTP_409_CONFLICT,
             error_type=ErrorTypes.CONFLICT,
@@ -284,45 +224,9 @@ async def create_paper(
             instance=instance,
         )
 
-    storage_key = f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid4()}.pdf"
-    paper_id = str(uuid4())
-    now = datetime.now(timezone.utc)
-
-    paper = Paper(
-        id=paper_id,
-        title=title,
-        authors=[],
-        status="pending",
-        user_id=user_id,
-        storage_key=storage_key,
-        keywords=[],
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(paper)
-
-    upload_history_id = str(uuid4())
-    upload_history = UploadHistory(
-        id=upload_history_id,
-        user_id=user_id,
-        filename=filename,
-        status="PROCESSING",
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(upload_history)
-
-    use_local_storage = settings.USE_LOCAL_STORAGE
-    upload_url = f"/api/v1/papers/upload/local/{storage_key}"
-
     return PaperCreateResponse(
         success=True,
-        data={
-            "paperId": paper_id,
-            "uploadUrl": upload_url,
-            "storageKey": storage_key,
-            "expiresIn": 3600,
-        },
+        data=create_data,
     )
 
 
@@ -338,17 +242,14 @@ async def get_paper(
     instance = str(request.url.path)
     user_id = current_user.id
 
-    query = (
-        select(Paper, ProcessingTask)
-        .outerjoin(ProcessingTask, Paper.id == ProcessingTask.paper_id)
-        .where(Paper.id == paper_id)
-        .where(Paper.user_id == user_id)
-    )
-
-    result = await db.execute(query)
-    row = result.one_or_none()
-
-    if not row:
+    try:
+        result = await PaperService.get_paper_for_api(
+            db,
+            user_id,
+            paper_id=paper_id,
+            include_chunks=bool(includeChunks),
+        )
+    except ValueError:
         raise create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -357,18 +258,9 @@ async def get_paper(
             instance=instance,
         )
 
-    paper, task = row
-    paper_dict = format_paper_response(paper, task)
+    paper_dict = format_paper_response(result["paper"], result["task"])
 
     if includeChunks:
-        chunks_query = (
-            select(PaperChunk)
-            .where(PaperChunk.paper_id == paper_id)
-            .order_by(PaperChunk.page_start, PaperChunk.id)
-        )
-        chunks_result = await db.execute(chunks_query)
-        chunks = chunks_result.scalars().all()
-
         paper_dict["chunks"] = [
             {
                 "id": c.id,
@@ -379,7 +271,7 @@ async def get_paper(
                 "is_table": c.is_table,
                 "is_figure": c.is_figure,
             }
-            for c in chunks
+            for c in result["chunks"]
         ]
 
     return {"success": True, "data": paper_dict}
@@ -397,14 +289,14 @@ async def update_paper(
     instance = str(request.url.path)
     user_id = current_user.id
 
-    existing_query = select(Paper).where(
-        Paper.id == paper_id,
-        Paper.user_id == user_id,
-    )
-    existing_result = await db.execute(existing_query)
-    paper = existing_result.scalar_one_or_none()
-
-    if not paper:
+    try:
+        paper = await PaperService.update_paper_for_api(
+            db,
+            user_id,
+            paper_id=paper_id,
+            updates=body.model_dump(exclude_unset=True),
+        )
+    except ValueError:
         raise create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -412,26 +304,6 @@ async def update_paper(
             detail="Paper not found",
             instance=instance,
         )
-
-    if body.title is not None:
-        paper.title = body.title
-    if body.authors is not None:
-        paper.authors = body.authors
-    if body.year is not None:
-        paper.year = body.year
-    if body.abstract is not None:
-        paper.abstract = body.abstract
-    if body.keywords is not None:
-        paper.keywords = body.keywords
-    if body.starred is not None:
-        paper.starred = body.starred
-    if body.projectId is not None:
-        paper.project_id = body.projectId
-    if body.readingNotes is not None:
-        paper.reading_notes = body.readingNotes
-
-    paper.updated_at = datetime.now(timezone.utc)
-    await db.refresh(paper)
 
     return {"success": True, "data": format_paper_response(paper)}
 
@@ -447,14 +319,13 @@ async def delete_paper(
     instance = str(request.url.path)
     user_id = current_user.id
 
-    paper_query = select(Paper).where(
-        Paper.id == paper_id,
-        Paper.user_id == user_id,
-    )
-    paper_result = await db.execute(paper_query)
-    paper = paper_result.scalar_one_or_none()
-
-    if not paper:
+    try:
+        await PaperService.delete_paper_for_api(
+            db,
+            user_id,
+            paper_id=paper_id,
+        )
+    except ValueError:
         raise create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -462,14 +333,6 @@ async def delete_paper(
             detail="Paper not found",
             instance=instance,
         )
-
-    storage_key = paper.storage_key
-    if storage_key:
-        file_path = f"{settings.LOCAL_STORAGE_PATH}/{storage_key}"
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-    await db.delete(paper)
 
     return {"success": True, "data": {"message": "Paper deleted successfully"}}
 
@@ -487,38 +350,21 @@ class BatchStarRequest(BaseModel):
 
 @router.post("/batch-delete")
 async def batch_delete_papers(
-    request: Request,
     body: BatchDeleteRequest,
     current_user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
     """Delete multiple papers in a single request."""
-    instance = str(request.url.path)
     user_id = current_user.id
 
     paper_ids = body.paper_ids
     requested_count = len(paper_ids)
 
-    # Verify ownership and delete
-    deleted_count = 0
-    for paper_id in paper_ids:
-        paper_query = select(Paper).where(
-            Paper.id == paper_id,
-            Paper.user_id == user_id,
-        )
-        paper_result = await db.execute(paper_query)
-        paper = paper_result.scalar_one_or_none()
-
-        if paper:
-            # Delete associated file if exists
-            storage_key = paper.storage_key
-            if storage_key:
-                file_path = f"{settings.LOCAL_STORAGE_PATH}/{storage_key}"
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-
-            await db.delete(paper)
-            deleted_count += 1
+    deleted_count = await PaperService.batch_delete_for_api(
+        db,
+        user_id,
+        paper_ids=paper_ids,
+    )
 
     return {
         "success": True,
@@ -544,28 +390,20 @@ async def batch_star_papers(
     starred = body.starred
     requested_count = len(paper_ids)
 
-    # Update all papers
-    for paper_id in paper_ids:
-        paper_query = select(Paper).where(
-            Paper.id == paper_id,
-            Paper.user_id == user_id,
-        )
-        paper_result = await db.execute(paper_query)
-        paper = paper_result.scalar_one_or_none()
-
-        if paper:
-            paper.starred = starred
-            paper.updated_at = datetime.now(timezone.utc)
-
-    await db.commit()
+    updated_count = await PaperService.batch_star_for_api(
+        db,
+        user_id,
+        paper_ids=paper_ids,
+        starred=starred,
+    )
 
     return {
         "success": True,
         "data": {
-            "updatedCount": requested_count,
+            "updatedCount": updated_count,
             "requestedCount": requested_count,
             "starred": starred,
-            "message": f"Successfully updated starred status for {requested_count} papers",
+            "message": f"Successfully updated starred status for {updated_count} papers",
         },
     }
 

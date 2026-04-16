@@ -17,7 +17,7 @@
 import { useState, useCallback } from 'react';
 import * as uploadApi from '@/services/uploadApi';
 import * as papersApi from '@/services/papersApi';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 
 export interface UploadFile {
   file: File;

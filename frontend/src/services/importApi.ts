@@ -10,8 +10,8 @@
  * - Upload File: PUT /api/v1/import-jobs/{jobId}/file
  * - Get: GET /api/v1/import-jobs/{jobId}
  * - List: GET /api/v1/import-jobs?knowledgeBaseId={kbId}
- * - Resolve: POST /api/v1/import-sources/resolve
- * - Resolve Batch: POST /api/v1/import-sources/resolve-batch
+ * - Resolve: POST /api/v1/imports/sources/resolve
+ * - Resolve Batch: POST /api/v1/imports/sources/resolve-batch
  * - Batch Import: POST /api/v1/knowledge-bases/{kbId}/imports/batch
  * - Retry: POST /api/v1/import-jobs/{jobId}/retry
  * - Cancel: POST /api/v1/import-jobs/{jobId}/cancel
@@ -29,7 +29,7 @@ export type ImportJobStatus = 'created' | 'queued' | 'running' | 'awaiting_user_
 
 export interface ImportJobSource {
   rawInput: string;
-  normalizedRef: string;
+  normalizedRef?: string | null;
   externalIds: Record<string, string>;
 }
 
@@ -59,6 +59,17 @@ export interface ImportJobError {
   detail?: Record<string, unknown> | null;
 }
 
+export interface ImportJobPaper {
+  paperId: string | null;
+  title: string | null;
+}
+
+export interface ImportJobTask {
+  processingTaskId: string | null;
+  status: string | null;
+  checkpointStage?: string | null;
+}
+
 export interface ImportJob {
   importJobId: string;
   knowledgeBaseId: string;
@@ -66,16 +77,23 @@ export interface ImportJob {
   status: ImportJobStatus;
   stage: string;
   progress: number;
+  nextAction: Record<string, unknown> | null;
+  retryCount?: number;
+  version?: string | null;
+  externalIds?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
+  startedAt?: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
   source: ImportJobSource;
   preview: ImportJobPreview;
   dedupe: ImportJobDedupe;
   file: ImportJobFile;
-  paper: { paperId: string | null };
-  task: { processingTaskId: string | null };
+  paper: ImportJobPaper | null;
+  task: ImportJobTask | null;
   error: ImportJobError | null;
-  actions: { type: string; enabled: boolean }[];
+  actions?: { type: string; enabled: boolean }[];
 }
 
 export interface CreateImportRequest {
@@ -97,6 +115,7 @@ export interface SourceResolution {
     sourceType: SourceType;
     canonicalId: string;
     version?: string | null;
+    externalIds?: Record<string, string>;
     canonicalAbsUrl?: string;
     canonicalPdfUrl?: string;
   };
@@ -107,6 +126,8 @@ export interface SourceResolution {
     abstract?: string;
     venue?: string;
     pdfAvailable: boolean;
+    pdfSource?: string;
+    citationCount?: number;
   };
   availability?: {
     pdfAvailable: boolean;
@@ -197,7 +218,7 @@ export const importApi = {
     sourceType: SourceType,
     input: string
   ): Promise<ApiResponse<SourceResolution>> => {
-    const response = await apiClient.post(`/api/v1/import-sources/resolve`, {
+    const response = await apiClient.post(`/api/v1/imports/sources/resolve`, {
       sourceType,
       input
     });
@@ -210,7 +231,7 @@ export const importApi = {
   resolveBatch: async (
     items: string[]
   ): Promise<ApiResponse<{ items: BatchResolutionItem[] }>> => {
-    const response = await apiClient.post(`/api/v1/import-sources/resolve-batch`, {
+    const response = await apiClient.post(`/api/v1/imports/sources/resolve-batch`, {
       items
     });
     return { success: true, data: response.data };

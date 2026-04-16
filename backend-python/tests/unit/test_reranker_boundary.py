@@ -254,7 +254,7 @@ class TestBGERerankerBoundaryConditions:
 class TestQwen3VLRerankerBoundaryConditions:
     """Test Qwen3VL reranker boundary conditions."""
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_large_batch_multimodal(self, mock_tokenizer, mock_model):
         """Test multimodal reranking with large batch."""
@@ -272,7 +272,7 @@ class TestQwen3VLRerankerBoundaryConditions:
         
         assert len(results) == 20
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_mixed_text_and_multimodal(self, mock_tokenizer, mock_model):
         """Test reranking with mixed text-only and multimodal documents."""
@@ -293,7 +293,7 @@ class TestQwen3VLRerankerBoundaryConditions:
         
         assert len(results) == 3
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_unicode_multimodal(self, mock_tokenizer, mock_model):
         """Test multimodal reranking with Unicode text."""
@@ -311,7 +311,7 @@ class TestQwen3VLRerankerBoundaryConditions:
         
         assert len(results) == 1
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_empty_image_field(self, mock_tokenizer, mock_model):
         """Test reranking with empty image field in dict."""
@@ -329,7 +329,7 @@ class TestQwen3VLRerankerBoundaryConditions:
         
         assert len(results) == 2
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_long_multimodal_text(self, mock_tokenizer, mock_model):
         """Test reranking with very long text in multimodal input."""
@@ -347,7 +347,7 @@ class TestQwen3VLRerankerBoundaryConditions:
         
         assert len(results) == 1
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_invalid_quantization(self, mock_tokenizer, mock_model):
         """Test initialization with invalid quantization type."""
@@ -355,7 +355,7 @@ class TestQwen3VLRerankerBoundaryConditions:
         
         assert service.quantization == "invalid"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_invalid_device(self, mock_tokenizer, mock_model):
         """Test initialization with invalid device type."""
@@ -377,7 +377,7 @@ class TestRerankerCommonBoundaryConditions:
         
         assert results == []
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_qwen3vl_handles_empty_documents_list(self, mock_tokenizer, mock_model):
         """Qwen3VL reranker should handle empty documents list."""

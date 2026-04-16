@@ -1,0 +1,30 @@
+name: Governance Task
+description: Track repository, architecture, or process governance work
+title: "[Governance] "
+labels:
+  - governance
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What boundary or process problem are we fixing?
+    validations:
+      required: true
+  - type: textarea
+    id: affected_paths
+    attributes:
+      label: Affected paths
+      description: List directories and docs impacted by this governance task.
+    validations:
+      required: true
+  - type: textarea
+    id: required_docs
+    attributes:
+      label: Required doc updates
+      description: Which core docs must be updated together?
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance checklist
+      description: Define concrete checks for completion.

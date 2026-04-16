@@ -59,7 +59,7 @@ interface FileItem {
   file: File;
   name: string;
   size: number;
-  status: 'pending' | 'uploading' | 'completed' | 'failed';
+  status: 'pending' | 'uploading' | 'queued' | 'completed' | 'failed';
   progress: number;
   error?: string;
   importJobId?: string;
@@ -288,8 +288,8 @@ export function ImportDialog({
 
           setFileState(fileItem.id, (current) => ({
             ...current,
-            progress: 100,
-            status: 'completed',
+            progress: 20,  // D-01: placeholder state, not real percentage
+            status: 'queued',  // D-01: queued not completed
           }));
         } catch (error) {
           const message = error instanceof Error ? error.message : '导入失败';
@@ -306,7 +306,7 @@ export function ImportDialog({
       handleOpenChange(false);
       navigate(`/knowledge-bases/${knowledgeBaseId}`);
       await onImportComplete?.();
-      toast.success(`已创建 ${files.length} 个导入任务`);
+      toast.success('已创建导入任务，将在后台处理');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导入失败');
     } finally {
@@ -385,6 +385,9 @@ export function ImportDialog({
                       )}
                       {file.status === 'completed' && (
                         <CheckCircle className="h-4 w-4 text-green-500" />
+                      )}
+                      {file.status === 'queued' && (
+                        <Clock className="h-4 w-4 text-blue-500" />
                       )}
                       {file.status === 'failed' && (
                         <AlertCircle className="h-4 w-4 text-destructive" />
@@ -613,7 +616,7 @@ export function ImportDialog({
               </div>
               <Progress
                 value={(completedCount / totalCount) * 100}
-                className="h-2 mb-3"
+                className="h-2 mb-3 animate-pulse"
               />
               <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
                 {files.map((file) => (
@@ -627,20 +630,26 @@ export function ImportDialog({
                     {file.status === 'pending' && (
                       <Clock className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
                     )}
+                    {file.status === 'queued' && (
+                      <Clock className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                    )}
                     {file.status === 'failed' && (
                       <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
                     )}
                     <span className="flex-1 truncate">{file.name}</span>
                     {file.status === 'completed' && (
-                      <span className="text-xs text-muted-foreground">导入完成</span>
+                      <span className="text-xs text-green-600">导入完成</span>
                     )}
                     {file.status === 'uploading' && (
                       <span className="text-xs text-muted-foreground">
-                        处理中... {Math.round(file.progress)}%
+                        上传中... {Math.round(file.progress)}%
                       </span>
                     )}
                     {file.status === 'pending' && (
                       <span className="text-xs text-muted-foreground">等待中...</span>
+                    )}
+                    {file.status === 'queued' && (
+                      <span className="text-xs text-blue-600">后台处理中...</span>
                     )}
                   </div>
                 ))}

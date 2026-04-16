@@ -10,7 +10,7 @@
  */
 
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import { API_BASE_URL, API_CONFIG } from '@/config/api';
 
 /**

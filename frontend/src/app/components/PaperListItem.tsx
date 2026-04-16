@@ -1,4 +1,4 @@
-import { FileText, MoreHorizontal, BookOpen, Layers, Network, StickyNote } from "lucide-react";
+import { FileText, MoreHorizontal, BookOpen, Layers, Network, StickyNote, MessageSquare } from "lucide-react";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import {
@@ -20,6 +20,7 @@ interface PaperListItemProps {
   entityCount: number;
   onRead: () => void;
   onNotes: () => void;
+  onQuery?: (paperId: string) => void;
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -52,6 +53,7 @@ export function PaperListItem({
   entityCount,
   onRead,
   onNotes,
+  onQuery,
 }: PaperListItemProps) {
   const status = statusConfig[parseStatus];
 
@@ -102,6 +104,12 @@ export function PaperListItem({
               <BookOpen className="h-3.5 w-3.5" />
               阅读
             </Button>
+            {onQuery && (
+              <Button size="sm" variant="default" onClick={() => onQuery(_id)} className="gap-1.5 rounded-full">
+                <MessageSquare className="h-3.5 w-3.5" />
+                提问
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="更多操作">

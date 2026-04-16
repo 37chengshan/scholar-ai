@@ -34,7 +34,8 @@ import {
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ChatMessage } from './ChatMessageCard';
-import { ChatStreamState, AgentPhase, TaskType, CitationItem } from '../hooks/useChatStream';
+import { ChatStreamState, TaskType, CitationItem } from '../hooks/useChatStream';
+import { AgentPhase } from '@/types/chat';
 
 /**
  * Agent UI State (4-state machine per D-04)
@@ -44,14 +45,17 @@ export type AgentUIState = 'IDLE' | 'RUNNING' | 'WAITING' | 'DONE';
 /**
  * Phase to AgentUIState mapping (per plan section 6)
  */
-const PHASE_TO_UI_STATE: Record<AgentPhase | 'idle', AgentUIState> = {
+const PHASE_TO_UI_STATE: Record<AgentPhase, AgentUIState> = {
   idle: 'IDLE',
-  routing: 'RUNNING',
   analyzing: 'RUNNING',
-  planning: 'RUNNING',
-  executing: 'RUNNING',
+  retrieving: 'RUNNING',
+  reading: 'RUNNING',
+  tool_calling: 'RUNNING',
   synthesizing: 'RUNNING',
-  completed: 'DONE',
+  verifying: 'RUNNING',
+  done: 'DONE',
+  error: 'DONE',
+  cancelled: 'DONE',
 };
 
 /**
@@ -107,12 +111,15 @@ const STATE_VISUALS: Record<AgentUIState, StateVisual> = {
  */
 const PHASE_LABELS: Record<AgentPhase, { en: string; zh: string }> = {
   idle: { en: '', zh: '' },
-  routing: { en: 'Routing query', zh: '路由查询' },
   analyzing: { en: 'Analyzing question', zh: '分析问题中' },
-  planning: { en: 'Planning execution', zh: '规划执行' },
-  executing: { en: 'Executing tools', zh: '调用工具中' },
+  retrieving: { en: 'Retrieving data', zh: '检索数据中' },
+  reading: { en: 'Reading papers', zh: '阅读论文中' },
+  tool_calling: { en: 'Executing tools', zh: '调用工具中' },
   synthesizing: { en: 'Organizing answer', zh: '组织回答中' },
-  completed: { en: 'Answer complete', zh: '回答完成' },
+  verifying: { en: 'Verifying results', zh: '验证结果中' },
+  done: { en: 'Answer complete', zh: '回答完成' },
+  error: { en: 'Error occurred', zh: '发生错误' },
+  cancelled: { en: 'Cancelled', zh: '已取消' },
 };
 
 /**

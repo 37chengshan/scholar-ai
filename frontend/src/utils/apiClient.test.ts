@@ -10,12 +10,24 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import apiClient, { AuthError } from './apiClient';
 
+function getRejectedInterceptor() {
+  return (apiClient.interceptors.response as any).handlers?.[0]?.rejected as
+    | ((error: AxiosError) => Promise<unknown>)
+    | undefined;
+}
+
+function getFulfilledInterceptor() {
+  return (apiClient.interceptors.response as any).handlers?.[0]?.fulfilled as
+    | ((response: any) => any)
+    | undefined;
+}
+
 // Mock toast module
-vi.mock('react-hot-toast', () => ({
-  default: {
+vi.mock('sonner', () => ({
+  toast: {
     error: vi.fn(),
     success: vi.fn(),
   },
@@ -81,14 +93,15 @@ describe('apiClient', () => {
 
     const error401 = new AxiosError(
       'Request failed with status code 401',
-      AxiosError.UNAUTHORIZED,
+      '401',
       originalConfig, // config must be 3rd argument
       undefined,
       errorResponse as any
     );
 
     // Trigger the response interceptor error handler
-    const interceptor = apiClient.interceptors.response['handlers'][0]?.rejected;
+    const interceptor = getRejectedInterceptor();
+    expect(interceptor).toBeDefined();
     if (interceptor) {
       const result = await interceptor(error401);
 
@@ -131,7 +144,7 @@ describe('apiClient', () => {
     );
 
     // Trigger the response interceptor error handler
-    const interceptor = apiClient.interceptors.response['handlers'][0]?.rejected;
+    const interceptor = getRejectedInterceptor();
 
     if (interceptor) {
       // Call interceptor - it should reject and show toast
@@ -169,7 +182,7 @@ describe('apiClient', () => {
     );
 
     // Trigger the response interceptor
-    const interceptor = apiClient.interceptors.response['handlers'][0]?.rejected;
+    const interceptor = getRejectedInterceptor();
 
     if (interceptor) {
       await expect(interceptor(networkError)).rejects.toBeDefined();
@@ -186,7 +199,7 @@ describe('apiClient', () => {
     // Mock apiClient.post to fail (refresh endpoint returns 401)
     const refreshError = new AxiosError(
       'Request failed with status code 401',
-      AxiosError.UNAUTHORIZED,
+      '401',
       {} as any, // config for refresh error
       undefined,
       {
@@ -209,7 +222,7 @@ describe('apiClient', () => {
 
     const error401 = new AxiosError(
       'Request failed with status code 401',
-      AxiosError.UNAUTHORIZED,
+      '401',
       originalConfig, // config must be 3rd argument
       undefined,
       {
@@ -221,7 +234,7 @@ describe('apiClient', () => {
       } as any
     );
 
-    const interceptor = apiClient.interceptors.response['handlers'][0]?.rejected;
+    const interceptor = getRejectedInterceptor();
 
     if (interceptor) {
       // Should throw AuthError when refresh fails
@@ -243,7 +256,7 @@ describe('apiClient', () => {
 
     const error401 = new AxiosError(
       'Request failed with status code 401',
-      AxiosError.UNAUTHORIZED,
+      '401',
       originalConfig, // config must be 3rd argument
       undefined,
       {
@@ -255,7 +268,7 @@ describe('apiClient', () => {
       } as any
     );
 
-    const interceptor = apiClient.interceptors.response['handlers'][0]?.rejected;
+    const interceptor = getRejectedInterceptor();
 
     if (interceptor) {
       // Should throw AuthError immediately without trying to refresh
@@ -273,7 +286,7 @@ describe('apiClient', () => {
 
     const error401 = new AxiosError(
       'Request failed with status code 401',
-      AxiosError.UNAUTHORIZED,
+      '401',
       originalConfig, // config must be 3rd argument
       undefined,
       {
@@ -287,7 +300,7 @@ describe('apiClient', () => {
 
     const postSpy = vi.spyOn(apiClient, 'post');
 
-    const interceptor = apiClient.interceptors.response['handlers'][0]?.rejected;
+    const interceptor = getRejectedInterceptor();
 
     if (interceptor) {
       // Should reject without calling refresh
@@ -314,10 +327,10 @@ describe('apiClient', () => {
       config: {} as InternalAxiosRequestConfig,
     };
 
-    const interceptor = apiClient.interceptors.response['handlers'][0]?.fulfilled;
+    const interceptor = getFulfilledInterceptor();
 
     if (interceptor) {
-      const result = interceptor(wrappedResponse);
+      const result = await Promise.resolve(interceptor(wrappedResponse));
 
       // Verify response was unwrapped
       expect(result.data).toEqual({ id: 1, name: 'test paper' });
@@ -348,7 +361,7 @@ describe('apiClient', () => {
       }
     );
 
-    const interceptor = apiClient.interceptors.response['handlers'][0]?.rejected;
+    const interceptor = getRejectedInterceptor();
 
     if (interceptor) {
       await expect(interceptor(errorResponse)).rejects.toBeDefined();

@@ -11,8 +11,22 @@
  */
 
 import apiClient from '@/utils/apiClient';
-import { sseService, SSEEvent, SSEHandlers, DoneEventData } from './sseService';
+import {
+  sseService,
+  SSEEvent,
+  SSEHandlers,
+  DoneEventData,
+  SSEService,
+} from './sseService';
 import type { Session, Message } from '@/types';
+
+export type ChatMode = 'auto' | 'rag' | 'agent';
+
+export interface ChatScope {
+  type: 'paper' | 'knowledge_base' | 'general';
+  paper_id?: string;
+  knowledge_base_id?: string;
+}
 
 /**
  * Create new chat session
@@ -119,24 +133,60 @@ export async function updateSession(
  * POST /api/v1/chat/stream
  * Creates user message and returns SSE stream for real-time AI responses
  *
- * @param sessionId - Session ID
- * @param content - Message content
- * @param handlers - SSE event handlers
- * @returns void (events delivered via handlers)
+ * Sprint 3: New unified signature with explicit mode and scope.
+ * Request body:
+ * {
+ *   session_id,
+ *   message,
+ *   mode,
+ *   scope: {
+ *     type: 'paper' | 'knowledge_base' | 'general',
+ *     paper_id?,
+ *     knowledge_base_id?
+ *   },
+ *   context?
+ * }
+ * No longer uses top-level paperId/kbId - these go in scope.
+ *
+ * @param params - Stream parameters
+ * @param params.sessionId - Session ID
+ * @param params.message - Message content
+ * @param params.mode - Processing mode: 'auto' | 'rag' | 'agent'
+ * @param params.scope - Query scope: { type: 'paper'|'kb', id: string }
+ * @param params.handlers - SSE event handlers
  */
-export function streamMessage(
-  sessionId: string,
-  content: string,
-  handlers: SSEHandlers
-): void {
-  sseService.connect(
-    '/api/v1/chat/stream',
+export function streamMessage(params: {
+  sessionId: string;
+  message: string;
+  mode?: ChatMode;
+  scope?: ChatScope | null;
+  context?: Record<string, unknown>;
+  handlers: SSEHandlers;
+  streamService?: SSEService;
+}): void {
+  const {
+    sessionId,
+    message,
+    mode = 'auto',
+    scope,
+    context,
     handlers,
-    {
-      session_id: sessionId,
-      message: content,
-    }
-  );
+    streamService,
+  } = params;
+  const body: Record<string, unknown> = {
+    session_id: sessionId,
+    message,
+    mode,
+  };
+  if (scope) {
+    body.scope = scope;
+  }
+  if (context) {
+    body.context = context;
+  }
+
+  const service = streamService ?? sseService;
+  service.connect('/api/v1/chat/stream', handlers, body);
 }
 
 /**

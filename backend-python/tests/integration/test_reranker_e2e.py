@@ -169,7 +169,7 @@ class TestRerankerIntegrationWithFactory:
 class TestRerankerMultimodalE2E:
     """Test multimodal reranking end-to-end."""
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_e2e_text_with_image_query(self, mock_tokenizer, mock_model):
         """End-to-end test with image in query."""
@@ -195,7 +195,7 @@ class TestRerankerMultimodalE2E:
         assert len(results) == 3
         assert all("document" in r for r in results)
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_e2e_text_only_on_multimodal_service(self, mock_tokenizer, mock_model):
         """Text-only query should work on multimodal service."""
@@ -213,7 +213,7 @@ class TestRerankerMultimodalE2E:
         
         assert len(results) == 3
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_e2e_mixed_inputs_multimodal(self, mock_tokenizer, mock_model):
         """Mixed text-only and multimodal inputs."""

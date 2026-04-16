@@ -10,7 +10,7 @@
  * Wave 5: Added DedupeDecisionDialog integration
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { Loader2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -21,11 +21,11 @@ import {
 import { ImportJobRow } from './ImportJobRow';
 import { DedupeDecisionDialog } from './DedupeDecisionDialog';
 import { useNavigate } from 'react-router';
-import { cn } from './ui/utils';
 
 // Export stage labels for ImportJobRow
 export const STAGE_LABELS: Record<string, string> = {
   awaiting_input: '等待输入',
+  uploaded: '已上传文件',
   resolving_source: '解析来源',
   fetching_metadata: '获取元数据',
   downloading_pdf: '下载 PDF',
@@ -35,6 +35,7 @@ export const STAGE_LABELS: Record<string, string> = {
   awaiting_dedupe_decision: '等待决策',
   materializing_paper: '创建论文',
   attaching_to_kb: '关联知识库',
+  triggering_processing: '触发处理',
   parsing: '解析内容',
   chunking: '切分内容',
   embedding: '生成向量',
@@ -44,20 +45,18 @@ export const STAGE_LABELS: Record<string, string> = {
 };
 
 interface ImportQueueListProps {
-  kbId: string;
+  /** Import jobs to display (required - page layer provides via loadImportJobs) */
+  jobs: ImportJob[];
   onJobComplete?: (job: ImportJob) => void;
   initiallyExpanded?: boolean;
 }
 
 export function ImportQueueList({
-  kbId,
+  jobs,
   onJobComplete,
   initiallyExpanded = true,
 }: ImportQueueListProps) {
   const navigate = useNavigate();
-  const [jobs, setJobs] = useState<ImportJob[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(initiallyExpanded);
 
   // DedupeDialog state (Wave 5)
@@ -65,35 +64,10 @@ export function ImportQueueList({
   const [selectedDedupeJob, setSelectedDedupeJob] = useState<ImportJob | null>(null);
   const [dedupeLoading, setDedupeLoading] = useState(false);
 
-  // Poll for updates every 5s for running jobs
-  const fetchJobs = useCallback(async () => {
-    try {
-      const response = await importApi.list(kbId, { limit: 50 });
-      if (response.success && response.data) {
-        setJobs(response.data.jobs);
-        setError(null);
-      } else {
-        setError('获取导入任务失败');
-      }
-    } catch (err: any) {
-      setError(err.message || '网络错误');
-    } finally {
-      setLoading(false);
-    }
-  }, [kbId]);
-
-  useEffect(() => {
-    fetchJobs();
-    const interval = setInterval(fetchJobs, 5000);
-    return () => clearInterval(interval);
-  }, [fetchJobs]);
-
   // Retry failed job
   const retryJob = async (jobId: string) => {
     try {
       await importApi.retry(jobId);
-      // Refresh list immediately after retry
-      await fetchJobs();
     } catch (err: any) {
       // Error handled by apiClient interceptor
     }
@@ -103,8 +77,6 @@ export function ImportQueueList({
   const cancelJob = async (jobId: string) => {
     try {
       await importApi.cancel(jobId);
-      // Refresh list immediately after cancel
-      await fetchJobs();
     } catch (err: any) {
       // Error handled by apiClient interceptor
     }
@@ -131,7 +103,6 @@ export function ImportQueueList({
       // Close dialog and refresh
       setDedupeDialogOpen(false);
       setSelectedDedupeJob(null);
-      await fetchJobs();
 
       // If reuse_existing, the job is completed - notify parent
       if (decision.decision === 'reuse_existing' && onJobComplete) {
@@ -157,26 +128,6 @@ export function ImportQueueList({
   const activeCount = runningJobs.length + awaitingJobs.length;
   const totalCount = jobs.length;
 
-  if (loading && jobs.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="w-5 h-5 animate-spin text-primary" />
-        <span className="ml-2 text-sm text-muted-foreground">加载导入任务...</span>
-      </div>
-    );
-  }
-
-  if (error && jobs.length === 0) {
-    return (
-      <div className="text-center py-8 text-sm text-red-500">
-        {error}
-        <Button variant="outline" size="sm" onClick={fetchJobs} className="ml-3">
-          重试
-        </Button>
-      </div>
-    );
-  }
-
   if (totalCount === 0) {
     return (
       <div className="text-center py-8 text-sm text-muted-foreground">
@@ -193,7 +144,7 @@ export function ImportQueueList({
         onClick={() => setExpanded(!expanded)}
       >
         <h3 className="text-lg font-medium flex items-center gap-2">
-          导入历史
+          论文导入与处理记录
           {activeCount > 0 && (
             <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-bold">
               {activeCount} 个进行中
@@ -270,6 +221,16 @@ export function ImportQueueList({
                         ? () => viewPaper(job.paper!.paperId!)
                         : undefined
                     }
+                    onOpenPaper={
+                      job.paper?.paperId
+                        ? (paperId) => navigate(`/read/${paperId}`)
+                        : undefined
+                    }
+                    onSinglePaperQuery={
+                      job.paper?.paperId
+                        ? (paperId) => navigate(`/chat?paperId=${paperId}`)
+                        : undefined
+                    }
                   />
                 ))}
                 {completedJobs.length > 5 && (
@@ -329,7 +290,7 @@ export function ImportQueueList({
               }
             : undefined
         }
-        matchType={selectedDedupeJob?.dedupe?.matchType}
+        matchType={selectedDedupeJob?.dedupe?.matchType ?? undefined}
         onDecision={handleDedupeDecision}
         isLoading={dedupeLoading}
       />

@@ -3,20 +3,10 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { Progress } from './ui/progress';
 import { Label } from './ui/label';
 import { Info, AlertTriangle, AlertCircle } from 'lucide-react';
-import apiClient from '@/utils/apiClient';
-import { API_BASE_URL } from '@/config/api';
+import * as systemApi from '@/services/systemApi';
 
-interface StorageMetric {
-  used: string;
-  total: string;
-  percentage: number;
-}
-
-interface SystemLog {
-  level: 'INFO' | 'WARN' | 'ERROR';
-  message: string;
-  timestamp: string;
-}
+type StorageMetric = systemApi.StorageMetric;
+type SystemLog = systemApi.SystemLog;
 
 /**
  * SystemDiagnostics Component
@@ -45,13 +35,9 @@ export function SystemDiagnostics() {
   useEffect(() => {
     const fetchStorage = async () => {
       try {
-        const response = await apiClient.get<{
-          vectorDB: StorageMetric;
-          fileStorage: StorageMetric;
-        }>('/api/v1/system/storage');
-
-        setVectorDB(response.data.vectorDB);
-        setFileStorage(response.data.fileStorage);
+        const storageInfo = await systemApi.getStorageInfo();
+        setVectorDB(storageInfo.vectorDB);
+        setFileStorage(storageInfo.fileStorage);
       } catch (error) {
         console.error('Failed to fetch storage:', error);
       }
@@ -64,9 +50,7 @@ export function SystemDiagnostics() {
 
   // Connect to logs stream (SSE)
   useEffect(() => {
-    const eventSource = new EventSource(`${API_BASE_URL}/api/system/logs/stream`, {
-      withCredentials: true,
-    });
+    const eventSource = systemApi.createSystemLogsEventSource();
 
     eventSource.onmessage = (event) => {
       const log: SystemLog = JSON.parse(event.data);

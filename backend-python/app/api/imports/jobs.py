@@ -387,10 +387,15 @@ async def list_import_jobs(
                         "stage": j.stage,
                         "progress": j.progress,
                         "nextAction": j.next_action,
+                        "source": {
+                            "rawInput": j.source_ref_raw,
+                        },
                         "preview": {
                             "title": j.resolved_title,
                             "year": j.resolved_year,
                         },
+                        "paper": {"paperId": j.paper_id} if j.paper_id else None,
+                        "error": {"message": getattr(j, 'error_message', None)} if getattr(j, 'error_message', None) else None,
                         "createdAt": j.created_at.isoformat() if j.created_at else None,
                     }
                     for j in jobs

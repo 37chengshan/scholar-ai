@@ -35,8 +35,6 @@ import {
 import * as papersApi from "@/services/papersApi";
 import * as annotationsApi from "@/services/annotationsApi";
 import type { Annotation } from "@/services/annotationsApi";
-import apiClient from "@/utils/apiClient";
-import { API_PREFIX } from "@/config/api";
 
 import { toast } from "sonner";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -122,11 +120,12 @@ export function Read() {
   const handlePageChange = useCallback(
     async (page: number) => {
       setCurrentPage(page);
+      if (!id) {
+        return;
+      }
       // Save reading progress
       try {
-        await apiClient.post(`${API_PREFIX}/reading-progress/${id}`, {
-          currentPage: page,
-        });
+        await papersApi.saveReadingProgress(id, page);
       } catch (error: any) {
         // Don't block reading, just show a brief warning
         toast.warning(

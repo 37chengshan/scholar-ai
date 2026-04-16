@@ -12,11 +12,13 @@ from typing import Dict, Any
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Paper
+from app.services.system_service import (
+    get_services_health,
+    get_storage_info as get_storage_metrics,
+)
 from app.utils.logger import logger
 
 router = APIRouter()
@@ -50,31 +52,9 @@ async def get_storage_info(db: AsyncSession = Depends(get_db)):
     Returns estimated storage usage for files and vector database.
     """
     try:
-        # Get paper count using SQLAlchemy ORM
-        result = await db.execute(select(func.count()).select_from(Paper))
-        paper_count = result.scalar() or 0
-
-        # Estimate file storage (2MB average per paper)
-        avg_file_size = 2 * 1024 * 1024  # 2MB
-        estimated_file_storage = paper_count * avg_file_size
-
-        # Convert to GB
-        used_file_storage_gb = round(estimated_file_storage / (1024 * 1024 * 1024), 1)
-        total_file_storage_gb = 50  # 50GB limit
-        file_storage_percentage = min(100, round((estimated_file_storage / (total_file_storage_gb * 1024 * 1024 * 1024)) * 100))
-
-        # Mock vector DB stats (would need Milvus client integration)
-        vector_db = StorageInfo(
-            used="1.2",
-            total="5",
-            percentage=24
-        )
-
-        file_storage = StorageInfo(
-            used=str(used_file_storage_gb),
-            total=str(total_file_storage_gb),
-            percentage=file_storage_percentage
-        )
+        storage_info = await get_storage_metrics(db)
+        vector_db = StorageInfo(**storage_info["vectorDB"])
+        file_storage = StorageInfo(**storage_info["fileStorage"])
 
         return StorageResponse(
             success=True,
@@ -166,60 +146,9 @@ async def system_health():
 
     Returns status of all services.
     """
-    from app.config import settings
-    from app.database import engine
-
-    services_status = {}
-
-    # Check PostgreSQL using SQLAlchemy engine
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT 1"))
-        services_status["postgres"] = {"status": "healthy"}
-    except Exception as e:
-        services_status["postgres"] = {"status": "unhealthy", "error": str(e)}
-
-    # Check Redis
-    try:
-        import redis.asyncio as redis
-        r = redis.from_url(settings.REDIS_URL, socket_connect_timeout=2)
-        await r.ping()
-        await r.close()
-        services_status["redis"] = {"status": "healthy"}
-    except Exception as e:
-        services_status["redis"] = {"status": "unhealthy", "error": str(e)[:100]}
-
-    # Check Neo4j
-    try:
-        from app.core.neo4j_service import Neo4jService
-        neo4j = Neo4jService()
-        async with neo4j.driver.session() as session:
-            await session.run("RETURN 1")
-        await neo4j.close()
-        services_status["neo4j"] = {"status": "healthy"}
-    except Exception as e:
-        services_status["neo4j"] = {"status": "unhealthy", "error": str(e)[:100]}
-
-    # Check Milvus
-    try:
-        from app.core.milvus_service import get_milvus_service
-        milvus = get_milvus_service()
-        # Simple check - if we got here, Milvus is connected
-        services_status["milvus"] = {"status": "healthy"}
-    except Exception as e:
-        services_status["milvus"] = {"status": "unhealthy", "error": str(e)[:100]}
-
-    # Determine overall status
-    all_healthy = all(
-        s.get("status") == "healthy"
-        for s in services_status.values()
-    )
+    health = await get_services_health()
 
     return {
         "success": True,
-        "data": {
-            "status": "healthy" if all_healthy else "degraded",
-            "services": services_status,
-            "timestamp": datetime.now().isoformat()
-        }
+        "data": health,
     }

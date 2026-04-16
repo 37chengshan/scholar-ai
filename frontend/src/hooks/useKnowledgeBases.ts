@@ -9,85 +9,91 @@
  * - Create/delete operations
  */
 import { useState, useEffect, useCallback } from 'react';
-import { kbApi, KnowledgeBase, KBListParams } from '@/services/kbApi';
+import { kbApi, KnowledgeBase, KBListParams, KBCreateData } from '@/services/kbApi';
 
-interface UseKnowledgeBasesParams {
-  search?: string;
-  category?: string;
-  sortBy?: 'updated' | 'papers' | 'name';
+interface UseKnowledgeBasesParams extends KBListParams {
+  autoFetch?: boolean;
 }
 
 interface UseKnowledgeBasesReturn {
   knowledgeBases: KnowledgeBase[];
+  total: number;
   loading: boolean;
   error: string | null;
-  refetch: () => void;
-  createKB: (data: { name: string; description?: string; category?: string }) => Promise<boolean>;
+  refetch: () => Promise<void>;
+  createKB: (data: KBCreateData) => Promise<KnowledgeBase>;
   deleteKB: (id: string) => Promise<boolean>;
 }
 
 export function useKnowledgeBases(params?: UseKnowledgeBasesParams): UseKnowledgeBasesReturn {
+  const {
+    search,
+    category,
+    sortBy = 'updated',
+    limit = 50,
+    offset = 0,
+    autoFetch = true,
+  } = params || {};
+
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchKBs = useCallback(async () => {
+  const fetchKBs = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await kbApi.list({
-        search: params?.search,
-        category: params?.category,
-        sortBy: params?.sortBy || 'updated',
-      });
-
-      if (response.success && response.data) {
-        setKnowledgeBases(response.data.knowledgeBases || []);
-      } else {
-        setError('获取知识库列表失败');
-      }
+      const response = await kbApi.list({ search, category, sortBy, limit, offset });
+      setKnowledgeBases(response.knowledgeBases || []);
+      setTotal(response.total || 0);
     } catch (err: any) {
       setError(err.message || '网络错误');
+      setKnowledgeBases([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [params?.search, params?.category, params?.sortBy]);
+  }, [search, category, sortBy, limit, offset]);
 
   useEffect(() => {
-    fetchKBs();
-  }, [fetchKBs]);
+    if (autoFetch) {
+      void fetchKBs();
+    }
+  }, [autoFetch, fetchKBs]);
 
-  const createKB = useCallback(async (data: { name: string; description?: string; category?: string }) => {
+  const createKB = useCallback(async (data: KBCreateData): Promise<KnowledgeBase> => {
     try {
-      const response = await kbApi.create(data);
-      if (response.success) {
-        fetchKBs(); // Refresh list
-        return true;
-      }
-      return false;
+      const created = await kbApi.create(data);
+      setKnowledgeBases(prev => [...prev, created]);
+      setTotal(prev => prev + 1);
+      return created;
     } catch (err: any) {
       console.error('Create KB failed:', err);
-      return false;
+      throw err;
     }
-  }, [fetchKBs]);
+  }, []);
 
   const deleteKB = useCallback(async (id: string) => {
     try {
       const response = await kbApi.delete(id);
-      if (response.success) {
-        fetchKBs(); // Refresh list
-        return true;
+      if (!response.deleted) {
+        return false;
       }
-      return false;
+
+      setKnowledgeBases(prev => prev.filter(kb => kb.id !== id));
+      setTotal(prev => Math.max(0, prev - 1));
+      return true;
     } catch (err: any) {
       console.error('Delete KB failed:', err);
       return false;
     }
-  }, [fetchKBs]);
+  }, []);
 
   return {
     knowledgeBases,
+    total,
     loading,
     error,
     refetch: fetchKBs,

@@ -19,7 +19,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Plus,
@@ -66,8 +66,12 @@ import {
   SSEEvent,
   SSEEventEnvelope,
 } from "../../services/sseService";
+import { streamMessage as streamChatMessage } from "@/services/chatApi";
 import { API_BASE_URL } from "@/config/api";
 import { toast } from "sonner";
+import { ScopeBanner, ScopeType } from '../components/ScopeBanner';
+import * as papersApi from '@/services/papersApi';
+import { kbApi } from '@/services/kbApi';
 
 // ============================================================================
 // Extended ChatMessage for UI State
@@ -141,6 +145,92 @@ export function Chat() {
   const sseServiceRef = useRef<SSEService | null>(null);
   const currentMessageIdRef = useRef<string>(""); // ref for stale closure fix
 
+  // D-07: Single source of truth for scope (banner AND SSE body use same state)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paperId = searchParams.get('paperId');
+  const kbId = searchParams.get('kbId');
+
+  interface ChatScope {
+    type: ScopeType;
+    id: string | null;
+    title?: string;
+    errorMessage?: string;
+  }
+
+  const [scope, setScope] = useState<ChatScope>({ type: null, id: null });
+  const [scopeLoading, setScopeLoading] = useState(false);
+
+  // Sprint 3: mode state for fast/slow path
+  // - 'auto': complexity-based routing (default)
+  // - 'rag': force fast path (RAG only, no agent tool loop)
+  // - 'agent': force slow path (full agent orchestrator)
+  const [mode, setMode] = useState<'auto' | 'rag' | 'agent'>('auto');
+
+  // D-05 + D-07: Parse URL params once at component top, store in state
+  useEffect(() => {
+    const validateScope = async () => {
+      if (!paperId && !kbId) {
+        setScope({ type: null, id: null });
+        return;
+      }
+
+      setScopeLoading(true);
+      try {
+        // D-08: Validate priority - paperId first, then kbId
+        if (paperId) {
+          // Validate paperId exists and user has access
+          // papersApi.get returns Promise<Paper> (throws on error)
+          try {
+            const paper = await papersApi.get(paperId);
+            setScope({
+              type: 'single_paper',
+              id: paperId,
+              title: paper.title || '未知论文',
+            });
+          } catch (err) {
+            setScope({
+              type: 'error',
+              id: paperId,
+              errorMessage: `${paperId} 不存在或无权访问`,
+            });
+          }
+          setScopeLoading(false);
+          return;
+        }
+
+        if (kbId) {
+          // Validate kbId exists and user has access
+          const kbRes = await kbApi.get(kbId);
+          setScope({
+            type: 'full_kb',
+            id: kbId,
+            title: kbRes.name,
+          });
+          setScopeLoading(false);
+          return;
+        }
+      } catch (err) {
+        setScope({
+          type: 'error',
+          id: paperId || kbId,
+          errorMessage: '作用域验证失败',
+        });
+        setScopeLoading(false);
+      }
+    };
+
+    void validateScope();
+  }, [paperId, kbId]);
+
+  useEffect(() => {
+    if (scope.type === 'single_paper' || scope.type === 'full_kb') {
+      setMode((current) => (current === 'auto' ? 'rag' : current));
+      return;
+    }
+
+    setMode('auto');
+  }, [scope.type, scope.id]);
+
   const { language } = useLanguage();
 
   // useChatStream hook for state machine + buffer + throttle (HARD RULE 0.3, 0.4)
@@ -152,13 +242,16 @@ export function Chat() {
     cancelStream,
     reset,
     forceFlush,
+    getBufferedContent,
+    confirmation,
+    resetConfirmation,
   } = useChatStream({
     throttleMs: 100,
     onPhaseChange: (phase, label) => {
-      console.log("[Chat] Phase changed:", phase, label);
+      console.debug("[Chat] Phase changed:", phase, label);
     },
     onComplete: (state) => {
-      console.log("[Chat] Stream complete:", state);
+      console.debug("[Chat] Stream complete");
     },
     onError: (error) => {
       toast.error(isZh ? `错误: ${error.message}` : `Error: ${error.message}`);
@@ -182,6 +275,15 @@ export function Chat() {
   const [placeholderId, setPlaceholderId] = useState<string | null>(null);
 
   const isZh = language === "zh";
+
+  const handleExitScope = useCallback(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('paperId');
+    nextParams.delete('kbId');
+    setSearchParams(nextParams);
+    setScope({ type: null, id: null });
+    toast.info(isZh ? '已退出作用域模式' : 'Scope cleared');
+  }, [isZh, searchParams, setSearchParams]);
 
   const t = {
     terminal: isZh ? "终端对话" : "Terminal",
@@ -208,11 +310,18 @@ export function Chat() {
   }, []);
 
   // Sync localMessages with sessionMessages
+  // NOTE: Skip sync when streaming (placeholderId is set) to prevent overwriting
+  // the in-progress streaming message. After stream completes, the final message
+  // is added via addMessage which triggers this sync, but we want to preserve
+  // the localMessages state from onDone which has the buffered content.
   useEffect(() => {
+    // Don't sync during streaming - localMessages has the streaming state
+    if (placeholderId) return;
+
     if (sessionMessages.length > 0) {
       setLocalMessages(sessionMessages.map((m) => ({ ...m })));
     }
-  }, [sessionMessages]);
+  }, [sessionMessages, placeholderId]);
 
   const handleNewSession = useCallback(async () => {
     // Disconnect current SSE if connected
@@ -290,6 +399,12 @@ export function Chat() {
     if (!input.trim() || streamState.streamStatus === "streaming" || sending)
       return;
 
+    // D-08: Block SSE send if scope is invalid
+    if (scope.type === 'error') {
+      toast.error(scope.errorMessage || '当前作用域无效');
+      return;
+    }
+
     setSending(true);
 
     try {
@@ -321,7 +436,9 @@ export function Chat() {
         id: placeholderMessageId,
         session_id: sessionId,
         role: "assistant",
-        content: "",
+        content: mode === 'agent'
+          ? (isZh ? '正在分析...' : 'Analyzing...')
+          : (isZh ? '正在检索...' : 'Retrieving...'),
         created_at: new Date().toISOString(),
         streamStatus: "streaming",
         reasoningBuffer: "",
@@ -338,20 +455,37 @@ export function Chat() {
       // Clear input
       setInput("");
 
-      // 3. Start SSE connection
-      const url = `${API_BASE_URL}/api/v1/chat/stream`;
-      const body = {
-        message: input.trim(),
-        session_id: sessionId,
-      };
-
+      // 3. Start SSE connection (Sprint 3: unified API with mode + scope)
+      // D-06: Add scope params to SSE body (no longer top-level paperId/kbId)
       if (!sseServiceRef.current) {
         sseServiceRef.current = new SSEService();
       }
 
-      sseServiceRef.current.connect(
-        url,
-        {
+      const streamScope =
+        scope.type === 'single_paper' && scope.id
+          ? {
+              type: 'paper' as const,
+              paper_id: scope.id,
+            }
+          : scope.type === 'full_kb' && scope.id
+            ? {
+                type: 'knowledge_base' as const,
+                knowledge_base_id: scope.id,
+              }
+            : {
+                type: 'general' as const,
+              };
+
+      streamChatMessage({
+        sessionId,
+        message: input.trim(),
+        mode,
+        scope: streamScope,
+        context: {
+          auto_confirm: false,
+        },
+        streamService: sseServiceRef.current,
+        handlers: {
           onMessage: (event: SSEEvent | SSEEventEnvelope) => {
             // Handle both legacy SSEEvent and new SSEEventEnvelope format
             const legacyEvent = event as SSEEvent;
@@ -364,10 +498,9 @@ export function Chat() {
             const eventData =
               legacyEvent.content || legacyEvent.data || envelopeEvent.data;
 
-            console.log(
+            console.debug(
               "[Chat] SSE event received:",
               eventType,
-              eventMessageId,
             );
 
             // HARD RULE 0.2: Validate message_id
@@ -376,6 +509,11 @@ export function Chat() {
               setCurrentMessageId(eventMessageId);
               currentMessageIdRef.current = eventMessageId;
               setPlaceholderId(eventMessageId);
+
+              // Initialize useChatStream's message_id tracking (HARD RULE 0.2)
+              const sessionId = eventData?.session_id || "";
+              const taskType = eventData?.task_type || "general";
+              startStream(sessionId, taskType, eventMessageId);
 
               // Update placeholder ID to real message_id
               setLocalMessages((prev) =>
@@ -423,17 +561,29 @@ export function Chat() {
             });
 
             // Update placeholder message with stream state
-            setLocalMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== (placeholderId || currentMessageId)) return m;
+            // NOTE: Use currentMessageIdRef.current (synchronous ref) instead of
+            // placeholderId/currentMessageId (stale closure state) for message matching.
+            // Use getBufferedContent() for content (state + pending buffer) since
+            // throttle delays the reducer dispatch.
+            const streamingMsgId = currentMessageIdRef.current;
+            const buffered = getBufferedContent();
 
-                // Build updated message from stream state
+            // DEBUG: Log matching
+            console.debug("[Chat] setLocalMessages update, streamingMsgId:", streamingMsgId);
+
+            setLocalMessages((prev) => {
+              // DEBUG: Log prev messages
+              console.debug("[Chat] setLocalMessages prev messages count:", prev.length);
+              return prev.map((m) => {
+                if (m.id !== streamingMsgId) return m;
+
+                // Build updated message from buffered content (state + pending buffer)
                 const updated: ExtendedChatMessage = {
                   ...m,
-                  content: streamState.contentBuffer,
-                  reasoningBuffer: streamState.reasoningBuffer,
-                  streamStatus: streamState.streamStatus,
-                  toolTimeline: streamState.toolTimeline.map((t) => ({
+                  content: buffered.content,
+                  reasoningBuffer: buffered.reasoning,
+                  streamStatus: streamStateRef.current.streamStatus,
+                  toolTimeline: streamStateRef.current.toolTimeline.map((t) => ({
                     id: t.id,
                     tool: t.tool,
                     label: t.label,
@@ -443,7 +593,7 @@ export function Chat() {
                     duration: t.duration,
                     summary: t.summary,
                   })),
-                  citations: streamState.citations.map((c) => ({
+                  citations: streamStateRef.current.citations.map((c) => ({
                     paper_id: c.paper_id,
                     title: c.title,
                     authors: c.authors,
@@ -455,18 +605,20 @@ export function Chat() {
                   })),
                 };
 
+                console.debug("[Chat] Updated message:", updated.id);
                 return updated;
-              }),
-            );
+              });
+            });
           },
           onError: (error: Error) => {
             console.error("[Chat] SSE error:", error);
             forceFlush();
 
             // Update placeholder to error state
+            const errorMsgId = currentMessageIdRef.current;
             setLocalMessages((prev) =>
               prev.map((m) =>
-                m.id === (placeholderId || currentMessageId)
+                m.id === errorMsgId
                   ? { ...m, streamStatus: "error" }
                   : m,
               ),
@@ -476,18 +628,27 @@ export function Chat() {
             toast.error(isZh ? "发送消息失败" : "Failed to send message");
           },
           onDone: (data) => {
-            console.log("[Chat] SSE stream done");
+            console.debug("[Chat] SSE stream done");
+
+            // Capture buffered content BEFORE forceFlush (which clears refs)
+            const finalBuffered = getBufferedContent();
+            console.debug("[Chat] onDone buffered content length:", finalBuffered.content.length);
+
             forceFlush();
 
+            const doneMsgId = currentMessageIdRef.current;
             // Update placeholder to completed state
             setLocalMessages((prev) =>
               prev.map((m) => {
-                if (m.id !== (placeholderId || currentMessageId)) return m;
+                if (m.id !== doneMsgId) return m;
+
+                const finalContent = finalBuffered.content || streamStateRef.current.contentBuffer;
+                const finalReasoning = finalBuffered.reasoning || streamStateRef.current.reasoningBuffer;
 
                 const finalMessage: ExtendedChatMessage = {
                   ...m,
-                  content: streamStateRef.current.contentBuffer,
-                  reasoningBuffer: streamStateRef.current.reasoningBuffer,
+                  content: finalContent,
+                  reasoningBuffer: finalReasoning,
                   streamStatus: "completed",
                   tokensUsed:
                     data?.tokens_used || streamStateRef.current.tokensUsed,
@@ -501,7 +662,7 @@ export function Chat() {
                   id: m.id,
                   session_id: m.session_id,
                   role: "assistant",
-                  content: streamStateRef.current.contentBuffer,
+                  content: finalContent,
                   created_at: new Date().toISOString(),
                 } as SessionChatMessage);
 
@@ -522,8 +683,7 @@ export function Chat() {
             setAgentUIState("DONE");
           },
         },
-        body,
-      );
+      });
     } catch (error) {
       console.error("[Chat] Send error:", error);
       toast.error(isZh ? "发送消息失败" : "Failed to send message");
@@ -543,9 +703,13 @@ export function Chat() {
     addMessage,
     handleSSEEvent,
     forceFlush,
+    getBufferedContent,
     isZh,
     placeholderId,
     currentMessageId,
+    startStream,
+    scope,
+    mode,
   ]);
 
   // ============================================================================
@@ -622,6 +786,53 @@ export function Chat() {
     }));
   }, [streamState.toolTimeline]);
 
+  // Handle agent confirmation (approve/reject)
+  const handleConfirmation = useCallback(async (approved: boolean) => {
+    if (!confirmation) return;
+    try {
+      const url = `${API_BASE_URL}/api/v1/chat/confirm`;
+      const body = {
+        confirmation_id: confirmation.confirmation_id,
+        approved,
+        session_id: currentSession?.id || '',
+      };
+
+      if (!sseServiceRef.current) {
+        sseServiceRef.current = new SSEService();
+      }
+
+      // The confirm endpoint returns an SSE stream with resumed agent output
+      sseServiceRef.current.connect(url, {
+        onMessage: (event: SSEEvent | SSEEventEnvelope) => {
+          const legacyEvent = event as SSEEvent;
+          const envelopeEvent = event as SSEEventEnvelope;
+          const eventType = legacyEvent.type || envelopeEvent.event || '';
+          const eventMessageId = legacyEvent.message_id || envelopeEvent.message_id || '';
+          const eventData = legacyEvent.content || legacyEvent.data || envelopeEvent.data;
+
+          // Feed events back into useChatStream
+          handleSSEEvent({
+            message_id: eventMessageId,
+            event_type: eventType,
+            data: eventData,
+          });
+        },
+        onError: (error) => {
+          console.error('[Chat] Confirmation stream error:', error);
+          toast.error(isZh ? '确认后恢复失败' : 'Failed to resume after confirmation');
+        },
+        onDone: () => {
+          console.debug('[Chat] Confirmation stream done');
+        },
+      }, body);
+
+      resetConfirmation();
+    } catch (err) {
+      toast.error(approved ? (isZh ? '批准失败' : 'Approval failed') : (isZh ? '拒绝失败' : 'Rejection failed'));
+      resetConfirmation();
+    }
+  }, [confirmation, currentSession, handleSSEEvent, resetConfirmation, isZh]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -637,9 +848,10 @@ export function Chat() {
       forceFlush();
 
       // Update placeholder to cancelled state
+      const cancelMsgId = currentMessageIdRef.current;
       setLocalMessages((prev) =>
         prev.map((m) =>
-          m.id === (placeholderId || currentMessageId)
+          m.id === cancelMsgId
             ? { ...m, streamStatus: "cancelled" }
             : m,
         ),
@@ -656,12 +868,16 @@ export function Chat() {
       // Get the citation at this index
       const citation = streamState.citations[index];
       if (citation) {
+        if (!citation.paper_id) {
+          toast.warning(isZh ? '引用缺少论文 ID，无法跳转' : 'Citation is missing paper id');
+          return;
+        }
         // Navigate to read page with the specific page number
         const page = citation.page || 1;
         navigate(`/read/${citation.paper_id}?page=${page}`);
       }
     },
-    [streamState.citations, navigate],
+    [streamState.citations, navigate, isZh],
   );
 
   // Toggle thinking panel expand/collapse
@@ -781,6 +997,14 @@ export function Chat() {
           </div>
         </div>
 
+        {/* D-03: Scope banner - below header, above messages */}
+        <ScopeBanner
+          type={scope.type}
+          title={scope.title}
+          errorMessage={scope.errorMessage}
+          onExitScope={handleExitScope}
+        />
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {localMessages.length === 0 ? (
@@ -792,7 +1016,7 @@ export function Chat() {
               <p className="text-sm text-muted-foreground/60">{t.sendFirst}</p>
             </div>
           ) : (
-            <div className="space-y-4 max-w-4xl mx-auto">
+            <div className="space-y-6 max-w-4xl mx-auto">
               {localMessages
                 .filter((m) => m.role === "user" || m.role === "assistant")
                 .map((msg) => {
@@ -821,15 +1045,17 @@ export function Chat() {
                           (msg.reasoningBuffer ||
                             streamState.reasoningBuffer) &&
                           msg.isThinkingExpanded && (
+                            <div className="mt-4">
                             <ThinkingProcess
                               steps={thinkingSteps}
                               duration={
-                                (streamState.endedAt || Date.now()) -
-                                (streamState.startedAt || Date.now()) / 1000
+                                ((streamState.endedAt || Date.now()) -
+                                (streamState.startedAt || Date.now())) / 1000
                               }
                               onComplete={() => {}}
                               autoCollapse={true}
                             />
+                            </div>
                           )}
 
                         {/* Tool Call Cards for streaming messages */}
@@ -860,10 +1086,10 @@ export function Chat() {
                         {/* Message Content */}
                         <div
                           className={clsx(
-                            "max-w-[100%] rounded-2xl px-4 py-3",
+                            "max-w-[100%] rounded-2xl px-4 py-3 shadow-md border",
                             msg.role === "user"
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted",
+                              ? "bg-primary text-primary-foreground border-primary/20"
+                              : "bg-muted border-primary/10 border-l-2",
                           )}
                         >
                           {((msg.citations?.length ?? 0) > 0 ||
@@ -974,6 +1200,35 @@ export function Chat() {
         {/* Input Area */}
         <div className="px-6 py-4 border-t border-border/50 bg-background/80 backdrop-blur-md">
           <div className="max-w-4xl mx-auto">
+            {/* Sprint 3: Mode selector */}
+            {scope.type !== null && (
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs text-muted-foreground">
+                  {isZh ? "模式" : "Mode"}:
+                </span>
+                <div className="flex rounded-lg border border-border overflow-hidden text-xs">
+                  {[
+                    { value: 'auto' as const, label: isZh ? '自动' : 'Auto' },
+                    { value: 'rag' as const, label: isZh ? '快速问答' : 'Fast RAG' },
+                    { value: 'agent' as const, label: isZh ? '深度分析' : 'Deep Agent' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setMode(opt.value)}
+                      disabled={streamState.streamStatus === "streaming"}
+                      className={clsx(
+                        "px-3 py-1 transition-colors",
+                        mode === opt.value
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card hover:bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex items-end gap-3 bg-card rounded-xl border border-border p-2">
               <textarea
                 value={input}
@@ -1056,7 +1311,15 @@ export function Chat() {
         )}
       </AnimatePresence>
 
-      {/* Confirmation Dialog for agent approval - TODO: implement with new state management */}
+      {/* Confirmation Dialog for agent tool approval */}
+      <ConfirmationDialog
+        isOpen={!!confirmation}
+        tool={confirmation?.tool || ''}
+        params={confirmation?.params || {}}
+        onApprove={() => handleConfirmation(true)}
+        onReject={() => handleConfirmation(false)}
+      />
+
       {/* Delete Session Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showDeleteConfirm}

@@ -149,7 +149,7 @@ class TestQwen3VLRerankerServiceInterface:
         """Qwen3VLRerankerService should inherit from BaseRerankerService."""
         assert issubclass(Qwen3VLRerankerService, BaseRerankerService)
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_qwen3vl_reranker_is_not_abstract(self, mock_tokenizer, mock_model):
         """Qwen3VLRerankerService should be concrete (can instantiate)."""
@@ -157,7 +157,7 @@ class TestQwen3VLRerankerServiceInterface:
         assert service is not None
         assert isinstance(service, BaseRerankerService)
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_qwen3vl_supports_reranking(self, mock_tokenizer, mock_model):
         """Qwen3VLRerankerService should support reranking."""
@@ -169,7 +169,7 @@ class TestQwen3VLRerankerServiceInterface:
 class TestQwen3VLRerankerServiceReranking:
     """Test Qwen3VL reranking functionality."""
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_with_quantization(self, mock_tokenizer, mock_model):
         """Test rerank with quantization parameter."""
@@ -177,7 +177,7 @@ class TestQwen3VLRerankerServiceReranking:
         
         assert service.quantization == "int8"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_accepts_text_documents(self, mock_tokenizer, mock_model):
         """Test that rerank accepts text documents."""
@@ -197,7 +197,7 @@ class TestQwen3VLRerankerServiceReranking:
 class TestQwen3VLRerankerServiceLifecycle:
     """Test Qwen3VL reranker lifecycle management."""
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_load_model_calls_transformers(self, mock_tokenizer, mock_model):
         """Test load_model calls transformers."""
@@ -211,7 +211,7 @@ class TestQwen3VLRerankerServiceLifecycle:
         
         assert service._initialized is True
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_is_loaded_returns_true_after_loading(self, mock_tokenizer, mock_model):
         """Test is_loaded returns True after load_model."""
@@ -227,7 +227,7 @@ class TestQwen3VLRerankerServiceLifecycle:
         
         assert service.is_loaded() is True
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_get_model_info(self, mock_tokenizer, mock_model):
         """Test get_model_info returns correct information."""
@@ -243,7 +243,7 @@ class TestRerankerServiceComparison:
     """Compare BGE and Qwen3VL reranker behaviors."""
 
     @patch('app.core.reranker.bge_reranker.FlagReranker')
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_both_implement_same_interface(self, mock_tokenizer, mock_model, mock_flag_reranker):
         """Both rerankers should implement BaseRerankerService."""
@@ -263,7 +263,7 @@ class TestRerankerServiceComparison:
         assert hasattr(qwen_service, 'is_loaded')
 
     @patch('app.core.reranker.bge_reranker.FlagReranker')
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_both_support_structured_output(self, mock_tokenizer, mock_model, mock_flag_reranker):
         """Both rerankers should support structured output."""

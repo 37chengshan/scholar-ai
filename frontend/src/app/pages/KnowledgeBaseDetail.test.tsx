@@ -21,19 +21,18 @@ vi.mock('@/services/kbApi', () => ({
   kbApi: {
     get: vi.fn(),
     listPapers: vi.fn(),
-    getUploadHistory: vi.fn(),
     search: vi.fn(),
-    query: vi.fn(),
   },
 }));
 
-vi.mock('@/services/uploadHistoryApi', () => ({
-  uploadHistoryApi: {
-    delete: vi.fn(),
+vi.mock('@/services/importApi', () => ({
+  importApi: {
+    list: vi.fn(),
   },
 }));
 
 import { kbApi } from '@/services/kbApi';
+import { importApi } from '@/services/importApi';
 
 const mockKb = {
   id: 'kb-1',
@@ -74,17 +73,20 @@ const mockPapers = [
 describe('KnowledgeBaseDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(kbApi.get).mockResolvedValue({ success: true, data: mockKb } as any);
+    vi.mocked(kbApi.get).mockResolvedValue(mockKb as any);
     vi.mocked(kbApi.listPapers).mockResolvedValue({
-      success: true,
-      data: { papers: mockPapers, total: 1, limit: 20, offset: 0 },
+      papers: mockPapers,
+      total: 1,
+      limit: 20,
+      offset: 0,
     } as any);
-    vi.mocked(kbApi.getUploadHistory).mockResolvedValue({
+    vi.mocked(importApi.list).mockResolvedValue({
       success: true,
-      data: { records: [], total: 0, limit: 20, offset: 0 },
+      data: {
+        jobs: [],
+      },
     } as any);
-    vi.mocked(kbApi.search).mockResolvedValue({ success: true, data: { results: [], total: 0 } } as any);
-    vi.mocked(kbApi.query).mockResolvedValue({ success: true, data: { answer: 'ok', citations: [], confidence: 1 } } as any);
+    vi.mocked(kbApi.search).mockResolvedValue({ results: [], total: 0 } as any);
   });
 
   it('defaults to papers-first hierarchy and renders paper list', async () => {
@@ -106,27 +108,24 @@ describe('KnowledgeBaseDetail', () => {
       expect(screen.getByText('Paper One')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: /上传记录/i }));
-    expect(screen.getByText(/知识库上传记录/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /导入状态/i }));
+    expect(screen.getByText(/论文导入与处理记录/i)).toBeInTheDocument();
   });
 
   it('renders KB retrieval results from the API', async () => {
     const user = userEvent.setup();
     vi.mocked(kbApi.search).mockResolvedValue({
-      success: true,
-      data: {
-        results: [
-          {
-            id: 'chunk-1',
-            paperId: 'paper-1',
-            paperTitle: 'Paper One',
-            content: 'Important result snippet',
-            page: 3,
-            score: 0.91,
-          },
-        ],
-        total: 1,
-      },
+      results: [
+        {
+          id: 'chunk-1',
+          paperId: 'paper-1',
+          paperTitle: 'Paper One',
+          content: 'Important result snippet',
+          page: 3,
+          score: 0.91,
+        },
+      ],
+      total: 1,
     } as any);
 
     render(<KnowledgeBaseDetail />);
@@ -145,16 +144,8 @@ describe('KnowledgeBaseDetail', () => {
     });
   });
 
-  it('renders KB QA answers from the API', async () => {
+  it('renders unified chat entry in chat tab', async () => {
     const user = userEvent.setup();
-    vi.mocked(kbApi.query).mockResolvedValue({
-      success: true,
-      data: {
-        answer: 'Knowledge-base answer',
-        citations: [],
-        confidence: 0.9,
-      },
-    } as any);
 
     render(<KnowledgeBaseDetail />);
 
@@ -163,33 +154,12 @@ describe('KnowledgeBaseDetail', () => {
     });
 
     await user.click(screen.getByRole('tab', { name: /问答/i }));
-    await user.type(
-      screen.getByPlaceholderText(/Ask a question about your knowledge base/i),
-      'what is this paper about?'
-    );
-    await user.keyboard('{Enter}');
-
-    await waitFor(() => {
-      expect(screen.getByText(/Knowledge-base answer/i)).toBeInTheDocument();
-    });
+    expect(screen.getByText(/当前知识库问答已统一到 Chat 页面/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /进入 Chat（全知识库作用域）/i })).toBeInTheDocument();
   });
 
-  it('uses citation paper_id fallback for QA source navigation', async () => {
+  it('navigates to chat page from unified chat entry', async () => {
     const user = userEvent.setup();
-    vi.mocked(kbApi.query).mockResolvedValue({
-      success: true,
-      data: {
-        answer: 'Answer with citation',
-        citations: [
-          {
-            paper_id: 'paper-1',
-            paperTitle: 'Paper One',
-            page: 2,
-          },
-        ],
-        confidence: 0.9,
-      },
-    } as any);
 
     render(<KnowledgeBaseDetail />);
 
@@ -198,18 +168,7 @@ describe('KnowledgeBaseDetail', () => {
     });
 
     await user.click(screen.getByRole('tab', { name: /问答/i }));
-    await user.type(
-      screen.getByPlaceholderText(/Ask a question about your knowledge base/i),
-      'show me citation'
-    );
-    await user.keyboard('{Enter}');
-
-    await waitFor(() => {
-      expect(screen.getByText(/Answer with citation/i)).toBeInTheDocument();
-      expect(screen.getAllByText(/Paper One/i).length).toBeGreaterThan(0);
-    });
-
-    await user.click(screen.getByText('Paper One', { selector: 'span' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/read/paper-1?page=2');
+    await user.click(screen.getByRole('button', { name: /进入 Chat（全知识库作用域）/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/chat?kbId=kb-1');
   });
 });

@@ -25,16 +25,7 @@
  * - error: Error notification
  */
 
-/**
- * Agent Phase enumeration
- * Used in phase event to indicate current processing stage
- */
-export type AgentPhase =
-  | 'analyze'
-  | 'plan'
-  | 'execute'
-  | 'synthesize'
-  | 'respond';
+import { AgentPhase } from '@/types/chat';
 
 /**
  * SSE Event Types (from backend Agent-Native architecture)
@@ -93,7 +84,9 @@ export interface SessionStartEventData {
  * Determines query processing path
  */
 export interface RoutingDecisionEventData {
-  route: 'rag' | 'knowledge_graph' | 'hybrid' | 'external_search' | 'clarification';
+  // Backend may send 'route' (old) or 'decision' (Sprint 3 fast path)
+  route?: 'rag' | 'knowledge_graph' | 'hybrid' | 'external_search' | 'clarification';
+  decision?: 'simple' | 'complex' | 'agent';
   confidence: number;
   reason: string;
   estimated_steps?: number;

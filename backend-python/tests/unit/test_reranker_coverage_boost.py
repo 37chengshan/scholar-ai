@@ -113,7 +113,7 @@ class TestFactoryMissingCoverage:
 class TestQwen3VLRerankerMissingCoverage:
     """Cover missing lines in qwen3vl_reranker.py."""
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_detect_device_cuda_available(self, mock_tokenizer, mock_model):
         """Test _detect_device when CUDA available (line 90)."""
@@ -124,7 +124,7 @@ class TestQwen3VLRerankerMissingCoverage:
             service = Qwen3VLRerankerService(device="auto")
             assert service.device == "cuda"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_load_model_already_loaded_log(self, mock_tokenizer, mock_model):
         """Test load_model when already loaded (lines 108-109)."""
@@ -140,7 +140,7 @@ class TestQwen3VLRerankerMissingCoverage:
         
         assert service.is_loaded()
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_single_score_to_list(self, mock_tokenizer, mock_model):
         """Test rerank when model returns single float score (line 194)."""
@@ -160,21 +160,21 @@ class TestQwen3VLRerankerMissingCoverage:
         assert len(results) == 1
         assert results[0]["score"] == 0.85
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_supports_multimodal_returns_true(self, mock_tokenizer, mock_model):
         """Test supports_multimodal returns True (line 260)."""
         service = Qwen3VLRerankerService()
         assert service.supports_multimodal() is True
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_get_device_returns_device(self, mock_tokenizer, mock_model):
         """Test get_device returns device string (line 268)."""
         service = Qwen3VLRerankerService(device="cpu")
         assert service.get_device() == "cpu"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_get_model_info_returns_complete_dict(self, mock_tokenizer, mock_model):
         """Test get_model_info returns complete dict."""
@@ -206,7 +206,7 @@ class TestCompleteCoverageIntegration:
         service.load_model()
         assert service.is_loaded()
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_qwen3vl_all_methods_covered(self, mock_tokenizer, mock_model):
         """Test all Qwen3VL methods are covered."""
@@ -275,7 +275,7 @@ class TestDeviceDetectionAllPaths:
         
         assert service.get_device() == "cuda" or service.get_device() == "cpu"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     @patch('torch.cuda.is_available')
     @patch('torch.backends.mps.is_available')
@@ -290,7 +290,7 @@ class TestDeviceDetectionAllPaths:
         
         assert service.get_device() == "mps"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     @patch('torch.cuda.is_available')
     @patch('torch.backends.mps.is_available')
@@ -305,7 +305,7 @@ class TestDeviceDetectionAllPaths:
         
         assert service.get_device() == "cpu"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_qwen3vl_explicit_device(self, mock_tokenizer, mock_model):
         """Test Qwen3VL with explicit device."""
@@ -320,7 +320,7 @@ class TestDeviceDetectionAllPaths:
 class TestScoreConversion:
     """Test score conversion scenarios."""
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_float_to_list_conversion(self, mock_tokenizer, mock_model):
         """Test float score to list conversion."""
@@ -340,7 +340,7 @@ class TestScoreConversion:
         assert isinstance(results[0]["score"], float)
         assert results[0]["score"] == 0.95
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_list_scores_unchanged(self, mock_tokenizer, mock_model):
         """Test list scores remain unchanged."""
@@ -377,7 +377,7 @@ class TestModelInfoCompleteness:
             assert key in info
             assert isinstance(info[key], str)
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_qwen3vl_model_info_all_keys(self, mock_tokenizer, mock_model):
         """Test Qwen3VL model info has all keys."""

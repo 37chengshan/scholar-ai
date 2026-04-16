@@ -253,6 +253,22 @@ export async function update(id: string, data: { readingNotes?: string }): Promi
   return normalizePaper(response.data) as Paper;
 }
 
+/** Download paper PDF as blob */
+export async function downloadPdfBlob(id: string): Promise<Blob> {
+  const response = await apiClient.get(`/api/v1/papers/${id}/download`, {
+    responseType: 'blob',
+  });
+
+  return new Blob([response.data], { type: 'application/pdf' });
+}
+
+/** Save paper reading progress */
+export async function saveReadingProgress(id: string, currentPage: number): Promise<void> {
+  await apiClient.post(`/api/v1/reading-progress/${id}`, {
+    currentPage,
+  });
+}
+
 /** Get PDF download URL */
 export function getPdfUrl(id: string): string {
   return `${apiClient.defaults.baseURL || ''}/api/v1/papers/${id}/download`;
