@@ -145,7 +145,6 @@ class MultimodalSearchService:
             result["vector_score"] = vector_score
             result["sparse_score"] = sparse_score
             result["hybrid_score"] = hybrid_score
-
     def compile_to_constraints(
         self,
         metadata_filters: Dict[str, Any],
