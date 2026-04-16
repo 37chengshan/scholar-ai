@@ -95,7 +95,7 @@ jobs:
           END
           $$;
           SQL
-          alembic upgrade head
+          alembic upgrade heads
 
       - name: Create test environment file
         working-directory: backend-python
