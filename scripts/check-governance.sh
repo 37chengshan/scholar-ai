@@ -10,7 +10,7 @@ required_files=(
   ".github/ISSUE_TEMPLATE/bug-report.yml"
   ".github/ISSUE_TEMPLATE/feature-request.yml"
   ".github/ISSUE_TEMPLATE/governance-task.yml"
-  ".github/workflows/governance-baseline.yml"
+  ".github/workflows/governance.yml"
   "docs/architecture/system-overview.md"
   "docs/architecture/api-contract.md"
   "docs/domain/resources.md"

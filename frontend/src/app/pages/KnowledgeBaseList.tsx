@@ -63,9 +63,7 @@ export function KnowledgeBaseList() {
       setStorageStatsLoading(true);
       try {
         const response = await kbApi.getStorageStats();
-        if (response.success && response.data) {
-          setStorageStats(response.data);
-        }
+        setStorageStats(response);
       } catch (err) {
         console.error('Failed to fetch storage stats:', err);
       } finally {
@@ -107,15 +105,10 @@ export function KnowledgeBaseList() {
       if (ids.length === 0) return;
       
       // Call real batch delete API via kbApi
-      const response = await kbApi.batchDelete(ids);
-      
-      if (response.success) {
-        toast.success(`成功删除 ${ids.length} 个知识库`);
-        setSelectedIds(new Set());
-        refetch(); // Refresh list
-      } else {
-        toast.error('批量删除失败');
-      }
+      await kbApi.batchDelete(ids);
+      toast.success(`成功删除 ${ids.length} 个知识库`);
+      setSelectedIds(new Set());
+      await refetch();
     } catch (err: any) {
       toast.error(err.message || '批量删除失败');
     }
@@ -159,14 +152,9 @@ export function KnowledgeBaseList() {
   const handleEdit = async (id: string, name: string) => {
     try {
       // Call real update API via kbApi
-      const response = await kbApi.update(id, { name });
-      
-      if (response.success) {
-        toast.success(`知识库已更新`);
-        refetch();
-      } else {
-        toast.error('更新失败');
-      }
+      await kbApi.update(id, { name });
+      toast.success(`知识库已更新`);
+      await refetch();
     } catch (err: any) {
       toast.error(err.message || '更新失败');
     }

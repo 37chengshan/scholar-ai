@@ -25,6 +25,20 @@ for target in "${frontend_targets[@]}"; do
   fi
 done
 
+# Frontend rule: avoid duplicate hook implementations across app/hooks and hooks.
+shared_hooks_dir="frontend/src/hooks"
+app_hooks_dir="frontend/src/app/hooks"
+if [[ -d "$shared_hooks_dir" && -d "$app_hooks_dir" ]]; then
+  while IFS= read -r shared_hook; do
+    [[ -z "$shared_hook" ]] && continue
+    hook_name="$(basename "$shared_hook")"
+    if [[ -f "$app_hooks_dir/$hook_name" ]]; then
+      echo "[code-boundaries] duplicate hook implementation detected: $hook_name" >&2
+      fail_count=$((fail_count + 1))
+    fi
+  done < <(find "$shared_hooks_dir" -type f -name "*.ts" | sort)
+fi
+
 # Backend rule: prevent new API-layer direct DB operations.
 backend_pattern='await db\.(execute|add|add_all|delete|flush|refresh|commit|scalar|scalars|get|merge)|\bdb\.(execute|add|add_all|delete|flush|refresh|commit|scalar|scalars|get|merge)\('
 

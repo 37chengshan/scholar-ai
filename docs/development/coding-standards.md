@@ -26,8 +26,13 @@
 
 - 前端页面与路由代码集中在 frontend/src/app。
 - 前端 API 访问统一走 frontend/src/services 与 hooks。
+- frontend/src/hooks 为共享业务 hook 唯一实现目录；frontend/src/app/hooks 仅允许页面级局部 hook。
+- 禁止在 frontend/src/hooks 与 frontend/src/app/hooks 保留同名 hook 文件。
 - 后端入口在 backend-python/app/api，业务编排在 backend-python/app/services。
-- schema/DTO 优先集中管理，不得在多个目录重复定义。
+- 后端 schema/DTO 必须统一放在 backend-python/app/schemas。
+- backend-python/app/models 仅保留 ORM/持久化模型，不得新增 Pydantic BaseModel。
+- 数据访问查询统一收敛到 backend-python/app/repositories，router 不直接写数据库查询。
+- schema/DTO 不得在多个目录重复定义。
 
 边界规则：
 
@@ -37,6 +42,7 @@
 - router 不写业务逻辑，service 不拼 UI 文案。
 - repository/schema 不依赖 UI 层。
 - backend-python/app/api 禁止新增直接数据库操作语句（见 docs/governance/code-boundary-baseline.md）。
+- backend-python/app/core 仅允许基础设施能力（config/database/logging/security/base exception），禁止新增业务编排逻辑。
 
 禁止项：
 

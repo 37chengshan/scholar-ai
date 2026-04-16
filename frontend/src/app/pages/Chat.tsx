@@ -201,19 +201,11 @@ export function Chat() {
         if (kbId) {
           // Validate kbId exists and user has access
           const kbRes = await kbApi.get(kbId);
-          if (kbRes.success && kbRes.data) {
-            setScope({
-              type: 'full_kb',
-              id: kbId,
-              title: kbRes.data.name,
-            });
-          } else {
-            setScope({
-              type: 'error',
-              id: kbId,
-              errorMessage: `${kbId} 不存在或无权访问`,
-            });
-          }
+          setScope({
+            type: 'full_kb',
+            id: kbId,
+            title: kbRes.name,
+          });
           setScopeLoading(false);
           return;
         }

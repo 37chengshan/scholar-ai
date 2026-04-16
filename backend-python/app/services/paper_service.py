@@ -12,6 +12,7 @@ Provides CRUD operations for papers:
 Per D-04: Service layer for business logic separation.
 """
 
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -20,9 +21,13 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.models.annotation import Annotation
 from app.models.paper import Paper, PaperChunk
 from app.models.reading_progress import ReadingProgress
+from app.models.task import ProcessingTask
+from app.models.upload_history import UploadHistory
+from app.repositories.paper_repository import PaperRepository
 from app.utils.logger import logger
 from app.utils.problem_detail import ErrorTypes, ProblemDetail, create_error
 
@@ -434,6 +439,236 @@ class PaperService:
         )
 
         return paper
+
+    @staticmethod
+    async def list_papers_for_api(
+        db: AsyncSession,
+        user_id: str,
+        *,
+        page: int,
+        limit: int,
+        starred: Optional[bool] = None,
+        read_status: Optional[str] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        papers, total = await PaperRepository.list_papers(
+            db,
+            user_id,
+            page=page,
+            limit=limit,
+            starred=starred,
+            read_status=read_status,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        paper_ids = [paper.id for paper in papers]
+        task_map: Dict[str, ProcessingTask] = {}
+        if paper_ids:
+            task_result = await db.execute(
+                select(ProcessingTask).where(ProcessingTask.paper_id.in_(paper_ids))
+            )
+            tasks = task_result.scalars().all()
+            task_map = {task.paper_id: task for task in tasks}
+
+        total_pages = (total + limit - 1) // limit if limit > 0 else 0
+        return {
+            "papers": papers,
+            "task_map": task_map,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages,
+        }
+
+    @staticmethod
+    async def search_papers_for_api(
+        db: AsyncSession,
+        user_id: str,
+        *,
+        query_text: str,
+        page: int,
+        limit: int,
+    ) -> Dict[str, Any]:
+        papers, total = await PaperRepository.search_papers(
+            db,
+            user_id,
+            query_text=query_text,
+            page=page,
+            limit=limit,
+        )
+
+        paper_ids = [paper.id for paper in papers]
+        task_map: Dict[str, ProcessingTask] = {}
+        if paper_ids:
+            task_result = await db.execute(
+                select(ProcessingTask).where(ProcessingTask.paper_id.in_(paper_ids))
+            )
+            tasks = task_result.scalars().all()
+            task_map = {task.paper_id: task for task in tasks}
+
+        total_pages = (total + limit - 1) // limit if limit > 0 else 0
+        return {
+            "papers": papers,
+            "task_map": task_map,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages,
+            "query": query_text,
+        }
+
+    @staticmethod
+    async def get_paper_for_api(
+        db: AsyncSession,
+        user_id: str,
+        *,
+        paper_id: str,
+        include_chunks: bool,
+    ) -> Dict[str, Any]:
+        paper = await PaperRepository.get_user_paper(db, user_id, paper_id)
+        if not paper:
+            raise ValueError("Paper not found")
+
+        task_result = await db.execute(
+            select(ProcessingTask).where(ProcessingTask.paper_id == paper_id)
+        )
+        task = task_result.scalar_one_or_none()
+
+        chunks: List[PaperChunk] = []
+        if include_chunks:
+            chunks = await PaperRepository.list_chunks(db, paper_id)
+
+        return {"paper": paper, "task": task, "chunks": chunks}
+
+    @staticmethod
+    async def create_paper_for_api(
+        db: AsyncSession,
+        user_id: str,
+        *,
+        filename: str,
+    ) -> Dict[str, Any]:
+        title = filename.replace(".pdf", "").replace(".PDF", "")
+        existing = await PaperRepository.get_user_paper_by_title(db, user_id, title)
+        if existing:
+            raise ValueError(f'Duplicate paper title: {title}')
+
+        storage_key = f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid4()}.pdf"
+        paper_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+
+        paper = Paper(
+            id=paper_id,
+            title=title,
+            authors=[],
+            status="pending",
+            user_id=user_id,
+            storage_key=storage_key,
+            keywords=[],
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(paper)
+
+        upload_history = UploadHistory(
+            id=str(uuid4()),
+            user_id=user_id,
+            filename=filename,
+            status="PROCESSING",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(upload_history)
+
+        return {
+            "paperId": paper_id,
+            "uploadUrl": f"/api/v1/papers/upload/local/{storage_key}",
+            "storageKey": storage_key,
+            "expiresIn": 3600,
+        }
+
+    @staticmethod
+    async def update_paper_for_api(
+        db: AsyncSession,
+        user_id: str,
+        *,
+        paper_id: str,
+        updates: Dict[str, Any],
+    ) -> Paper:
+        paper = await PaperRepository.get_user_paper(db, user_id, paper_id)
+        if not paper:
+            raise ValueError("Paper not found")
+
+        field_mapping = {
+            "title": "title",
+            "authors": "authors",
+            "year": "year",
+            "abstract": "abstract",
+            "keywords": "keywords",
+            "starred": "starred",
+            "projectId": "project_id",
+            "readingNotes": "reading_notes",
+        }
+
+        for req_field, model_field in field_mapping.items():
+            if req_field in updates and updates[req_field] is not None:
+                setattr(paper, model_field, updates[req_field])
+
+        paper.updated_at = datetime.now(timezone.utc)
+        return paper
+
+    @staticmethod
+    async def delete_paper_for_api(
+        db: AsyncSession,
+        user_id: str,
+        *,
+        paper_id: str,
+    ) -> None:
+        paper = await PaperRepository.get_user_paper(db, user_id, paper_id)
+        if not paper:
+            raise ValueError("Paper not found")
+
+        storage_key = paper.storage_key
+        if storage_key:
+            file_path = f"{settings.LOCAL_STORAGE_PATH}/{storage_key}"
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+        await db.delete(paper)
+
+    @staticmethod
+    async def batch_delete_for_api(
+        db: AsyncSession,
+        user_id: str,
+        *,
+        paper_ids: List[str],
+    ) -> int:
+        papers = await PaperRepository.list_user_papers_by_ids(db, user_id, paper_ids)
+        deleted_count = 0
+        for paper in papers:
+            storage_key = paper.storage_key
+            if storage_key:
+                file_path = f"{settings.LOCAL_STORAGE_PATH}/{storage_key}"
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            await db.delete(paper)
+            deleted_count += 1
+        return deleted_count
+
+    @staticmethod
+    async def batch_star_for_api(
+        db: AsyncSession,
+        user_id: str,
+        *,
+        paper_ids: List[str],
+        starred: bool,
+    ) -> int:
+        papers = await PaperRepository.list_user_papers_by_ids(db, user_id, paper_ids)
+        for paper in papers:
+            paper.starred = starred
+            paper.updated_at = datetime.now(timezone.utc)
+        return len(papers)
 
 
 __all__ = ["PaperService"]

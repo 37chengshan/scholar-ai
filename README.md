@@ -11,6 +11,7 @@ ScholarAI 是面向学术阅读与知识工作流的全栈 AI 工程仓库，目
 ## Scope
 
 - 本仓库当前采用逻辑对齐，不做 frontend 与 backend-python 的物理迁移。
+- 当前阶段唯一真实代码主路径：frontend 与 backend-python。
 - 逻辑映射如下：
 	- apps/web -> frontend
 	- apps/api -> backend-python
@@ -35,6 +36,7 @@ ScholarAI 是面向学术阅读与知识工作流的全栈 AI 工程仓库，目
 
 - 根目录只保留长期核心文件与核心目录，不放 *.pid、cookies.txt、临时日志和测试产物。
 - 新文档统一写入 docs，不再新增 doc、tmp、legacy、_new 平行目录。
+- apps/web 与 apps/api 当前只允许保留映射说明文档，不承接业务源码。
 - 前端页面不直接请求 API，必须通过 service 或 hooks。
 - 后端 router 不写业务编排，业务逻辑集中在 service 层。
 - 新接口必须符合统一响应格式与命名规范。

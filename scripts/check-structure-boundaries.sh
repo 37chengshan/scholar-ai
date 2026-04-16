@@ -51,6 +51,43 @@ for file in "${forbidden_root_files[@]}"; do
   fi
 done
 
+# apps/* are logical mapping only in current phase.
+# Block introducing real implementation files in apps/web and apps/api.
+allowed_apps_files=(
+  "README.md"
+)
+
+is_allowed_apps_file() {
+  local filename="$1"
+  for allowed in "${allowed_apps_files[@]}"; do
+    if [[ "$filename" == "$allowed" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+check_apps_logical_mapping() {
+  local dir="$1"
+  if [[ ! -d "$dir" ]]; then
+    return
+  fi
+
+  while IFS= read -r file; do
+    local base
+    base="$(basename "$file")"
+    if ! is_allowed_apps_file "$base"; then
+      echo "[structure-boundaries] apps logical mapping violation: $file" >&2
+      fail_count=$((fail_count + 1))
+    fi
+  done < <(
+    find "$dir" -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) | sort
+  )
+}
+
+check_apps_logical_mapping "apps/web"
+check_apps_logical_mapping "apps/api"
+
 shopt -s nullglob
 root_pid=(./*.pid)
 root_log=(./*.log)

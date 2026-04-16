@@ -147,7 +147,7 @@ export function ImportKnowledgeDialog({
           }));
 
           const response = await kbApi.uploadPdf(knowledgeBaseId, file);
-          const paperId = response.data.paperId;
+          const paperId = response.paperId;
 
           setFileState(fileItem.id, (current) => ({
             ...current,

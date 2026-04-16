@@ -35,10 +35,12 @@
   - `docs/development/pr-process.md`
   - `docs/development/testing-strategy.md`
   - `docs/governance/code-boundary-baseline.md`
+  - `docs/governance/core-boundary-baseline.md`
   - `docs/governance/harness-engineering-playbook.md`
 - Imported reference material goes under `docs/reference/`.
 - Deliverable-style reports go under `docs/reports/`.
 - Runtime outputs, coverage, and generated logs do not belong here.
+- Every new ADR must be added under `docs/adr/` with incremental numbering.
 
 ## Governance Commands
 

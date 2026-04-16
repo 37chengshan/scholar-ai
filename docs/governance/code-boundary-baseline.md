@@ -35,15 +35,15 @@
 - backend-python/app/api/imports/dedupe.py
 - backend-python/app/api/imports/jobs.py
 - backend-python/app/api/kb/kb_crud.py
+- backend-python/app/api/kb/kb_import.py
 - backend-python/app/api/kb/kb_papers.py
 - backend-python/app/api/notes.py
-- backend-python/app/api/papers/paper_crud.py
 - backend-python/app/api/papers/paper_status.py
 - backend-python/app/api/papers/paper_upload.py
 - backend-python/app/api/projects.py
-- backend-python/app/api/rag.py
 - backend-python/app/api/reading_progress.py
 - backend-python/app/api/tasks.py
+- backend-python/app/api/uploads.py
 - backend-python/app/api/users.py
 
 ## Required Updates

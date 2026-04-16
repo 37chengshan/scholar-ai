@@ -194,7 +194,7 @@ export function Search() {
     setLoadingKBs(true);
     try {
       const response = await kbApi.list({ limit: 100 });
-      setKnowledgeBases(response.data.knowledgeBases || []);
+      setKnowledgeBases(response.knowledgeBases || []);
     } catch (error: any) {
       toast.error('加载知识库列表失败');
     } finally {

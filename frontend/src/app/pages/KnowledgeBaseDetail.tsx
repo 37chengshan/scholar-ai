@@ -55,11 +55,7 @@ export function KnowledgeBaseDetail() {
     }
     try {
       const res = await kbApi.get(kbId);
-      if (res.success && res.data) {
-        setKB(res.data);
-      } else if (!options?.silent) {
-        toast.error("获取知识库详情失败");
-      }
+      setKB(res);
     } catch (err: any) {
       if (!options?.silent) {
         toast.error(err.message || "网络错误");
@@ -79,11 +75,7 @@ export function KnowledgeBaseDetail() {
     }
     try {
       const response = await kbApi.listPapers(kbId);
-      if (response.success && response.data) {
-        setPapers(response.data.papers || []);
-      } else if (!options?.silent) {
-        toast.error("加载知识库论文失败");
-      }
+      setPapers(response.papers || []);
     } catch (err: any) {
       if (!options?.silent) {
         toast.error(err.message || "加载知识库论文失败");
@@ -163,11 +155,7 @@ export function KnowledgeBaseDetail() {
     setIsSearching(true);
     try {
       const res = await kbApi.search(kbId, searchQuery);
-      if (res.success && res.data) {
-        setResults(res.data.results);
-      } else {
-        toast.error("搜索失败");
-      }
+      setResults(res.results || []);
     } catch (err: any) {
       toast.error(err.message || "搜索失败");
     } finally {

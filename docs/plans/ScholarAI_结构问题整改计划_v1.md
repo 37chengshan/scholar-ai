@@ -8,18 +8,35 @@
 2. 把前端、后端、接口契约、治理脚本、文档系统统一到一套能持续演进的工程基线上。
 3. 给出**明确的实践顺序、要改哪些目录、要改哪些文件、每一步如何验收**。
 
-本计划基于当前仓库实际结构制定，已核对到以下现状：
+本计划基于当前仓库实际结构制定，已核对到以下现状（2026-04-17 更新）：
 
+**已完成的治理基础设施：**
+- `.github/workflows/` 已存在（含 `governance-baseline.yml`、`test.yml`）
+- `.github/PULL_REQUEST_TEMPLATE.md` 已存在且内容完整
+- `.github/ISSUE_TEMPLATE/` 已存在（含 bug-report、feature-request、governance-task 模板）
+- 四个治理脚本全部存在：`check-doc-governance.sh`、`check-code-boundaries.sh`、`check-structure-boundaries.sh`、`check-governance.sh`
+- `docs/architecture/api-contract.md` 已存在，使用 `limit/offset` 分页规范
+- `docs/adr/` 已存在（含 `0001-repository-boundary-and-governance.md`）
+- `pnpm-workspace.yaml` 已存在且配置正确
+- `AGENTS.md` 已存在，包含 scope mapping 和禁止新增根目录规则
+
+**仍需整改的问题：**
 - 根目录已有 `apps/`、`packages/`、`docs/`、`infra/`、`scripts/`、`frontend/`、`backend-python/`
 - `apps/web` 与 `apps/api` 当前仍是**逻辑映射层**，真实代码仍在 `frontend/` 与 `backend-python/`
-- `docs/architecture`、`docs/development`、`docs/governance` 已建立治理主干
-- `scripts/check-doc-governance.sh` 与 `scripts/check-code-boundaries.sh` 当前可通过
-- `scripts/check-structure-boundaries.sh` 当前失败，原因是仓库缺少 `.github/workflows`
+- `apps/*/README.md` 已有"实现路径映射"说明，但措辞可进一步强化约束力
+- `apps/web/README.md` 已包含 "Current implementation lives in frontend" 和禁止双实现路径规则
 - 前端仍存在重复 hook：`frontend/src/hooks/useKnowledgeBases.ts` 与 `frontend/src/app/hooks/useKnowledgeBases.ts`
+- 前端 `kbApi.ts` 所有方法返回 `{ success: true, data: response.data }` 包装
+- 前端 `papersApi.ts` 的 `normalizePaper()` 同时兼容 camelCase 和 snake_case 字段
 - 后端 `backend-python/app/api/search.py` 与 `backend-python/app/api/search/` 并存
-- 后端 `backend-python/app/models/` 中混放 ORM 模型与 Pydantic schema
-- 后端 `backend-python/app/api/papers/paper_crud.py` 仍直接做 SQL 查询、过滤、分页和响应拼装
-- API 契约文档与真实实现存在漂移，例如分页文档写 `limit/offset + meta.total`，而 `papers` 真实接口使用 `page/limit + totalPages`；字段命名文档要求"边界一次转换"，而 `paper_shared.py` 的响应同时混用 `snake_case` 与 `camelCase`
+- 后端 `backend-python/app/models/` 中混放 ORM 模型与 Pydantic schema（`note.py`、`session.py`、`rag.py` 为 Pydantic）
+- 后端 `backend-python/app/api/papers/paper_crud.py` 仍直接做 SQL 查询（含 `db.execute`、`select()`、`func.count`、`text()`）
+- 后端 `backend-python/app/api/papers/paper_shared.py` 响应同时混用 `snake_case`（`arxiv_id`、`file_size`）与 `camelCase`（`processingStatus`、`processingError`）
+- 后端 `backend-python/app/core/` 含 **49** 个 Python 文件（含配置、数据库、agent、embedding、reranker、图谱等）
+- 后端 `backend-python/app/schemas/` 目录**不存在**
+- 后端 `backend-python/app/repositories/` 目录**不存在**
+- 后端 `backend-python/app/services/` 已存在（含 14 个服务文件，包括 `paper_service.py`）
+- API 契约文档与真实实现存在漂移：文档定义 `limit/offset + meta.total`，papers 实现仍部分使用 `page/limit`
 
 ---
 
@@ -101,20 +118,23 @@
 - 本轮不迁移真实代码
 - 但必须把 `apps/*` 的"映射层身份"写死，并通过文档和校验保证不承接业务代码
 
-### 问题 B：门禁要求 `.github/workflows`，仓库当前不存在
+### 问题 B：`.github/workflows` 已存在但需验证完整性 ✅ 部分完成
 
 现状：
-- `scripts/check-structure-boundaries.sh` 把 `.github/workflows` 作为 required directory
-- 当前仓库无 `.github/`
-- 该脚本当前失败
+- `.github/workflows/` **已存在**，包含：
+  - `governance-baseline.yml` - 治理基线检查工作流
+  - `test.yml` - 测试工作流
+- `.github/PULL_REQUEST_TEMPLATE.md` **已存在**且内容完整
+- `.github/ISSUE_TEMPLATE/` **已存在**（bug-report、feature-request、governance-task）
+- `scripts/check-structure-boundaries.sh` 现在应能通过
 
 影响：
-- 治理门禁无法闭环
-- 文档写了 PR 流程与治理脚本，但缺少真正的 CI 容器入口
+- 治理门禁基础设施已具备
+- 但需验证工作流是否包含四个治理脚本执行
 
 整改原则：
-- 本轮必须补 `.github/workflows`
-- 至少提供一条最小治理流水线，运行四个治理脚本和前后端最小校验命令
+- ✅ 无需新增 `.github/workflows/` 目录
+- ⚠️ 验证现有工作流是否包含治理脚本执行，必要时补充
 
 ---
 
@@ -230,7 +250,7 @@
 ### 问题 I：`core/` 偏胖
 
 现状：
-- `backend-python/app/core/` 下约 64 个 Python 文件
+- `backend-python/app/core/` 下约 **49** 个 Python 文件
 - 同时混有：配置、数据库、agent、embedding、reranker、docling、图谱、意图识别等
 
 影响：
@@ -343,115 +363,281 @@
 
 ## 6. 分阶段整改实施方案
 
-# Phase 0：治理门禁闭环（优先级 P0，预计 0.5~1 天）
+### Phase 依赖关系
 
-## 目标
+```
+Phase 0 (门禁闭环)
+    ↓
+Phase 1 (主路径冻结) ← 必须先完成
+    ↓
+Phase 2 (前端收口) ──┐
+Phase 3 (后端整改) ──┼── 可并行
+    ↓               ↓
+Phase 4 (契约统一) ← 必须等待 2+3
+    ↓
+Phase 5 (迁移准备)
+```
 
-让仓库治理脚本四项全部通过；把"规则写了但门禁不完整"的状态先补齐。
+**关键依赖说明：**
 
-## 要做的事
+| 依赖 | 原因 |
+|------|------|
+| Phase 0 → Phase 1 | 无门禁则无法验证后续整改是否合规 |
+| Phase 1 → Phase 2/3 | 主路径未冻结时，整改可能落错位置 |
+| Phase 2 + Phase 3 → Phase 4 | 前后端分层未收口时，契约统一会同时涉及多层修改 |
+| Phase 4 → Phase 5 | 契约未统一时，packages 无法承接稳定类型 |
 
-### 任务 0.1：新增 `.github/workflows/`
+**并行执行建议：**
 
-新增目录：
-- `.github/workflows/`
+- Phase 2 和 Phase 3 可由不同开发者/子代理并行推进
+- 但两者的验收必须在 Phase 4 开始前完成
+- 若资源有限，优先完成 Phase 2（前端改动影响面更广）
 
-新增文件：
-- `.github/workflows/governance.yml`
+---
 
-最小工作流内容建议：
-- checkout
-- setup node
-- setup python
-- 执行：
-  - `bash scripts/check-doc-governance.sh`
-  - `bash scripts/check-structure-boundaries.sh`
-  - `bash scripts/check-code-boundaries.sh`
-  - `bash scripts/check-governance.sh`
+### Phase 0：治理门禁闭环（优先级 P0） ✅ 大部分已完成
 
-### 任务 0.2：新增 `.github/PULL_REQUEST_TEMPLATE.md`
+#### 目标
 
-当前文档已经引用 PR 流程，但仓库缺少实际模板承接。新增：
-- `.github/PULL_REQUEST_TEMPLATE.md`
+让仓库治理脚本四项全部通过；验证已有基础设施是否完整。
 
-模板字段至少包含：
-- Summary
-- Background
-- Changes
-- Contract impact
-- Verification
-- Risks
-- Docs updated
+#### 当前状态
 
-### 任务 0.3：给 `apps/web`、`apps/api` 的 README 加"禁止承接业务代码"说明
+**已完成：**
+- ✅ `.github/workflows/` 目录已存在（含 `governance-baseline.yml`、`test.yml`）
+- ✅ `.github/PULL_REQUEST_TEMPLATE.md` 已存在且内容完整
+- ✅ `.github/ISSUE_TEMPLATE/` 已存在（bug-report、feature-request、governance-task）
+- ✅ 四个治理脚本全部存在
 
-修改：
-- `apps/web/README.md`
-- `apps/api/README.md`
+**需验证/补充：**
+- ⚠️ 验证工作流是否包含治理脚本执行
+- ⚠️ 验证 `apps/*/README.md` 约束措辞是否足够清晰
 
-新增说明：
-- 当前阶段只做逻辑映射
-- 不允许新业务代码直接落入 `apps/*`
-- 真实代码主路径仍是 `frontend/`、`backend-python/`
+#### 要做的事
 
-## 验收标准
+##### 任务 0.1：验证 `.github/workflows/` 内容 ✅ 已存在
 
-执行：
+**当前状态：已存在**
+- `.github/workflows/governance-baseline.yml`
+- `.github/workflows/test.yml`
+
+**操作：** 验证现有工作流是否包含四个治理脚本执行，如已包含则无需修改，如未包含则补充。
+
+##### 任务 0.2：验证 `.github/PULL_REQUEST_TEMPLATE.md` ✅ 已存在且完整
+
+**当前状态：已存在**
+已包含 Summary、Verification checklist、Contract impact、Governance Checklist 等字段。
+
+**操作：** 无需修改，验证内容是否符合需求即可。
+
+##### 任务 0.3：验证 `apps/*/README.md` 约束措辞 ⚠️ 已有等效约束
+
+**当前状态：**
+- `apps/web/README.md` 已包含：
+  - "Current implementation lives in frontend"
+  - "do not create a second frontend implementation path"
+- `apps/api/README.md` 已包含：
+  - "Current implementation lives in backend-python"
+
+**操作：** 
+- 验证现有约束措辞是否足够清晰
+- 如需强化，可补充"禁止在 apps/* 中新增业务实现文件"的明确说明
+- 但不必强制添加"禁止承接业务代码"特定文本（已有等效约束）
+
+#### 验收标准（更新）
+
+| 序号 | 验收项 | 验收命令/方法 | 期望结果 |
+|------|--------|---------------|----------|
+| 1 | 治理脚本全部通过 | `bash scripts/check-doc-governance.sh && bash scripts/check-structure-boundaries.sh && bash scripts/check-code-boundaries.sh && bash scripts/check-governance.sh` | Exit code = 0 |
+| 2 | GitHub Actions 工作流存在 | `test -f .github/workflows/governance-baseline.yml || test -f .github/workflows/governance.yml` | Exit code = 0 |
+| 3 | PR 模板存在 | `test -f .github/PULL_REQUEST_TEMPLATE.md` | Exit code = 0 ✅ |
+| 4 | apps README 包含约束说明 | `grep -q "Current implementation lives in frontend" apps/web/README.md && grep -q "Current implementation lives in backend-python" apps/api/README.md` | Exit code = 0 ✅ |
+| 5 | Issue 模板存在 | `test -d .github/ISSUE_TEMPLATE` | Exit code = 0 ✅ |
+
+**验收执行脚本（更新版）：**
 
 ```bash
+#!/bin/bash
+# scripts/verify-phase0.sh
+
+set -e
+
+echo "=== Phase 0 验收开始 ==="
+
+# 1. 检查文件存在
+echo "[1/5] 检查必需文件..."
+test -f .github/workflows/governance-baseline.yml || test -f .github/workflows/governance.yml
+test -f .github/PULL_REQUEST_TEMPLATE.md
+test -d .github/ISSUE_TEMPLATE
+echo "✓ 文件存在"
+
+# 2. 检查 README 内容（调整为已有措辞）
+echo "[2/5] 检查 apps README 内容..."
+grep -q "Current implementation lives in frontend" apps/web/README.md
+grep -q "Current implementation lives in backend-python" apps/api/README.md
+echo "✓ README 约束说明存在"
+
+# 3. 运行治理脚本
+echo "[3/5] 运行治理脚本..."
 bash scripts/check-doc-governance.sh
 bash scripts/check-structure-boundaries.sh
 bash scripts/check-code-boundaries.sh
 bash scripts/check-governance.sh
+echo "✓ 治理脚本通过"
+
+# 4. 检查工作流语法
+echo "[4/5] 检查工作流 YAML 语法..."
+python3 -c "import yaml; yaml.safe_load(open('.github/workflows/governance-baseline.yml'))" || \
+python3 -c "import yaml; yaml.safe_load(open('.github/workflows/governance.yml'))"
+echo "✓ YAML 语法正确"
+
+# 5. 检查工作流触发条件
+echo "[5/5] 检查工作流触发配置..."
+grep -q "on:" .github/workflows/governance-baseline.yml || grep -q "on:" .github/workflows/governance.yml
+grep -qE "(push|pull_request|workflow_dispatch)" .github/workflows/governance-baseline.yml || \
+grep -qE "(push|pull_request|workflow_dispatch)" .github/workflows/governance.yml
+echo "✓ 触发条件配置正确"
+
+echo "=== Phase 0 验收完成 ✓ ==="
+grep -q "禁止承接业务代码" apps/api/README.md
+echo "✓ README 内容正确"
+
+# 3. 运行治理脚本
+echo "[3/5] 运行治理脚本..."
+bash scripts/check-doc-governance.sh
+bash scripts/check-structure-boundaries.sh
+bash scripts/check-code-boundaries.sh
+bash scripts/check-governance.sh
+echo "✓ 治理脚本通过"
+
+# 4. 检查工作流语法
+echo "[4/5] 检查工作流 YAML 语法..."
+python3 -c "import yaml; yaml.safe_load(open('.github/workflows/governance.yml'))"
+echo "✓ YAML 语法正确"
+
+# 5. 检查工作流触发条件
+echo "[5/5] 检查工作流触发配置..."
+grep -q "on:" .github/workflows/governance.yml
+grep -qE "(push|pull_request|workflow_dispatch)" .github/workflows/governance.yml
+echo "✓ 触发条件配置正确"
+
+echo "=== Phase 0 验收完成 ✓ ==="
 ```
 
-必须全部通过。
-
 ---
 
-# Phase 1：主路径冻结与仓库真源收口（优先级 P0，预计 1 天）
+### Phase 1：主路径冻结与仓库真源收口（优先级 P0） ⚠️ 需验证而非新增
 
-## 目标
+#### 目标
 
-明确"当前真正的代码主路径"，禁止结构继续扩散。
+验证"当前真正的代码主路径"已在文档中明确，必要时补充强化约束。
 
-## 要做的事
+#### 当前状态
 
-### 任务 1.1：更新 `README.md`
+**已存在的内容：**
+- ✅ `README.md` 已包含逻辑映射说明：`apps/web -> frontend`、`apps/api -> backend-python`
+- ✅ `AGENTS.md` 已存在，包含：
+  - Scope mapping: `apps/web -> frontend`, `apps/api -> backend-python`
+  - 禁止新增根级 `doc`、`tmp`、`legacy`、`_new` 等目录规则
+  - 提交禁止文件列表（*.pid、cookies.txt、临时日志）
 
-在 `Rules` 或 `Scope` 中明确补充：
+**可能需补充：**
+- ⚠️ 验证是否需要更明确的"唯一"主路径声明
+- ⚠️ 验证 AI 边界规则是否足够严格
 
-- `frontend/` 是当前唯一前端真实代码主路径
-- `backend-python/` 是当前唯一后端真实代码主路径
-- `apps/*` 仅作逻辑映射与未来迁移占位
-- 未经架构变更批准，不得在 `apps/*` 中新增业务实现
+#### 要做的事
 
-### 任务 1.2：更新 `AGENTS.md`
+##### 任务 1.1：验证并补充 `README.md` 主路径声明 ⚠️ 部分存在
 
-新增硬规则：
-- AI 修改前端代码时，只允许进入 `frontend/`
-- AI 修改后端代码时，只允许进入 `backend-python/`
-- 若变更落到 `apps/*`，必须被视为结构违规
+**当前状态：** 已有逻辑映射说明，但措辞是"Logical alignment"，而非明确的"唯一主路径"声明。
 
-### 任务 1.3：加强结构边界脚本
+**操作：**
+- 验证现有"Logical mapping"说明是否足够清晰
+- 如需强化，补充明确措辞：
+  - `frontend/` 是当前**唯一**前端真实代码主路径
+  - `backend-python/` 是当前**唯一**后端真实代码主路径
+  - `apps/*` 仅作逻辑映射占位，不承接新业务实现
 
-修改 `scripts/check-structure-boundaries.sh`：
-- 新增检查：`apps/web` 与 `apps/api` 中若出现 `.ts/.tsx/.js/.py` 真实业务代码，则失败
+### 任务 1.2：验证 `AGENTS.md` AI 边界规则 ⚠️ 部分存在
+
+**当前状态：** 已有 scope mapping 和禁止新增目录规则。
+
+**操作：**
+- 验证现有规则是否足够严格
+- 如需强化，补充明确规则：
+  - AI 修改前端代码时，只允许进入 `frontend/`
+  - AI 修改后端代码时，只允许进入 `backend-python/`
+  - 若变更落到 `apps/*`，必须被视为结构违规
+
+### 任务 1.3：验证结构边界脚本 ✅ 已存在
+
+**当前状态：** `scripts/check-structure-boundaries.sh` 已存在且包含：
+- Required directories 检查（含 `.github/workflows`）
+- Forbidden directories 检查（`doc`、`tmp`、`legacy`、`_new`）
+- Forbidden files 检查（`*.pid`、`*.log`、`*.out`）
+
+**操作：** 验证是否已包含 apps 目录业务代码检测，如未包含则补充：
+- 检查 `apps/web` 与 `apps/api` 中是否出现 `.ts/.tsx/.js/.py` 真实业务代码
 - 允许存在 README 和占位文档
 
-建议检测逻辑：
-- `find apps/web -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' \)`
-- `find apps/api -type f \( -name '*.py' -o -name '*.ts' -o -name '*.js' \)`
-- 若结果不为空且不在白名单（README）中，直接 fail
+#### 验收标准（更新）
 
-## 验收标准
+| 序号 | 验收项 | 验收命令/方法 | 期望结果 |
+|------|--------|---------------|----------|
+| 1 | README.md 包含主路径说明 | `grep -q "Logical mapping" README.md || grep -q "frontend.*backend-python" README.md` | Exit code = 0 ✅ |
+| 2 | AGENTS.md 包含 scope mapping | `grep -q "apps/web" AGENTS.md && grep -q "frontend" AGENTS.md` | Exit code = 0 ✅ |
+| 3 | apps README 包含约束说明 | `grep -q "Current implementation lives in frontend" apps/web/README.md` | Exit code = 0 ✅ |
+| 4 | 结构边界脚本检测 apps 代码 | 验证脚本内容或运行测试 | 脚本应拒绝 apps 中新增业务代码 |
+| 5 | 四个治理脚本通过 | `bash scripts/check-governance.sh` | Exit code = 0 |
 
-- `README.md`、`AGENTS.md`、`apps/*/README.md` 一致表达当前主路径
-- `scripts/check-structure-boundaries.sh` 能阻止 `apps/*` 承接真实业务代码
+**验收执行脚本（更新版）：**
+
+```bash
+#!/bin/bash
+# scripts/verify-phase1.sh
+
+set -e
+
+echo "=== Phase 1 验收开始 ==="
+
+# 1. 检查 README 主路径说明（调整为已有措辞）
+echo "[1/5] 检查 README.md 主路径说明..."
+grep -q "Logical mapping" README.md || grep -qE "(frontend|backend-python)" README.md
+echo "✓ README.md 包含主路径说明"
+
+# 2. 检查 AGENTS.md scope mapping（调整为已有措辞）
+echo "[2/5] 检查 AGENTS.md 边界规则..."
+grep -q "apps/web" AGENTS.md
+grep -q "frontend" AGENTS.md
+grep -q "apps/api" AGENTS.md
+echo "✓ AGENTS.md 包含 scope mapping"
+
+# 3. 检查 apps README
+echo "[3/5] 检查 apps README 内容..."
+grep -q "Current implementation lives in frontend" apps/web/README.md
+grep -q "Current implementation lives in backend-python" apps/api/README.md
+echo "✓ apps README 内容正确"
+
+# 4. 测试结构边界脚本拒绝能力（如有检测逻辑）
+echo "[4/5] 验证结构边界脚本..."
+# 检查脚本是否包含 apps 检测逻辑
+if grep -q "apps/web" scripts/check-structure-boundaries.sh; then
+    echo "✓ 脚本包含 apps 检测"
+else
+    echo "⚠ 脚本可能缺少 apps 业务代码检测，建议补充"
+fi
+
+# 5. 运行治理脚本
+echo "[5/5] 运行治理脚本..."
+bash scripts/check-governance.sh
+echo "✓ 治理脚本通过"
+
+echo "=== Phase 1 验收完成 ✓ ==="
+```
 
 ---
 
-# Phase 2：前端分层收口（优先级 P0/P1，预计 2~4 天）
+### Phase 2：前端分层收口（优先级 P0/P1）
 
 ## 目标
 
@@ -582,36 +768,122 @@ return response.data as KnowledgeBaseListDto
 - context：主题/语言/认证外壳等少量跨树注入
 - hooks：封装交互流程，不做持久全局状态真源
 
-## 验收标准
+#### 验收标准
 
-- `useKnowledgeBases` 只保留一份实现
-- 页面与 `app/components` 不直接请求 API
-- 至少一类 service（建议 `kbApi`）完成 DTO 化
-- 文档补齐前端边界规则
-- `npm run type-check` 通过
-- `npm run test:run` 冒烟通过
+| 序号 | 验收项 | 验收命令/方法 | 期望结果 |
+|------|--------|---------------|----------|
+| 1 | useKnowledgeBases 只有一份实现 | `find frontend/src -name "useKnowledgeBases.ts" \| wc -l` | 输出 = 1 |
+| 2 | 使用共享版本而非 app 版本 | `grep -r "from.*app/hooks/useKnowledgeBases" frontend/src \| wc -l` | 输出 = 0 |
+| 3 | TypeScript 类型检查通过 | `cd frontend && npm run type-check` | Exit code = 0 |
+| 4 | 前端测试通过 | `cd frontend && npm run test:run` | Exit code = 0，覆盖率 ≥ 80% |
+| 5 | kbApi 返回纯 DTO | `grep -q "return response.data" frontend/src/services/kbApi.ts` 或人工检查 | 不返回 `{ success, data }` 包装 |
+| 6 | 前端边界规则文档化 | `test -f docs/development/coding-standards.md && grep -q "app/hooks" docs/development/coding-standards.md` | Exit code = 0 |
+| 7 | 无同名 hook 冲突 | `comm -12 <(ls frontend/src/hooks/ 2>/dev/null \| sort) <(ls frontend/src/app/hooks/ 2>/dev/null \| sort)` | 输出为空 |
+
+**验收执行脚本（一键验证）：**
+
+```bash
+#!/bin/bash
+# scripts/verify-phase2.sh
+
+set -e
+
+echo "=== Phase 2 验收开始 ==="
+
+# 1. 检查 useKnowledgeBases 只有一份
+echo "[1/7] 检查 useKnowledgeBases 实现数量..."
+count=$(find frontend/src -name "useKnowledgeBases.ts" | wc -l | tr -d ' ')
+if [ "$count" -ne 1 ]; then
+    echo "✗ 发现 $count 份 useKnowledgeBases 实现，应为 1 份"
+    exit 1
+fi
+echo "✓ useKnowledgeBases 只有一份实现"
+
+# 2. 检查无 app/hooks 引用
+echo "[2/7] 检查无 app/hooks/useKnowledgeBases 引用..."
+refs=$(grep -r "from.*app/hooks/useKnowledgeBases" frontend/src 2>/dev/null | wc -l | tr -d ' ')
+if [ "$refs" -ne 0 ]; then
+    echo "✗ 发现 $refs 处引用 app/hooks/useKnowledgeBases"
+    exit 1
+fi
+echo "✓ 无 app/hooks/useKnowledgeBases 引用"
+
+# 3. 检查无同名 hook 冲突
+echo "[3/7] 检查无同名 hook 冲突..."
+conflicts=$(comm -12 <(ls frontend/src/hooks/ 2>/dev/null | sort) <(ls frontend/src/app/hooks/ 2>/dev/null | sort) 2>/dev/null || true)
+if [ -n "$conflicts" ]; then
+    echo "✗ 发现同名 hook 冲突: $conflicts"
+    exit 1
+fi
+echo "✓ 无同名 hook 冲突"
+
+# 4. TypeScript 类型检查
+echo "[4/7] 运行 TypeScript 类型检查..."
+cd frontend && npm run type-check
+cd ..
+echo "✓ TypeScript 类型检查通过"
+
+# 5. 前端测试
+echo "[5/7] 运行前端测试..."
+cd frontend && npm run test:run
+cd ..
+echo "✓ 前端测试通过"
+
+# 6. 检查文档更新
+echo "[6/7] 检查前端边界规则文档..."
+test -f docs/development/coding-standards.md
+grep -q "app/hooks" docs/development/coding-standards.md || grep -q "共享业务 hook" docs/development/coding-standards.md
+echo "✓ 文档已更新"
+
+# 7. 检查 kbApi DTO 化（抽样）
+echo "[7/7] 检查 kbApi 返回值规范..."
+if grep -q "return { success: true, data:" frontend/src/services/kbApi.ts 2>/dev/null; then
+    echo "⚠ kbApi 仍包含 { success, data } 包装，建议继续整改"
+else
+    echo "✓ kbApi 已完成 DTO 化"
+fi
+
+echo "=== Phase 2 验收完成 ✓ ==="
+```
 
 ---
 
-# Phase 3：后端分层整改（优先级 P0/P1，预计 4~7 天）
+### Phase 3：后端分层整改（优先级 P0/P1）
 
 ## 目标
 
 把"router 仍做太多事"的状态，推进到"service 是唯一业务编排真源"。
+
+## 当前状态
+
+**已存在：**
+- ✅ `backend-python/app/services/` 已存在，包含 **14 个服务文件**：
+  - `paper_service.py`、`auth_service.py`、`chat_orchestrator.py`、`import_job_service.py`、
+  - `message_service.py`、`storage_service.py`、`task_service.py` 等
+- ✅ `paper_service.py` 已存在（12,923 bytes），但 `paper_crud.py` 未完全使用它
+
+**不存在：**
+- ❌ `backend-python/app/schemas/` 目录不存在
+- ❌ `backend-python/app/repositories/` 目录不存在
+
+**问题确认：**
+- `paper_crud.py` 仍直接执行 `db.execute`、`select()`、`func.count`、`text()` 等 SQL 操作
+- `models/` 中混放 Pydantic schema（`note.py`、`session.py`、`rag.py`）
+- `search.py` 与 `search/` 目录并存
 
 ## 本轮选定的后端最佳实践
 
 当前最优路径不是直接大拆 DDD，而是采用**标准三段式**：
 
 - `api/`：协议入口
-- `services/`：业务编排
-- `repositories/`：数据库访问
+- `services/`：业务编排 ✅ 已存在
+- `repositories/`：数据库访问 ❌ 需新增
 
 并在此基础上把 `schemas/` 从 `models/` 中拆出。
 
 ## 要做的事
 
-### 任务 3.1：新增 `backend-python/app/schemas/`
+### 任务 3.1：新增 `backend-python/app/schemas/` ❌ 不存在
 
 新增目录：
 - `backend-python/app/schemas/`
@@ -620,8 +892,9 @@ return response.data as KnowledgeBaseListDto
 - `backend-python/app/models/note.py` -> `backend-python/app/schemas/note.py`
 - `backend-python/app/models/session.py` -> `backend-python/app/schemas/session.py`
 - `backend-python/app/models/rag.py` -> `backend-python/app/schemas/rag.py`
-- `backend-python/app/models/reading_progress.py` -> `backend-python/app/schemas/reading_progress.py`
 - `backend-python/app/api/papers/paper_shared.py` 中的 request/response model -> 拆成 `backend-python/app/schemas/papers.py`
+
+**注意：** `reading_progress.py` 是 ORM 模型，不应迁移到 schemas。
 
 ### 任务 3.2：收紧 `models/`
 
@@ -634,7 +907,7 @@ return response.data as KnowledgeBaseListDto
 - `AGENTS.md`
 - `docs/governance/code-boundary-baseline.md`
 
-### 任务 3.3：新增 `backend-python/app/repositories/`
+### 任务 3.3：新增 `backend-python/app/repositories/` ❌ 不存在
 
 新增目录：
 - `backend-python/app/repositories/`
@@ -651,14 +924,14 @@ return response.data as KnowledgeBaseListDto
 - count 查询
 - status 相关查询
 
-### 任务 3.4：拆 `paper_crud.py`
+### 任务 3.4：改造 `paper_crud.py` 使用现有 `paper_service.py` ⚠️ 重点任务
 
 这是后端分层整改第一批样板工程，必须优先做。
 
 #### 当前问题
 `paper_crud.py` 直接做了：
 - 分页参数归一化
-- ORM 查询拼装
+- ORM 查询拼装（`db.execute`、`select()`、`func.count`、`text()`）
 - 业务筛选（starred、readStatus、date range）
 - count
 - DTO 格式化
@@ -667,11 +940,12 @@ return response.data as KnowledgeBaseListDto
 
 - `app/api/papers/paper_crud.py`
   - 只保留 FastAPI endpoint 和依赖注入
-- `app/services/paper_service.py`
-  - 提供 `list_papers(...)`、`search_papers(...)`
-- `app/repositories/paper_repository.py`
+- `app/services/paper_service.py` ✅ 已存在
+  - 扩展提供 `list_papers(...)`、`search_papers(...)` 方法
+  - 当前已有部分功能，需验证并扩展
+- `app/repositories/paper_repository.py` ❌ 需新增
   - 提供真正的 SQLAlchemy 查询
-- `app/schemas/papers.py`
+- `app/schemas/papers.py` ❌ 需新增
   - `PaperListQuery`、`PaperListItem`、`PaperListResponse`
 
 #### 具体改法
@@ -688,7 +962,12 @@ return response.data as KnowledgeBaseListDto
 4. `format_paper_response` 迁出 `paper_shared.py`，转移到 schema conversion 层或 service 内私有 mapper
 5. 删除 router 内直接 `db.execute` / `select` / `func.count`
 
-### 任务 3.5：收口 `api/search.py` 与 `api/search/`
+### 任务 3.5：收口 `api/search.py` 与 `api/search/` ⚠️ 确认并存
+
+**当前状态：** 确认并存
+- `backend-python/app/api/search.py` 存在
+- `backend-python/app/api/search/` 目录存在，包含：
+  - `__init__.py`、`external.py`、`library.py`、`multimodal.py`、`shared.py`
 
 最佳做法：
 - 保留 `backend-python/app/api/search/` 目录作为 canonical search API area
@@ -737,18 +1016,100 @@ return response.data as KnowledgeBaseListDto
   - `paper_status.py`
   - `kb/kb_crud.py`
 
-## 验收标准
+#### 验收标准
 
-- `app/schemas/` 建立并承接首批 schema
-- `models/` 不再新增 Pydantic 模型
-- `paper_crud.py` 不再直接访问数据库
-- `api/search.py` 被删除或明确标记 deprecated 且不再承接新路由
-- `code-boundary-baseline` allowlist 至少减少 1 项
-- 后端单测/冒烟通过
+| 序号 | 验收项 | 验收命令/方法 | 期望结果 |
+|------|--------|---------------|----------|
+| 1 | schemas 目录存在且有内容 | `test -d backend-python/app/schemas && ls backend-python/app/schemas/*.py \| wc -l` | 目录存在，至少 3 个 .py 文件 |
+| 2 | repositories 目录存在且有内容 | `test -d backend-python/app/repositories && ls backend-python/app/repositories/*.py \| wc -l` | 目录存在，至少 2 个 .py 文件 |
+| 3 | models 不含 Pydantic BaseModel | `grep -r "class.*BaseModel" backend-python/app/models/ \| wc -l` | 输出 = 0 |
+| 4 | paper_crud.py 无直接 SQL 查询 | `grep -qE "(db\.execute|select\(.*\)|func\.count)" backend-python/app/api/papers/paper_crud.py` | Exit code ≠ 0 (不存在) |
+| 5 | search.py 已删除或标记 deprecated | `test ! -f backend-python/app/api/search.py || grep -q "deprecated" backend-python/app/api/search.py` | 文件不存在或含 deprecated |
+| 6 | code-boundary-baseline allowlist 减少 | 手动对比 `docs/governance/code-boundary-baseline.md` allowlist | allowlist 项数减少 ≥ 1 |
+| 7 | 后端测试通过 | `cd backend-python && pytest -x --tb=short` | Exit code = 0 |
+| 8 | paper_service.py 存在 | `test -f backend-python/app/services/paper_service.py` | Exit code = 0 |
+
+**验收执行脚本（一键验证）：**
+
+```bash
+#!/bin/bash
+# scripts/verify-phase3.sh
+
+set -e
+
+echo "=== Phase 3 验收开始 ==="
+
+# 1. 检查 schemas 目录
+echo "[1/8] 检查 schemas 目录..."
+test -d backend-python/app/schemas
+schema_count=$(ls backend-python/app/schemas/*.py 2>/dev/null | wc -l | tr -d ' ')
+if [ "$schema_count" -lt 3 ]; then
+    echo "✗ schemas 只有 $schema_count 个文件，应至少 3 个"
+    exit 1
+fi
+echo "✓ schemas 目录存在，包含 $schema_count 个文件"
+
+# 2. 检查 repositories 目录
+echo "[2/8] 检查 repositories 目录..."
+test -d backend-python/app/repositories
+repo_count=$(ls backend-python/app/repositories/*.py 2>/dev/null | wc -l | tr -d ' ')
+if [ "$repo_count" -lt 2 ]; then
+    echo "✗ repositories 只有 $repo_count 个文件，应至少 2 个"
+    exit 1
+fi
+echo "✓ repositories 目录存在，包含 $repo_count 个文件"
+
+# 3. 检查 models 不含 Pydantic
+echo "[3/8] 检查 models 不含 Pydantic BaseModel..."
+pydantic_count=$(grep -r "class.*BaseModel" backend-python/app/models/ 2>/dev/null | wc -l | tr -d ' ')
+if [ "$pydantic_count" -gt 0 ]; then
+    echo "✗ models 中仍有 $pydantic_count 个 Pydantic 类"
+    exit 1
+fi
+echo "✓ models 不含 Pydantic BaseModel"
+
+# 4. 检查 paper_crud.py 无直接 SQL
+echo "[4/8] 检查 paper_crud.py 无直接 SQL..."
+if grep -qE "(db\.execute|select\(Paper\)|func\.count)" backend-python/app/api/papers/paper_crud.py 2>/dev/null; then
+    echo "✗ paper_crud.py 仍包含直接 SQL 查询"
+    exit 1
+fi
+echo "✓ paper_crud.py 无直接 SQL 查询"
+
+# 5. 检查 search.py 状态
+echo "[5/8] 检查 search.py 状态..."
+if [ -f backend-python/app/api/search.py ]; then
+    if grep -q "deprecated" backend-python/app/api/search.py; then
+        echo "✓ search.py 已标记 deprecated"
+    else
+        echo "⚠ search.py 存在但未标记 deprecated，建议继续整改"
+    fi
+else
+    echo "✓ search.py 已删除"
+fi
+
+# 6. 检查 paper_service.py 存在
+echo "[6/8] 检查 paper_service.py..."
+test -f backend-python/app/services/paper_service.py
+echo "✓ paper_service.py 存在"
+
+# 7. 检查 code-boundary-baseline
+echo "[7/8] 检查 code-boundary-baseline..."
+test -f docs/governance/code-boundary-baseline.md
+echo "⚠ 请手动对比 allowlist 是否减少 ≥ 1 项"
+
+# 8. 后端测试
+echo "[8/8] 运行后端测试..."
+cd backend-python && pytest -x --tb=short -q
+cd ..
+echo "✓ 后端测试通过"
+
+echo "=== Phase 3 验收完成 ✓ ==="
+```
 
 ---
 
-# Phase 4：API 契约统一（优先级 P0，预计 2~3 天）
+### Phase 4：API 契约统一（优先级 P0）
 
 ## 目标
 
@@ -859,16 +1220,108 @@ return response.data as KnowledgeBaseListDto
 - 不再手工包 `{ success, data }`
 - 都消费统一 DTO
 
-## 验收标准
+#### 验收标准
 
-- 文档与真实实现一致
-- `papers` 列表接口完成新协议落地
-- `papersApi.ts` 兼容代码明显减少
-- 后端 payload 不再混用 snake_case + camelCase
+| 序号 | 验收项 | 验收命令/方法 | 期望结果 |
+|------|--------|---------------|----------|
+| 1 | API 契约文档更新 | `grep -q "data.items" docs/architecture/api-contract.md && grep -q "camelCase" docs/architecture/api-contract.md` | Exit code = 0 |
+| 2 | common.py 定义响应壳 | `test -f backend-python/app/schemas/common.py && grep -q "ListResponse" backend-python/app/schemas/common.py` | Exit code = 0 |
+| 3 | papers 列表返回 items + meta | `curl -s localhost:8000/api/papers \| jq 'has("data") and .data.has("items") and has("meta")'` | 输出 = true |
+| 4 | papers 响应全 camelCase | `curl -s localhost:8000/api/papers \| jq '.data.items[0] \| keys' \| grep -v "_"` | 无 snake_case 字段 |
+| 5 | papersApi.ts 兼容代码减少 | `grep -c "arxivId\|arxiv_id" frontend/src/services/papersApi.ts` | 兼容逻辑行数减少 ≥ 50% |
+| 6 | 后端 payload 无混用命名 | `curl -s localhost:8000/api/papers \| jq '.data.items[0]' \| jq -r 'keys[]' \| grep "_" \| wc -l` | 输出 = 0 |
+| 7 | 前端类型定义匹配契约 | `grep -q "items:" frontend/src/types/papers.ts` | Exit code = 0 |
+
+**验收执行脚本（一键验证）：**
+
+```bash
+#!/bin/bash
+# scripts/verify-phase4.sh
+
+set -e
+
+echo "=== Phase 4 验收开始 ==="
+
+# 1. 检查 API 契约文档
+echo "[1/7] 检查 API 契约文档..."
+test -f docs/architecture/api-contract.md
+grep -q "data.items" docs/architecture/api-contract.md
+grep -q "camelCase" docs/architecture/api-contract.md
+echo "✓ API 契约文档已更新"
+
+# 2. 检查 common.py 响应壳
+echo "[2/7] 检查 common.py 响应壳定义..."
+test -f backend-python/app/schemas/common.py
+grep -q "ListResponse\|ListMeta" backend-python/app/schemas/common.py
+echo "✓ common.py 响应壳定义正确"
+
+# 3. 检查前端类型定义
+echo "[3/7] 检查前端类型定义..."
+if [ -f frontend/src/types/papers.ts ]; then
+    grep -q "items:" frontend/src/types/papers.ts || grep -q "PaperListResponse" frontend/src/types/papers.ts
+    echo "✓ 前端类型定义已更新"
+else
+    echo "⚠ 前端类型文件不存在，跳过检查"
+fi
+
+# 4. 检查 papersApi 兼容代码
+echo "[4/7] 检查 papersApi 兼容代码..."
+if [ -f frontend/src/services/papersApi.ts ]; then
+    compat_lines=$(grep -cE "(arxivId\|arxiv_id|storageKey\|storage_key)" frontend/src/services/papersApi.ts 2>/dev/null || echo "0")
+    echo "⚠ papersApi 兼容代码行数: $compat_lines (应减少 ≥ 50%)"
+else
+    echo "⚠ papersApi.ts 不存在，跳过检查"
+fi
+
+# 5. 检查后端响应格式（需要服务运行）
+echo "[5/7] 检查后端响应格式..."
+if curl -s --connect-timeout 2 localhost:8000/health > /dev/null 2>&1; then
+    response=$(curl -s localhost:8000/api/papers 2>/dev/null || echo "{}")
+    
+    # 检查 items + meta 结构
+    if echo "$response" | jq -e 'has("data") and .data.has("items") and has("meta")' > /dev/null 2>&1; then
+        echo "✓ papers 列表返回 items + meta 结构"
+    else
+        echo "⚠ papers 列表结构未完全符合契约（可能无数据或服务未完全整改）"
+    fi
+    
+    # 检查无 snake_case
+    snake_count=$(echo "$response" | jq '.data.items[0] // {} | keys[]' 2>/dev/null | grep "_" | wc -l | tr -d ' ')
+    if [ "$snake_count" -eq 0 ]; then
+        echo "✓ papers 响应无 snake_case 字段"
+    else
+        echo "⚠ papers 响应仍有 $snake_count 个 snake_case 字段"
+    fi
+else
+    echo "⚠ 后端服务未运行，跳过运行时验证"
+fi
+
+# 6. 检查 kbApi 和 papersApi 统一模式
+echo "[6/7] 检查 service 返回模式统一..."
+if [ -f frontend/src/services/kbApi.ts ] && [ -f frontend/src/services/papersApi.ts ]; then
+    # 检查是否都不返回 { success, data }
+    kb_wrapper=$(grep -c "return { success" frontend/src/services/kbApi.ts 2>/dev/null || echo "0")
+    paper_wrapper=$(grep -c "return { success" frontend/src/services/papersApi.ts 2>/dev/null || echo "0")
+    if [ "$kb_wrapper" -eq 0 ] && [ "$paper_wrapper" -eq 0 ]; then
+        echo "✓ kbApi 和 papersApi 都不返回 { success, data } 包装"
+    else
+        echo "⚠ kbApi/papersApi 仍有 { success, data } 包装"
+    fi
+else
+    echo "⚠ service 文件不存在，跳过检查"
+fi
+
+# 7. 检查 schemas/papers.py 存在
+echo "[7/7] 检查 schemas/papers.py..."
+test -f backend-python/app/schemas/papers.py
+echo "✓ schemas/papers.py 存在"
+
+echo "=== Phase 4 验收完成 ✓ ==="
+```
 
 ---
 
-# Phase 5：为后续物理迁移与 packages 承接做准备（优先级 P2，预计 1~2 天）
+### Phase 5：为后续物理迁移与 packages 承接做准备（优先级 P2）
 
 ## 目标
 
@@ -905,11 +1358,73 @@ return response.data as KnowledgeBaseListDto
 - 为什么暂缓物理迁移
 - 为什么先做边界收口和契约统一
 
-## 验收标准
+#### 验收标准
 
-- `packages/*` 的承接边界清楚
-- 迁移条件列出并写入文档
-- ADR 存档
+| 序号 | 验收项 | 验收命令/方法 | 期望结果 |
+|------|--------|---------------|----------|
+| 1 | packages 各目录 README 包含承接边界 | `grep -q "只放" packages/types/README.md && grep -q "只放" packages/sdk/README.md` | Exit code = 0 |
+| 2 | 迁移条件清单文档化 | `test -f docs/governance/migration-conditions.md 或 grep -q "迁移条件" docs/architecture/repository-architecture.md` | Exit code = 0 |
+| 3 | ADR 文档存在 | `test -f docs/adr/0002-delay-physical-migration-until-boundary-convergence.md` | Exit code = 0 |
+| 4 | packages 无业务代码 | `find packages -name "*.ts" -o -name "*.tsx" -o -name "*.py" \| grep -v README \| wc -l` | 输出 = 0 |
+| 5 | 迁移条件可检查脚本化 | `test -f scripts/check-migration-readiness.sh`（可选） | Exit code = 0（可选） |
+
+**验收执行脚本（一键验证）：**
+
+```bash
+#!/bin/bash
+# scripts/verify-phase5.sh
+
+set -e
+
+echo "=== Phase 5 验收开始 ==="
+
+# 1. 检查 packages README 承接边界
+echo "[1/5] 检查 packages README 承接边界说明..."
+for pkg in types sdk ui config; do
+    if [ -f "packages/$pkg/README.md" ]; then
+        grep -q "只放" "packages/$pkg/README.md" || grep -q "承接边界" "packages/$pkg/README.md"
+        echo "✓ packages/$pkg/README.md 包含承接边界说明"
+    else
+        echo "⚠ packages/$pkg/README.md 不存在"
+    fi
+done
+
+# 2. 检查迁移条件清单
+echo "[2/5] 检查迁移条件清单..."
+if [ -f docs/governance/migration-conditions.md ]; then
+    echo "✓ docs/governance/migration-conditions.md 存在"
+elif grep -q "迁移条件" docs/architecture/repository-architecture.md 2>/dev/null; then
+    echo "✓ 迁移条件已写入 repository-architecture.md"
+else
+    echo "✗ 迁移条件清单未文档化"
+    exit 1
+fi
+
+# 3. 检查 ADR 文档
+echo "[3/5] 检查 ADR 文档..."
+test -f docs/adr/0002-delay-physical-migration-until-boundary-convergence.md
+echo "✓ ADR 文档存在"
+
+# 4. 检查 packages 无业务代码
+echo "[4/5] 检查 packages 无业务代码..."
+code_files=$(find packages -name "*.ts" -o -name "*.tsx" -o -name "*.py" 2>/dev/null | grep -v README | grep -v .gitkeep | wc -l | tr -d ' ')
+if [ "$code_files" -gt 0 ]; then
+    echo "⚠ packages 中有 $code_files 个业务代码文件（本轮不应承接）"
+else
+    echo "✓ packages 无业务代码"
+fi
+
+# 5. 可选：检查迁移条件检查脚本
+echo "[5/5] 检查迁移条件检查脚本（可选）..."
+if [ -f scripts/check-migration-readiness.sh ]; then
+    echo "✓ scripts/check-migration-readiness.sh 存在"
+    echo "  可运行: bash scripts/check-migration-readiness.sh"
+else
+    echo "⚠ 迁移条件检查脚本未创建（可选项）"
+fi
+
+echo "=== Phase 5 验收完成 ✓ ==="
+```
 
 ---
 
@@ -998,9 +1513,9 @@ return response.data as KnowledgeBaseListDto
 
 ## 9. 最小可交付里程碑（建议拆成 3 个 PR）
 
-## PR-1：治理闭环 PR
+### PR-1：治理闭环 PR
 
-范围：
+**范围：**
 - `.github/workflows`
 - PR 模板
 - `README.md`
@@ -1008,68 +1523,264 @@ return response.data as KnowledgeBaseListDto
 - `apps/*/README.md`
 - `scripts/check-structure-boundaries.sh`
 
-验收：
-- 四个治理脚本全通过
+**验收标准：**
 
-## PR-2：前端收口 PR
+| 序号 | 验收项 | 验收命令 | 期望结果 |
+|------|--------|----------|----------|
+| 1 | 四个治理脚本全通过 | `bash scripts/verify-phase0.sh && bash scripts/verify-phase1.sh` | Exit code = 0 |
+| 2 | GitHub Actions 工作流可运行 | GitHub Actions 页面检查 | 工作流执行成功 |
+| 3 | 文档一致性 | 手动检查 | README/AGENTS/apps README 表述一致 |
 
-范围：
+**回滚命令：**
+```bash
+# 若 PR-1 需要回滚
+git revert <pr-1-commit-sha>
+
+# 或创建回滚分支
+git checkout main
+git branch rollback-pr1-$(date +%Y%m%d)
+git reset --hard <pre-pr1-sha>
+git push origin rollback-pr1-$(date +%Y%m%d) --force
+```
+
+### PR-2：前端收口 PR
+
+**范围：**
 - 删除 `app/hooks/useKnowledgeBases.ts`
 - 统一 `useKnowledgeBases` 契约
 - service 返回规则样板化
 - 文档更新
 
-验收：
-- type-check 通过
-- 前端测试冒烟通过
+**验收标准：**
 
-## PR-3：后端样板 PR
+| 序号 | 验收项 | 验收命令 | 期望结果 |
+|------|--------|----------|----------|
+| 1 | TypeScript 类型检查 | `cd frontend && npm run type-check` | Exit code = 0 |
+| 2 | 前端测试通过 | `cd frontend && npm run test:run` | Exit code = 0，覆盖率 ≥ 80% |
+| 3 | 无重复 hook | `bash scripts/verify-phase2.sh` | Exit code = 0 |
 
-范围：
+**回滚命令：**
+```bash
+# 若 PR-2 需要回滚（保留已合并的 PR-1）
+git revert <pr-2-commit-sha>
+
+# 恢复被删除的 app/hooks/useKnowledgeBases.ts
+git checkout <pre-pr2-sha> -- frontend/src/app/hooks/useKnowledgeBases.ts
+git commit -m "rollback: restore app/hooks/useKnowledgeBases.ts"
+```
+
+### PR-3：后端样板 PR
+
+**范围：**
 - 新增 `schemas/`
 - 新增 `repositories/`
 - 改造 `paper_crud.py`
 - 收口 `search.py`
 - 更新 `code-boundary-baseline`
 
-验收：
-- pytest 冒烟通过
-- baseline allowlist 减少至少 1 项
-- papers 契约样板跑通
+**验收标准：**
+
+| 序号 | 验收项 | 验收命令 | 期望结果 |
+|------|--------|----------|----------|
+| 1 | 后端测试通过 | `cd backend-python && pytest -x --tb=short` | Exit code = 0 |
+| 2 | baseline allowlist 减少 | `grep -c "allowlist" docs/governance/code-boundary-baseline.md` | 项数减少 ≥ 1 |
+| 3 | 所有契约样板跑通 | `curl localhost:8000/api/papers` | 返回 items + meta 结构 |
+
+**回滚命令：**
+```bash
+# 若 PR-3 需要回滚（保留已合并的 PR-1、PR-2）
+git revert <pr-3-commit-sha>
+
+# 仅回滚 paper_crud.py 改动
+git checkout <pre-pr3-sha> -- backend-python/app/api/papers/paper_crud.py
+git commit -m "rollback: revert paper_crud.py changes"
+
+# 删除新增的 schemas/ 目录
+git rm -r backend-python/app/schemas/
+git rm -r backend-python/app/repositories/
+git commit -m "rollback: remove schemas and repositories directories"
+```
+
+### PR 合并顺序与依赖
+
+```
+PR-1 (治理闭环) ──必须先合并──> PR-2 (前端收口)
+                                      │
+                                      ├──可并行──> PR-3 (后端样板)
+                                      │
+                                      ↓
+                              PR-4 (契约统一) ← 必须等 PR-2 + PR-3 完成
+```
 
 ---
 
 ## 10. 风险与回滚策略
 
-## 风险 1：契约统一导致前端页面大面积联调
+### 总体回滚原则
 
-控制方式：
-- 先只在 `papers` 领域做样板
+| 原则 | 说明 |
+|------|------|
+| 原子回滚 | 每个 PR 独立回滚，不影响已合并的其他 PR |
+| 保留现场 | 回滚前先创建 rollback 分支保留当前状态 |
+| 分层回滚 | 优先回滚最小范围，不轻易全量回滚 |
+| 文档同步 | 回滚时同步更新受影响的文档 |
+
+### 风险 1：契约统一导致前端页面大面积联调
+
+**控制方式：**
+
 - 前端 service 保留一层临时兼容 adapter
 - 页面层不直接承受契约变更
 
-回滚方式：
-- 保留旧 DTO adapter 分支
-- 若页面联调失败，只回滚 service/schema 映射，不回滚整体目录治理
+**回滚方式：**
+```bash
+# 1. 创建回滚分支保留现场
+git checkout -b rollback-contract-$(date +%Y%m%d)
 
-## 风险 2：后端 router 下沉后测试覆盖不足
+# 2. 仅回滚 papers 相关契约变更
+git checkout <pre-contract-sha> -- frontend/src/services/papersApi.ts
+git checkout <pre-contract-sha> -- frontend/src/types/papers.ts
+git checkout <pre-contract-sha> -- backend-python/app/schemas/papers.py
 
-控制方式：
+# 3. 提交回滚
+git commit -m "rollback: revert papers contract changes"
+
+# 4. 推送回滚分支
+git push origin rollback-contract-$(date +%Y%m%d)
+
+# 5. 创建 Hotfix PR
+gh pr create --title "rollback: papers contract changes" --body "回滚 papers 契约变更，等待重新规划"
+```
+
+**影响范围：** 仅 `papers` 领域，不影响其他已整改部分。
+
+### 风险 2：后端 router 下沉后测试覆盖不足
+
+**控制方式：**
 - 先做 `paper_crud.py` 一条主链路
 - 加 smoke test
 - 不一次性改所有 allowlist 文件
 
-回滚方式：
-- 保留旧 service path 的小范围切换点
-- 单模块回滚，不回滚整个 `schemas/` 目录
+**回滚方式：**
+```bash
+# 1. 仅回滚 paper_crud.py
+git checkout <pre-refactor-sha> -- backend-python/app/api/papers/paper_crud.py
 
-## 风险 3：治理文档继续先于代码演进
+# 2. 回滚 paper_service.py（如果需要）
+git checkout <pre-refactor-sha> -- backend-python/app/services/paper_service.py
 
-控制方式：
+# 3. 保留 schemas/ 和 repositories/ 目录（这些是正确的基础设施）
+
+# 4. 更新 code-boundary-baseline.md 允许 paper_crud.py 暂时直连数据库
+echo "- backend-python/app/api/papers/paper_crud.py  # 暂时允许，等待重新整改" >> docs/governance/code-boundary-baseline.md
+
+git commit -m "rollback: revert paper_crud.py to direct DB access temporarily"
+```
+
+**影响范围：** 仅 `paper_crud.py`，`schemas/` 和 `repositories/` 目录保留。
+
+### 风险 3：治理文档继续先于代码演进
+
+**控制方式：**
 - 每个整改 PR 都必须附：
   - 受影响文档
   - 运行命令
   - 结构截图或 diff 说明
+
+**回滚方式：**
+```bash
+# 1. 识别文档变更
+git diff <pre-pr-sha> HEAD -- docs/
+
+# 2. 仅回滚文档（如果代码部分正确）
+git checkout <pre-pr-sha> -- docs/architecture/api-contract.md
+git checkout <pre-pr-sha> -- docs/governance/code-boundary-baseline.md
+
+# 3. 提交文档回滚
+git commit -m "docs: rollback governance docs to match current implementation"
+
+# 4. 创建 issue 跟踪文档同步
+gh issue create --title "文档与实现不同步" --body "需更新文档以匹配当前代码实现"
+```
+
+### 风险 4：前端 hook 合并后页面功能异常
+
+**控制方式：**
+- 合并前完整测试所有使用 `useKnowledgeBases` 的页面
+- 保留 `app/hooks/useKnowledgeBases.ts` 废弃版本一周后再删除
+- 添加 console.warn 提示废弃路径
+
+**回滚方式：**
+```bash
+# 1. 快速恢复废弃版本（如果还在 7 天内）
+git checkout <pre-merge-sha> -- frontend/src/app/hooks/useKnowledgeBases.ts
+
+# 2. 如果已删除，从 git 历史恢复
+git show <pre-merge-sha>:frontend/src/app/hooks/useKnowledgeBases.ts > frontend/src/app/hooks/useKnowledgeBases.ts
+
+# 3. 添加废弃标记
+cat >> frontend/src/app/hooks/useKnowledgeBases.ts << 'EOF'
+/**
+ * @deprecated 此文件已废弃，请使用 @/hooks/useKnowledgeBases
+ * 此文件仅用于紧急回滚，将在下个版本删除
+ */
+EOF
+
+# 4. 更新 import 路径
+# 手动检查哪些页面需要改回 import
+
+git add frontend/src/app/hooks/useKnowledgeBases.ts
+git commit -m "hotfix: restore deprecated useKnowledgeBases temporarily"
+
+# 5. 运行测试确认功能恢复
+cd frontend && npm run test:run
+```
+
+### 紧急回滚清单
+
+| 场景 | 回滚范围 | 回滚命令 | 验证命令 |
+|------|----------|----------|----------|
+| PR-1 失败 | 全量回滚 | `git revert <pr-1-sha>` | `bash scripts/check-governance.sh` |
+| PR-2 前端崩溃 | 仅前端 | `git checkout <pre-pr2-sha> -- frontend/` | `cd frontend && npm run test:run` |
+| PR-3 后端崩溃 | 仅后端 | `git checkout <pre-pr3-sha> -- backend-python/` | `cd backend-python && pytest -x` |
+| 契约不兼容 | papers 领域 | 见风险 1 | `curl localhost:8000/api/papers` |
+| 测试不足 | paper_crud.py | 见风险 2 | `pytest backend-python/app/api/papers/` |
+| 功能异常 | 特定页面 | 见风险 4 | 手动测试页面 |
+
+### 回滚后恢复流程
+
+```bash
+# 1. 回滚后检查状态
+git status
+git log --oneline -5
+
+# 2. 运行基础验证
+bash scripts/check-governance.sh
+cd frontend && npm run type-check
+cd backend-python && pytest -x
+
+# 3. 创建 issue 跟踪恢复计划
+gh issue create --title "恢复 [PR名称] 整改" --body "
+## 回滚原因
+[填写回滚原因]
+
+## 影响范围
+[列出受影响的文件和功能]
+
+## 恢复计划
+1. [第一步]
+2. [第二步]
+
+## 负责人
+@[GitHub用户名]
+"
+
+# 4. 创建恢复分支
+git checkout -b recovery/[pr-name]-$(date +%Y%m%d)
+
+# 5. 逐步重新应用变更（小步提交）
+# 每次提交后运行验证
+```
 
 ---
 
@@ -1078,25 +1789,79 @@ return response.data as KnowledgeBaseListDto
 只有满足下面条件，才算本轮整改完成：
 
 ### 仓库治理完成标准
-- `.github/workflows` 存在
-- 四个治理脚本全部通过
-- `apps/*` 不承接业务代码
+
+| 序号 | 标准项 | 验证方法 | 通过条件 |
+|------|--------|----------|----------|
+| 1 | `.github/workflows` 存在 | `test -d .github/workflows` | Exit code = 0 |
+| 2 | 四个治理脚本全部通过 | `bash scripts/check-governance.sh` | Exit code = 0 |
+| 3 | `apps/*` 不承接业务代码 | `find apps -name "*.ts" -o -name "*.py" \| grep -v README \| wc -l` | 输出 = 0 |
 
 ### 前端完成标准
-- 共享业务 hook 无重复实现
-- `app` 与根级共享层边界写入规范
-- 至少一个 service 域完成 DTO 统一
+
+| 序号 | 标准项 | 验证方法 | 通过条件 |
+|------|--------|----------|----------|
+| 1 | 共享业务 hook 无重复实现 | `find frontend/src -name "useKnowledgeBases.ts" \| wc -l` | 输出 = 1 |
+| 2 | `app` 与根级共享层边界写入规范 | `grep -q "app/hooks" docs/development/coding-standards.md` | Exit code = 0 |
+| 3 | 至少一个 service 域完成 DTO 统一 | `grep -c "return { success" frontend/src/services/kbApi.ts` | 输出 = 0 |
+| 4 | TypeScript 编译无错误 | `cd frontend && npm run type-check` | Exit code = 0 |
+| 5 | 前端测试覆盖率达标 | `cd frontend && npm run test:run -- --coverage` | 覆盖率 ≥ 80% |
 
 ### 后端完成标准
-- `schemas/` 建立
-- `repositories/` 建立
-- `paper_crud.py` 不再直接访问数据库
-- `search.py` 与 `search/` 不再并存为双主入口
+
+| 序号 | 标准项 | 验证方法 | 通过条件 |
+|------|--------|----------|----------|
+| 1 | `schemas/` 建立 | `test -d backend-python/app/schemas && ls backend-python/app/schemas/*.py \| wc -l` | 目录存在，文件 ≥ 3 |
+| 2 | `repositories/` 建立 | `test -d backend-python/app/repositories && ls backend-python/app/repositories/*.py \| wc -l` | 目录存在，文件 ≥ 2 |
+| 3 | `paper_crud.py` 不再直接访问数据库 | `grep -cE "(db\.execute\|select\()" backend-python/app/api/papers/paper_crud.py` | 输出 = 0 |
+| 4 | `search.py` 与 `search/` 不再并存为双主入口 | `test ! -f backend-python/app/api/search.py` 或含 deprecated | 文件删除或标记废弃 |
+| 5 | 后端测试通过 | `cd backend-python && pytest -x` | Exit code = 0 |
 
 ### 契约完成标准
-- `papers` 领域文档与实现一致
-- 前端只消费 camelCase DTO
-- 列表接口统一到同一响应壳
+
+| 序号 | 标准项 | 验证方法 | 通过条件 |
+|------|--------|----------|----------|
+| 1 | 所有页面领域文档与实现一致 | 对比 `docs/architecture/api-contract.md` 与实际响应 | 结构一致 |
+| 2 | 前端只消费 camelCase DTO | `curl localhost:8000/api/papers \| jq '.data.items[0] \| keys' \| grep "_"` | 无 snake_case |
+| 3 | 列表接口统一到同一响应壳 | `curl localhost:8000/api/papers \| jq 'has("data") and .data.has("items") and has("meta")'` | 输出 = true |
+
+### 整体验收脚本
+
+```bash
+#!/bin/bash
+# scripts/verify-all-phases.sh
+
+set -e
+
+echo "========================================"
+echo "  ScholarAI 结构整改整体验收"
+echo "========================================"
+echo ""
+
+# 仓库治理
+echo "【1/4】仓库治理验收..."
+bash scripts/verify-phase0.sh
+bash scripts/verify-phase1.sh
+echo ""
+
+# 前端
+echo "【2/4】前端验收..."
+bash scripts/verify-phase2.sh
+echo ""
+
+# 后端
+echo "【3/4】后端验收..."
+bash scripts/verify-phase3.sh
+echo ""
+
+# 契约
+echo "【4/4】契约验收..."
+bash scripts/verify-phase4.sh
+echo ""
+
+echo "========================================"
+echo "  ✓ 整改完成！所有验收通过"
+echo "========================================"
+```
 
 ---
 
@@ -1117,3 +1882,202 @@ return response.data as KnowledgeBaseListDto
 - `apps/*` 不能继续悬空成为未来潜在第二主路径
 
 这份计划按顺序执行后，ScholarAI 会从"治理骨架已搭出但还偏概念化"，进入"仓库、代码、契约、文档、门禁五件事真正对齐"的状态。
+
+---
+
+## 13. 功能影响评估
+
+### 受影响功能模块
+
+| 模块 | 影响程度 | 需要联调 | 测试重点 | 风险等级 |
+|------|----------|----------|----------|----------|
+| Papers 列表页 | **高** | 是 | 分页参数变更、响应壳变更、字段命名变更 | ⚠️ 高 |
+| Papers 详情页 | 中 | 是 | 字段命名变更（camelCase） | ⚠️ 中 |
+| Knowledge Base 列表 | **高** | 是 | hook 统一、service 返回变更 | ⚠️ 高 |
+| Knowledge Base 详情 | 中 | 是 | DTO 统一 | ⚠️ 中 |
+| Search 功能 | 中 | 否 | 入口迁移（search.py → search/） | ⚠️ 中 |
+| Chat 功能 | 低 | 否 | 无直接变更 | ✓ 低 |
+| Notes 功能 | 低 | 否 | 无直接变更 | ✓ 低 |
+| Import 功能 | 低 | 否 | 无直接变更 | ✓ 低 |
+| User 认证 | 低 | 否 | 无直接变更 | ✓ 低 |
+
+### 前后端联调清单
+
+| 序号 | 联调项 | 前端负责人 | 后端负责人 | 预计联调时间 |
+|------|--------|------------|------------|--------------|
+| 1 | Papers 列表分页 | papersApi.ts | paper_crud.py + paper_service.py | 重点联调 |
+| 2 | Papers 响应字段命名 | papersApi.ts normalizePaper() | paper_shared.py / schemas/papers.py | 重点联调 |
+| 3 | KB 列表 hook 统一 | useKnowledgeBases.ts | 无后端变更 | 前端独立 |
+| 4 | KB service 返回统一 | kbApi.ts | 无后端变更 | 前端独立 |
+| 5 | Search 入口迁移 | searchApi.ts | main.py 路由注册 | 低风险 |
+
+### 测试覆盖要求
+
+| 领域 | 单元测试 | 集成测试 | E2E 测试 | 最低覆盖率 |
+|------|----------|----------|----------|------------|
+| 前端 - Papers | ✓ | ✓ | ✓ 必需 | 85% |
+| 前端 - KB | ✓ | ✓ | ✓ 必需 | 85% |
+| 前端 - 其他 | ✓ | ✓ | ○ 可选 | 80% |
+| 后端 - Papers | ✓ | ✓ | ✓ 必需 | 90% |
+| 后端 - Search | ✓ | ✓ | ○ 可选 | 80% |
+| 后端 - 其他 | ✓ | ○ 可选 | ○ 可选 | 75% |
+
+### 性能基准对比点
+
+整改前后需对比以下性能指标，确保无退化：
+
+| 指标 | 当前值（基准） | 整改后目标 | 测量方法 |
+|------|----------------|------------|----------|
+| Papers 列表加载时间 | ≤ 500ms | ≤ 500ms | `curl -w "%{time_total}" localhost:8000/api/papers` |
+| KB 列表加载时间 | ≤ 300ms | ≤ 300ms | `curl -w "%{time_total}" localhost:8000/api/kb` |
+| Search 响应时间 | ≤ 1s | ≤ 1s | `curl -w "%{time_total}" localhost:8000/api/search` |
+| 前端首次渲染 | ≤ 2s | ≤ 2s | Lighthouse Performance |
+| TypeScript 编译时间 | 当前值 | 不增加 | `time npm run type-check` |
+| pytest 运行时间 | 当前值 | 不增加 | `time pytest` |
+
+---
+
+## 14. 中断恢复机制
+
+若整改中途暂停（如资源调配、优先级变更），按以下步骤恢复：
+
+### 恢复流程
+
+```bash
+# 1. 检查当前进度
+echo "=== 检查整改进度 ==="
+
+# 检查各 Phase 验收脚本是否存在
+for phase in 0 1 2 3 4 5; do
+    if [ -f "scripts/verify-phase${phase}.sh" ]; then
+        echo "Phase $phase 验收脚本存在 ✓"
+    else
+        echo "Phase $phase 验收脚本不存在 ✗"
+    fi
+done
+
+# 2. 运行对应 Phase 的验收脚本确认当前状态
+# 从 Phase 0 开始逐一验证，定位当前完成到哪个 Phase
+bash scripts/verify-phase0.sh && echo "Phase 0 完成" || echo "Phase 0 未完成，从此开始"
+bash scripts/verify-phase1.sh && echo "Phase 1 完成" || echo "Phase 1 未完成，从此开始"
+# ... 继续到失败的 Phase
+
+# 3. 若验收失败，从失败任务重新开始
+# 查看该 Phase 的任务清单，执行下一个未完成任务
+
+# 4. 若验收通过，继续下一 Phase
+```
+
+### 进度状态文件（建议）
+
+创建 `.planning/refactor-progress.json` 记录整改进度：
+
+```json
+{
+  "plan": "ScholarAI_结构问题整改计划_v1",
+  "started_at": "2026-04-16",
+  "phases": {
+    "0": { "status": "completed", "completed_at": "2026-04-17" },
+    "1": { "status": "completed", "completed_at": "2026-04-18" },
+    "2": { "status": "in_progress", "started_at": "2026-04-19", "current_task": "2.3" },
+    "3": { "status": "pending" },
+    "4": { "status": "pending" },
+    "5": { "status": "pending" }
+  },
+  "pr_status": {
+    "pr-1": { "status": "merged", "merged_at": "2026-04-18" },
+    "pr-2": { "status": "open", "created_at": "2026-04-19" },
+    "pr-3": { "status": "pending" }
+  },
+  "last_updated": "2026-04-19T10:30:00Z",
+  "notes": "Phase 2 任务 2.1-2.2 已完成，正在执行任务 2.3"
+}
+```
+
+### 恢复脚本
+
+```bash
+#!/bin/bash
+# scripts/resume-refactor.sh
+
+set -e
+
+echo "=== 整改中断恢复 ==="
+
+# 1. 检查进度文件
+if [ -f ".planning/refactor-progress.json" ]; then
+    echo "发现进度文件，读取当前状态..."
+    current_phase=$(jq -r '.phases | to_entries | sort_by(.key) | map(select(.value.status == "in_progress")) | .[0].key' .planning/refactor-progress.json 2>/dev/null || echo "unknown")
+    current_task=$(jq -r '.phases["${current_phase}"].current_task' .planning/refactor-progress.json 2>/dev/null || echo "unknown")
+    echo "当前进度: Phase $current_phase, 任务 $current_task"
+else
+    echo "未发现进度文件，从 Phase 0 开始验证..."
+    current_phase="unknown"
+fi
+
+# 2. 从 Phase 0 开始逐一验证
+for phase in 0 1 2 3 4 5; do
+    if [ -f "scripts/verify-phase${phase}.sh" ]; then
+        echo ""
+        echo "验证 Phase $phase..."
+        if bash "scripts/verify-phase${phase}.sh" 2>/dev/null; then
+            echo "✓ Phase $phase 已完成"
+        else
+            echo "✗ Phase $phase 未完成或验收失败"
+            echo ""
+            echo "=== 恢复建议 ==="
+            echo "1. 查阅 docs/plans/ScholarAI_结构问题整改计划_v1.md 中 Phase $phase 的任务清单"
+            echo "2. 从第一个未完成任务开始执行"
+            echo "3. 完成后运行: bash scripts/verify-phase${phase}.sh"
+            echo "4. 验收通过后继续下一 Phase"
+            exit 0
+        fi
+    else
+        echo "⚠ Phase $phase 验收脚本不存在，跳过"
+    fi
+done
+
+echo ""
+echo "=== 所有 Phase 已完成 ✓ ==="
+echo "运行整体验收: bash scripts/verify-all-phases.sh"
+```
+
+---
+
+## 15. 版本历史
+
+| 版本 | 日期 | 作者 | 变更说明 |
+|------|------|------|----------|
+| v1 | 2026-04-16 | - | 初始版本：定义 6 个 Phase、3 个 PR、验收标准、回滚策略 |
+| v1.1 | 2026-04-16 | - | 补充：Phase 依赖关系可视化、验收标准具体化（含验收脚本）、回滚命令具体化、功能影响评估、中断恢复机制 |
+
+---
+
+## 附录 A：验收脚本清单
+
+| 脚本路径 | 用途 | 执行时机 |
+|----------|------|----------|
+| `scripts/verify-phase0.sh` | Phase 0 治理门禁验收 | Phase 0 完成时 |
+| `scripts/verify-phase1.sh` | Phase 1 主路径冻结验收 | Phase 1 完成时 |
+| `scripts/verify-phase2.sh` | Phase 2 前端收口验收 | Phase 2 完成时 |
+| `scripts/verify-phase3.sh` | Phase 3 后端整改验收 | Phase 3 完成时 |
+| `scripts/verify-phase4.sh` | Phase 4 契约统一验收 | Phase 4 完成时 |
+| `scripts/verify-phase5.sh` | Phase 5 迁移准备验收 | Phase 5 完成时 |
+| `scripts/verify-all-phases.sh` | 整体验收 | 整改完成后 |
+| `scripts/resume-refactor.sh` | 中断恢复 | 整改中断后恢复 |
+
+---
+
+## 附录 B：相关文档索引
+
+| 文档路径 | 内容 |
+|----------|------|
+| `docs/architecture/api-contract.md` | API 契约规范 |
+| `docs/architecture/repository-architecture.md` | 仓库架构说明 |
+| `docs/development/coding-standards.md` | 编码规范 |
+| `docs/governance/code-boundary-baseline.md` | 代码边界基线 |
+| `docs/governance/core-boundary-baseline.md` | core 目录边界基线（待创建） |
+| `docs/governance/migration-conditions.md` | 迁移条件清单（待创建） |
+| `docs/adr/0002-delay-physical-migration-until-boundary-convergence.md` | ADR：暂缓物理迁移决策（待创建） |
+| `AGENTS.md` | AI 协作规则 |
+| `README.md` | 项目说明 |

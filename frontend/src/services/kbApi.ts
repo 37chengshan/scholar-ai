@@ -10,7 +10,6 @@
  * - Search & Chat: search
  */
 import apiClient from '@/utils/apiClient';
-import { ApiResponse } from '@/utils/apiClient';
 
 // Export importApi for ImportJob operations
 export { importApi } from './importApi';
@@ -126,76 +125,76 @@ export const kbApi = {
   // === CRUD ===
 
   /** List knowledge bases with filters */
-  list: async (params?: KBListParams): Promise<ApiResponse<KBListResponse>> => {
+  list: async (params?: KBListParams): Promise<KBListResponse> => {
     const response = await apiClient.get('/api/v1/knowledge-bases', { params });
-    return { success: true, data: response.data };
+    return response.data as KBListResponse;
   },
 
   /** Create a new knowledge base */
-  create: async (data: KBCreateData): Promise<ApiResponse<KnowledgeBase>> => {
+  create: async (data: KBCreateData): Promise<KnowledgeBase> => {
     const response = await apiClient.post('/api/v1/knowledge-bases', data);
-    return { success: true, data: response.data };
+    return response.data as KnowledgeBase;
   },
 
   /** Get knowledge base by ID */
-  get: async (id: string): Promise<ApiResponse<KnowledgeBase>> => {
+  get: async (id: string): Promise<KnowledgeBase> => {
     const response = await apiClient.get(`/api/v1/knowledge-bases/${id}`);
-    return { success: true, data: response.data };
+    return response.data as KnowledgeBase;
   },
 
   /** Update knowledge base */
-  update: async (id: string, data: Partial<KBCreateData>): Promise<ApiResponse<KnowledgeBase>> => {
+  update: async (id: string, data: Partial<KBCreateData>): Promise<KnowledgeBase> => {
     const response = await apiClient.patch(`/api/v1/knowledge-bases/${id}`, data);
-    return { success: true, data: response.data };
+    return response.data as KnowledgeBase;
   },
 
   /** Delete knowledge base */
-  delete: async (id: string): Promise<ApiResponse<{ deleted: boolean }>> => {
+  delete: async (id: string): Promise<{ deleted: boolean }> => {
     const response = await apiClient.delete(`/api/v1/knowledge-bases/${id}`);
-    return { success: true, data: response.data };
+    return response.data as { deleted: boolean };
   },
 
   /** Batch delete knowledge bases */
-  batchDelete: async (ids: string[]): Promise<ApiResponse<{ deleted: number }>> => {
+  batchDelete: async (ids: string[]): Promise<{ deleted: number }> => {
     const response = await apiClient.post('/api/v1/knowledge-bases/batch-delete', { ids });
-    return { success: true, data: response.data };
+    return response.data as { deleted: number };
   },
 
   // === Paper Management ===
 
   /** List papers in a KB */
-  listPapers: async (kbId: string): Promise<ApiResponse<{ papers: KBPaperListItem[]; total: number; limit: number; offset: number }>> => {
+  listPapers: async (kbId: string): Promise<{ papers: KBPaperListItem[]; total: number; limit: number; offset: number }> => {
     const response = await apiClient.get(`/api/v1/knowledge-bases/${kbId}/papers`);
-    return { success: true, data: response.data };
+    return response.data as { papers: KBPaperListItem[]; total: number; limit: number; offset: number };
   },
 
   /** List upload history for a KB */
   getUploadHistory: async (
     kbId: string,
     params?: { limit?: number; offset?: number }
-  ): Promise<ApiResponse<{ records: KBUploadHistoryRecord[]; total: number; limit: number; offset: number }>> => {
+  ): Promise<{ records: KBUploadHistoryRecord[]; total: number; limit: number; offset: number }> => {
     const response = await apiClient.get(`/api/v1/knowledge-bases/${kbId}/upload-history`, {
       params,
     });
-    return { success: true, data: response.data };
+    return response.data as { records: KBUploadHistoryRecord[]; total: number; limit: number; offset: number };
   },
 
   /** Add paper to KB */
-  addPaper: async (kbId: string, paperId: string): Promise<ApiResponse<any>> => {
+  addPaper: async (kbId: string, paperId: string): Promise<any> => {
     const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/papers`, { paperId });
-    return { success: true, data: response.data };
+    return response.data;
   },
 
   /** Remove paper from KB */
-  removePaper: async (kbId: string, paperId: string): Promise<ApiResponse<{ removed: boolean }>> => {
+  removePaper: async (kbId: string, paperId: string): Promise<{ removed: boolean }> => {
     const response = await apiClient.delete(`/api/v1/knowledge-bases/${kbId}/papers/${paperId}`);
-    return { success: true, data: response.data };
+    return response.data as { removed: boolean };
   },
 
   // === Import ===
 
   /** Upload PDF to KB */
-  uploadPdf: async (kbId: string, file: File): Promise<ApiResponse<{ paperId: string, taskId: string, status: string, message: string }>> => {
+  uploadPdf: async (kbId: string, file: File): Promise<{ paperId: string, taskId: string, status: string, message: string }> => {
     const formData = new FormData();
     formData.append('file', file);
     const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/upload`, formData, {
@@ -207,41 +206,41 @@ export const kbApi = {
       status: string;
       message: string;
     };
-    return { success: true, data };
+    return data;
   },
 
   /** Import from URL/DOI */
-  importFromUrl: async (kbId: string, url: string): Promise<ApiResponse<{ paperId: string, taskId: string }>> => {
+  importFromUrl: async (kbId: string, url: string): Promise<{ paperId: string, taskId: string }> => {
     const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/import-url`, { url });
-    return { success: true, data: response.data };
+    return response.data as { paperId: string, taskId: string };
   },
 
   /** Import from arXiv */
-  importFromArxiv: async (kbId: string, arxivId: string): Promise<ApiResponse<{ paperId: string, taskId: string }>> => {
+  importFromArxiv: async (kbId: string, arxivId: string): Promise<{ paperId: string, taskId: string }> => {
     const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/import-arxiv`, { arxivId });
-    return { success: true, data: response.data };
+    return response.data as { paperId: string, taskId: string };
   },
 
   // === Search & Query ===
 
   /** Vector search in KB - returns top-K chunks matching query */
-  search: async (kbId: string, query: string, topK?: number): Promise<ApiResponse<{ results: KBSearchResult[], total: number }>> => {
+  search: async (kbId: string, query: string, topK?: number): Promise<{ results: KBSearchResult[], total: number }> => {
     const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/search`, { query, topK });
-    return { success: true, data: response.data };
+    return response.data as { results: KBSearchResult[], total: number };
   },
 
   /** Query KB for Q&A - returns answer with citations */
-  query: async (kbId: string, query: string, topK?: number): Promise<ApiResponse<{ answer: string, citations?: any[], sources?: any[], confidence: number }>> => {
+  query: async (kbId: string, query: string, topK?: number): Promise<{ answer: string, citations?: any[], sources?: any[], confidence: number }> => {
     const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/query`, { query, topK });
-    return { success: true, data: response.data };
+    return response.data as { answer: string, citations?: any[], sources?: any[], confidence: number };
   },
 
   // === Storage Stats ===
 
   /** Get storage statistics for user's knowledge bases */
-  getStorageStats: async (): Promise<ApiResponse<KBStorageStats>> => {
+  getStorageStats: async (): Promise<KBStorageStats> => {
     const response = await apiClient.get('/api/v1/knowledge-bases/storage-stats');
-    return { success: true, data: response.data };
+    return response.data as KBStorageStats;
   },
 };
 

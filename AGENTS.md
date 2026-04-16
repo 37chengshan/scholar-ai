@@ -32,6 +32,8 @@
 
 - 禁止新增根级 doc、tmp、legacy、_new、平行实现目录。
 - 禁止在根目录提交 *.pid、cookies.txt、临时日志、测试产物。
+- 当前阶段前端真实代码只允许落在 frontend，不允许在 apps/web 新增业务源码。
+- 当前阶段后端真实代码只允许落在 backend-python，不允许在 apps/api 新增业务源码。
 - 改接口必须同时检查并必要时更新：
   - docs/architecture/api-contract.md
   - docs/domain/resources.md

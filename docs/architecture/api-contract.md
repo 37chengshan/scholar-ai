@@ -36,11 +36,39 @@
 ```json
 {
   "success": true,
-  "data": [],
+  "data": {
+    "items": []
+  },
   "meta": {
     "limit": 20,
     "offset": 0,
     "total": 100
+  }
+}
+```
+
+分页资源样板（papers）：
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "paper-uuid",
+        "title": "Attention Is All You Need",
+        "authors": ["Ashish Vaswani"],
+        "status": "completed",
+        "arxivId": "1706.03762",
+        "createdAt": "2026-04-16T08:00:00Z",
+        "updatedAt": "2026-04-16T08:05:00Z"
+      }
+    ]
+  },
+  "meta": {
+    "limit": 20,
+    "offset": 0,
+    "total": 1
   }
 }
 ```
@@ -61,6 +89,7 @@
 
 - 请求参数：limit、offset
 - 响应字段：meta.limit、meta.offset、meta.total
+- 兼容期可接受 page+limit 输入，但后端内部统一归一化到 limit+offset。
 
 鉴权规范：
 
