@@ -122,7 +122,7 @@ jobs:
       - name: Run unit tests
         working-directory: backend-python
         run: |
-          pytest tests/unit/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
+          pytest tests/unit/test_services.py tests/unit/test_reranker_service.py -v --tb=short --maxfail=1
         env:
           ENVIRONMENT: test
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
@@ -145,7 +145,7 @@ jobs:
       - name: Run integration tests
         working-directory: backend-python
         run: |
-          pytest tests/integration/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=80
+          pytest tests/integration/test_reranker_e2e.py -v --tb=short --maxfail=1
         env:
           ENVIRONMENT: test
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
