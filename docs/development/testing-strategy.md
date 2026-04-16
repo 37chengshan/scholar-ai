@@ -70,8 +70,8 @@ E2E 覆盖范围：
 	- bash scripts/check-structure-boundaries.sh
 	- bash scripts/check-code-boundaries.sh
 	- bash scripts/check-governance.sh
-	- cd frontend && npm run type-check
-	- cd backend-python && pytest -q tests/unit/test_services.py --maxfail=1
+	- cd apps/web && npm run type-check
+	- cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
 
 - CI 最小验证：
 	- 核心文档存在性检查

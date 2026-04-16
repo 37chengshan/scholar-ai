@@ -12,7 +12,7 @@ echo ""
 
 # 配置
 INSTALL_DIR="/opt/scholarai"
-BACKEND_DIR="${INSTALL_DIR}/backend-python"
+BACKEND_DIR="${INSTALL_DIR}/apps/api"
 UPLOADS_DIR="${INSTALL_DIR}/uploads"
 LOGS_DIR="${INSTALL_DIR}/logs"
 
@@ -201,16 +201,16 @@ cat > ${INSTALL_DIR}/start-worker.sh << 'STARTEOF'
 #!/bin/bash
 # 启动 ScholarAI Python Worker
 
-cd /opt/scholarai/backend-python
+cd /opt/scholarai/apps/api
 source venv/bin/activate
 
-export PYTHONPATH=/opt/scholarai/backend-python
+export PYTHONPATH=/opt/scholarai/apps/api
 export OSS_ENDPOINT=local
 export LOCAL_STORAGE_PATH=/opt/scholarai/uploads
 export HF_HOME=/opt/scholarai/models
 
 # 加载环境变量
-export $(cat /opt/scholarai/backend-python/.env | xargs)
+export $(cat /opt/scholarai/apps/api/.env | xargs)
 
 echo "Starting PDF Worker..."
 python3 -m app.workers.pdf_worker 2>&1 | tee /opt/scholarai/logs/worker.log
@@ -232,12 +232,12 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/scholarai/backend-python
-Environment=PYTHONPATH=/opt/scholarai/backend-python
+WorkingDirectory=/opt/scholarai/apps/api
+Environment=PYTHONPATH=/opt/scholarai/apps/api
 Environment=OSS_ENDPOINT=local
 Environment=LOCAL_STORAGE_PATH=/opt/scholarai/uploads
 Environment=HF_HOME=/opt/scholarai/models
-ExecStart=/opt/scholarai/backend-python/venv/bin/python -m app.workers.pdf_worker
+ExecStart=/opt/scholarai/apps/api/venv/bin/python -m app.workers.pdf_worker
 Restart=always
 RestartSec=5
 StandardOutput=append:/opt/scholarai/logs/worker.log

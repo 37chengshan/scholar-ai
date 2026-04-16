@@ -6,7 +6,7 @@
 
 ## Scope
 
-覆盖文档系统、代码结构、CI 门禁、评审反馈、熵治理与持续重构流程，适用于 frontend、backend-python 与跨层契约协作。
+覆盖文档系统、代码结构、CI 门禁、评审反馈、熵治理与持续重构流程，适用于 apps/web、apps/api 与跨层契约协作。
 
 ## Source of Truth
 
@@ -75,8 +75,8 @@
 
 回归验证：
 
-- cd frontend && npm run type-check
-- cd backend-python && pytest -q tests/unit --maxfail=1
+- cd apps/web && npm run type-check
+- cd apps/api && pytest -q tests/unit --maxfail=1
 
 CI 验证：
 

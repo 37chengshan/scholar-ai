@@ -18,33 +18,33 @@
 
 前端边界规则：
 
-- frontend/src/app/pages 与 frontend/src/app/components 不得直接使用 apiClient、fetch、EventSource。
-- 页面/组件访问后端必须通过 frontend/src/services 或 frontend/src/app/hooks。
+- apps/web/src/app/pages 与 apps/web/src/app/components 不得直接使用 apiClient、fetch、EventSource。
+- 页面/组件访问后端必须通过 apps/web/src/services 或 apps/web/src/app/hooks。
 
 后端边界规则：
 
-- backend-python/app/api 中新增文件默认禁止直接进行 db.execute/db.add/db.delete/db.flush/db.refresh/db.commit。
+- apps/api/app/api 中新增文件默认禁止直接进行 db.execute/db.add/db.delete/db.flush/db.refresh/db.commit。
 - 历史遗留文件暂时允许，必须在本清单登记，后续逐步迁移到 service 层。
 
 当前允许后端 API 直连数据库文件（历史基线）：
 
-- backend-python/app/api/annotations.py
-- backend-python/app/api/compare.py
-- backend-python/app/api/dashboard.py
-- backend-python/app/api/imports/batches.py
-- backend-python/app/api/imports/dedupe.py
-- backend-python/app/api/imports/jobs.py
-- backend-python/app/api/kb/kb_crud.py
-- backend-python/app/api/kb/kb_import.py
-- backend-python/app/api/kb/kb_papers.py
-- backend-python/app/api/notes.py
-- backend-python/app/api/papers/paper_status.py
-- backend-python/app/api/papers/paper_upload.py
-- backend-python/app/api/projects.py
-- backend-python/app/api/reading_progress.py
-- backend-python/app/api/tasks.py
-- backend-python/app/api/uploads.py
-- backend-python/app/api/users.py
+- apps/api/app/api/annotations.py
+- apps/api/app/api/compare.py
+- apps/api/app/api/dashboard.py
+- apps/api/app/api/imports/batches.py
+- apps/api/app/api/imports/dedupe.py
+- apps/api/app/api/imports/jobs.py
+- apps/api/app/api/kb/kb_crud.py
+- apps/api/app/api/kb/kb_import.py
+- apps/api/app/api/kb/kb_papers.py
+- apps/api/app/api/notes.py
+- apps/api/app/api/papers/paper_status.py
+- apps/api/app/api/papers/paper_upload.py
+- apps/api/app/api/projects.py
+- apps/api/app/api/reading_progress.py
+- apps/api/app/api/tasks.py
+- apps/api/app/api/uploads.py
+- apps/api/app/api/users.py
 
 ## Required Updates
 

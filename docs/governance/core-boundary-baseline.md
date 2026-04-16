@@ -2,11 +2,11 @@
 
 ## Purpose
 
-定义 backend-python/app/core 的职责边界，阻止 core 演化为通用业务杂物箱。
+定义 apps/api/app/core 的职责边界，阻止 core 演化为通用业务杂物箱。
 
 ## Scope
 
-适用于 backend-python/app/core 全目录与新增文件准入审查。
+适用于 apps/api/app/core 全目录与新增文件准入审查。
 
 ## Allowed Responsibilities
 

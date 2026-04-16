@@ -40,8 +40,8 @@ body:
     attributes:
       label: Impact area
       options:
-        - frontend
-        - backend-python
+        - apps/web
+        - apps/api
         - api-contract
         - docs/governance
         - infra/deploy

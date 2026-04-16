@@ -4,7 +4,7 @@
 创建 PostgreSQL 和 Neo4j 的必要表结构
 
 使用方法:
-    cd backend-python
+    cd apps/api
     python -m scripts.init_database
 """
 

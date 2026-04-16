@@ -23,7 +23,7 @@ os.environ.setdefault("ZHIPU_API_KEY", "sk-test-zhipu")
 # Set correct Qwen model path (absolute path from project root)
 # The model is at /Users/cc/scholar-ai-deploy/schlar ai/Qwen/Qwen3-VL-Embedding-2B
 # From backend-python, we need to go up 2 levels to reach project root
-project_root = Path(__file__).parent.parent.parent.parent  # Go up from tests/ -> backend-python/ -> scholar-ai/ -> project root
+project_root = Path(__file__).parent.parent.parent.parent  # Go up from tests/ -> apps/api/ -> scholar-ai/ -> project root
 qwen_model_path = project_root / "Qwen" / "Qwen3-VL-Embedding-2B"
 if qwen_model_path.exists():
     os.environ.setdefault("QWEN3VL_EMBEDDING_MODEL_PATH", str(qwen_model_path))

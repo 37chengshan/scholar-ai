@@ -5,12 +5,12 @@ required_dirs=(
   "apps"
   "apps/web"
   "apps/api"
+  "apps/web/src"
+  "apps/api/app"
   "packages"
   "infra"
   "tools"
   "docs"
-  "frontend"
-  "backend-python"
   "scripts"
   ".github/workflows"
 )
@@ -29,6 +29,19 @@ forbidden_root_files=(
 )
 
 fail_count=0
+legacy_root_dirs=(
+  "frontend"
+  "backend-python"
+)
+
+for dir in "${legacy_root_dirs[@]}"; do
+  if [[ -d "$dir" ]]; then
+    while IFS= read -r legacy_file; do
+      echo "[structure-boundaries] legacy root implementation path forbidden: $legacy_file" >&2
+      fail_count=$((fail_count + 1))
+    done < <(find "$dir" -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) | sort)
+  fi
+done
 
 for path in "${required_dirs[@]}"; do
   if [[ ! -d "$path" ]]; then
@@ -51,42 +64,12 @@ for file in "${forbidden_root_files[@]}"; do
   fi
 done
 
-# apps/* are logical mapping only in current phase.
-# Block introducing real implementation files in apps/web and apps/api.
-allowed_apps_files=(
-  "README.md"
-)
-
-is_allowed_apps_file() {
-  local filename="$1"
-  for allowed in "${allowed_apps_files[@]}"; do
-    if [[ "$filename" == "$allowed" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-check_apps_logical_mapping() {
-  local dir="$1"
-  if [[ ! -d "$dir" ]]; then
-    return
-  fi
-
-  while IFS= read -r file; do
-    local base
-    base="$(basename "$file")"
-    if ! is_allowed_apps_file "$base"; then
-      echo "[structure-boundaries] apps logical mapping violation: $file" >&2
-      fail_count=$((fail_count + 1))
-    fi
-  done < <(
-    find "$dir" -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) | sort
-  )
-}
-
-check_apps_logical_mapping "apps/web"
-check_apps_logical_mapping "apps/api"
+if [[ -d "apps/api/app/api" ]]; then
+  while IFS= read -r api_dup_dir; do
+    echo "[structure-boundaries] forbidden duplicate API directory found: $api_dup_dir" >&2
+    fail_count=$((fail_count + 1))
+  done < <(find apps/api/app/api -type d -name "*_new" | sort)
+fi
 
 shopt -s nullglob
 root_pid=(./*.pid)
@@ -107,13 +90,6 @@ fi
 if (( ${#root_out[@]} > 0 )); then
   echo "[structure-boundaries] forbidden root out files found" >&2
   fail_count=$((fail_count + 1))
-fi
-
-if [[ -d "backend-python/app/api" ]]; then
-  while IFS= read -r api_dup_dir; do
-    echo "[structure-boundaries] forbidden duplicate API directory found: $api_dup_dir" >&2
-    fail_count=$((fail_count + 1))
-  done < <(find backend-python/app/api -type d -name "*_new" | sort)
 fi
 
 while IFS= read -r nested_workflow; do

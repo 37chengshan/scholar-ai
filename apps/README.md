@@ -3,7 +3,7 @@
 This folder defines the long-term application boundaries.
 
 Current logical alignment:
-- apps/web -> frontend
-- apps/api -> backend-python
+- apps/web -> apps/web
+- apps/api -> apps/api
 
 Physical migration is intentionally deferred to a later milestone.

@@ -12,8 +12,8 @@
 
 - API 契约：docs/architecture/api-contract.md
 - 系统总览：docs/architecture/system-overview.md
-- 后端模型：backend-python/app/models
-- 后端服务：backend-python/app/services
+- 后端模型：apps/api/app/models
+- 后端服务：apps/api/app/services
 
 ## Rules
 
@@ -61,7 +61,7 @@
 ## Required Updates
 
 - 新增资源类型：同步更新本文件与 docs/architecture/api-contract.md。
-- 资源状态迁移变化：同步更新 backend-python/app/models 与本文件。
+- 资源状态迁移变化：同步更新 apps/api/app/models 与本文件。
 - 新增异步任务：同步补充可修改资源列表。
 
 ## Verification

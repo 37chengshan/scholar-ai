@@ -8,7 +8,7 @@
 
 ### 1.1 颜色系统
 
-**文件位置**: `scholar-ai/frontend/src/styles/theme.css`
+**文件位置**: `scholar-ai/apps/web/src/styles/theme.css`
 
 颜色令牌使用 CSS 变量定义，采用 Tailwind CSS v4 的 `@theme` 语法：
 
@@ -50,7 +50,7 @@
 
 ### 1.2 排版系统 (Typography)
 
-**字体族定义** (`scholar-ai/frontend/src/styles/fonts.css`):
+**字体族定义** (`scholar-ai/apps/web/src/styles/fonts.css`):
 
 ```css
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Outfit:wght@100..900&family=Noto+Serif+SC:wght@200..900&family=JetBrains+Mono:wght@100..800&display=swap');
@@ -85,7 +85,7 @@
 
 ### 2.1 组件基础
 
-**位置**: `scholar-ai/frontend/src/app/components/ui/`
+**位置**: `scholar-ai/apps/web/src/app/components/ui/`
 
 组件基于 **shadcn/ui** 模式构建，底层使用 **Radix UI** 原语：
 
@@ -101,7 +101,7 @@
 
 ### 2.2 样式工具函数
 
-**文件**: `scholar-ai/frontend/src/app/components/ui/utils.ts`
+**文件**: `scholar-ai/apps/web/src/app/components/ui/utils.ts`
 
 ```typescript
 import { clsx, type ClassValue } from "clsx";
@@ -165,7 +165,7 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
 
 ### 2.5 自定义业务组件
 
-**位置**: `scholar-ai/frontend/src/app/components/`
+**位置**: `scholar-ai/apps/web/src/app/components/`
 
 | 组件 | 用途 |
 |------|------|
@@ -328,7 +328,7 @@ import {
 
 ### 6.1 Tailwind CSS v4 配置
 
-**文件**: `scholar-ai/frontend/src/styles/tailwind.css`
+**文件**: `scholar-ai/apps/web/src/styles/tailwind.css`
 
 ```css
 @import 'tailwindcss' source(none);
@@ -413,7 +413,7 @@ src/styles/
 ### 7.1 目录组织
 
 ```
-scholar-ai/frontend/src/
+scholar-ai/apps/web/src/
 ├── app/                    # 应用核心
 │   ├── components/         # 组件
 │   │   ├── ui/            # 基础 UI 组件
@@ -446,7 +446,7 @@ scholar-ai/frontend/src/
 
 ### 7.3 类型定义
 
-**位置**: `scholar-ai/frontend/src/types/`
+**位置**: `scholar-ai/apps/web/src/types/`
 
 ```typescript
 // 核心实体类型

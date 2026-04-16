@@ -14,7 +14,7 @@ Index parameters:
 - GIN index: Standard PostgreSQL full-text search
 
 Usage:
-    cd backend-python
+    cd apps/api
     python scripts/create_indexes.py
 
 Environment:

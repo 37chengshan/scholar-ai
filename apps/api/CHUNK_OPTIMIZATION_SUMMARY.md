@@ -376,8 +376,8 @@ if quality.score < 0.7:
 ## 文件修改清单
 
 ### 修改文件
-1. `backend-python/app/core/docling_service.py` - 核心chunking逻辑（完整重构）
-2. `backend-python/app/core/config.py` - 配置参数（新增6个参数）
+1. `apps/api/app/core/docling_service.py` - 核心chunking逻辑（完整重构）
+2. `apps/api/app/core/config.py` - 配置参数（新增6个参数）
 
 ### 新增内容
 - `ChunkQualityReport` 类 - 质量评估

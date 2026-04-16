@@ -15,7 +15,7 @@ Commands and outcomes:
 ```text
 填写执行命令与关键结果
 例如：bash scripts/check-code-boundaries.sh
-例如：cd backend-python && pytest -q tests/unit/test_services.py --maxfail=1
+例如：cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
 ```
 
 ## Contract and Resource Impact

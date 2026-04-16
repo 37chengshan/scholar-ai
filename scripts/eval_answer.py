@@ -20,7 +20,7 @@ from typing import Dict, List, Tuple, Any, Optional
 
 # Add backend to path for imports
 import sys
-backend_path = Path(__file__).parent.parent / "backend-python"
+backend_path = Path(__file__).parent.parent / "apps" / "api"
 if backend_path.exists():
     sys.path.insert(0, str(backend_path))
 

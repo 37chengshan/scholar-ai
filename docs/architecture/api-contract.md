@@ -11,7 +11,7 @@
 ## Source of Truth
 
 - 仓库级契约：docs/architecture/api-contract.md
-- 后端实现细节：backend-python/docs/API_CONTRACT.md
+- 后端实现细节：apps/api/docs/API_CONTRACT.md
 - 资源生命周期：docs/domain/resources.md
 
 ## Rules

@@ -17,12 +17,12 @@ echo "输出文件: $OUTPUT_DIR/${PACKAGE_NAME}.tar.gz"
 echo ""
 echo "排除目录大小统计:"
 echo "- Qwen 模型: $(du -sh "$PROJECT_DIR/../Qwen" 2>/dev/null | cut -f1 || echo 'N/A')"
-echo "- backend-python/venv: $(du -sh "$PROJECT_DIR/backend-python/venv" 2>/dev/null | cut -f1 || echo 'N/A')"
-echo "- backend-python/venv_new: $(du -sh "$PROJECT_DIR/backend-python/venv_new" 2>/dev/null | cut -f1 || echo 'N/A')"
-echo "- frontend/node_modules: $(du -sh "$PROJECT_DIR/frontend/node_modules" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "- apps/api/venv: $(du -sh "$PROJECT_DIR/apps/api/venv" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "- apps/api/venv_new: $(du -sh "$PROJECT_DIR/apps/api/venv_new" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "- apps/web/node_modules: $(du -sh "$PROJECT_DIR/apps/web/node_modules" 2>/dev/null | cut -f1 || echo 'N/A')"
 echo "- uploads: $(du -sh "$PROJECT_DIR/../uploads" 2>/dev/null | cut -f1 || echo 'N/A')"
 echo "- .git: $(du -sh "$PROJECT_DIR/.git" 2>/dev/null | cut -f1)"
-echo "- 覆盖率报告: $(du -sh "$PROJECT_DIR/backend-python/htmlcov" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "- 覆盖率报告: $(du -sh "$PROJECT_DIR/apps/api/htmlcov" 2>/dev/null | cut -f1 || echo 'N/A')"
 echo ""
 
 cd "$PROJECT_DIR"
@@ -51,20 +51,20 @@ tar -czf "$OUTPUT_DIR/${PACKAGE_NAME}.tar.gz" \
     --exclude='test-results' \
     --exclude='test-papers' \
     --exclude='uploads' \
-    --exclude='backend-python/venv' \
-    --exclude='backend-python/venv_new' \
-    --exclude='backend-python/__pycache__' \
-    --exclude='backend-python/.pytest_cache' \
-    --exclude='backend-python/.coverage' \
-    --exclude='backend-python/coverage-report.txt' \
-    --exclude='backend-python/htmlcov' \
-    --exclude='backend-python/htmlcov_*' \
-    --exclude='backend-python/*.log' \
-    --exclude='backend-python/tests/integration/workflow_fixtures' \
-    --exclude='frontend/node_modules' \
-    --exclude='frontend/dist' \
-    --exclude='frontend/.vite' \
-    --exclude='frontend/coverage' \
+    --exclude='apps/api/venv' \
+    --exclude='apps/api/venv_new' \
+    --exclude='apps/api/__pycache__' \
+    --exclude='apps/api/.pytest_cache' \
+    --exclude='apps/api/.coverage' \
+    --exclude='apps/api/coverage-report.txt' \
+    --exclude='apps/api/htmlcov' \
+    --exclude='apps/api/htmlcov_*' \
+    --exclude='apps/api/*.log' \
+    --exclude='apps/api/tests/integration/workflow_fixtures' \
+    --exclude='apps/web/node_modules' \
+    --exclude='apps/web/dist' \
+    --exclude='apps/web/.vite' \
+    --exclude='apps/web/coverage' \
     --exclude='nginx/ssl' \
     --exclude='cookies.txt' \
     --exclude='package.sh' \
@@ -96,6 +96,6 @@ fi
 echo ""
 echo "建议部署步骤:"
 echo "1. 解压: tar -xzf ${PACKAGE_NAME}.tar.gz"
-echo "2. 安装前端依赖: cd frontend && npm install"
-echo "3. 安装后端依赖: cd backend-python && pip install -r requirements.txt"
+echo "2. 安装前端依赖: cd apps/web && npm install"
+echo "3. 安装后端依赖: cd apps/api && pip install -r requirements.txt"
 echo "4. 配置环境变量: cp .env.example .env 并编辑"

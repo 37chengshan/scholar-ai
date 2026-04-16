@@ -27,7 +27,7 @@ echo "✅ 模型文件检查通过"
 echo ""
 
 # 启动服务
-cd backend-python
+cd apps/api
 python verify_model_config.py
 echo ""
 echo "启动服务..."

@@ -7,7 +7,7 @@
 - Redis
 
 使用方法:
-    cd backend-python
+    cd apps/api
     python -m scripts.test_db_connection
 
 或者:

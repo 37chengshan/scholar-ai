@@ -212,7 +212,7 @@ Authorization: Bearer <jwt_token>
 ## 导出 OpenAPI 文档
 
 ```bash
-cd backend-python
+cd apps/api
 python scripts/export_openapi.py
 ```
 

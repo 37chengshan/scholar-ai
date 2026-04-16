@@ -25,7 +25,7 @@ docker-compose ps
 echo ""
 echo "📋 步骤 3: 清理旧 Collection"
 echo "----------------------------------------"
-cd backend-python
+cd apps/api
 python cleanup_old_collections.py 2>&1 | grep -E "(删除|清理完成|不存在)"
 
 echo ""
@@ -40,7 +40,7 @@ echo "=========================================="
 echo ""
 echo "🎯 下一步操作:"
 echo "  1. 启动后端服务:"
-echo "     cd backend-python"
+echo "     cd apps/api"
 echo "     uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 echo ""
 echo "  2. 上传论文进行索引"
