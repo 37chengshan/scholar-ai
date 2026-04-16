@@ -1,4 +1,4 @@
-import { FileText, Database, AlertTriangle } from 'lucide-react';
+import { FileText, Database, AlertTriangle, X } from 'lucide-react';
 import { cn } from './ui/utils';
 
 export type ScopeType = 'single_paper' | 'full_kb' | 'error' | null;
@@ -7,9 +7,15 @@ interface ScopeBannerProps {
   type: ScopeType;
   title?: string;  // Paper title or KB name
   errorMessage?: string;  // For error state
+  onExitScope?: () => void;
 }
 
-export function ScopeBanner({ type, title, errorMessage }: ScopeBannerProps) {
+export function ScopeBanner({
+  type,
+  title,
+  errorMessage,
+  onExitScope,
+}: ScopeBannerProps) {
   // Return null for default/null states
   if (type === null) return null;
 
@@ -39,11 +45,24 @@ export function ScopeBanner({ type, title, errorMessage }: ScopeBannerProps) {
 
   return (
     <div className={cn(
-      'w-full py-2 px-4 flex items-center justify-center gap-2 text-white text-sm font-medium',
+      'w-full py-2 px-4 flex items-center justify-between gap-2 text-white text-sm font-medium',
       bgColorValue
     )}>
-      <Icon className="w-4 h-4" />
-      <span>{message}</span>
+      <div className="flex items-center gap-2">
+        <Icon className="w-4 h-4" />
+        <span>{message}</span>
+      </div>
+
+      {onExitScope && (
+        <button
+          onClick={onExitScope}
+          className="inline-flex items-center gap-1 rounded border border-white/40 px-2 py-0.5 text-xs hover:bg-white/15 transition-colors"
+          type="button"
+        >
+          <X className="w-3 h-3" />
+          退出作用域
+        </button>
+      )}
     </div>
   );
 }

@@ -23,24 +23,10 @@ import { useReducer, useRef, useCallback, useEffect } from 'react';
 /**
  * Agent phase enumeration for phase tracking
  */
-export type AgentPhase =
-  | 'idle'
-  | 'routing'
-  | 'analyzing'
-  | 'planning'
-  | 'executing'
-  | 'synthesizing'
-  | 'completed';
+import { AgentPhase, StreamStatus } from '@/types/chat';
 
-/**
- * Stream status state machine
- */
-export type StreamStatus =
-  | 'idle'
-  | 'streaming'
-  | 'completed'
-  | 'error'
-  | 'cancelled';
+// Re-export StreamStatus for backward compatibility
+export type { StreamStatus };
 
 /**
  * Task type for session context
@@ -108,6 +94,9 @@ export interface ChatStreamState {
   // Citations
   citations: CitationItem[];
 
+  // Confirmation (agent tool approval)
+  confirmation: ConfirmationState | null;
+
   // Timing
   startedAt?: number;
   endedAt?: number;
@@ -124,6 +113,15 @@ export interface ChatStreamState {
 }
 
 /**
+ * Confirmation request from agent (for dangerous tool approval)
+ */
+export interface ConfirmationState {
+  confirmation_id: string;  // Required for backend resumption
+  tool: string;
+  params: Record<string, unknown>;
+}
+
+/**
  * SSE Action types for state transitions
  */
 export type SSEAction =
@@ -134,6 +132,8 @@ export type SSEAction =
   | { type: 'TOOL_CALL'; id: string; tool: string; label: string }
   | { type: 'TOOL_RESULT'; id: string; status: string; summary?: string }
   | { type: 'CITATION'; citation: CitationItem }
+  | { type: 'CONFIRMATION_REQUIRED'; confirmation: ConfirmationState }
+  | { type: 'CONFIRMATION_RESET' }
   | { type: 'STREAM_COMPLETE'; tokensUsed: number; cost: number; durationMs: number }
   | { type: 'ERROR'; code: string; message: string }
   | { type: 'CANCEL'; reason: string }
@@ -169,6 +169,7 @@ export function createInitialState(): ChatStreamState {
     contentBuffer: '',
     toolTimeline: [],
     citations: [],
+    confirmation: null,
     startedAt: undefined,
     endedAt: undefined,
     error: undefined,
@@ -280,11 +281,23 @@ export function chatStreamReducer(
         citations: [...state.citations, action.citation],
       };
 
+    case 'CONFIRMATION_REQUIRED':
+      return {
+        ...state,
+        confirmation: action.confirmation,
+      };
+
+    case 'CONFIRMATION_RESET':
+      return {
+        ...state,
+        confirmation: null,
+      };
+
     case 'STREAM_COMPLETE':
       return {
         ...state,
         streamStatus: 'completed',
-        currentPhase: 'completed',
+        currentPhase: 'done',
         phaseLabel: '完成',
         endedAt: Date.now(),
         tokensUsed: action.tokensUsed,
@@ -295,7 +308,7 @@ export function chatStreamReducer(
       return {
         ...state,
         streamStatus: 'error',
-        currentPhase: 'completed',
+        currentPhase: 'error',
         phaseLabel: '出错',
         endedAt: Date.now(),
         error: {
@@ -308,7 +321,7 @@ export function chatStreamReducer(
       return {
         ...state,
         streamStatus: 'cancelled',
-        currentPhase: 'completed',
+        currentPhase: 'cancelled',
         phaseLabel: '已取消',
         endedAt: Date.now(),
       };
@@ -361,6 +374,12 @@ export interface UseChatStreamReturn {
   forceFlush: () => void;
   /** Current message ID for validation */
   currentMessageId: string;
+  /** Get buffered content (may be ahead of state.contentBuffer due to throttle) */
+  getBufferedContent: () => { content: string; reasoning: string };
+  /** Current confirmation request (null if none) */
+  confirmation: ConfirmationState | null;
+  /** Reset confirmation state */
+  resetConfirmation: () => void;
 }
 
 /**
@@ -421,10 +440,13 @@ export function useChatStream(
    */
   const scheduleFlush = useCallback(() => {
     if (throttleTimerRef.current) {
+      console.debug('[useChatStream] scheduleFlush: timer already active, skipping');
       return; // Already scheduled
     }
 
+    console.debug('[useChatStream] scheduleFlush: setting timer for', throttleMs, 'ms');
     throttleTimerRef.current = setTimeout(() => {
+      console.debug('[useChatStream] FLUSH TIMER EXECUTING');
       // Flush both buffers
       if (reasoningRef.current) {
         dispatch({ type: 'REASONING_CHUNK', delta: reasoningRef.current });
@@ -452,6 +474,7 @@ export function useChatStream(
 
       if (action.type === 'MESSAGE_CHUNK') {
         contentRef.current += action.delta;
+        console.debug('[useChatStream] MESSAGE_CHUNK buffered');
         scheduleFlush();
         return;
       }
@@ -507,8 +530,9 @@ export function useChatStream(
    */
   const handleSSEEvent = useCallback(
     (envelope: SSEEventEnvelope) => {
-      // HARD RULE 0.2: message_id validation
-      if (envelope.message_id !== messageIdRef.current) {
+      // HARD RULE 0.2: message_id validation (skip for session_start which initializes it)
+      const eventType = envelope.event_type;
+      if (eventType !== 'session_start' && envelope.message_id !== messageIdRef.current) {
         console.warn(
           `[useChatStream] SSE event message_id mismatch. Expected: ${messageIdRef.current}, Got: ${envelope.message_id}. Ignoring.`
         );
@@ -516,11 +540,12 @@ export function useChatStream(
       }
 
       // Convert envelope to action based on event_type
-      const eventType = envelope.event_type;
       const data = envelope.data as Record<string, unknown>;
 
       switch (eventType) {
         case 'session_start':
+          // Initialize message_id binding
+          messageIdRef.current = envelope.message_id;
           bufferedDispatch({
             type: 'SESSION_START',
             sessionId: data.session_id as string,
@@ -529,6 +554,7 @@ export function useChatStream(
           });
           break;
 
+        case 'phase':
         case 'phase_change':
           bufferedDispatch({
             type: 'PHASE_CHANGE',
@@ -538,16 +564,18 @@ export function useChatStream(
           break;
 
         case 'thought':
-          // thought events go to reasoning buffer
-          const content = (data.content as string) || '';
+        case 'reasoning':
+          // thought/reasoning events go to reasoning buffer
+          const content = (data.delta as string) || (data.content as string) || '';
           if (content) {
             bufferedDispatch({ type: 'REASONING_CHUNK', delta: content });
           }
           break;
 
         case 'message':
-          // message events go to content buffer
-          const msgContent = (data.content as string) || '';
+          // message events go to content buffer (use delta field for streaming)
+          const msgContent = (data.delta as string) || (data.content as string) || '';
+          console.debug('[useChatStream] message event, delta:', msgContent.substring(0, 50));
           if (msgContent) {
             bufferedDispatch({ type: 'MESSAGE_CHUNK', delta: msgContent });
           }
@@ -556,19 +584,24 @@ export function useChatStream(
         case 'tool_call':
           bufferedDispatch({
             type: 'TOOL_CALL',
-            id: (data.tool_call_id as string) || `tc-${Date.now()}`,
-            tool: (data.tool_name as string) || 'unknown',
-            label: (data.display_name as string) || (data.tool_name as string) || 'Tool',
+            id: (data.id as string) || (data.tool_call_id as string) || `tc-${Date.now()}`,
+            tool: (data.tool as string) || (data.tool_name as string) || 'unknown',
+            label: (data.label as string) || (data.display_name as string) || (data.tool_name as string) || 'Tool',
           });
           break;
 
         case 'tool_result':
           bufferedDispatch({
             type: 'TOOL_RESULT',
-            id: (data.tool_call_id as string) || '',
+            id: (data.id as string) || (data.tool_call_id as string) || '',
             status: (data.status as string) || 'success',
             summary: (data.summary as string) || undefined,
           });
+          break;
+
+        case 'routing_decision':
+          // Routing decision - just log, no state change needed
+          console.debug('[useChatStream] Routing decision:', data);
           break;
 
         case 'citation':
@@ -578,12 +611,23 @@ export function useChatStream(
           }
           break;
 
+        case 'confirmation_required':
+          bufferedDispatch({
+            type: 'CONFIRMATION_REQUIRED',
+            confirmation: {
+              confirmation_id: (data.confirmation_id as string) || '',
+              tool: (data.tool_name as string) || 'unknown',
+              params: (data.parameters as Record<string, unknown>) || {},
+            },
+          });
+          break;
+
         case 'done':
           bufferedDispatch({
             type: 'STREAM_COMPLETE',
             tokensUsed: (data.tokens_used as number) || 0,
             cost: (data.cost as number) || 0,
-            durationMs: (data.total_duration as number) || 0,
+            durationMs: (data.total_time_ms as number) || (data.total_duration as number) || 0,
           });
           break;
 
@@ -591,7 +635,7 @@ export function useChatStream(
           bufferedDispatch({
             type: 'ERROR',
             code: (data.code as string) || 'UNKNOWN',
-            message: (data.message as string) || 'Stream error',
+            message: (data.message as string) || (data.error as string) || 'Stream error',
           });
           break;
 
@@ -686,6 +730,20 @@ export function useChatStream(
   }, [state.streamStatus, state, onComplete]);
 
   // ============================================================================
+  // Get buffered content (may be ahead of state due to throttle)
+  // ============================================================================
+
+  const getBufferedContent = useCallback(() => ({
+    content: state.contentBuffer + contentRef.current,
+    reasoning: state.reasoningBuffer + reasoningRef.current,
+  }), [state.contentBuffer, state.reasoningBuffer]);
+
+  // Reset confirmation state
+  const resetConfirmation = useCallback(() => {
+    dispatch({ type: 'CONFIRMATION_RESET' });
+  }, [dispatch]);
+
+  // ============================================================================
   // Return
   // ============================================================================
 
@@ -698,6 +756,9 @@ export function useChatStream(
     reset,
     forceFlush,
     currentMessageId: messageIdRef.current,
+    getBufferedContent,
+    confirmation: state.confirmation,
+    resetConfirmation,
   };
 }
 

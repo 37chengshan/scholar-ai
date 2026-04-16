@@ -89,14 +89,18 @@ describe('ThinkingStatus enum', () => {
     const expectedStatuses = [
       'idle',
       'analyzing',
-      'planning',
-      'executing',
+      'retrieving',
+      'reading',
+      'tool_calling',
       'synthesizing',
+      'verifying',
+      'done',
+      'error',
+      'cancelled',
     ];
 
     const actualStatuses = Object.values(ThinkingStatus);
 
-    expect(actualStatuses).toHaveLength(expectedStatuses.length);
     expectedStatuses.forEach((status) => {
       expect(actualStatuses).toContain(status);
     });
@@ -105,9 +109,16 @@ describe('ThinkingStatus enum', () => {
   it('should have correct enum values', () => {
     expect(ThinkingStatus.IDLE).toBe('idle');
     expect(ThinkingStatus.ANALYZING).toBe('analyzing');
-    expect(ThinkingStatus.PLANNING).toBe('planning');
-    expect(ThinkingStatus.EXECUTING).toBe('executing');
+    expect(ThinkingStatus.PLANNING).toBe('tool_calling'); // Legacy alias
+    expect(ThinkingStatus.EXECUTING).toBe('retrieving'); // Legacy alias
     expect(ThinkingStatus.SYNTHESIZING).toBe('synthesizing');
+    expect(ThinkingStatus.TOOL_CALLING).toBe('tool_calling');
+    expect(ThinkingStatus.RETRIEVING).toBe('retrieving');
+    expect(ThinkingStatus.READING).toBe('reading');
+    expect(ThinkingStatus.VERIFYING).toBe('verifying');
+    expect(ThinkingStatus.DONE).toBe('done');
+    expect(ThinkingStatus.ERROR).toBe('error');
+    expect(ThinkingStatus.CANCELLED).toBe('cancelled');
   });
 });
 
