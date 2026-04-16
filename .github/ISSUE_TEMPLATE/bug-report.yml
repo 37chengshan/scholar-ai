@@ -1,0 +1,59 @@
+name: Bug Report
+description: Report a reproducible defect in ScholarAI
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide a deterministic path to reproduce the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, screenshots, traces
+      description: Include only relevant excerpts.
+  - type: dropdown
+    id: impact_area
+    attributes:
+      label: Impact area
+      options:
+        - frontend
+        - backend-python
+        - api-contract
+        - docs/governance
+        - infra/deploy
+    validations:
+      required: true
+  - type: textarea
+    id: governance_impact
+    attributes:
+      label: Governance impact
+      description: Is this issue related to boundary drift, duplicate paths, or contract mismatch?
+  - type: textarea
+    id: minimal_verification
+    attributes:
+      label: Minimal verification
+      description: Which command confirms the issue is fixed?

@@ -28,8 +28,9 @@ import { AuthorResultCard } from "../components/AuthorResultCard";
 import { SearchFilters } from "../components/SearchFilters";
 import * as searchApi from "@/services/searchApi";
 import { AuthorSearchResult, AuthorPaper } from "@/services/searchApi";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { NoSearchResultsState } from "../components/EmptyState";
+import { importApi } from "@/services/importApi";
 import { kbApi } from "@/services/kbApi";
 
 export function Search() {
@@ -212,30 +213,59 @@ export function Search() {
   // Import paper to selected KB
   const handleImportToKB = async (kbId: string) => {
     if (!pendingImportPaper) return;
-    
+
     try {
       setImportingPaperId(pendingImportPaper.id);
-      
+
       // Determine import method based on source
-      let response;
+      let sourceType: 'arxiv' | 'pdf_url';
+      let payload: Record<string, unknown>;
+
       if (pendingImportPaper.source === 'arxiv' && pendingImportPaper.externalId) {
         // Extract arXiv ID from externalId (format: arXiv:XXXX.XXXXX)
         const arxivId = pendingImportPaper.externalId.replace('arXiv:', '');
-        response = await kbApi.importFromArxiv(kbId, arxivId);
+        sourceType = 'arxiv';
+        payload = { arxivId };
       } else if (pendingImportPaper.pdfUrl) {
-        response = await kbApi.importFromUrl(kbId, pendingImportPaper.pdfUrl);
+        sourceType = 'pdf_url';
+        payload = { url: pendingImportPaper.pdfUrl };
       } else {
         toast.error('无法导入：缺少 PDF URL 或 arXiv ID');
         return;
       }
-      
+
+      // Create import job using new API
+      const createResponse = await importApi.create(kbId, {
+        sourceType,
+        payload,
+      });
+      const jobId = createResponse.data.importJobId;
+
       toast.success('论文导入任务已创建');
       setShowKBSelectModal(false);
       setPendingImportPaper(null);
-      
-      // Navigate to read page after import (B-01: 搜索到阅读闭环)
-      if (response.data && response.data.paperId) {
-        navigate(`/read/${response.data.paperId}`);
+
+      // Navigate to read page after import if paper is already available (B-01: 搜索到阅读闭环)
+      // Poll for paper to be available
+      if (createResponse.data.paper?.paperId) {
+        navigate(`/read/${createResponse.data.paper.paperId}`);
+      } else {
+        // Poll until job completes to get paperId
+        let paperId: string | null = null;
+        for (let i = 0; i < 30; i++) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          const jobResponse = await importApi.get(jobId);
+          if (jobResponse.data.status === 'completed' && jobResponse.data.paper?.paperId) {
+            paperId = jobResponse.data.paper.paperId;
+            break;
+          }
+          if (jobResponse.data.status === 'failed') {
+            break;
+          }
+        }
+        if (paperId) {
+          navigate(`/read/${paperId}`);
+        }
       }
     } catch (error: any) {
       toast.error(error.response?.data?.error?.detail || '导入失败');

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router";
 import {
   ArrowLeft,
@@ -6,8 +6,6 @@ import {
   UploadCloud,
   FileText,
   MessageSquare,
-  Send,
-  Sparkles,
   Database,
   Loader2,
   Clock3,
@@ -43,12 +41,7 @@ export function KnowledgeBaseDetail() {
   const [papersLoading, setPapersLoading] = useState(false);
   const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
   const [importJobsLoading, setImportJobsLoading] = useState(false);
-
-  const [messages, setMessages] = useState<
-    { role: string; content: string; citations?: any[]; isError?: boolean }[]
-  >([]);
-  const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const previousImportJobStatus = useRef<Record<string, string>>({});
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -124,6 +117,28 @@ export function KnowledgeBaseDetail() {
     return () => clearInterval(interval);
   }, [loadImportJobs]);
 
+  useEffect(() => {
+    const hasNewlyCompletedJob = importJobs.some((job) => {
+      const previousStatus = previousImportJobStatus.current[job.importJobId];
+      return job.status === "completed" && previousStatus !== "completed";
+    });
+
+    previousImportJobStatus.current = importJobs.reduce<Record<string, string>>(
+      (acc, job) => ({
+        ...acc,
+        [job.importJobId]: job.status,
+      }),
+      {}
+    );
+
+    if (hasNewlyCompletedJob) {
+      void Promise.all([
+        loadPapers({ silent: true }),
+        loadKnowledgeBase({ silent: true }),
+      ]);
+    }
+  }, [importJobs, loadKnowledgeBase, loadPapers]);
+
   const refreshKnowledgeBaseWorkspace = useCallback(async (options?: { silent?: boolean }) => {
     await Promise.all([
       loadKnowledgeBase(options),
@@ -139,53 +154,6 @@ export function KnowledgeBaseDetail() {
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setSearchParams({ tab });
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !kbId) return;
-
-    const userMessage = input.trim();
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
-    setInput("");
-    setIsTyping(true);
-
-    try {
-      const response = await kbApi.query(kbId, userMessage);
-
-      if (response.success && response.data) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: response.data.answer || "抱歉，我无法处理您的请求。",
-            citations: response.data.citations,
-          },
-        ]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "抱歉，知识库问答暂时不可用，请稍后再试。",
-            isError: true,
-          },
-        ]);
-        toast.error("问答请求失败");
-      }
-    } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `错误: ${err.message || "网络请求失败"}`,
-          isError: true,
-        },
-      ]);
-      toast.error(err.message || "问答失败");
-    } finally {
-      setIsTyping(false);
-    }
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -288,6 +256,13 @@ export function KnowledgeBaseDetail() {
               <UploadCloud className="w-5 h-5" />
               导入来源
             </button>
+            <button
+              onClick={() => navigate(`/chat?kbId=${kb.id}`)}
+              className="flex items-center gap-2 bg-primary hover:bg-zinc-900 text-white px-6 py-4 font-bold uppercase tracking-wide transition-all shadow-[4px_4px_0px_0px_rgba(24,24,27,0.5)] hover:shadow-[4px_4px_0px_0px_rgba(211,84,0,0.8)] hover:-translate-y-1 hover:-translate-x-1"
+            >
+              <MessageSquare className="w-5 h-5" />
+              对整个知识库提问
+            </button>
           </div>
         </div>
 
@@ -306,21 +281,21 @@ export function KnowledgeBaseDetail() {
               </span>
             </TabsTrigger>
             <TabsTrigger
-              value="uploads"
+              value="import-status"
               className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
-                activeTab === "uploads"
+                activeTab === "import-status"
                   ? "border-primary text-primary bg-primary/5"
                   : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
               }`}
             >
               <span className="flex items-center justify-center gap-2">
-                <Clock3 className="w-4 h-4" /> 上传记录
+                <Clock3 className="w-4 h-4" /> 导入状态
               </span>
             </TabsTrigger>
             <TabsTrigger
-              value="retrieval"
+              value="search"
               className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
-                activeTab === "retrieval"
+                activeTab === "search"
                   ? "border-primary text-primary bg-primary/5"
                   : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
               }`}
@@ -330,9 +305,9 @@ export function KnowledgeBaseDetail() {
               </span>
             </TabsTrigger>
             <TabsTrigger
-              value="qa"
+              value="chat"
               className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
-                activeTab === "qa"
+                activeTab === "chat"
                   ? "border-primary text-primary bg-primary/5"
                   : "border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
               }`}
@@ -372,26 +347,34 @@ export function KnowledgeBaseDetail() {
                     entityCount={paper.entityCount || 0}
                     onRead={() => navigate(`/read/${paper.id}`)}
                     onNotes={() => navigate(`/notes?paperId=${paper.id}`)}
+                    onQuery={(paperId) => navigate(`/chat?paperId=${paperId}`)}
                   />
                 ))}
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="uploads" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <TabsContent value="import-status" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] p-6 min-h-[420px] flex flex-col">
               <div className="mb-4">
-                <h3 className="font-serif text-xl font-semibold">知识库上传记录</h3>
-                <p className="text-sm text-zinc-500 mt-1">查看导入历史和真实处理状态</p>
+                <h3 className="font-serif text-xl font-semibold">论文导入与处理记录</h3>
+                <p className="text-sm text-zinc-500 mt-1">查看导入中的任务和历史处理记录</p>
               </div>
               <ImportQueueList
-                kbId={kb.id}
+                jobs={importJobs}
                 initiallyExpanded={true}
+                onJobComplete={() => {
+                  void Promise.all([
+                    loadImportJobs({ silent: true }),
+                    loadPapers({ silent: true }),
+                    loadKnowledgeBase({ silent: true }),
+                  ]);
+                }}
               />
             </div>
           </TabsContent>
 
-          <TabsContent value="retrieval" className="mt-8 space-y-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <TabsContent value="search" className="mt-8 space-y-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
             <form onSubmit={handleSearch} className="relative max-w-3xl">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Search className="h-6 w-6 text-zinc-400" />
@@ -456,99 +439,21 @@ export function KnowledgeBaseDetail() {
             ) : null}
           </TabsContent>
 
-          <TabsContent value="qa" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl">
-            <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] flex flex-col h-[600px]">
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {messages.length === 0 && !isTyping && (
-                  <div className="text-center text-zinc-500 py-12 font-medium">
-                    请输入问题，针对当前知识库发起问答。
-                  </div>
-                )}
-                {messages.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div
-                      className={`max-w-[80%] p-5 text-base md:text-lg ${
-                        msg.role === "user"
-                          ? "bg-zinc-900 text-white font-medium ml-auto"
-                          : "bg-primary/5 text-zinc-900 border-2 border-primary/20 font-serif leading-relaxed"
-                      }`}
-                    >
-                      {msg.role === "assistant" && (
-                        <div className="flex items-center gap-2 mb-3 text-primary font-sans text-xs font-bold uppercase tracking-wider">
-                          <Sparkles className="w-4 h-4" /> Agent Output
-                        </div>
-                      )}
-                      {msg.content}
-
-                      {msg.role === "assistant" && msg.citations && msg.citations.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-primary/20">
-                          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                            引用来源 ({msg.citations.length})
-                          </div>
-                          <div className="space-y-2">
-                            {msg.citations.map((citation: any, idx: number) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-2 text-xs cursor-pointer hover:text-primary transition-colors group"
-                                onClick={() => {
-                                  const page = citation.page || 1;
-                                  const paperId = citation.paperId || citation.paper_id;
-                                  if (!paperId) return;
-                                  navigate(`/read/${paperId}?page=${page}`);
-                                }}
-                              >
-                                <FileText className="w-3 h-3 text-muted-foreground" />
-                                <span className="text-muted-foreground group-hover:text-primary">[{idx + 1}]</span>
-                                <span className="truncate">{citation.paperTitle || citation.paperId || citation.paper_id}</span>
-                                {citation.page && (
-                                  <span className="text-primary font-bold">第{citation.page}页</span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {isTyping && (
-                  <div className="flex justify-start">
-                    <div className="bg-primary/5 text-primary border-2 border-primary/20 p-5 flex items-center gap-2">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="font-bold uppercase tracking-widest text-xs">Synthesizing...</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t-2 border-zinc-900 p-4 bg-zinc-50">
-                <form onSubmit={handleSendMessage} className="relative flex items-center">
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask a question about your knowledge base..."
-                    className="w-full bg-white border-2 border-zinc-300 pl-4 pr-16 py-4 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-secondary transition-colors"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!input.trim() || isTyping}
-                    className="absolute right-2 p-2 bg-primary hover:bg-primary/80 text-white transition-colors disabled:opacity-50 disabled:hover:bg-primary outline-none"
-                  >
-                    <Send className="w-5 h-5" />
-                  </button>
-                </form>
+          <TabsContent value="chat" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl">
+            <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] p-8 space-y-4">
+              <h3 className="font-serif text-2xl font-semibold">统一问答入口</h3>
+              <p className="text-zinc-600 leading-relaxed">
+                当前知识库问答已统一到 Chat 页面。进入后可在“快速问答 (RAG)”与“深度分析 (Agent)”之间切换，
+                并保持当前知识库作用域。
+              </p>
+              <div className="pt-2">
+                <Button onClick={() => navigate(`/chat?kbId=${kb.id}`)}>
+                  进入 Chat（全知识库作用域）
+                </Button>
               </div>
             </div>
           </TabsContent>
         </Tabs>
-      </div>
-
-      {/* Import Queue List - embedded import history */}
-      <div className="max-w-7xl mx-auto px-6 pb-8 relative z-10">
-        <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] p-6">
-          <ImportQueueList kbId={kb.id} />
-        </div>
       </div>
 
       <ImportDialog

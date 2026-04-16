@@ -12,7 +12,7 @@
 import { useState, useEffect } from "react";
 import { Camera, Save } from "lucide-react";
 import * as usersApi from "@/services/usersApi";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 export function ProfileForm() {
   const [profile, setProfile] = useState<{

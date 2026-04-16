@@ -1,0 +1,44 @@
+name: Feature Request
+description: Propose a product or engineering improvement
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or engineering problem are we solving?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and risks
+      description: Call out contract changes, migrations, or structural implications.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification idea
+      description: How should we know this is complete?
+  - type: textarea
+    id: architecture_impact
+    attributes:
+      label: Architecture impact
+      description: Which boundary or subsystem is affected?
+  - type: textarea
+    id: contract_impact
+    attributes:
+      label: API/resource contract impact
+      description: Which contract docs need updating if this feature lands?
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List concrete acceptance items for review.

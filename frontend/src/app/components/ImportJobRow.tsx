@@ -19,6 +19,7 @@ import { ImportJob } from '@/services/importApi';
 // Stage labels mapping
 const STAGE_LABELS: Record<string, string> = {
   awaiting_input: '等待输入',
+  uploaded: '已上传文件',
   resolving_source: '解析来源',
   fetching_metadata: '获取元数据',
   downloading_pdf: '下载 PDF',
@@ -28,6 +29,7 @@ const STAGE_LABELS: Record<string, string> = {
   awaiting_dedupe_decision: '等待决策',
   materializing_paper: '创建论文',
   attaching_to_kb: '关联知识库',
+  triggering_processing: '触发处理',
   parsing: '解析内容',
   chunking: '切分内容',
   embedding: '生成向量',
@@ -47,6 +49,8 @@ interface ImportJobRowProps {
   onCancel?: () => void;
   onViewResult?: () => void;
   onDedupe?: () => void; // Wave 5: Dedupe decision trigger
+  onOpenPaper?: (paperId: string) => void; // Navigate to paper detail
+  onSinglePaperQuery?: (paperId: string) => void; // Navigate to chat with single paper scope
 }
 
 // Source type labels
@@ -80,7 +84,13 @@ export function ImportJobRow({
   onCancel,
   onViewResult,
   onDedupe,
+  onOpenPaper,
+  onSinglePaperQuery,
 }: ImportJobRowProps) {
+  // Get completion or cancellation time
+  const completedTime = job.completedAt
+    ? new Date(job.completedAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : null;
   const stageLabel = STAGE_LABELS[job.stage] || job.stage;
   const sourceLabel = SOURCE_TYPE_LABELS[job.sourceType] || job.sourceType;
 
@@ -149,10 +159,18 @@ export function ImportJobRow({
           {job.progress > 0 && job.status === 'running' && ` · ${job.progress}%`}
         </p>
 
-        {/* Error message */}
-        {showError && job.error?.message && (
+        {/* Error code and message for failed jobs */}
+        {showError && job.error && (
           <p className="text-xs text-red-600 mt-1 truncate">
+            {job.error.code && <span className="font-bold">[{job.error.code}] </span>}
             {job.error.message}
+          </p>
+        )}
+
+        {/* Completion time for completed jobs */}
+        {showResult && job.status === 'completed' && completedTime && (
+          <p className="text-xs text-green-600 mt-1">
+            {completedTime}
           </p>
         )}
 
@@ -220,6 +238,40 @@ export function ImportJobRow({
             <ExternalLink className="h-3 w-3 mr-1" />
             查看
           </Button>
+        )}
+
+        {/* Completed state: paper exists - show navigation buttons */}
+        {job.status === 'completed' && job.paper?.paperId && (
+          <>
+            {onOpenPaper && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onOpenPaper(job.paper!.paperId!)}
+                className="h-7 text-xs"
+              >
+                打开论文
+              </Button>
+            )}
+            {onSinglePaperQuery && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => onSinglePaperQuery(job.paper!.paperId!)}
+                className="h-7 text-xs"
+              >
+                对这篇论文提问
+              </Button>
+            )}
+          </>
+        )}
+
+        {/* Completed state: paper missing - data anomaly warning */}
+        {job.status === 'completed' && !job.paper?.paperId && (
+          <div className="flex items-center gap-1 text-xs text-red-600">
+            <AlertTriangle className="h-3 w-3" />
+            <span>数据异常</span>
+          </div>
         )}
       </div>
     </div>

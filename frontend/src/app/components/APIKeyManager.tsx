@@ -13,7 +13,7 @@ import { useState, useEffect } from "react";
 import { Plus, Trash2, Copy, Check, Eye, EyeOff } from "lucide-react";
 import * as usersApi from "@/services/usersApi";
 import type { ApiKey } from "@/types";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 export function APIKeyManager() {
   const [keys, setKeys] = useState<ApiKey[]>([]);

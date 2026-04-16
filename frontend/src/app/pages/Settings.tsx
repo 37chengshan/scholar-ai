@@ -23,7 +23,7 @@ import { FontSizeSelector } from "../components/FontSizeSelector";
 import { SystemDiagnostics } from "../components/SystemDiagnostics";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useNavigate } from "react-router";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 export function Settings() {
   const [activeSection, setActiveSection] = useState("profile");

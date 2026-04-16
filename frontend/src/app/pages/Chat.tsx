@@ -66,6 +66,7 @@ import {
   SSEEvent,
   SSEEventEnvelope,
 } from "../../services/sseService";
+import { streamMessage as streamChatMessage } from "@/services/chatApi";
 import { API_BASE_URL } from "@/config/api";
 import { toast } from "sonner";
 import { ScopeBanner, ScopeType } from '../components/ScopeBanner';
@@ -145,7 +146,7 @@ export function Chat() {
   const currentMessageIdRef = useRef<string>(""); // ref for stale closure fix
 
   // D-07: Single source of truth for scope (banner AND SSE body use same state)
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const paperId = searchParams.get('paperId');
   const kbId = searchParams.get('kbId');
 
@@ -158,6 +159,12 @@ export function Chat() {
 
   const [scope, setScope] = useState<ChatScope>({ type: null, id: null });
   const [scopeLoading, setScopeLoading] = useState(false);
+
+  // Sprint 3: mode state for fast/slow path
+  // - 'auto': complexity-based routing (default)
+  // - 'rag': force fast path (RAG only, no agent tool loop)
+  // - 'agent': force slow path (full agent orchestrator)
+  const [mode, setMode] = useState<'auto' | 'rag' | 'agent'>('auto');
 
   // D-05 + D-07: Parse URL params once at component top, store in state
   useEffect(() => {
@@ -223,6 +230,15 @@ export function Chat() {
     void validateScope();
   }, [paperId, kbId]);
 
+  useEffect(() => {
+    if (scope.type === 'single_paper' || scope.type === 'full_kb') {
+      setMode((current) => (current === 'auto' ? 'rag' : current));
+      return;
+    }
+
+    setMode('auto');
+  }, [scope.type, scope.id]);
+
   const { language } = useLanguage();
 
   // useChatStream hook for state machine + buffer + throttle (HARD RULE 0.3, 0.4)
@@ -235,6 +251,8 @@ export function Chat() {
     reset,
     forceFlush,
     getBufferedContent,
+    confirmation,
+    resetConfirmation,
   } = useChatStream({
     throttleMs: 100,
     onPhaseChange: (phase, label) => {
@@ -265,6 +283,15 @@ export function Chat() {
   const [placeholderId, setPlaceholderId] = useState<string | null>(null);
 
   const isZh = language === "zh";
+
+  const handleExitScope = useCallback(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('paperId');
+    nextParams.delete('kbId');
+    setSearchParams(nextParams);
+    setScope({ type: null, id: null });
+    toast.info(isZh ? '已退出作用域模式' : 'Scope cleared');
+  }, [isZh, searchParams, setSearchParams]);
 
   const t = {
     terminal: isZh ? "终端对话" : "Terminal",
@@ -417,7 +444,9 @@ export function Chat() {
         id: placeholderMessageId,
         session_id: sessionId,
         role: "assistant",
-        content: "",
+        content: mode === 'agent'
+          ? (isZh ? '正在分析...' : 'Analyzing...')
+          : (isZh ? '正在检索...' : 'Retrieving...'),
         created_at: new Date().toISOString(),
         streamStatus: "streaming",
         reasoningBuffer: "",
@@ -434,23 +463,37 @@ export function Chat() {
       // Clear input
       setInput("");
 
-      // 3. Start SSE connection
-      const url = `${API_BASE_URL}/api/v1/chat/stream`;
-      // D-06: Add scope params to SSE body
-      const body = {
-        message: input.trim(),
-        session_id: sessionId,
-        ...(scope.type === 'single_paper' && scope.id && { paperId: scope.id }),
-        ...(scope.type === 'full_kb' && scope.id && { kbId: scope.id }),
-      };
-
+      // 3. Start SSE connection (Sprint 3: unified API with mode + scope)
+      // D-06: Add scope params to SSE body (no longer top-level paperId/kbId)
       if (!sseServiceRef.current) {
         sseServiceRef.current = new SSEService();
       }
 
-      sseServiceRef.current.connect(
-        url,
-        {
+      const streamScope =
+        scope.type === 'single_paper' && scope.id
+          ? {
+              type: 'paper' as const,
+              paper_id: scope.id,
+            }
+          : scope.type === 'full_kb' && scope.id
+            ? {
+                type: 'knowledge_base' as const,
+                knowledge_base_id: scope.id,
+              }
+            : {
+                type: 'general' as const,
+              };
+
+      streamChatMessage({
+        sessionId,
+        message: input.trim(),
+        mode,
+        scope: streamScope,
+        context: {
+          auto_confirm: false,
+        },
+        streamService: sseServiceRef.current,
+        handlers: {
           onMessage: (event: SSEEvent | SSEEventEnvelope) => {
             // Handle both legacy SSEEvent and new SSEEventEnvelope format
             const legacyEvent = event as SSEEvent;
@@ -648,8 +691,7 @@ export function Chat() {
             setAgentUIState("DONE");
           },
         },
-        body,
-      );
+      });
     } catch (error) {
       console.error("[Chat] Send error:", error);
       toast.error(isZh ? "发送消息失败" : "Failed to send message");
@@ -675,6 +717,7 @@ export function Chat() {
     currentMessageId,
     startStream,
     scope,
+    mode,
   ]);
 
   // ============================================================================
@@ -751,6 +794,53 @@ export function Chat() {
     }));
   }, [streamState.toolTimeline]);
 
+  // Handle agent confirmation (approve/reject)
+  const handleConfirmation = useCallback(async (approved: boolean) => {
+    if (!confirmation) return;
+    try {
+      const url = `${API_BASE_URL}/api/v1/chat/confirm`;
+      const body = {
+        confirmation_id: confirmation.confirmation_id,
+        approved,
+        session_id: currentSession?.id || '',
+      };
+
+      if (!sseServiceRef.current) {
+        sseServiceRef.current = new SSEService();
+      }
+
+      // The confirm endpoint returns an SSE stream with resumed agent output
+      sseServiceRef.current.connect(url, {
+        onMessage: (event: SSEEvent | SSEEventEnvelope) => {
+          const legacyEvent = event as SSEEvent;
+          const envelopeEvent = event as SSEEventEnvelope;
+          const eventType = legacyEvent.type || envelopeEvent.event || '';
+          const eventMessageId = legacyEvent.message_id || envelopeEvent.message_id || '';
+          const eventData = legacyEvent.content || legacyEvent.data || envelopeEvent.data;
+
+          // Feed events back into useChatStream
+          handleSSEEvent({
+            message_id: eventMessageId,
+            event_type: eventType,
+            data: eventData,
+          });
+        },
+        onError: (error) => {
+          console.error('[Chat] Confirmation stream error:', error);
+          toast.error(isZh ? '确认后恢复失败' : 'Failed to resume after confirmation');
+        },
+        onDone: () => {
+          console.debug('[Chat] Confirmation stream done');
+        },
+      }, body);
+
+      resetConfirmation();
+    } catch (err) {
+      toast.error(approved ? (isZh ? '批准失败' : 'Approval failed') : (isZh ? '拒绝失败' : 'Rejection failed'));
+      resetConfirmation();
+    }
+  }, [confirmation, currentSession, handleSSEEvent, resetConfirmation, isZh]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -786,12 +876,16 @@ export function Chat() {
       // Get the citation at this index
       const citation = streamState.citations[index];
       if (citation) {
+        if (!citation.paper_id) {
+          toast.warning(isZh ? '引用缺少论文 ID，无法跳转' : 'Citation is missing paper id');
+          return;
+        }
         // Navigate to read page with the specific page number
         const page = citation.page || 1;
         navigate(`/read/${citation.paper_id}?page=${page}`);
       }
     },
-    [streamState.citations, navigate],
+    [streamState.citations, navigate, isZh],
   );
 
   // Toggle thinking panel expand/collapse
@@ -916,6 +1010,7 @@ export function Chat() {
           type={scope.type}
           title={scope.title}
           errorMessage={scope.errorMessage}
+          onExitScope={handleExitScope}
         />
 
         {/* Messages */}
@@ -1113,6 +1208,35 @@ export function Chat() {
         {/* Input Area */}
         <div className="px-6 py-4 border-t border-border/50 bg-background/80 backdrop-blur-md">
           <div className="max-w-4xl mx-auto">
+            {/* Sprint 3: Mode selector */}
+            {scope.type !== null && (
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs text-muted-foreground">
+                  {isZh ? "模式" : "Mode"}:
+                </span>
+                <div className="flex rounded-lg border border-border overflow-hidden text-xs">
+                  {[
+                    { value: 'auto' as const, label: isZh ? '自动' : 'Auto' },
+                    { value: 'rag' as const, label: isZh ? '快速问答' : 'Fast RAG' },
+                    { value: 'agent' as const, label: isZh ? '深度分析' : 'Deep Agent' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setMode(opt.value)}
+                      disabled={streamState.streamStatus === "streaming"}
+                      className={clsx(
+                        "px-3 py-1 transition-colors",
+                        mode === opt.value
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card hover:bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex items-end gap-3 bg-card rounded-xl border border-border p-2">
               <textarea
                 value={input}
@@ -1195,7 +1319,15 @@ export function Chat() {
         )}
       </AnimatePresence>
 
-      {/* Confirmation Dialog for agent approval - TODO: implement with new state management */}
+      {/* Confirmation Dialog for agent tool approval */}
+      <ConfirmationDialog
+        isOpen={!!confirmation}
+        tool={confirmation?.tool || ''}
+        params={confirmation?.params || {}}
+        onApprove={() => handleConfirmation(true)}
+        onReject={() => handleConfirmation(false)}
+      />
+
       {/* Delete Session Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
