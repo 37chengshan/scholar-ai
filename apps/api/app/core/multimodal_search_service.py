@@ -81,6 +81,11 @@ class MultimodalSearchService:
             raw_data=hit.get("raw_data"),
         )
 
+    @staticmethod
+    def _extract_hit_text(hit: Dict[str, Any]) -> str:
+        """Extract text content from a raw hit with canonical-first order."""
+        return hit.get("text") or hit.get("content_data") or hit.get("content") or ""
+
     def compile_to_constraints(
         self,
         metadata_filters: Dict[str, Any],
@@ -249,7 +254,7 @@ class MultimodalSearchService:
         if use_reranker and len(fused) > 10:
             try:
                 # Extract content for reranking
-                documents = [r.get("content_data", "") for r in fused[:20]]
+                documents = [self._extract_hit_text(r) for r in fused[:20]]
                 reranked = self.reranker.rerank(query, documents, top_k=top_k)
 
                 # Reorder fused results by reranked scores
@@ -319,7 +324,7 @@ class MultimodalSearchService:
 
         # Apply reranker scores to fused results
         for result in fused:
-            content = result.get("content_data", "")
+            content = self._extract_hit_text(result)
             result["reranker_score"] = content_to_score.get(content, 0.0)
 
         # Sort by reranker score

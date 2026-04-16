@@ -204,6 +204,68 @@ class AgenticRetrievalOrchestrator:
             },
         }
 
+    def _normalize_chunk_for_synthesis(self, chunk: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize a chunk into unified retrieval contract fields.
+
+        Canonical fields:
+        - text
+        - score
+        - page_num
+
+        Legacy fields are read only for compatibility at this boundary.
+        """
+        text = chunk.get("text")
+        score = chunk.get("score")
+        page_num = chunk.get("page_num")
+        used_legacy_fields = False
+
+        if text is None:
+            text = chunk.get("content_data")
+            if text is None:
+                text = chunk.get("content", "")
+            used_legacy_fields = True
+
+        if score is None:
+            if chunk.get("similarity") is not None:
+                score = chunk.get("similarity")
+            elif chunk.get("distance") is not None:
+                score = 1 - float(chunk.get("distance", 0.5))
+            else:
+                score = 0.0
+            used_legacy_fields = True
+
+        if page_num is None and chunk.get("page") is not None:
+            page_num = chunk.get("page")
+            used_legacy_fields = True
+
+        if used_legacy_fields:
+            logger.debug(
+                "Legacy retrieval fields normalized at boundary",
+                paper_id=chunk.get("paper_id"),
+            )
+
+        try:
+            normalized_score = max(0.0, min(float(score), 1.0))
+        except (TypeError, ValueError):
+            normalized_score = 0.0
+
+        normalized = dict(chunk)
+        normalized["text"] = text or ""
+        normalized["score"] = normalized_score
+        normalized["page_num"] = page_num
+        normalized["paper_title"] = chunk.get("paper_title") or chunk.get("paper_id")
+        normalized["section"] = chunk.get("section") or chunk.get("content_section")
+        return normalized
+
+    @staticmethod
+    def _format_citation(chunk: Dict[str, Any]) -> str:
+        """Build stable citation text from normalized chunk."""
+        paper_title = chunk.get("paper_title") or chunk.get("paper_id") or "Unknown"
+        section = chunk.get("section")
+        page_num = chunk.get("page_num")
+        loc = section or (f"Page {page_num}" if page_num else "N/A")
+        return f"[{paper_title}, {loc}]"
+
     def _build_evidence_blocks(
         self,
         chunks: List[Dict[str, Any]],
@@ -233,10 +295,12 @@ class AgenticRetrievalOrchestrator:
         if not chunks:
             return []
 
+        normalized_chunks = [self._normalize_chunk_for_synthesis(c) for c in chunks]
+
         # Group chunks by section for topical coherence
         section_groups: Dict[str, List[Dict]] = {}
-        for chunk in chunks:
-            section = chunk.get("section") or chunk.get("content_section") or "General"
+        for chunk in normalized_chunks:
+            section = chunk.get("section") or "General"
             if section not in section_groups:
                 section_groups[section] = []
             section_groups[section].append(chunk)
@@ -245,17 +309,21 @@ class AgenticRetrievalOrchestrator:
         blocks = []
 
         # First block: highest-scoring chunks across all sections
-        top_chunks = sorted(chunks, key=lambda x: x.get("score", x.get("similarity", 0)), reverse=True)[:3]
+        top_chunks = sorted(
+            normalized_chunks,
+            key=lambda x: x.get("score", 0.0),
+            reverse=True,
+        )[:3]
         if top_chunks:
             blocks.append({
                 "claim_topic": f"Key findings for '{query[:50]}...'",
                 "supporting_chunks": [
                     {
                         "paper_title": c.get("paper_title", c.get("paper_id", "Unknown")),
-                        "section": c.get("section", c.get("content_section", "N/A")),
-                        "page_num": c.get("page_num", c.get("page")),
-                        "text": (c.get("content", c.get("content_data", ""))[:200] if c.get("content", c.get("content_data", "")) else ""),
-                        "score": c.get("score", c.get("similarity", 0)),
+                        "section": c.get("section", "N/A"),
+                        "page_num": c.get("page_num"),
+                        "text": c.get("text", "")[:200],
+                        "score": c.get("score", 0.0),
                     }
                     for c in top_chunks
                 ],
@@ -268,17 +336,21 @@ class AgenticRetrievalOrchestrator:
             if len(blocks) >= num_blocks:
                 break
 
-            sorted_chunks = sorted(section_chunks, key=lambda x: x.get("score", x.get("similarity", 0)), reverse=True)[:2]
+            sorted_chunks = sorted(
+                section_chunks,
+                key=lambda x: x.get("score", 0.0),
+                reverse=True,
+            )[:2]
             if sorted_chunks:
                 blocks.append({
                     "claim_topic": f"Evidence from {section}",
                     "supporting_chunks": [
                         {
                             "paper_title": c.get("paper_title", c.get("paper_id", "Unknown")),
-                            "section": c.get("section", c.get("content_section", section)),
-                            "page_num": c.get("page_num", c.get("page")),
-                            "text": (c.get("content", c.get("content_data", ""))[:150] if c.get("content", c.get("content_data", "")) else ""),
-                            "score": c.get("score", c.get("similarity", 0)),
+                            "section": c.get("section", section),
+                            "page_num": c.get("page_num"),
+                            "text": c.get("text", "")[:150],
+                            "score": c.get("score", 0.0),
                         }
                         for c in sorted_chunks
                     ],
@@ -328,7 +400,8 @@ class AgenticRetrievalOrchestrator:
                 )
 
                 # Extract chunks from results
-                chunks = result.get("results", [])
+                raw_chunks = result.get("results", [])
+                chunks = [self._normalize_chunk_for_synthesis(c) for c in raw_chunks]
 
                 # Generate a simple summary
                 summary = self._generate_summary(chunks, question)
@@ -684,14 +757,15 @@ Based on {len(all_results)} rounds of retrieval with {len(evidence_blocks)} evid
         summaries = []
 
         for i, chunk in enumerate(top_chunks):
-            content = chunk.get("content", "")
-            similarity = chunk.get("similarity", 0)
+            normalized_chunk = self._normalize_chunk_for_synthesis(chunk)
+            content = normalized_chunk.get("text", "")
+            score = normalized_chunk.get("score", 0.0)
             paper_id = chunk.get("paper_id", "unknown")
 
             # Truncate content
             content_preview = content[:150] + "..." if len(content) > 150 else content
             summaries.append(
-                f"[Source {i + 1} from {paper_id[:8]}... (score {similarity:.2f})]: {content_preview}"
+                f"[Source {i + 1} from {paper_id[:8]}... (score {score:.2f})]: {content_preview}"
             )
 
         return "\n".join(summaries)
@@ -720,19 +794,32 @@ Based on {len(all_results)} rounds of retrieval with {len(evidence_blocks)} evid
 
                     if chunk_id and chunk_id not in seen_chunks:
                         seen_chunks.add(chunk_id)
+                        normalized_chunk = self._normalize_chunk_for_synthesis(chunk)
+                        text_preview = normalized_chunk.get("text", "")[:300]
+                        score = normalized_chunk.get("score", 0.0)
+                        page_num = normalized_chunk.get("page_num")
+                        citation = self._format_citation(normalized_chunk)
+
                         sources.append(
                             {
                                 "chunk_id": chunk_id,
-                                "paper_id": chunk.get("paper_id"),
-                                "content_preview": chunk.get("content", "")[:300],
-                                "page": chunk.get("page"),
-                                "similarity": chunk.get("similarity"),
-                                "section": chunk.get("section"),
+                                "paper_id": normalized_chunk.get("paper_id"),
+                                "paper_title": normalized_chunk.get("paper_title"),
+                                "text_preview": text_preview,
+                                "page_num": page_num,
+                                "score": score,
+                                "section": normalized_chunk.get("section"),
+                                "content_type": normalized_chunk.get("content_type", "text"),
+                                "citation": citation,
+                                # Backward-compatible aliases for legacy consumers.
+                                "content_preview": text_preview,
+                                "page": page_num,
+                                "similarity": score,
                             }
                         )
 
-        # Sort by similarity
-        sources.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+        # Sort by unified score
+        sources.sort(key=lambda x: x.get("score", 0.0), reverse=True)
 
         return sources
 
