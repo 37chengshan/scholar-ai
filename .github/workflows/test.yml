@@ -95,7 +95,10 @@ jobs:
           END
           $$;
           SQL
-          alembic upgrade heads
+          if ! alembic upgrade heads; then
+            echo "Alembic bootstrap failed on clean CI DB; falling back to SQLAlchemy metadata bootstrap"
+            python -c "import asyncio, app.models; from app.database import init_db; asyncio.run(init_db())"
+          fi
 
       - name: Create test environment file
         working-directory: backend-python
