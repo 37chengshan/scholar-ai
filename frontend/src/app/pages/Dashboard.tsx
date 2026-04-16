@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDashboard } from '@/app/hooks/useDashboard';
 import { DashboardSkeleton } from '../components/Skeleton';
 import { useState, useEffect } from 'react';
-import apiClient from '@/utils/apiClient';
+import * as dashboardApi from '@/services/dashboardApi';
 
 export function Dashboard() {
   const { language } = useLanguage();
@@ -49,18 +49,10 @@ export function Dashboard() {
 async function fetchRecentPapers() {
       try {
         setRecentPapersLoading(true);
-        const response = await apiClient.get<Array<{
-          id: string;
-          title: string;
-          authors: string[];
-          year?: number;
-          currentPage: number;
-          lastReadAt: string;
-          progress: number;
-        }>>('/api/v1/dashboard/recent-papers?limit=3');
-
-        setRecentPapers(response.data);
+        const data = await dashboardApi.getRecentPapers(3);
+        setRecentPapers(data);
       } catch (err) {
+        console.error('[Dashboard] Failed to fetch recent papers:', err);
       } finally {
         setRecentPapersLoading(false);
       }
@@ -76,20 +68,10 @@ async function fetchRecentPapers() {
     async function fetchRecentSessions() {
       try {
         setRecentSessionsLoading(true);
-        const response = await apiClient.get<Array<{
-          id: string;
-          title?: string;
-          createdAt: string;
-          lastActivityAt: string;
-          messageCount: number;
-        }>>('/api/v1/sessions');
-
-        // Sort by lastActivityAt and take top 3
-        const sorted = response.data
-          .sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime())
-          .slice(0, 3);
-        setRecentSessions(sorted);
+        const data = await dashboardApi.getRecentSessions(3);
+        setRecentSessions(data);
       } catch (err) {
+        console.error('[Dashboard] Failed to fetch recent sessions:', err);
       } finally {
         setRecentSessionsLoading(false);
       }

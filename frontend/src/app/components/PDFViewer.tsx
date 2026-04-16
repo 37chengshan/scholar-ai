@@ -15,7 +15,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import apiClient from '@/utils/apiClient';
+import * as papersApi from '@/services/papersApi';
 import { toast } from 'sonner';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -46,11 +46,7 @@ export function PDFViewer({ paperId, currentPage, onPageChange, onNumPagesChange
       setError(null);
       
       try {
-        const response = await apiClient.get(`/api/v1/papers/${paperId}/download`, {
-          responseType: 'blob',
-        });
-
-        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const blob = await papersApi.downloadPdfBlob(paperId);
         const url = URL.createObjectURL(blob);
         setPdfBlobUrl(url);
       } catch (err: any) {

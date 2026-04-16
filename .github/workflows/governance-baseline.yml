@@ -1,0 +1,73 @@
+name: Governance Baseline
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  governance-docs-and-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify governance scripts
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check-governance.sh scripts/check-doc-governance.sh scripts/check-structure-boundaries.sh scripts/check-code-boundaries.sh
+          bash scripts/check-governance.sh
+
+  frontend-type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Conditional frontend validation
+        run: |
+          set -euo pipefail
+          if [[ -d frontend ]]; then
+            if [[ ! -f frontend/package.json ]]; then
+              echo "frontend/package.json missing while frontend directory exists" >&2
+              exit 1
+            fi
+            cd frontend
+            npm ci
+            npm run type-check
+          else
+            echo "skip frontend type-check (frontend directory not found)"
+          fi
+
+  backend-pytest-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Conditional backend smoke tests
+        run: |
+          set -euo pipefail
+          if [[ -d backend-python ]]; then
+            if [[ ! -f backend-python/pytest.ini ]]; then
+              echo "backend-python/pytest.ini missing while backend-python directory exists" >&2
+              exit 1
+            fi
+            cd backend-python
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt
+            pytest -q tests/unit/test_services.py --maxfail=1
+          else
+            echo "skip backend pytest smoke (backend-python directory not found)"
+          fi

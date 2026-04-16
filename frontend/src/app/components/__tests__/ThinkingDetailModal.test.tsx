@@ -9,7 +9,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThinkingDetailModal } from '../ThinkingDetailModal';
 import type { Step } from '../StepTimeline';
-import type { ToolCall } from '../../types/chat';
+import type { ToolCall } from '../../../types/chat';
 
 // Mock useLanguage - path relative to this test file
 vi.mock('../../contexts/LanguageContext', () => ({

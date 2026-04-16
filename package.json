@@ -1,0 +1,15 @@
+{
+  "name": "scholar-ai-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ScholarAI monorepo governance workspace",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "check:code-boundaries": "bash scripts/check-code-boundaries.sh",
+    "check:docs": "bash scripts/check-doc-governance.sh",
+    "check:boundaries": "bash scripts/check-structure-boundaries.sh",
+    "check:governance": "bash scripts/check-governance.sh",
+    "type-check:web": "cd frontend && npm run type-check",
+    "test:api:smoke": "cd backend-python && pytest -q tests/unit/test_services.py --maxfail=1"
+  }
+}

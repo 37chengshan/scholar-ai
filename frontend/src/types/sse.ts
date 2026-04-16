@@ -56,13 +56,23 @@ export enum SSEEventType {
 
 /**
  * Thinking status enumeration for status visualization
+ * @deprecated Use AgentPhase from @/types/chat instead. Kept for backward compatibility.
  */
 export enum ThinkingStatus {
   IDLE = 'idle',
   ANALYZING = 'analyzing',
-  PLANNING = 'planning',
-  EXECUTING = 'executing',
+  RETRIEVING = 'retrieving',
+  /** @deprecated Use TOOL_CALLING instead */
+  PLANNING = 'tool_calling',
+  /** @deprecated Use RETRIEVING instead */
+  EXECUTING = 'retrieving',
   SYNTHESIZING = 'synthesizing',
+  READING = 'reading',
+  TOOL_CALLING = 'tool_calling',
+  VERIFYING = 'verifying',
+  DONE = 'done',
+  ERROR = 'error',
+  CANCELLED = 'cancelled',
 }
 
 /**

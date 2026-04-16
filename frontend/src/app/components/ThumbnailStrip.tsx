@@ -16,7 +16,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
-import apiClient from '@/utils/apiClient';
+import * as papersApi from '@/services/papersApi';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -47,11 +47,7 @@ export function ThumbnailStrip({
   useEffect(() => {
     const fetchPdf = async () => {
       try {
-        const response = await apiClient.get(`/api/v1/papers/${paperId}/download`, {
-          responseType: 'blob',
-        });
-
-        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const blob = await papersApi.downloadPdfBlob(paperId);
         const url = URL.createObjectURL(blob);
         setPdfBlobUrl(url);
       } catch (err: any) {
