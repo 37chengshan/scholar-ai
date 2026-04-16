@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 import asyncpg
 
 from app.workers.pipeline_context import PipelineContext
-from app.core.milvus_service import get_milvus_service
+from app.core.milvus_service import get_milvus_service, calculate_chunk_quality
 from app.core.neo4j_service import Neo4jService
 from app.core.notes_generator import NotesGenerator
 from app.core.docling_service import DoclingParser
@@ -26,6 +26,7 @@ class StorageManager:
     """Batch storage manager for consolidated database writes."""
 
     EMBEDDING_DIM = 2048  # Qwen3VL dimension
+    MIN_CHUNK_QUALITY = 0.25
 
     def __init__(
         self,
@@ -54,6 +55,40 @@ class StorageManager:
             logger.info("Loading Qwen3VL model in storage manager...")
             self.qwen3vl_service.load_model()
             logger.info("Qwen3VL model loaded in storage manager")
+
+    @staticmethod
+    def _build_evidence_metadata(
+        chunk: Dict[str, Any],
+        chunk_text: str,
+        parse_metadata: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Build evidence-level metadata for downstream retrieval/verifier stages."""
+        section = chunk.get("section") or ""
+        page_num = chunk.get("page_start") or 0
+        snippet = chunk_text.replace("\n", " ").strip()
+        anchor_text = snippet[:200]
+
+        nearby_explanation = ""
+        lower_snippet = snippet.lower()
+        if "figure" in lower_snippet or "fig." in lower_snippet:
+            nearby_explanation = "contains_figure_reference"
+        elif "table" in lower_snippet:
+            nearby_explanation = "contains_table_reference"
+
+        return {
+            "content_subtype": "paragraph",
+            "section_path": section,
+            "anchor_text": anchor_text,
+            "figure_id": None,
+            "table_id": None,
+            "caption": None,
+            "nearby_explanation": nearby_explanation,
+            "parse_mode": parse_metadata.get("parse_mode"),
+            "ocr_used": parse_metadata.get("ocr_used"),
+            "parse_warnings": parse_metadata.get("parse_warnings", []),
+            "chunk_strategy": parse_metadata.get("chunk_strategy", {}),
+            "page_num": page_num,
+        }
 
     async def store(self, ctx: PipelineContext) -> PipelineContext:
         """Store all extraction results in batch.
@@ -187,6 +222,8 @@ class StorageManager:
         Per D-06, D-27: Single batched insert for text, images, tables.
         """
         all_contents = []
+        text_contents = []
+        parse_metadata = (ctx.parse_result or {}).get("metadata", {})
 
         # 1. Generate text chunks from parsed content
         chunks = self.parser.chunk_by_semantic(
@@ -263,6 +300,7 @@ class StorageManager:
             embeddings = [[0.0] * self.EMBEDDING_DIM] * len(chunk_texts)
 
         # Add chunks with embeddings
+        skipped_low_quality = 0
         for i, chunk in enumerate(chunks):
             chunk_text = chunk_texts[i]
             embedding = embeddings[i]
@@ -271,18 +309,35 @@ class StorageManager:
             # When section is None, use empty string instead
             section = chunk.get("section") or ""
 
-            all_contents.append(
+            quality_score = calculate_chunk_quality(
                 {
-                    "paper_id": ctx.paper_id,
-                    "user_id": ctx.user_id,
-                    "content_type": "text",
-                    "page_num": chunk.get("page_start", 0),
-                    "section": section,
                     "text": chunk_text,
-                    "content_data": chunk_text[:8000],
-                    "embedding": embedding,
+                    "section": section,
+                    "has_equations": chunk.get("has_equations", False),
+                    "has_figures": chunk.get("has_figures", False),
                 }
             )
+
+            # PR7 quality gate: keep low-quality chunks out of main index.
+            if quality_score < self.MIN_CHUNK_QUALITY:
+                skipped_low_quality += 1
+                continue
+
+            raw_data = self._build_evidence_metadata(chunk, chunk_text, parse_metadata)
+
+            text_record = {
+                "paper_id": ctx.paper_id,
+                "user_id": ctx.user_id,
+                "content_type": "text",
+                "page_num": chunk.get("page_start", 0),
+                "section": section,
+                "text": chunk_text,
+                "content_data": chunk_text[:8000],
+                "raw_data": raw_data,
+                "embedding": embedding,
+            }
+            text_contents.append(text_record)
+            all_contents.append(text_record)
 
         # 2. Add images
         if ctx.image_results:
@@ -296,17 +351,30 @@ class StorageManager:
         if all_contents:
             chunk_ids = self.milvus.insert_contents_batched(all_contents)
 
+            if ctx.parse_result is not None:
+                quality_gate = {
+                    "threshold": self.MIN_CHUNK_QUALITY,
+                    "input_chunks": len(chunks),
+                    "indexed_chunks": len(text_contents),
+                    "skipped_chunks": skipped_low_quality,
+                }
+                if "metadata" not in ctx.parse_result:
+                    ctx.parse_result["metadata"] = {}
+                ctx.parse_result["metadata"]["quality_gate"] = quality_gate
+
             logger.info(
                 "Vectors stored in Milvus",
                 task_id=ctx.task_id,
                 total=len(all_contents),
                 chunks=len(chunks),
+                indexed_chunks=len(text_contents),
+                skipped_low_quality=skipped_low_quality,
                 images=len(ctx.image_results or []),
                 tables=len(ctx.table_results or []),
             )
 
-            ctx.chunk_results = all_contents[: len(chunks)]
-            return chunk_ids
+            ctx.chunk_results = text_contents
+            return chunk_ids[: len(text_contents)]
 
         return []
 
@@ -321,9 +389,7 @@ class StorageManager:
             # Create chunk nodes
             chunks_with_ids = [
                 {"id": cid, **chunk}
-                for chunk, cid in zip(
-                    ctx.parse_result.get("items", [])[: len(chunk_ids)], chunk_ids
-                )
+                for chunk, cid in zip((ctx.chunk_results or [])[: len(chunk_ids)], chunk_ids)
             ]
 
             await self.neo4j.create_chunk_nodes(ctx.paper_id, chunks_with_ids)

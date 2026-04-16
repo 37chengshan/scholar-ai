@@ -132,9 +132,12 @@ class PDFCoordinator:
             ctx.current_stage = PipelineStage.PARSING
             try:
                 ctx.parse_result = await self.parser.parse_pdf(ctx.local_path)
+                parse_metadata = (ctx.parse_result or {}).get("metadata", {})
                 logger.info(
                     f"Parsed PDF for task {ctx.task_id}: "
-                    f"{ctx.parse_result.get('page_count', 0)} pages"  # Task 2: Unified field 'page_count'
+                    f"{ctx.parse_result.get('page_count', 0)} pages",  # Task 2: Unified field 'page_count'
+                    parse_mode=parse_metadata.get("parse_mode", "unknown"),
+                    ocr_used=parse_metadata.get("ocr_used", False),
                 )
             except Exception as e:
                 ctx.errors.append(f"Parsing failed: {str(e)}")
