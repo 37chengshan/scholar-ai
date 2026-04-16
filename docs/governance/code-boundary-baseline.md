@@ -6,7 +6,7 @@
 
 ## Scope
 
-覆盖 frontend 页面/组件 API 访问边界与 backend API 层数据库操作边界。
+覆盖 apps/web 页面/组件 API 访问边界与 apps/api API 层数据库操作边界。
 
 ## Source of Truth
 
@@ -45,6 +45,10 @@
 - apps/api/app/api/tasks.py
 - apps/api/app/api/uploads.py
 - apps/api/app/api/users.py
+
+仓库卫生约束：
+
+- 代码边界之外，运行时产物、覆盖率目录、本地 venv 必须由 `scripts/check-runtime-hygiene.sh` 门禁拒绝。
 
 ## Required Updates
 

@@ -46,6 +46,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Runtime hygiene pre-check
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check-runtime-hygiene.sh
+          bash scripts/check-runtime-hygiene.sh tracked
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:

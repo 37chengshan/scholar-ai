@@ -43,12 +43,19 @@ E2E 覆盖范围：
 
 冒烟测试清单：
 
+- runtime hygiene 校验
 - 文档结构与链接校验
 - 结构边界校验
 - 代码层边界校验
 - 前端 type-check
 - 后端 pytest 最小子集
 - 核心文档存在性与路径正确性
+
+测试产物不入库规则：
+
+- 禁止提交 `test-results/`、`apps/web/test-results/`、`playwright-report/`
+- 禁止提交 `.coverage`、`apps/api/.coverage`、`htmlcov/`、`apps/api/htmlcov*/`
+- 禁止提交 `.pytest_cache/`、`apps/api/**/__pycache__/`、`apps/api/venv/`
 
 必须补回归测试的变更：
 
@@ -66,6 +73,7 @@ E2E 覆盖范围：
 ## Verification
 
 - 本地最小验证：
+	- bash scripts/check-runtime-hygiene.sh tracked
 	- bash scripts/check-doc-governance.sh
 	- bash scripts/check-structure-boundaries.sh
 	- bash scripts/check-code-boundaries.sh

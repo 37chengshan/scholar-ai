@@ -4,8 +4,8 @@ set -euo pipefail
 required_dirs=(
   "apps"
   "apps/web"
-  "apps/api"
   "apps/web/src"
+  "apps/api"
   "apps/api/app"
   "packages"
   "infra"
@@ -20,6 +20,9 @@ forbidden_root_dirs=(
   "tmp"
   "legacy"
   "_new"
+  "frontend"
+  "backend-python"
+  "scholar-ai"
 )
 
 forbidden_root_files=(
@@ -29,19 +32,6 @@ forbidden_root_files=(
 )
 
 fail_count=0
-legacy_root_dirs=(
-  "frontend"
-  "backend-python"
-)
-
-for dir in "${legacy_root_dirs[@]}"; do
-  if [[ -d "$dir" ]]; then
-    while IFS= read -r legacy_file; do
-      echo "[structure-boundaries] legacy root implementation path forbidden: $legacy_file" >&2
-      fail_count=$((fail_count + 1))
-    done < <(find "$dir" -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) | sort)
-  fi
-done
 
 for path in "${required_dirs[@]}"; do
   if [[ ! -d "$path" ]]; then
@@ -52,7 +42,7 @@ done
 
 for dir in "${forbidden_root_dirs[@]}"; do
   if [[ -d "$dir" ]]; then
-    echo "[structure-boundaries] forbidden root directory found: $dir" >&2
+    echo "[structure-boundaries] legacy root implementation path forbidden: $dir" >&2
     fail_count=$((fail_count + 1))
   fi
 done
@@ -64,12 +54,17 @@ for file in "${forbidden_root_files[@]}"; do
   fi
 done
 
-if [[ -d "apps/api/app/api" ]]; then
-  while IFS= read -r api_dup_dir; do
-    echo "[structure-boundaries] forbidden duplicate API directory found: $api_dup_dir" >&2
+forbidden_local_paths=(
+  "apps/web/.github"
+  "apps/web/packages"
+)
+
+for path in "${forbidden_local_paths[@]}"; do
+  if [[ -e "$path" ]]; then
+    echo "[structure-boundaries] forbidden nested/runtime path found: $path" >&2
     fail_count=$((fail_count + 1))
-  done < <(find apps/api/app/api -type d -name "*_new" | sort)
-fi
+  fi
+done
 
 shopt -s nullglob
 root_pid=(./*.pid)

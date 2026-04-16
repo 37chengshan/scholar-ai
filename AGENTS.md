@@ -34,6 +34,11 @@
 - 禁止在根目录提交 *.pid、cookies.txt、临时日志、测试产物。
 - 当前阶段前端真实代码只允许落在 apps/web，不允许在根级新增平行前端实现路径。
 - 当前阶段后端真实代码只允许落在 apps/api，不允许在根级新增平行后端实现路径。
+- 禁止提交运行时产物与本地环境目录：
+  - logs/archive、test-results、uploads
+  - apps/web/test-results、apps/web/*.log、apps/web/.github、apps/web/packages
+  - apps/api/venv、apps/api/htmlcov*、apps/api/**/__pycache__
+- 禁止提交嵌套旧仓库快照目录（例如 scholar-ai/**）。
 - 改接口必须同时检查并必要时更新：
   - docs/architecture/api-contract.md
   - docs/domain/resources.md
@@ -61,6 +66,7 @@
 - 前端改动：cd apps/web && npm run type-check
 - 后端改动：cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
 - 结构或流程改动：
+  - bash scripts/check-runtime-hygiene.sh tracked
   - bash scripts/check-doc-governance.sh
   - bash scripts/check-structure-boundaries.sh
   - bash scripts/check-code-boundaries.sh
@@ -71,5 +77,5 @@
 
 ## Open Questions
 
-- apps 与 packages 何时开始实质承接新代码，而非仅逻辑映射。
+- apps 与 packages 何时开始实质承接新代码，而非仅边界预留。
 - 是否引入统一 SDK 层承接 apps/web 与 apps/api 的共享契约。
