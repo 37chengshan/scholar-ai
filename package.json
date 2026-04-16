@@ -8,7 +8,10 @@
     "check:code-boundaries": "bash scripts/check-code-boundaries.sh",
     "check:docs": "bash scripts/check-doc-governance.sh",
     "check:boundaries": "bash scripts/check-structure-boundaries.sh",
+    "check:runtime-hygiene": "bash scripts/check-runtime-hygiene.sh tracked",
     "check:governance": "bash scripts/check-governance.sh",
+    "clean:runtime": "bash scripts/clean-repo-artifacts.sh",
+    "verify:post-migration": "bash scripts/check-runtime-hygiene.sh tracked && bash scripts/check-governance.sh && bash scripts/verify-all-phases.sh && cd apps/web && npm run type-check && cd ../.. && cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1",
     "type-check:web": "cd apps/web && npm run type-check",
     "test:api:smoke": "cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1"
   }

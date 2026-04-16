@@ -20,6 +20,8 @@ required_files=(
   "docs/development/testing-strategy.md"
   "docs/governance/code-boundary-baseline.md"
   "docs/governance/harness-engineering-playbook.md"
+  "scripts/check-runtime-hygiene.sh"
+  "scripts/clean-repo-artifacts.sh"
 )
 
 for file in "${required_files[@]}"; do
@@ -35,6 +37,10 @@ required_gitignore_entries=(
   "frontend.pid"
   "runtime/"
   "artifacts/"
+  "apps/web/test-results/"
+  "apps/api/venv/"
+  "apps/api/htmlcov/"
+  "scholar-ai/"
 )
 
 for entry in "${required_gitignore_entries[@]}"; do
@@ -47,5 +53,6 @@ done
 bash scripts/check-doc-governance.sh
 bash scripts/check-structure-boundaries.sh
 bash scripts/check-code-boundaries.sh
+bash scripts/check-runtime-hygiene.sh tracked
 
 echo "governance baseline check passed"

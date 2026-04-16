@@ -1,6 +1,6 @@
 # ScholarAI 开发环境 Makefile
 
-.PHONY: help install dev build up down logs ps clean reset
+.PHONY: help install dev build up down logs ps clean reset verify clean-runtime
 
 # 默认显示帮助
 help:
@@ -24,6 +24,8 @@ help:
 	@echo "  make db-reset   - 重置数据库"
 	@echo ""
 	@echo "清理:"
+	@echo "  make clean-runtime - 清理本地运行时产物"
+	@echo "  make verify     - 运行迁移后稳定化验收"
 	@echo "  make clean      - 清理构建文件和容器"
 	@echo "  make reset      - 完全重置环境 (⚠️ 会删除数据)"
 
@@ -82,6 +84,16 @@ db-reset:
 	@echo "✅ 数据库已重置"
 
 # 清理
+clean-runtime:
+	bash scripts/clean-repo-artifacts.sh
+
+verify:
+	bash scripts/check-runtime-hygiene.sh tracked
+	bash scripts/check-governance.sh
+	bash scripts/verify-all-phases.sh
+	cd apps/web && npm run type-check
+	cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
+
 clean:
 	@echo "🧹 清理构建文件..."
 	docker-compose down -v
@@ -90,6 +102,7 @@ clean:
 	rm -rf node_modules
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".venv" -exec rm -rf {} + 2>/dev/null || true
+	bash scripts/clean-repo-artifacts.sh
 	@echo "✅ 清理完成"
 
 reset: clean

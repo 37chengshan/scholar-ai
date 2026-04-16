@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "=== 整改中断恢复 ==="
+echo "=== 迁移后稳定期恢复 ==="
 
 for phase in 0 1 2 3 4 5; do
   script="scripts/verify-phase${phase}.sh"
@@ -18,7 +18,7 @@ for phase in 0 1 2 3 4 5; do
     echo "✓ Phase $phase 已完成"
   else
     echo "✗ Phase $phase 未完成或验收失败"
-    echo "请从 docs/plans/ScholarAI_结构问题整改计划_v1.md 对应阶段继续执行。"
+    echo "请从 docs/reports/post-migration-stabilization-checklist.md 对应阶段继续执行。"
     exit 0
   fi
 done

@@ -57,6 +57,17 @@ playwright-report/
 uat-test-results/
 .pytest_cache/
 .ruff_cache/
+apps/web/test-results/
+apps/web/*.log
+apps/web/.vite/
+apps/api/htmlcov/
+apps/api/htmlcov_*/
+apps/api/.coverage
+apps/api/venv/
+apps/api/venv_new/
+apps/api/**/__pycache__/
+apps/api/.pytest_cache/
+scholar-ai/
 
 # Frontend build
 frontend/dist/
