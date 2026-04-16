@@ -80,6 +80,9 @@ jobs:
           TEST_DB_USER: test_user
           TEST_DB_PASSWORD: test_password
           TEST_DB_NAME: scholar_ai_test
+          OPENAI_API_KEY: sk-test
+          ANTHROPIC_API_KEY: sk-ant-test
+          ZHIPU_API_KEY: sk-zhipu-test
         run: |
           set -euo pipefail
           PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test -c "SELECT 1;"
