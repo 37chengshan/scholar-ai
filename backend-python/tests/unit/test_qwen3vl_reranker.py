@@ -86,7 +86,7 @@ class TestQwen3VLRerankerService:
         service_int8 = Qwen3VLRerankerService(quantization="int8")
         assert service_int8.quantization == "int8"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM.from_pretrained')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel.from_pretrained')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer.from_pretrained')
     def test_qwen3vl_reranker_load_model_fp16(self, mock_tokenizer_from_pretrained, mock_model_from_pretrained):
         """Test that Qwen3VLRerankerService.load_model() loads model with FP16."""
@@ -127,7 +127,7 @@ class TestQwen3VLRerankerService:
         # Error message should mention load_model
         assert "load_model" in str(exc_info.value).lower()
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM.from_pretrained')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel.from_pretrained')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer.from_pretrained')
     def test_qwen3vl_reranker_rerank_text_only(self, mock_tokenizer_from_pretrained, mock_model_from_pretrained):
         """Test that Qwen3VLRerankerService.rerank() works with text-only inputs."""
@@ -158,7 +158,7 @@ class TestQwen3VLRerankerService:
             assert "rank" in result
             assert result["rank"] == i
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM.from_pretrained')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel.from_pretrained')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer.from_pretrained')
     def test_qwen3vl_reranker_rerank_multimodal(self, mock_tokenizer_from_pretrained, mock_model_from_pretrained):
         """Test that Qwen3VLRerankerService.rerank() works with multimodal inputs."""
@@ -187,7 +187,7 @@ class TestQwen3VLRerankerService:
         # Should return structured results
         assert len(results) == 2
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM.from_pretrained')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel.from_pretrained')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer.from_pretrained')
     def test_qwen3vl_reranker_rerank_sorts_by_score(self, mock_tokenizer_from_pretrained, mock_model_from_pretrained):
         """Test that Qwen3VLRerankerService.rerank() sorts results by score descending."""
@@ -214,7 +214,7 @@ class TestQwen3VLRerankerService:
         # Top result should have highest score
         assert results[0]["score"] >= results[1]["score"]
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM.from_pretrained')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel.from_pretrained')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer.from_pretrained')
     def test_qwen3vl_reranker_rerank_respects_top_k(self, mock_tokenizer_from_pretrained, mock_model_from_pretrained):
         """Test that Qwen3VLRerankerService.rerank() respects top_k parameter."""
@@ -237,7 +237,7 @@ class TestQwen3VLRerankerService:
         # Should return only top_k results
         assert len(results) == 2
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM.from_pretrained')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel.from_pretrained')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer.from_pretrained')
     def test_qwen3vl_reranker_device_auto_detection(self, mock_tokenizer_from_pretrained, mock_model_from_pretrained):
         """Test that Qwen3VLRerankerService auto-detects device."""
@@ -263,7 +263,7 @@ class TestQwen3VLRerankerService:
 class TestQwen3VLRerankerServiceMultimodalFeatures:
     """Tests for multimodal-specific features."""
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM.from_pretrained')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel.from_pretrained')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer.from_pretrained')
     def test_qwen3vl_reranker_accepts_image_path(self, mock_tokenizer_from_pretrained, mock_model_from_pretrained):
         """Test that Qwen3VLRerankerService accepts image file path."""
@@ -286,7 +286,7 @@ class TestQwen3VLRerankerServiceMultimodalFeatures:
         # Should handle image path
         assert len(results) == 1
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM.from_pretrained')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel.from_pretrained')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer.from_pretrained')
     def test_qwen3vl_reranker_mixed_text_and_multimodal(self, mock_tokenizer_from_pretrained, mock_model_from_pretrained):
         """Test that Qwen3VLRerankerService handles mixed text and multimodal documents."""

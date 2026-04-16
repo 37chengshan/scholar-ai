@@ -59,6 +59,33 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov httpx
 
+      - name: Wait for database and cache services
+        run: |
+          set -euo pipefail
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5432 -U test_user && break
+            sleep 2
+          done
+          for i in {1..30}; do
+            redis-cli -h localhost -p 6379 ping | grep -q PONG && break
+            sleep 2
+          done
+
+      - name: Prepare database schema
+        working-directory: backend-python
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5432
+          TEST_DB_USER: test_user
+          TEST_DB_PASSWORD: test_password
+          TEST_DB_NAME: scholar_ai_test
+        run: |
+          set -euo pipefail
+          PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test -c "SELECT 1;"
+          PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test -c "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN CREATE ROLE root LOGIN PASSWORD 'test_password'; END IF; END $$;"
+          alembic upgrade head
+
       - name: Create test environment file
         working-directory: backend-python
         run: |
@@ -95,11 +122,16 @@ jobs:
           MILVUS_PORT: 19530
           USE_LOCAL_STORAGE: true
           LOCAL_STORAGE_PATH: /tmp/uploads
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5432
+          TEST_DB_USER: test_user
+          TEST_DB_PASSWORD: test_password
+          TEST_DB_NAME: scholar_ai_test
 
       - name: Run integration tests
         working-directory: backend-python
         run: |
-          pytest tests/integration/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=80 || true
+          pytest tests/integration/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=80
         env:
           ENVIRONMENT: test
           DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
@@ -113,6 +145,11 @@ jobs:
           MILVUS_PORT: 19530
           USE_LOCAL_STORAGE: true
           LOCAL_STORAGE_PATH: /tmp/uploads
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5432
+          TEST_DB_USER: test_user
+          TEST_DB_PASSWORD: test_password
+          TEST_DB_NAME: scholar_ai_test
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -142,12 +179,12 @@ jobs:
       - name: Run Ruff
         working-directory: backend-python
         run: |
-          ruff check app/ --output-format=github || true
+          ruff check app/ --output-format=github
 
       - name: Check formatting
         working-directory: backend-python
         run: |
-          black --check app/ || true
+          black --check app/
 
   build:
     runs-on: ubuntu-latest

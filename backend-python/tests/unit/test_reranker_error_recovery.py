@@ -128,7 +128,7 @@ class TestBGERerankerErrorRecovery:
 class TestQwen3VLRerankerErrorRecovery:
     """Test Qwen3VL reranker error recovery."""
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_model_load_file_not_found(self, mock_tokenizer, mock_model):
         """Model load failure when model files not found."""
@@ -139,7 +139,7 @@ class TestQwen3VLRerankerErrorRecovery:
         with pytest.raises(RuntimeError, match="Failed to load Qwen3-VL-Reranker"):
             service.load_model()
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_tokenizer_load_failure(self, mock_tokenizer, mock_model):
         """Tokenizer load failure should raise RuntimeError."""
@@ -151,7 +151,7 @@ class TestQwen3VLRerankerErrorRecovery:
         with pytest.raises(RuntimeError):
             service.load_model()
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_rerank_without_load_raises_error(self, mock_tokenizer, mock_model):
         """Reranking without loading model raises RuntimeError."""
@@ -160,7 +160,7 @@ class TestQwen3VLRerankerErrorRecovery:
         with pytest.raises(RuntimeError, match="Model not loaded"):
             service.rerank("query", ["doc"])
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_model_rerank_failure_uses_placeholder(self, mock_tokenizer, mock_model):
         """Model.rerank failure should use placeholder."""
@@ -175,7 +175,7 @@ class TestQwen3VLRerankerErrorRecovery:
         
         assert len(results) == 2
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_mps_device_not_available(self, mock_tokenizer, mock_model):
         """MPS device unavailable should fallback to CPU."""
@@ -185,7 +185,7 @@ class TestQwen3VLRerankerErrorRecovery:
                 
                 assert service.device == "cpu"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_int4_quantization_failure(self, mock_tokenizer, mock_model):
         """INT4 quantization failure should raise error."""
@@ -196,7 +196,7 @@ class TestQwen3VLRerankerErrorRecovery:
         with pytest.raises(RuntimeError):
             service.load_model()
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_gpu_oom_recovery(self, mock_tokenizer, mock_model):
         """GPU OOM should be caught and service should continue with placeholder."""
@@ -290,7 +290,7 @@ class TestRerankerGracefulDegradation:
             
             assert service.device == "cpu"
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_placeholder_rerank_when_model_unavailable(self, mock_tokenizer, mock_model):
         """Placeholder rerank when actual model unavailable."""
@@ -410,7 +410,7 @@ class TestRerankerResourceCleanup:
         with pytest.raises(RuntimeError):
             service.rerank("query", ["doc"])
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_cuda_memory_cleanup(self, mock_tokenizer, mock_model):
         """CUDA memory should be cleaned up."""
@@ -441,7 +441,7 @@ class TestRerankerLoggingErrors:
         
         mock_logger.error.assert_called()
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     @patch('app.core.reranker.qwen3vl_reranker.logger')
     def test_rerank_failure_logged(self, mock_logger, mock_tokenizer, mock_model):
@@ -470,59 +470,26 @@ class TestRerankerTimeoutHandling:
     def test_long_running_rerank_timeout(self, mock_flag_reranker):
         """Long running rerank should handle timeout."""
         mock_flag_reranker_instance = MagicMock()
-        
-        def slow_compute(*args):
-            import time
-            time.sleep(10)
-            return [0.9]
-        
-        mock_flag_reranker_instance.compute_score = MagicMock(side_effect=slow_compute)
+
+        # Inject timeout directly to keep test deterministic in CI.
+        mock_flag_reranker_instance.compute_score = MagicMock(
+            side_effect=TimeoutError("Rerank timeout")
+        )
         mock_flag_reranker.return_value = mock_flag_reranker_instance
-        
+
         service = BGERerankerService()
         service.load_model()
-        
-        import signal
-        
-        def timeout_handler(signum, frame):
-            raise TimeoutError("Rerank timeout")
-        
-        try:
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(2)
-            
-            with pytest.raises(TimeoutError):
-                service.rerank("query", ["doc"])
-            
-            signal.alarm(0)
-        except:
-            pass
 
-    @patch('app.core.reranker.qwen3vl_reranker.AutoModelForCausalLM')
+        with pytest.raises(TimeoutError, match="Rerank timeout"):
+            service.rerank("query", ["doc"])
+
+    @patch('app.core.reranker.qwen3vl_reranker.AutoModel')
     @patch('app.core.reranker.qwen3vl_reranker.AutoTokenizer')
     def test_model_load_timeout(self, mock_tokenizer, mock_model):
         """Model load timeout should be handled."""
-        def slow_load(*args, **kwargs):
-            import time
-            time.sleep(5)
-            return MagicMock()
-        
-        mock_model.from_pretrained = MagicMock(side_effect=slow_load)
-        
+        mock_model.from_pretrained = MagicMock(side_effect=TimeoutError("Load timeout"))
+
         service = Qwen3VLRerankerService()
-        
-        try:
-            import signal
-            
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Load timeout")
-            
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(2)
-            
-            with pytest.raises((RuntimeError, TimeoutError)):
-                service.load_model()
-            
-            signal.alarm(0)
-        except:
-            pass
+
+        with pytest.raises(RuntimeError, match="Failed to load Qwen3-VL-Reranker"):
+            service.load_model()
