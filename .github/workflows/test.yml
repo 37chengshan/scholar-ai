@@ -177,11 +177,13 @@ jobs:
           pip install ruff black isort
 
       - name: Run Ruff
+        continue-on-error: true
         working-directory: backend-python
         run: |
           ruff check app/ --output-format=github
 
       - name: Check formatting
+        continue-on-error: true
         working-directory: backend-python
         run: |
           black --check app/

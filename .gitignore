@@ -16,8 +16,11 @@ build/
 !.env.example
 
 # Logs
-logs/
+logs/*
+!logs/.gitkeep
+!logs/README.md
 *.log
+*.out
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -43,6 +46,8 @@ temp/
 *.swo
 *~
 .DS_Store
+.claude/
+.omx/
 
 # Testing
 coverage/
@@ -50,9 +55,12 @@ coverage/
 test-results/
 playwright-report/
 uat-test-results/
+.pytest_cache/
+.ruff_cache/
 
 # Frontend build
 frontend/dist/
+frontend/node_modules/
 
 # Prisma
 prisma/migrations/*/
@@ -70,6 +78,7 @@ ENV/
 .venv/
 env.bak/
 venv.bak/
+backend-python/venv_new/
 *.egg-info/
 dist/
 build/
@@ -84,7 +93,20 @@ build/
 *.pid
 *.seed
 *.pid.lock
+cookies.txt
+backend.pid
+frontend.pid
+runtime/
+artifacts/
 backend-python/docling-models/
+backend-python/htmlcov/
+backend-python/htmlcov_*/
+backend-python/.coverage
+backend-python/.pytest_cache/
+backend-python/uploads/
+uploads/
+tmp/
+temp/
 
 # Worktrees
 .worktrees/
