@@ -11,8 +11,10 @@
 ## Source of Truth
 
 - 仓库级契约：docs/architecture/api-contract.md
-- 后端实现细节：apps/api/docs/API_CONTRACT.md
+- 后端实现细节：backend-python/docs/API_CONTRACT.md
 - 资源生命周期：docs/domain/resources.md
+- 跨端共享契约：packages/types
+- 跨端 typed client：packages/sdk
 
 ## Rules
 
@@ -109,6 +111,12 @@ SSE 事件规范：
 - 每个事件必须包含可解析 JSON 载荷。
 - 长连接必须有 heartbeat 或等价保活策略。
 - done 为唯一完成事件，不得与错误事件混用。
+
+Chat 流协议真源：
+
+- app/models/chat.py 为 Chat SSE 事件 DTO 与 envelope 真源。
+- app/services/chat_orchestrator.py 负责 message_id 绑定与事件编排。
+- app/api/chat.py 负责 stream 接口对外契约。
 
 ## Required Updates
 

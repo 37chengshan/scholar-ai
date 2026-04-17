@@ -26,6 +26,18 @@
  */
 
 import { AgentPhase } from '@/types/chat';
+export type {
+  StreamEventEnvelope as SharedStreamEventEnvelope,
+  StreamEventType as SharedStreamEventType,
+  SessionStartEventData as SharedSessionStartEventData,
+  RoutingDecisionEventData as SharedRoutingDecisionEventData,
+  ReasoningEventData as SharedReasoningEventData,
+  MessageEventData as SharedMessageEventData,
+  ToolCallEventData as SharedToolCallEventData,
+  ToolResultEventData as SharedToolResultEventData,
+  DoneEventData as SharedDoneEventData,
+  ErrorEventData as SharedErrorEventData,
+} from '@scholar-ai/types';
 
 /**
  * SSE Event Types (from backend Agent-Native architecture)

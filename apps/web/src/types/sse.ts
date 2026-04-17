@@ -20,6 +20,19 @@
  * 10. done → stream completion marker
  */
 
+export type {
+  StreamEventEnvelope as SharedStreamEventEnvelope,
+  StreamEventType as SharedStreamEventType,
+  SessionStartEventData as SharedSessionStartEventData,
+  RoutingDecisionEventData as SharedRoutingDecisionEventData,
+  ReasoningEventData as SharedReasoningEventData,
+  MessageEventData as SharedMessageEventData,
+  ToolCallEventData as SharedToolCallEventData,
+  ToolResultEventData as SharedToolResultEventData,
+  DoneEventData as SharedDoneEventData,
+  ErrorEventData as SharedErrorEventData,
+} from '@scholar-ai/types';
+
 /**
  * SSE event types enumeration
  * Updated to include new event types for HARD RULE 0.2

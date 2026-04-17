@@ -26,14 +26,37 @@ echo "[3/6] 检查 stabilization 报告模板..."
 test -f docs/reports/post-migration-stabilization-checklist.md
 echo "✓ stabilization 报告模板存在"
 
-echo "[4/6] 检查 packages 无业务代码..."
-code_files=$( (find packages -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.py" \) | grep -v "README" | grep -v ".gitkeep") || true )
-code_files=$(echo "$code_files" | sed '/^$/d' | wc -l | tr -d ' ')
-if [[ "$code_files" -gt 0 ]]; then
-  echo "✗ packages 中存在业务代码文件数: $code_files" >&2
+echo "[4/6] 检查共享包落地状态..."
+
+types_code_files=$( (find packages/types/src -type f \( -name "*.ts" -o -name "*.tsx" \) 2>/dev/null) || true )
+types_code_count=$(echo "$types_code_files" | sed '/^$/d' | wc -l | tr -d ' ')
+if [[ "$types_code_count" -eq 0 ]]; then
+  echo "✗ packages/types 尚未落地共享契约代码" >&2
   exit 1
 fi
-echo "✓ packages 无业务代码"
+
+sdk_code_files=$( (find packages/sdk/src -type f \( -name "*.ts" -o -name "*.tsx" \) 2>/dev/null) || true )
+sdk_code_count=$(echo "$sdk_code_files" | sed '/^$/d' | wc -l | tr -d ' ')
+if [[ "$sdk_code_count" -eq 0 ]]; then
+  echo "✗ packages/sdk 尚未落地 typed client 代码" >&2
+  exit 1
+fi
+
+ui_code_files=$( (find packages/ui -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.py" \) | grep -v "README" | grep -v ".gitkeep") || true )
+ui_code_count=$(echo "$ui_code_files" | sed '/^$/d' | wc -l | tr -d ' ')
+if [[ "$ui_code_count" -gt 0 ]]; then
+  echo "✗ packages/ui 仍应保持占位，不应落地业务代码（检测到 $ui_code_count 个文件）" >&2
+  exit 1
+fi
+
+config_code_files=$( (find packages/config -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.py" \) | grep -v "README" | grep -v ".gitkeep") || true )
+config_code_count=$(echo "$config_code_files" | sed '/^$/d' | wc -l | tr -d ' ')
+if [[ "$config_code_count" -gt 0 ]]; then
+  echo "✗ packages/config 仍应保持占位，不应落地业务代码（检测到 $config_code_count 个文件）" >&2
+  exit 1
+fi
+
+echo "✓ packages/types 与 packages/sdk 已落地，ui/config 仍保持占位"
 
 echo "[5/6] 检查 runtime hygiene..."
 bash scripts/check-runtime-hygiene.sh tracked

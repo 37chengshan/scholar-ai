@@ -6,7 +6,7 @@
 
 ## Scope
 
-适用于 apps/web、apps/api 以及跨层契约相关代码。
+适用于 frontend、backend-python 以及跨层契约相关代码。
 
 ## Source of Truth
 
@@ -24,25 +24,28 @@
 
 文件组织规范：
 
-- 前端页面与路由代码集中在 apps/web/src/app。
-- 前端 API 访问统一走 apps/web/src/services 与 hooks。
-- apps/web/src/hooks 为共享业务 hook 唯一实现目录；apps/web/src/app/hooks 仅允许页面级局部 hook。
-- 禁止在 apps/web/src/hooks 与 apps/web/src/app/hooks 保留同名 hook 文件。
-- 后端入口在 apps/api/app/api，业务编排在 apps/api/app/services。
-- 后端 schema/DTO 必须统一放在 apps/api/app/schemas。
-- apps/api/app/models 仅保留 ORM/持久化模型，不得新增 Pydantic BaseModel。
-- 数据访问查询统一收敛到 apps/api/app/repositories，router 不直接写数据库查询。
+- 前端页面与路由代码集中在 frontend/src/app。
+- 前端 API 访问统一走 frontend/src/services 与 hooks。
+- 跨端 DTO/契约放在 packages/types，不在页面或 service 本地重复定义主契约。
+- 跨端 typed API client 放在 packages/sdk，frontend service 作为薄适配层。
+- frontend/src/hooks 为共享业务 hook 唯一实现目录；frontend/src/app/hooks 仅允许页面级局部 hook。
+- 禁止在 frontend/src/hooks 与 frontend/src/app/hooks 保留同名 hook 文件。
+- 后端入口在 backend-python/app/api，业务编排在 backend-python/app/services。
+- 后端 schema/DTO 必须统一放在 backend-python/app/schemas。
+- backend-python/app/models 仅保留 ORM/持久化模型，不得新增 Pydantic BaseModel。
+- 数据访问查询统一收敛到 backend-python/app/repositories，router 不直接写数据库查询。
 - schema/DTO 不得在多个目录重复定义。
 
 边界规则：
 
 - 前端组件不得直接请求后端 API。
-- apps/web/src/app/pages 与 apps/web/src/app/components 禁止直接使用 apiClient、fetch、EventSource。
+- frontend/src/app/pages 与 frontend/src/app/components 禁止直接使用 apiClient、fetch、EventSource。
 - 组件不持有跨页面业务状态，跨页状态放 store。
 - router 不写业务逻辑，service 不拼 UI 文案。
 - repository/schema 不依赖 UI 层。
-- apps/api/app/api 禁止新增直接数据库操作语句（见 docs/governance/code-boundary-baseline.md）。
-- apps/api/app/core 仅允许基础设施能力（config/database/logging/security/base exception），禁止新增业务编排逻辑。
+- 重页面应按 page shell + workspace + hooks/store 分层，page 不承载核心编排逻辑。
+- backend-python/app/api 禁止新增直接数据库操作语句（见 docs/governance/code-boundary-baseline.md）。
+- backend-python/app/core 仅允许基础设施能力（config/database/logging/security/base exception），禁止新增业务编排逻辑。
 
 禁止项：
 
@@ -65,5 +68,5 @@
 
 ## Open Questions
 
-- 是否在 apps/web 引入统一领域目录规范替代历史分散路径。
-- 是否在 apps/api 引入 repository 抽象层模板并逐步收敛旧实现。
+- 是否在 frontend 引入统一领域目录规范替代历史分散路径。
+- 是否在 backend 引入 repository 抽象层模板并逐步收敛旧实现。

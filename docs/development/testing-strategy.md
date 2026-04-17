@@ -48,6 +48,7 @@ E2E 覆盖范围：
 - 结构边界校验
 - 代码层边界校验
 - 前端 type-check
+- packages/types 与 packages/sdk 构建检查
 - 后端 pytest 最小子集
 - 核心文档存在性与路径正确性
 
@@ -79,6 +80,8 @@ E2E 覆盖范围：
 	- bash scripts/check-code-boundaries.sh
 	- bash scripts/check-governance.sh
 	- cd apps/web && npm run type-check
+	- cd packages/types && npm run build
+	- cd packages/sdk && npm run build
 	- cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
 
 - CI 最小验证：

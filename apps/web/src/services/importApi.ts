@@ -20,12 +20,21 @@
  */
 import apiClient from '@/utils/apiClient';
 import { ApiResponse } from '@/utils/apiClient';
+import {
+  createImportApi,
+} from '@scholar-ai/sdk';
+import type {
+  ImportJobDto,
+  ImportJobStatus as SharedImportJobStatus,
+  SourceType as SharedSourceType,
+} from '@scholar-ai/types';
+import { sdkHttpClient } from './sdkHttpClient';
 
 // === Types ===
 
-export type SourceType = 'local_file' | 'arxiv' | 'pdf_url' | 'doi' | 'semantic_scholar';
+export type SourceType = SharedSourceType;
 
-export type ImportJobStatus = 'created' | 'queued' | 'running' | 'awaiting_user_action' | 'completed' | 'failed' | 'cancelled';
+export type ImportJobStatus = SharedImportJobStatus;
 
 export interface ImportJobSource {
   rawInput: string;
@@ -96,6 +105,60 @@ export interface ImportJob {
   actions?: { type: string; enabled: boolean }[];
 }
 
+const importSdk = createImportApi(sdkHttpClient);
+
+function toImportJob(dto: ImportJobDto): ImportJob {
+  return {
+    importJobId: dto.importJobId,
+    knowledgeBaseId: dto.knowledgeBaseId,
+    sourceType: dto.sourceType,
+    status: dto.status,
+    stage: dto.stage,
+    progress: dto.progress ?? 0,
+    nextAction: null,
+    retryCount: dto.retryCount,
+    version: null,
+    externalIds: undefined,
+    createdAt: dto.createdAt,
+    updatedAt: dto.updatedAt,
+    startedAt: dto.startedAt ?? null,
+    completedAt: dto.completedAt,
+    cancelledAt: dto.cancelledAt,
+    source: {
+      rawInput: '',
+      normalizedRef: null,
+      externalIds: {},
+    },
+    preview: {
+      title: null,
+      authors: [],
+      year: null,
+      venue: null,
+    },
+    dedupe: {
+      status: 'unchecked',
+      matchedPaperId: null,
+      matchType: null,
+      decision: null,
+    },
+    file: {
+      storageKey: null,
+      sha256: null,
+      sizeBytes: null,
+    },
+    paper: null,
+    task: null,
+    error: dto.error
+      ? {
+          code: dto.error.code,
+          message: dto.error.message,
+          detail: dto.error.detail ?? null,
+        }
+      : null,
+    actions: [],
+  };
+}
+
 export interface CreateImportRequest {
   sourceType: SourceType;
   payload: Record<string, unknown>;
@@ -163,11 +226,8 @@ export const importApi = {
     kbId: string,
     request: CreateImportRequest
   ): Promise<ApiResponse<ImportJob>> => {
-    const response = await apiClient.post(
-      `/api/v1/knowledge-bases/${kbId}/imports`,
-      request
-    );
-    return { success: true, data: response.data };
+    const data = await importSdk.create(kbId, request);
+    return { success: true, data: toImportJob(data) };
   },
 
   /**
@@ -194,8 +254,8 @@ export const importApi = {
    * Get single import job status
    */
   get: async (jobId: string): Promise<ApiResponse<ImportJob>> => {
-    const response = await apiClient.get(`/api/v1/import-jobs/${jobId}`);
-    return { success: true, data: response.data };
+    const data = await importSdk.get(jobId);
+    return { success: true, data: toImportJob(data) };
   },
 
   /**
@@ -205,10 +265,16 @@ export const importApi = {
     kbId: string,
     params?: { status?: ImportJobStatus; limit?: number; offset?: number }
   ): Promise<ApiResponse<{ jobs: ImportJob[]; total: number; limit: number; offset: number }>> => {
-    const response = await apiClient.get(`/api/v1/import-jobs`, {
-      params: { knowledgeBaseId: kbId, ...params }
-    });
-    return { success: true, data: response.data };
+    const data = await importSdk.list(kbId, params);
+    return {
+      success: true,
+      data: {
+        jobs: data.jobs.map(toImportJob),
+        total: data.total,
+        limit: data.limit,
+        offset: data.offset,
+      },
+    };
   },
 
   /**
@@ -258,11 +324,8 @@ export const importApi = {
     jobId: string,
     options?: { retryFromStage?: string }
   ): Promise<ApiResponse<ImportJob>> => {
-    const response = await apiClient.post(
-      `/api/v1/import-jobs/${jobId}/retry`,
-      options
-    );
-    return { success: true, data: response.data };
+    const data = await importSdk.retry(jobId, options);
+    return { success: true, data: toImportJob(data) };
   },
 
   /**
@@ -271,10 +334,8 @@ export const importApi = {
   cancel: async (
     jobId: string
   ): Promise<ApiResponse<{ importJobId: string; status: 'cancelled' }>> => {
-    const response = await apiClient.post(
-      `/api/v1/import-jobs/${jobId}/cancel`
-    );
-    return { success: true, data: response.data };
+    const data = await importSdk.cancel(jobId);
+    return { success: true, data };
   },
 
   /**

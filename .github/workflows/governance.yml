@@ -42,6 +42,8 @@ jobs:
             cd apps/web
             npm ci
             npm run type-check
+            npx tsc -p ../../packages/types/tsconfig.json
+            npx tsc -p ../../packages/sdk/tsconfig.json
           else
             echo "skip frontend type-check (apps/web directory not found)"
           fi

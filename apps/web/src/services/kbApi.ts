@@ -10,83 +10,32 @@
  * - Search & Chat: search
  */
 import apiClient from '@/utils/apiClient';
+import {
+  createKnowledgeBaseApi,
+} from '@scholar-ai/sdk';
+import type {
+  KnowledgeBaseDto,
+  KnowledgeBaseCreateDto,
+  KnowledgeBaseListParams,
+  KnowledgeBaseListResponse,
+  KnowledgeBaseSearchHitDto,
+  KnowledgeBasePaperDto,
+  StorageStatsDto,
+} from '@scholar-ai/types';
+import { sdkHttpClient } from './sdkHttpClient';
 
 // Export importApi for ImportJob operations
 export { importApi } from './importApi';
 export type { ImportJob, SourceType, SourceResolution } from './importApi';
 
-// KB Types
-export interface KnowledgeBase {
-  id: string;
-  userId: string;
-  name: string;
-  description: string;
-  category: string;
-  paperCount: number;
-  chunkCount: number;
-  entityCount: number;
-  embeddingModel: string;
-  parseEngine: string;
-  chunkStrategy: string;
-  enableGraph: boolean;
-  enableImrad: boolean;
-  enableChartUnderstanding: boolean;
-  enableMultimodalSearch: boolean;
-  enableComparison: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+const kbSdk = createKnowledgeBaseApi(sdkHttpClient);
 
-export interface KBCreateData {
-  name: string;
-  description?: string;
-  category?: string;
-  embeddingModel?: string;
-  parseEngine?: string;
-  chunkStrategy?: string;
-  enableGraph?: boolean;
-  enableImrad?: boolean;
-  enableChartUnderstanding?: boolean;
-  enableMultimodalSearch?: boolean;
-  enableComparison?: boolean;
-}
-
-export interface KBListParams {
-  search?: string;
-  category?: string;
-  sortBy?: 'updated' | 'papers' | 'name';
-  limit?: number;
-  offset?: number;
-}
-
-export interface KBListResponse {
-  knowledgeBases: KnowledgeBase[];
-  total: number;
-  limit: number;
-}
-
-export interface KBSearchResult {
-  id: string;
-  paperId: string;
-  paperTitle?: string | null;
-  content: string;
-  section?: string;
-  page?: number;
-  score: number;
-}
-
-export interface KBPaperListItem {
-  id: string;
-  title: string;
-  authors: string[];
-  year?: number | null;
-  venue?: string | null;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | string;
-  chunkCount: number;
-  entityCount: number;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-}
+export type KnowledgeBase = KnowledgeBaseDto;
+export type KBCreateData = KnowledgeBaseCreateDto;
+export type KBListParams = KnowledgeBaseListParams;
+export type KBListResponse = KnowledgeBaseListResponse;
+export type KBSearchResult = KnowledgeBaseSearchHitDto;
+export type KBPaperListItem = KnowledgeBasePaperDto;
 
 export interface KBUploadHistoryRecord {
   id: string;
@@ -113,45 +62,34 @@ export interface KBUploadHistoryRecord {
   } | null;
 }
 
-export interface KBStorageStats {
-  kbCount: number;
-  paperCount: number;
-  chunkCount: number;
-  estimatedStorageMB: number;
-  storageLimitMB: number;
-}
+export type KBStorageStats = StorageStatsDto;
 
 export const kbApi = {
   // === CRUD ===
 
   /** List knowledge bases with filters */
   list: async (params?: KBListParams): Promise<KBListResponse> => {
-    const response = await apiClient.get('/api/v1/knowledge-bases', { params });
-    return response.data as KBListResponse;
+    return kbSdk.list(params);
   },
 
   /** Create a new knowledge base */
   create: async (data: KBCreateData): Promise<KnowledgeBase> => {
-    const response = await apiClient.post('/api/v1/knowledge-bases', data);
-    return response.data as KnowledgeBase;
+    return kbSdk.create(data);
   },
 
   /** Get knowledge base by ID */
   get: async (id: string): Promise<KnowledgeBase> => {
-    const response = await apiClient.get(`/api/v1/knowledge-bases/${id}`);
-    return response.data as KnowledgeBase;
+    return kbSdk.get(id);
   },
 
   /** Update knowledge base */
   update: async (id: string, data: Partial<KBCreateData>): Promise<KnowledgeBase> => {
-    const response = await apiClient.patch(`/api/v1/knowledge-bases/${id}`, data);
-    return response.data as KnowledgeBase;
+    return kbSdk.update(id, data);
   },
 
   /** Delete knowledge base */
   delete: async (id: string): Promise<{ deleted: boolean }> => {
-    const response = await apiClient.delete(`/api/v1/knowledge-bases/${id}`);
-    return response.data as { deleted: boolean };
+    return kbSdk.delete(id);
   },
 
   /** Batch delete knowledge bases */
@@ -164,8 +102,7 @@ export const kbApi = {
 
   /** List papers in a KB */
   listPapers: async (kbId: string): Promise<{ papers: KBPaperListItem[]; total: number; limit: number; offset: number }> => {
-    const response = await apiClient.get(`/api/v1/knowledge-bases/${kbId}/papers`);
-    return response.data as { papers: KBPaperListItem[]; total: number; limit: number; offset: number };
+    return kbSdk.listPapers(kbId);
   },
 
   /** List upload history for a KB */
@@ -225,8 +162,8 @@ export const kbApi = {
 
   /** Vector search in KB - returns top-K chunks matching query */
   search: async (kbId: string, query: string, topK?: number): Promise<{ results: KBSearchResult[], total: number }> => {
-    const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/search`, { query, topK });
-    return response.data as { results: KBSearchResult[], total: number };
+    const result = await kbSdk.search(kbId, query, topK);
+    return result;
   },
 
   /** Query KB for Q&A - returns answer with citations */
@@ -239,8 +176,7 @@ export const kbApi = {
 
   /** Get storage statistics for user's knowledge bases */
   getStorageStats: async (): Promise<KBStorageStats> => {
-    const response = await apiClient.get('/api/v1/knowledge-bases/storage-stats');
-    return response.data as KBStorageStats;
+    return kbSdk.getStorageStats();
   },
 };
 
