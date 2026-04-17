@@ -1,6 +1,11 @@
 /**
  * Chat Page - Placeholder Message + message_id Binding + SSE Event Handling
  *
+ * LEGACY FREEZE (PR10):
+ * - This component is in migration mode.
+ * - Do not add new business logic here.
+ * - New state/workflow changes must land in features/chat/hooks and workspace store.
+ *
  * Main chat interface with:
  * - Placeholder message mechanism (HARD RULE 0.2)
  * - message_id binding for SSE events

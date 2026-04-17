@@ -25,6 +25,12 @@ import {
   KBSearchResult,
 } from "@/services/kbApi";
 import { toast } from "sonner";
+import { useImportJobsPolling } from '@/features/kb/hooks/useImportJobsPolling';
+
+// LEGACY FREEZE (PR10):
+// - This component is in migration mode.
+// - Do not add new business logic here.
+// - New state/workflow changes must land in features/kb/hooks and workspace store.
 
 export function KnowledgeBaseDetailLegacy() {
   const navigate = useNavigate();
@@ -102,11 +108,19 @@ export function KnowledgeBaseDetailLegacy() {
     }
   }, [kbId]);
 
-  // Poll every 5 seconds for running jobs
+  const hasRunningJobs = importJobs.some(
+    (job) => job.status === 'created' || job.status === 'running' || job.status === 'awaiting_user_action'
+  );
+  useImportJobsPolling({
+    enabled: hasRunningJobs,
+    intervalMs: 5000,
+    onTick: async () => {
+      await loadImportJobs({ silent: true });
+    },
+  });
+
   useEffect(() => {
     void loadImportJobs();
-    const interval = setInterval(() => void loadImportJobs(), 5000);
-    return () => clearInterval(interval);
   }, [loadImportJobs]);
 
   useEffect(() => {
