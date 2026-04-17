@@ -46,6 +46,10 @@ class ConfirmationState(BaseModel):
         ...,
         description="Tool requiring confirmation",
     )
+    message_id: str | None = Field(
+        default=None,
+        description="Assistant message ID bound to this confirmation flow",
+    )
     parameters: Dict[str, Any] = Field(
         default_factory=dict,
         description="Tool parameters",

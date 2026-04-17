@@ -10,6 +10,9 @@ Endpoints:
 """
 
 import asyncio
+import hashlib
+import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -34,6 +37,10 @@ from app.utils.problem_detail import Errors
 
 
 router = APIRouter()
+
+
+def _stable_query_hash(query: str) -> str:
+    return hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
 
 
 @router.get("/library", response_model=LibrarySearchResponse)
@@ -61,6 +68,17 @@ async def search_library(
     Returns:
         LibrarySearchResponse with ranked chunk results
     """
+    run_id = str(uuid.uuid4())
+    started = time.perf_counter()
+    logger.info(
+        "search_started",
+        event_type="search_started",
+        run_id=run_id,
+        route="/api/v1/search/library",
+        query_hash=_stable_query_hash(q),
+        paper_count=len(paper_ids),
+    )
+
     logger.info(
         "Library search initiated",
         query=q[:50],
@@ -70,6 +88,14 @@ async def search_library(
 
     if not paper_ids:
         logger.warning("No paper_ids provided for library search")
+        logger.info(
+            "search_completed",
+            event_type="search_completed",
+            run_id=run_id,
+            route="/api/v1/search/library",
+            result_count=0,
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         return LibrarySearchResponse(
             success=True,
             data={
@@ -114,6 +140,14 @@ async def search_library(
             query=q[:50],
             results_found=len(library_results),
         )
+        logger.info(
+            "search_completed",
+            event_type="search_completed",
+            run_id=run_id,
+            route="/api/v1/search/library",
+            result_count=len(library_results),
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
 
         return LibrarySearchResponse(
             success=True,
@@ -140,6 +174,14 @@ async def search_library(
 
     except Exception as e:
         logger.error("Library search failed", error=str(e), query=q[:50])
+        logger.error(
+            "search_failed",
+            event_type="search_failed",
+            run_id=run_id,
+            route="/api/v1/search/library",
+            error=str(e),
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         raise HTTPException(
             status_code=500, detail=Errors.internal(f"Search failed: {str(e)}")
         )
@@ -168,11 +210,34 @@ async def search_unified(
     3. Filtered by year range
     4. Sorted by citation-based composite score
     """
+    run_id = str(uuid.uuid4())
+    started = time.perf_counter()
+    logger.info(
+        "search_started",
+        event_type="search_started",
+        run_id=run_id,
+        route="/api/v1/search/unified",
+        query_hash=_stable_query_hash(query),
+        limit=limit,
+        offset=offset,
+        year_from=year_from,
+        year_to=year_to,
+    )
+
     cache_key = f"search:unified:{query}:{limit}:{offset}:{year_from}:{year_to}"
 
     cached = await get_search_cache(cache_key)
     if cached:
         logger.info("Unified search cache hit", query=query, limit=limit)
+        logger.info(
+            "search_completed",
+            event_type="search_completed",
+            run_id=run_id,
+            route="/api/v1/search/unified",
+            result_count=len(cached.get("results", [])),
+            cache_hit=True,
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         return SearchResponse(success=True, data=cached)
 
     logger.info(
@@ -233,6 +298,14 @@ async def search_unified(
         total_results=len(all_results),
         unique_results=len(unique_results),
         returned_results=len(result_data["results"]),
+    )
+    logger.info(
+        "search_completed",
+        event_type="search_completed",
+        run_id=run_id,
+        route="/api/v1/search/unified",
+        result_count=len(result_data["results"]),
+        duration_ms=round((time.perf_counter() - started) * 1000, 2),
     )
 
     return SearchResponse(success=True, data=result_data)

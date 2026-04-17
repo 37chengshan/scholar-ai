@@ -13,6 +13,8 @@ Events:
 
 import asyncio
 import json
+import time
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter
@@ -49,9 +51,19 @@ async def stream_import_progress(
     """
 
     async def event_generator():
+        run_id = str(uuid.uuid4())
+        started = time.perf_counter()
         service = ImportJobService()
         last_stage: Optional[str] = None
         last_progress: int = 0
+
+        logger.info(
+            "import_job_started",
+            event_type="import_job_started",
+            run_id=run_id,
+            job_id=job_id,
+            route="/api/v1/imports/import-jobs/{job_id}/stream",
+        )
 
         # Max streaming time: 2 hours (prevent infinite loops)
         max_stream_seconds = 7200
@@ -70,6 +82,13 @@ async def stream_import_progress(
                     job = await service.get_job(job_id, user_id, db)
 
                     if not job:
+                        logger.error(
+                            "import_job_failed",
+                            event_type="import_job_failed",
+                            run_id=run_id,
+                            job_id=job_id,
+                            error="Job not found",
+                        )
                         yield f"event: error\ndata: {json.dumps({'message': 'Job not found'})}\n\n"
                         break
 
@@ -81,6 +100,14 @@ async def stream_import_progress(
                             "SSE stage_change sent",
                             job_id=job_id,
                             stage=job.stage,
+                        )
+                        logger.info(
+                            "import_job_progress",
+                            event_type="import_job_progress",
+                            run_id=run_id,
+                            job_id=job_id,
+                            stage=job.stage,
+                            progress=job.progress,
                         )
 
                     # Send progress update
@@ -113,6 +140,14 @@ async def stream_import_progress(
                             job_id=job_id,
                             paper_id=job.paper_id,
                         )
+                        logger.info(
+                            "import_job_completed",
+                            event_type="import_job_completed",
+                            run_id=run_id,
+                            job_id=job_id,
+                            paper_id=job.paper_id,
+                            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                        )
                         break
 
                     if job.status == "failed":
@@ -126,11 +161,28 @@ async def stream_import_progress(
                             job_id=job_id,
                             error_code=job.error_code,
                         )
+                        logger.error(
+                            "import_job_failed",
+                            event_type="import_job_failed",
+                            run_id=run_id,
+                            job_id=job_id,
+                            error_code=job.error_code,
+                            error_message=job.error_message,
+                            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                        )
                         break
 
                     if job.status == "cancelled":
                         yield f"event: cancelled\ndata: {json.dumps({'message': 'Job cancelled'})}\n\n"
                         logger.info("SSE cancelled sent", job_id=job_id)
+                        logger.info(
+                            "import_job_completed",
+                            event_type="import_job_completed",
+                            run_id=run_id,
+                            job_id=job_id,
+                            status="cancelled",
+                            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                        )
                         break
 
                 except Exception as e:
@@ -138,6 +190,14 @@ async def stream_import_progress(
                         "SSE generator error",
                         job_id=job_id,
                         error=str(e),
+                    )
+                    logger.error(
+                        "import_job_failed",
+                        event_type="import_job_failed",
+                        run_id=run_id,
+                        job_id=job_id,
+                        error=str(e),
+                        duration_ms=round((time.perf_counter() - started) * 1000, 2),
                     )
                     yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
                     break

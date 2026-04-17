@@ -83,6 +83,7 @@ from app.core.embedding.factory import get_embedding_service
 
 # Middleware
 from app.middleware.cors import get_cors_config
+from app.middleware.observability import ObservabilityMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.error_handler import setup_error_handlers
 
@@ -239,7 +240,10 @@ app = FastAPI(
 # Middleware Registration
 # ============================================================================
 
-# Request logging middleware (first - logs all requests)
+# Observability middleware (first - binds request context)
+app.add_middleware(ObservabilityMiddleware)
+
+# Request logging middleware
 app.add_middleware(RequestLoggingMiddleware)
 
 # CORS middleware (use unified config)

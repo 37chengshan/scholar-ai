@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { trackImportEvent } from '@/lib/observability/telemetry';
 
 interface UseImportJobsPollingOptions {
   enabled?: boolean;
@@ -30,21 +31,25 @@ export function useImportJobsPolling(options: UseImportJobsPollingOptions) {
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
+      trackImportEvent({ event: 'polling_stopped' });
     }
   }, []);
 
   const start = useCallback(() => {
     stop();
     if (!canPoll()) {
+      trackImportEvent({ event: 'polling_skipped' });
       return;
     }
 
+    trackImportEvent({ event: 'polling_started', intervalMs });
     void onTick();
     timerRef.current = window.setInterval(() => {
       if (!canPoll()) {
         stop();
         return;
       }
+      trackImportEvent({ event: 'polling_tick' });
       void onTick();
     }, intervalMs);
   }, [canPoll, intervalMs, onTick, stop]);
