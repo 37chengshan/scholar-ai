@@ -516,3 +516,9 @@
   transform: translateY(-2px);
   box-shadow: var(--shadow-paper);
 }
+/* PR20 - Magazine Core Refinement */
+.magazine-hairline { border-bottom: 1px solid rgba(0,0,0,0.1) !important; }
+.magazine-thick-rule { border-top: 4px solid #000 !important; border-bottom: 1px solid rgba(0,0,0,0.1); }
+.magazine-dropcap::first-letter { color: #d35400; font-size: 3em; float: left; margin-right: 0.1em; line-height: 1; font-family: var(--magazine-font-serif); }
+.magazine-sidenote { font-size: 0.75rem; border-left: 2px solid #d35400; padding-left: 0.5rem; color: rgba(0,0,0,0.6); }
+.magazine-marker { background-color: rgba(211,84,0,0.15); mix-blend-mode: multiply; border-radius: 2px; }

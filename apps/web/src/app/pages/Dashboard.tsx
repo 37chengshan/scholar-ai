@@ -186,7 +186,7 @@ async function fetchRecentPapers() {
               { label: t.deepReads, value: stats?.queryCount || "—", desc: t.analyzedDocs, icon: Eye, trend: "+8%" },
               { label: t.globalQueries, value: stats?.queryCount || "—", desc: t.extSearches, icon: Search, trend: "+1.5%" },
             ].map((kpi, i) => (
-              <div key={i} className="group flex flex-col gap-2.5 bg-card border border-border/50 p-4 shadow-sm hover:border-primary/50 transition-colors relative overflow-hidden">
+              <div key={i} className="group flex flex-col gap-2.5 border-b border-black/10 py-4 hover:border-primary/50 transition-colors relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/0 via-primary/0 to-primary/0 group-hover:from-primary/20 group-hover:via-primary group-hover:to-primary/20 transition-all duration-500" />
                 <div className="flex justify-between items-start">
                   <span className="text-[8px] font-bold tracking-[0.2em] uppercase text-muted-foreground flex items-center gap-1.5">

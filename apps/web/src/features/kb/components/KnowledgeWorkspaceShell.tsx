@@ -15,6 +15,7 @@ import { KnowledgeEvidencePanel } from '@/features/kb/components/KnowledgeEviden
 import { KnowledgeRunHistoryPanel } from '@/features/kb/components/KnowledgeRunHistoryPanel';
 import { KnowledgeQuickAskPanel } from '@/features/kb/components/KnowledgeQuickAskPanel';
 import { useKnowledgeRuns } from '@/features/kb/hooks/useKnowledgeRuns';
+import { UploadWorkspace } from '@/features/uploads/components/UploadWorkspace';
 
 export function KnowledgeWorkspaceShell() {
   const navigate = useNavigate();
@@ -135,15 +136,22 @@ export function KnowledgeWorkspaceShell() {
 
           <div className="flex items-center gap-4 shrink-0">
             <button
+              onClick={() => syncTab('uploads')}
+              className="flex items-center gap-2 bg-zinc-900 hover:bg-primary text-white px-6 py-4 font-bold uppercase tracking-wide transition-all  hover: hover:-translate-y-1 hover:-translate-x-1"
+            >
+              <UploadCloud className="w-5 h-5" />
+              上传工作台
+            </button>
+            <button
               onClick={() => setImportDialogOpen(true)}
-              className="flex items-center gap-2 bg-zinc-900 hover:bg-primary text-white px-6 py-4 font-bold uppercase tracking-wide transition-all shadow-[4px_4px_0px_0px_rgba(24,24,27,0.5)] hover:shadow-[4px_4px_0px_0px_rgba(211,84,0,0.8)] hover:-translate-y-1 hover:-translate-x-1"
+              className="flex items-center gap-2 bg-zinc-900 hover:bg-primary text-white px-6 py-4 font-bold uppercase tracking-wide transition-all  hover: hover:-translate-y-1 hover:-translate-x-1"
             >
               <UploadCloud className="w-5 h-5" />
               导入来源
             </button>
             <button
               onClick={() => navigate(`/chat?kbId=${kb.id}`)}
-              className="flex items-center gap-2 bg-primary hover:bg-zinc-900 text-white px-6 py-4 font-bold uppercase tracking-wide transition-all shadow-[4px_4px_0px_0px_rgba(24,24,27,0.5)] hover:shadow-[4px_4px_0px_0px_rgba(211,84,0,0.8)] hover:-translate-y-1 hover:-translate-x-1"
+              className="flex items-center gap-2 bg-primary hover:bg-zinc-900 text-white px-6 py-4 font-bold uppercase tracking-wide transition-all  hover: hover:-translate-y-1 hover:-translate-x-1"
             >
               <MessageSquare className="w-5 h-5" />
               对整个知识库提问
@@ -166,6 +174,13 @@ export function KnowledgeWorkspaceShell() {
                 : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
             }`}>
               <span className="flex items-center justify-center gap-2"><Clock3 className="w-4 h-4" /> 导入状态</span>
+            </TabsTrigger>
+            <TabsTrigger value="uploads" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+              activeTab === 'uploads'
+                ? 'border-primary text-primary bg-primary/5'
+                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
+            }`}>
+              <span className="flex items-center justify-center gap-2"><UploadCloud className="w-4 h-4" /> 上传工作台</span>
             </TabsTrigger>
             <TabsTrigger value="search" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'search'
@@ -208,6 +223,19 @@ export function KnowledgeWorkspaceShell() {
             />
           </TabsContent>
 
+          <TabsContent value="uploads" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <UploadWorkspace
+              kbId={kb.id}
+              onImportStateChanged={() => {
+                void Promise.all([
+                  loadImportJobs({ silent: true }),
+                  loadPapers({ silent: true }),
+                  loadKnowledgeBase({ silent: true }),
+                ]);
+              }}
+            />
+          </TabsContent>
+
           <TabsContent value="search" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
             <KnowledgeEvidencePanel
               searchQuery={search.searchDraft}
@@ -235,6 +263,7 @@ export function KnowledgeWorkspaceShell() {
         onOpenChange={setImportDialogOpen}
         knowledgeBaseId={kb.id}
         knowledgeBaseName={kb.name}
+        onOpenUploadWorkspace={() => syncTab('uploads')}
         onImportComplete={() => {
           void handleImportCompleted();
           toast.success('导入任务已提交');
