@@ -138,6 +138,26 @@ Chat 流协议真源：
 - 改动响应格式：同步更新本文件与调用方。
 - 改动 SSE 事件：同步更新 docs/architecture/system-overview.md。
 
+上传会话（PR19）接口补充：
+
+- `POST /api/v1/import-jobs/{jobId}/upload-sessions`
+  - 用途：创建或恢复本地 PDF 的分片上传会话，支持秒传命中。
+  - 请求：`filename`、`sizeBytes`、`chunkSize`、`sha256`、`mimeType`
+  - 响应：`instantImport` 或 `session`（含 `uploadSessionId`、`missingParts`、`progress`）
+- `GET /api/v1/upload-sessions/{sessionId}`
+  - 用途：拉取会话状态与缺失分片列表，用于断点恢复。
+- `PUT /api/v1/upload-sessions/{sessionId}/parts/{partNumber}`
+  - 用途：上传单个分片（`application/octet-stream`）。
+- `POST /api/v1/upload-sessions/{sessionId}/complete`
+  - 用途：合并分片、写入文件元数据并触发 ImportJob 入队。
+- `POST /api/v1/upload-sessions/{sessionId}/abort`
+  - 用途：终止会话，阻止后续分片写入。
+
+ImportJob `nextAction` 补充：
+
+- 本地文件场景从 `upload_file` 切换为 `create_upload_session`。
+- `createSessionUrl` 指向 `/api/v1/import-jobs/{id}/upload-sessions`。
+
 ## Verification
 
 - 抽样检查新接口响应是否包含 success/data/meta。

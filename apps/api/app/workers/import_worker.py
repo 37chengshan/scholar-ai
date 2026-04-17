@@ -212,8 +212,8 @@ def process_import_job(self, job_id: str):
                             job.error_code = "NO_PDF"
                             job.error_message = "PDF not available, please upload manually"
                             job.next_action = {
-                                "type": "upload_file",
-                                "uploadUrl": f"/api/v1/import-jobs/{job.id}/file",
+                                "type": "create_upload_session",
+                                "createSessionUrl": f"/api/v1/import-jobs/{job.id}/upload-sessions",
                                 "message": "PDF not available, please upload manually",
                             }
                             job.updated_at = datetime.now(timezone.utc)

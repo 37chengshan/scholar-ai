@@ -48,3 +48,35 @@ export interface UploadHistoryRecordDto {
   processingStatus?: string;
   progress?: number;
 }
+
+export interface UploadSessionStateDto {
+  uploadSessionId: string;
+  importJobId: string;
+  status: string;
+  chunkSize: number;
+  totalParts: number;
+  uploadedParts: number[];
+  missingParts: number[];
+  uploadedBytes: number;
+  sizeBytes: number;
+  progress: number;
+  expiresAt: string;
+  completedAt?: string | null;
+}
+
+export interface CreateUploadSessionRequestDto {
+  filename: string;
+  sizeBytes: number;
+  chunkSize: number;
+  sha256?: string;
+  mimeType?: string;
+}
+
+export interface CreateUploadSessionResponseDto {
+  instantImport: boolean;
+  importJobId?: string;
+  paperId?: string;
+  matchedImportJobId?: string;
+  status?: string;
+  session?: UploadSessionStateDto;
+}
