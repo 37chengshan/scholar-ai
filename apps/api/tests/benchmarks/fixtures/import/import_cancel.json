@@ -1,0 +1,1 @@
+{"case_id":"import.cancel","input":{"source":"pdf_url"},"expected":{"status":"cancelled","latency_ms":300}}

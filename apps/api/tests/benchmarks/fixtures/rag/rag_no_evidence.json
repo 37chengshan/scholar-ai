@@ -1,0 +1,1 @@
+{"case_id":"rag.no_evidence","input":{"query":"unsupported claim"},"expected":{"min_source_count":0,"min_citation_count":0,"confidence":0.35,"latency_ms":260}}

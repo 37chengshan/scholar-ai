@@ -1,0 +1,1 @@
+{"case_id":"chat.confirmation","input":{"query":"delete index"},"expected":{"stream_success":true,"confirmation_required":true,"latency_ms":260}}

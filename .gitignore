@@ -109,6 +109,7 @@ backend.pid
 frontend.pid
 runtime/
 artifacts/
+apps/api/artifacts/benchmarks/
 backend-python/docling-models/
 backend-python/htmlcov/
 backend-python/htmlcov_*/

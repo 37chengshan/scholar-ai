@@ -1,0 +1,1 @@
+{"case_id":"chat.simple","input":{"query":"summarize paper"},"expected":{"stream_success":true,"latency_ms":180}}

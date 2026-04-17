@@ -1,0 +1,1 @@
+{"case_id":"search.empty","input":{"query":"zzzz-no-result"},"expected":{"result_count":0,"pagination_stable":true,"latency_ms":140}}
