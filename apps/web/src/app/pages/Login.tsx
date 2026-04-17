@@ -346,15 +346,6 @@ export function Login() {
                 </span>
                 {!isLoading && <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />}
               </button>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <button type="button" className="w-full bg-muted/50 border border-border/50 text-foreground py-3 flex items-center justify-center gap-2 rounded-sm hover:bg-muted transition-colors">
-                  <span className="text-[9px] font-bold tracking-[0.2em] uppercase">{t.sso}</span>
-                </button>
-                <button type="button" className="w-full bg-muted/50 border border-border/50 text-foreground py-3 flex items-center justify-center gap-2 rounded-sm hover:bg-muted transition-colors">
-                  <span className="text-[9px] font-bold tracking-[0.2em] uppercase">{t.requestAccess}</span>
-                </button>
-              </div>
             </div>
           </form>
 

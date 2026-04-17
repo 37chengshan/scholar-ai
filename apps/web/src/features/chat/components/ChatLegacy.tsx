@@ -1034,12 +1034,12 @@ export function ChatLegacy() {
                       )}
                     >
                       {msg.role === "assistant" && (
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-4 h-4 text-primary" />
+                        <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 border-b border-ink/20 mt-4 mb-auto">
+                          <span className="font-serif text-[10px] font-black uppercase tracking-widest text-ink">AI</span>
                         </div>
                       )}
 
-                      <div className="flex-1 max-w-[80%] space-y-2">
+                      <div className="flex-1 max-w-[80%] space-y-4">
                         {/* Thinking Process for streaming messages */}
                         {isStreaming &&
                           (msg.reasoningBuffer ||
@@ -1085,11 +1085,11 @@ export function ChatLegacy() {
 
                         {/* Message Content */}
                         <div
-                          className={clsx(
-                            "max-w-[100%] rounded-2xl px-4 py-3 shadow-md border",
+                           className={clsx(
+                            "max-w-full font-serif text-[15px] leading-loose py-4 px-2",
                             msg.role === "user"
-                              ? "bg-primary text-primary-foreground border-primary/20"
-                              : "bg-muted border-primary/10 border-l-2",
+                              ? "font-medium text-ink bg-transparent border-l-2 border-ink/20 pl-6 rounded-none shadow-none"
+                              : "bg-paper text-ink rounded-none shadow-none"
                           )}
                         >
                           {((msg.citations?.length ?? 0) > 0 ||
@@ -1103,10 +1103,10 @@ export function ChatLegacy() {
                             isStreaming ? (
                               <TypingText
                                 text={msg.content}
-                                className="text-sm"
+                                className="text-[15px] leading-loose"
                               />
                             ) : (
-                              <div className="text-sm whitespace-pre-wrap">
+                              <div className="text-[15px] leading-loose whitespace-pre-wrap">
                                 {msg.content}
                               </div>
                             )
@@ -1119,10 +1119,10 @@ export function ChatLegacy() {
 
                           <div
                             className={clsx(
-                              "text-xs mt-1.5",
+                              "text-[10px] font-mono tracking-widest mt-2 uppercase",
                               msg.role === "user"
-                                ? "text-primary-foreground/70"
-                                : "text-muted-foreground",
+                                ? "text-ink/40"
+                                : "text-ink/40",
                             )}
                           >
                             {formatTime(msg.created_at)}
@@ -1229,19 +1229,19 @@ export function ChatLegacy() {
                 </div>
               </div>
             )}
-            <div className="flex items-end gap-3 bg-card rounded-xl border border-border p-2">
+            <div className="flex items-end gap-3 bg-transparent rounded-none border-b border-ink/20 focus-within:border-ink/50 transition-colors p-2">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={t.placeholder}
-                className="flex-1 p-2 text-sm bg-transparent resize-none focus:outline-none min-h-[40px] max-h-[120px]"
+                className="flex-1 p-2 text-[15px] font-serif bg-transparent resize-none outline-none min-h-[40px] max-h-[160px] placeholder:font-sans placeholder:text-[13px] placeholder:uppercase placeholder:tracking-widest"
                 rows={1}
                 disabled={streamState.streamStatus === "streaming" || sending}
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
                   target.style.height = "auto";
-                  target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+                  target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
                 }}
               />
               <button
@@ -1252,26 +1252,26 @@ export function ChatLegacy() {
                   sending
                 }
                 className={clsx(
-                  "w-10 h-10 rounded-lg flex items-center justify-center transition-all",
+                  "w-10 h-10 rounded-full flex items-center justify-center transition-all disabled:opacity-30",
                   input.trim() &&
                     streamState.streamStatus !== "streaming" &&
                     !sending
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    ? "bg-ink text-paper hover:bg-ink/80"
                     : "bg-muted text-muted-foreground",
                 )}
               >
                 {streamState.streamStatus === "streaming" || sending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Send className="w-4 h-4" />
+                  <Send className="w-4 h-4 -ml-0.5" />
                 )}
               </button>
             </div>
-            <div className="flex justify-between items-center mt-2 px-1 text-xs text-muted-foreground">
+            <div className="flex justify-between items-center mt-4 px-1 font-mono text-[9px] uppercase tracking-widest text-ink/40">
               <span className="flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" /> {t.verify}
               </span>
-              <span>Return {isZh ? "发送" : "to send"}</span>
+              <span>↵ {isZh ? "发送" : "TO SEND"}</span>
             </div>
           </div>
         </div>

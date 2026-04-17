@@ -66,7 +66,7 @@ export function KnowledgeBaseCard({
   return (
     <Card
       data-kb-id={id}
-      className="group relative flex flex-col bg-white border-2 border-zinc-900 hover:border-primary transition-all shadow-[8px_8px_0px_0px_rgba(24,24,27,1)] hover:shadow-[12px_12px_0px_0px_rgba(211,84,0,1)] rounded-none overflow-hidden cursor-pointer"
+      className="group relative flex flex-col bg-paper border border-ink/10 hover:border-ink/20 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-none overflow-hidden cursor-pointer"
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("button")) return;
         onEnter();
@@ -144,34 +144,22 @@ export function KnowledgeBaseCard({
       </CardContent>
 
       {/* Bottom divider + stats */}
-      <div className="px-6 pb-4 pt-0 border-t-2 border-zinc-900 mt-auto">
-        <div className="flex items-center gap-x-4 gap-y-1.5 py-2.5 text-xs">
-          <span className="flex items-center gap-1.5 text-zinc-600">
-            <FileText className="w-3.5 h-3.5 opacity-50" />
-            <span className="font-bold text-zinc-900">{paperCount}</span>
-            <span>论文</span>
-          </span>
-          <span className="flex items-center gap-1.5 text-zinc-600">
-            <Layers className="w-3.5 h-3.5 opacity-50" />
-            <span className="font-bold text-zinc-900">{formatCount(chunkCount)}</span>
-            <span>切片</span>
-          </span>
-          {entityCount > 0 ? (
-            <span className="flex items-center gap-1.5 text-zinc-600">
-              <Network className="w-3.5 h-3.5 opacity-50" />
-              <span className="font-bold text-zinc-900">{formatCount(entityCount)}</span>
-              <span>实体</span>
+      <div className="px-6 pb-4 pt-4 border-t border-ink/10 mt-auto bg-muted/5 group-hover:bg-muted/10 transition-colors duration-500">
+        <div className="flex items-center justify-between text-xs text-ink/70">
+          <div className="flex items-center gap-x-4 gap-y-1.5 font-sans tracking-wide">
+            <span className="flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 opacity-60" />
+              <span className="font-semibold text-ink">{paperCount}</span>
             </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-zinc-400">
-              <Network className="w-3.5 h-3.5" />
-              <span>未构建图谱</span>
+            <span className="flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 opacity-60" />
+              <span className="font-semibold text-ink">{formatCount(chunkCount)}</span>
             </span>
-          )}
+          </div>
+          <span className="font-mono text-[10px] tracking-widest uppercase opacity-50">
+            {formatDate(updatedAt)}
+          </span>
         </div>
-        <p className="text-xs text-zinc-400 font-medium">
-          {formatDate(updatedAt)} 更新
-        </p>
       </div>
     </Card>
   );

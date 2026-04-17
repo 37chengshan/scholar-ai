@@ -62,6 +62,30 @@
 4.  **Markdown 渲染器的定制 (Prose Styling)**：
     深度定制 `@tailwindcss/typography` (`prose`)，使得 Markdown 渲染出的引言 (Blockquote) 两侧加粗竖线，代码块底色变为冷灰色 (`bg-slate-50`)，确保与文字内容的和谐。
 
-## 3. 落地实施建议
-*   **依赖更新**: 引入 `framer-motion` (做页面转场与元素缓动), `radix-ui` (做无头组件的可访问性) 和 `lucide-react` (统一线条化 Icon)。
-*   **开发步骤**: 第 1 步先重构 `Layout.tsx` 和 `tailwind.config.ts` 的排版原子层；第 2 步优化 Chat 气泡与引用展示；第 3 步重做所有 Loading 与转场态。
+## 3. 详细实施步骤与交付清单 (Implementation Steps & Delivery Checklist)
+
+### 步骤一：Login 页面精简与视觉强化 (Auth Page Refinement)
+*   **清理冗余元素**：移除登录表单下方“SSO”与“Request Access”两个当前不完整的占位按钮，保持界面的绝对专注。
+*   **体验升级**：强化无边框下划线输入框的 `focus` 态动效，统一文字和图标的排印，增强纯粹的杂志感。
+
+### 步骤二：知识库与列表页优化 (KB & Layout Streamlining)
+*   **列表卡片互动强化**：优化 `KnowledgeBaseList.tsx` 卡片悬停时的阴影与边框过渡（平滑的 Y 轴浮动与颜色深化），摒弃生硬的 Box Shadow。
+*   **网格与留白（Whitespace）**：扩大卡片的 Padding，使用标准化的 16px/24px/32px 间距，让内容“呼吸”。
+
+### 步骤三：Chat 面板与 RAG 体验升级 (Editorial Chat Refresh)
+*   **消息分格重构**：调整 `ChatLegacy.tsx` 或新的 Chat 组件，弱化传统气泡的包裹感，采用无边框的流式排版（用不同背景底色层级或头像来区分系统与用户）。
+*   **侧边面板美化**：优化思维链（Thought Process）与上下文（Context/Citations）的折叠或展示方式，使之与对话流并排但不冲突。
+
+### 步骤四：全局细节润色 (Global Typography & Polish)
+*   **边框重构**：移除各组件中的生硬黑框，改为淡雅的 `border-t border-ink/10` 或 `border-b` 发丝线风格。
+*   **排版对齐**：检查所有 `font-serif` 和 `font-mono` 的混排位置，修复 `leading` 和 `tracking` 以适配 The Magazine 核心主线。
+
+---
+
+## 4. 交付物清单 (Delivery Checklist)
+- [ ] 移除 `Login.tsx` 中的不必要按钮 (SSO / Request Access)。
+- [ ] 优化 `Login.tsx` 表单交互细节。
+- [ ] 美化 `KnowledgeBaseList.tsx` 和知识库页面的卡片 hover 状态及对齐。
+- [ ] 重塑 Chat 界面的气泡、Typography 及 Reasoning 状态展示。
+- [ ] 运行 TypeScript `tsc` 和构建检查确保无损。
+- [ ] 提交 PR `feat/pr8-ui-optimization` 并推送到远端。
