@@ -21,7 +21,7 @@ export function SearchToolbar({
     <div className="px-5 py-4 border-b border-border/50 bg-background/90 backdrop-blur-md sticky top-0 z-10 flex flex-col gap-3 shadow-sm">
       <div className="flex justify-between items-center gap-4">
         <div className="relative flex-1 max-w-2xl">
-          <div className="flex items-center gap-3 bg-card border border-primary/30 p-1 rounded-full focus-within:border-primary transition-colors shadow-sm group">
+          <div className="flex items-center gap-3 bg-transparent border-b-[3px] border-black/20 pb-2 focus-within:border-orange-600 transition-colors group">
             <SearchIcon className="w-4 h-4 text-primary ml-3" />
             <input
               type="text"

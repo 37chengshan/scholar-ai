@@ -161,39 +161,46 @@ class ImportJobService:
     async def update_status(
         self,
         job: ImportJob,
-        status: str,
-        stage: str,
-        progress: int,
-        db: AsyncSession,
+        status: Optional[str] = None,
+        stage: Optional[str] = None,
+        progress: Optional[int] = None,
+        db: AsyncSession = None,
         next_action: Optional[Dict[str, Any]] = None,
     ) -> ImportJob:
         """Update state machine with optional next_action.
 
         Args:
             job: ImportJob instance
-            status: New status
-            stage: New stage
-            progress: New progress (0-100)
+            status: New status. If omitted, keep current status.
+            stage: New stage. If omitted, keep current stage.
+            progress: New progress (0-100). If omitted, keep current progress.
             next_action: Optional next_action dict
             db: Database session
 
         Returns:
             Updated ImportJob
         """
-        job.status = status
-        job.stage = stage
-        job.progress = progress
+        if db is None:
+            raise ValueError("db session is required")
+
+        resolved_status = status or job.status
+        resolved_stage = stage or job.stage
+        resolved_progress = job.progress if progress is None else progress
+
+        job.status = resolved_status
+        job.stage = resolved_stage
+        job.progress = resolved_progress
         job.updated_at = datetime.now(timezone.utc)
 
         if next_action is not None:
             job.next_action = next_action
 
         # Update timestamp fields based on status
-        if status == "running" and job.started_at is None:
+        if resolved_status == "running" and job.started_at is None:
             job.started_at = datetime.now(timezone.utc)
-        elif status == "completed":
+        elif resolved_status == "completed":
             job.completed_at = datetime.now(timezone.utc)
-        elif status == "cancelled":
+        elif resolved_status == "cancelled":
             job.cancelled_at = datetime.now(timezone.utc)
 
         await db.commit()
@@ -202,9 +209,9 @@ class ImportJobService:
         logger.info(
             "ImportJob status updated",
             job_id=job.id,
-            status=status,
-            stage=stage,
-            progress=progress,
+            status=resolved_status,
+            stage=resolved_stage,
+            progress=resolved_progress,
             next_action=next_action,
         )
 

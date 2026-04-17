@@ -233,6 +233,7 @@ class Settings(BaseSettings):
     PARSER_GENERATE_PICTURE_IMAGES: bool = True  # Extract images
     PARSER_GENERATE_TABLE_IMAGES: bool = True  # Extract tables
     PARSER_OCR_LANGUAGE: str = "en,zh"  # English + Chinese
+    PARSER_OCR_RETRY_MIN_CHARS_PER_PAGE: int = 80  # Native parse fallback threshold
     PARSER_MAX_PAGES: int = 100  # Maximum pages to parse
     PARSER_MAX_FILE_SIZE_MB: int = 50  # Maximum file size (MB)
     PARSER_TIMEOUT_SECONDS: int = 300  # Parsing timeout (seconds)

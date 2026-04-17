@@ -1,8 +1,20 @@
-# PR-6 ~ PR-8 实施方案：Chat 稳定性 / Agent-Native → RAG 解析升级 → RAG 问答升级
+---
+owner: ai-runtime
+status: in-progress
+depends_on:
+   - PR5
+   - PR10
+last_verified_at: 2026-04-17
+evidence_commits:
+   - wip-pr7-pr8
+   - wip-review-2026-04-17
+---
+
+# PR-7 ~ PR-8 实施方案：Chat 稳定性 / Agent-Native → RAG 解析升级 → RAG 问答升级
 
 > 适用前提：
-> - **PR #4**（物理迁移到 `apps/*`）已完成
-> - **PR #5**（迁移后稳定化）已完成
+> - **PR #3**（物理迁移到 `apps/*`）已完成
+> - **PR #4**（迁移后稳定化）已完成
 > - 假设 **PR-5 共享契约收口 + 前端工作台可用性** 已完成
 >
 > 本文档给出后续三段工作的实现方案：
@@ -107,6 +119,7 @@
 - **Agency**：Agent 要能自主规划、重试、验证，而不是只做一轮 prompt-response。 
 
 这些原则会直接影响 Chat 稳定性设计、SSE 事件模型、检索编排与回答校验。参见《Agent-Native 架构开发指南》关于核心原则、状态机、工具设计与 UX 模式的说明 fileciteturn32file0
+这些原则会直接影响 Chat 稳定性设计、SSE 事件模型、检索编排与回答校验。实现时需与仓内现有 API 契约和事件语义保持一致，避免新增不可回放或不可验证的隐式状态。
 
 ---
 

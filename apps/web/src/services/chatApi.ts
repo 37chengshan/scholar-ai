@@ -38,8 +38,12 @@ const chatSessionsApiClient = createChatSessionsApi(sdkHttpClient);
  * @returns Created session
  */
 export async function createSession(): Promise<Session> {
-  const session = await chatApiClient.createSession();
-  return session as unknown as Session;
+  const response = await sdkHttpClient.post('/api/v1/sessions', {
+    title: '新对话',
+    status: 'active',
+    metadata: {},
+  });
+  return (response as { data?: Session }).data ?? (response as Session);
 }
 
 /**

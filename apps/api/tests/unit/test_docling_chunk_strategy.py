@@ -73,6 +73,36 @@ class TestChunkStrategy:
         assert len(chunks) == 1
         assert chunks[0]["adaptive_size"] == 700
 
+    def test_chunk_overlap_zero_is_preserved(self):
+        parser = DoclingParser.__new__(DoclingParser)
+        captured_kwargs = {}
+
+        items = [
+            {
+                "type": "text",
+                "text": "This chunk should keep explicit zero overlap when configured.",
+                "page": 1,
+            }
+        ]
+
+        def capture_merge(chunks, **kwargs):
+            captured_kwargs.update(kwargs)
+            return chunks
+
+        with patch.object(
+            parser,
+            "_merge_small_chunks_with_overlap",
+            side_effect=capture_merge,
+        ):
+            DoclingParser.chunk_by_semantic(
+                parser,
+                items=items,
+                paper_id="paper-overlap",
+                chunk_overlap=0,
+            )
+
+        assert captured_kwargs["overlap"] == 0
+
 
 class TestParseMetadata:
     """Validate parse mode tracking and OCR fallback metadata."""
@@ -110,5 +140,36 @@ class TestParseMetadata:
         assert metadata["ocr_used"] is True
         assert "low_text_density_retry_with_ocr" in metadata["parse_warnings"]
         assert metadata["chunk_strategy"]["mode"] == "section_adaptive"
+
+        Path(tmp_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_parse_pdf_keeps_native_mode_when_density_is_sufficient(self):
+        parser = DoclingParser(config=ParserConfig(do_ocr=True))
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(b"%PDF-1.4 test")
+            tmp_path = tmp.name
+
+        native_doc = Mock()
+        native_doc.export_to_markdown.return_value = "This is dense native text " * 40
+        native_doc.iterate_items.return_value = []
+        native_doc.pages = [Mock(), Mock()]
+        native_doc.name = "native.pdf"
+
+        native_result = Mock(document=native_doc)
+
+        with patch.object(parser.native_converter, "convert", return_value=native_result) as native_convert, patch.object(
+            parser.ocr_converter,
+            "convert",
+            side_effect=AssertionError("OCR fallback should not run for dense native text"),
+        ):
+            result = await parser.parse_pdf(tmp_path)
+
+        metadata = result["metadata"]
+        assert metadata["parse_mode"] == "native"
+        assert metadata["ocr_used"] is False
+        assert metadata["parse_warnings"] == []
+        native_convert.assert_called_once()
 
         Path(tmp_path).unlink(missing_ok=True)

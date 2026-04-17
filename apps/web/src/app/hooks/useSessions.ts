@@ -21,6 +21,10 @@ export interface ChatSession {
   updatedAt?: string;
 }
 
+function isValidSession(session: ChatSession | null | undefined): session is ChatSession {
+  return Boolean(session && typeof session.id === 'string' && session.id.length > 0);
+}
+
 export interface ChatMessage {
   id: string;
   session_id: string;
@@ -62,11 +66,14 @@ export function useSessions(): UseSessionsReturn {
     setError(null);
     try {
       const data = await sessionsApi.listSessions(50, 'active');
-      setSessions(data || []);
-      
-      if (data && data.length > 0) {
-        const lastSession = data[0];
+      const normalized = (data || []).filter((session) => isValidSession(session));
+      setSessions(normalized);
+
+      if (normalized.length > 0) {
+        const lastSession = normalized[0];
         setCurrentSession(lastSession);
+      } else {
+        setCurrentSession(null);
       }
     } catch (err) {
       console.error('[useSessions] Load error:', err);

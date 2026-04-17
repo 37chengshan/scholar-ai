@@ -165,6 +165,12 @@ export function ChatLegacy() {
   const [scope, setScope] = useState<ChatScope>({ type: null, id: null });
   const [scopeLoading, setScopeLoading] = useState(false);
 
+  const safeToolTimeline = (toolTimeline?: ToolTimelineItem[]) =>
+    (toolTimeline ?? []).filter(Boolean);
+
+  const safeCitations = (citations?: CitationItem[]) =>
+    (citations ?? []).filter(Boolean);
+
   // Sprint 3: mode state for fast/slow path
   // - 'auto': complexity-based routing (default)
   // - 'rag': force fast path (RAG only, no agent tool loop)
@@ -280,6 +286,10 @@ export function ChatLegacy() {
   const [placeholderId, setPlaceholderId] = useState<string | null>(null);
 
   const isZh = language === "zh";
+  const safeSessions = useMemo(
+    () => sessions.filter((session) => Boolean(session?.id)),
+    [sessions],
+  );
 
   const handleExitScope = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -588,7 +598,7 @@ export function ChatLegacy() {
                   content: buffered.content,
                   reasoningBuffer: buffered.reasoning,
                   streamStatus: streamStateRef.current.streamStatus,
-                  toolTimeline: streamStateRef.current.toolTimeline.map((t) => ({
+                  toolTimeline: safeToolTimeline(streamStateRef.current.toolTimeline).map((t) => ({
                     id: t.id,
                     tool: t.tool,
                     label: t.label,
@@ -598,7 +608,7 @@ export function ChatLegacy() {
                     duration: t.duration,
                     summary: t.summary,
                   })),
-                  citations: streamStateRef.current.citations.map((c) => ({
+                  citations: safeCitations(streamStateRef.current.citations).map((c) => ({
                     paper_id: c.paper_id,
                     title: c.title,
                     authors: c.authors,
@@ -773,7 +783,7 @@ export function ChatLegacy() {
 
   // Compute execution steps for sidebar from tool timeline
   const executionSteps = useMemo<ExecutionStep[]>(() => {
-    return streamState.toolTimeline.map((item) => ({
+    return safeToolTimeline(streamState.toolTimeline).map((item) => ({
       tool: item.tool,
       action: item.label || item.tool,
       status:
@@ -941,17 +951,17 @@ export function ChatLegacy() {
             {t.history}
           </div>
 
-          {loading && sessions.length === 0 ? (
+          {loading && safeSessions.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-          ) : sessions.length === 0 ? (
+          ) : safeSessions.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
               {t.newChat}
             </div>
           ) : (
             <div className="space-y-1">
-              {sessions.map((session) => (
+              {safeSessions.map((session) => (
                 <div
                   key={session.id}
                   onClick={() => handleSwitchSession(session.id)}
@@ -1068,7 +1078,7 @@ export function ChatLegacy() {
                           ((msg.toolTimeline?.length ?? 0) > 0 ||
                             streamState.toolTimeline.length > 0) && (
                             <div className="space-y-2">
-                              {(
+                              {safeToolTimeline(
                                 msg.toolTimeline || streamState.toolTimeline
                               ).map((tc) => (
                                 <ToolCallCard
@@ -1093,8 +1103,8 @@ export function ChatLegacy() {
                            className={clsx(
                             "max-w-full font-serif text-[15px] leading-loose py-4 px-2",
                             msg.role === "user"
-                              ? "font-medium text-ink bg-transparent border-l-2 border-ink/20 pl-6 rounded-none shadow-none"
-                              : "bg-paper text-ink rounded-none shadow-none"
+                              ? "font-bold text-right bg-transparent rounded-none shadow-none text-foreground text-lg leading-relaxed relative border-b-2 border-transparent"
+                              : "bg-transparent text-foreground rounded-none shadow-none border-l-[1px] border-black pl-6 magazine-body max-w-prose mx-auto"
                           )}
                         >
                           {((msg.citations?.length ?? 0) > 0 ||
@@ -1139,7 +1149,7 @@ export function ChatLegacy() {
                           (isPlaceholder &&
                             streamState.citations.length > 0)) && (
                           <CitationsPanel
-                            citations={(
+                            citations={safeCitations(
                               msg.citations || streamState.citations
                             ).map((c) => ({
                               paper_id: c.paper_id,

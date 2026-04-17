@@ -1,3 +1,12 @@
+---
+owner: platform
+status: in-progress
+depends_on: []
+last_verified_at: 2026-04-17
+evidence_commits:
+  - plan-audit-report-2026-04-17
+---
+
 # ScholarAI 结构问题整改计划 v1
 
 ## 1. 文档目的

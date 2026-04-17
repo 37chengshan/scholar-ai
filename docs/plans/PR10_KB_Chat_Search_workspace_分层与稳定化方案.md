@@ -1,3 +1,16 @@
+---
+owner: web-platform
+status: in-progress
+depends_on:
+  - PR5
+last_verified_at: 2026-04-17
+evidence_commits:
+  - 9a7332e
+  - 9208b73
+  - cecfccf
+  - wip-review-2026-04-17
+---
+
 # PR10：KB / Chat / Search 从 shell migration 推进成真正的 workspace 分层与稳定化
 
 ## 1. 目标

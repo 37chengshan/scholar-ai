@@ -6,7 +6,7 @@ import os
 os.environ.setdefault("ZHIPU_API_KEY", "test-api-key")
 os.environ.setdefault("ENVIRONMENT", "test")
 
-from app.api.rag import calculate_confidence
+from app.api.rag import calculate_confidence, normalize_source_contract
 
 
 def test_confidence_zero_without_sources():
@@ -58,3 +58,45 @@ def test_confidence_accepts_legacy_similarity_field():
 
     value = calculate_confidence(answer, sources)
     assert 0.0 < value <= 1.0
+
+
+def test_normalize_source_contract_keeps_canonical_fields():
+    source = {
+        "paper_id": "p1",
+        "score": 0.91,
+        "page_num": 8,
+        "text_preview": "canonical",
+        "content_preview": "legacy-preview",
+    }
+
+    normalized = normalize_source_contract(source)
+
+    assert normalized["score"] == 0.91
+    assert normalized["page_num"] == 8
+    assert normalized["text_preview"] == "canonical"
+    assert normalized["content_preview"] == "legacy-preview"
+
+
+def test_normalize_source_contract_falls_back_to_legacy_aliases():
+    source = {
+        "paper_id": "p2",
+        "similarity": 0.66,
+        "page": 4,
+        "content_preview": "legacy content",
+    }
+
+    normalized = normalize_source_contract(source)
+
+    assert normalized["score"] == 0.66
+    assert normalized["page_num"] == 4
+    assert normalized["text_preview"] == "legacy content"
+
+
+def test_confidence_uses_canonical_score_over_legacy_similarity():
+    answer = "Confidence should use canonical score when both are present."
+    canonical_sources = [{"paper_id": "p1", "score": 0.9, "similarity": 0.1}]
+    legacy_only_sources = [{"paper_id": "p1", "similarity": 0.1}]
+
+    assert calculate_confidence(answer, canonical_sources) > calculate_confidence(
+        answer, legacy_only_sources
+    )

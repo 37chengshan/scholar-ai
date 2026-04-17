@@ -46,6 +46,7 @@ interface ImportDialogProps {
   knowledgeBaseId: string;
   knowledgeBaseName: string;
   onImportComplete?: () => void | Promise<void>;
+  onOpenUploadWorkspace?: () => void;
   // prefilledSource reserved for Wave 5 (Search page integration)
   prefilledSource?: {
     sourceType: SourceType;
@@ -97,6 +98,7 @@ export function ImportDialog({
   knowledgeBaseId,
   knowledgeBaseName,
   onImportComplete,
+  onOpenUploadWorkspace,
   prefilledSource,
 }: ImportDialogProps) {
   const navigate = useNavigate();
@@ -334,6 +336,23 @@ export function ImportDialog({
       case 'local':
         return (
           <>
+            <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">推荐：上传工作台</p>
+                <p className="text-xs text-muted-foreground">支持网络断开暂停、重连后恢复，以及上传关键数据记录。</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  handleOpenChange(false);
+                  onOpenUploadWorkspace?.();
+                }}
+              >
+                进入工作台
+              </Button>
+            </div>
+
             <div
               className={cn(
                 'border-2 border-dashed rounded-lg p-8 text-center transition-colors',

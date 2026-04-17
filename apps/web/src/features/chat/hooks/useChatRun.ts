@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { AgentRun, RunScope, RunStatus } from '@/features/chat/types/run';
+import { useShallow } from 'zustand/react/shallow';
 import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore';
 
 function deriveScope(scope: { paperId: string | null; kbId: string | null }): RunScope {
@@ -40,7 +41,17 @@ export function useChatRun(): { activeRun: AgentRun } {
     selectedRunId,
     activeRunStatus,
     pendingActions,
-  } = useChatWorkspaceStore();
+  } = useChatWorkspaceStore(
+    useShallow((state) => ({
+      scope: state.scope,
+      mode: state.mode,
+      selectedSessionId: state.selectedSessionId,
+      selectedMessageId: state.selectedMessageId,
+      selectedRunId: state.selectedRunId,
+      activeRunStatus: state.activeRunStatus,
+      pendingActions: state.pendingActions,
+    }))
+  );
 
   const activeRun = useMemo<AgentRun>(() => ({
     runId: selectedRunId,

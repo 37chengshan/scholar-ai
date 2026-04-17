@@ -334,7 +334,8 @@ async def stream_rag_response(
     paper_ids: list[str],
     conversation_id: Optional[str] = None,
     query_type: str = "single",
-    top_k: int = 5
+    top_k: int = 5,
+    user_id: Optional[str] = None,
 ) -> StreamingResponse:
     """
     High-level function to stream RAG response with real LLM generation.
@@ -354,13 +355,16 @@ async def stream_rag_response(
     from app.core.multimodal_search_service import get_multimodal_search_service
     from app.utils.zhipu_client import ZhipuLLMClient
     import asyncio
+
+    if not user_id:
+        raise ValueError("user_id is required for stream_rag_response")
     
     # Retrieve relevant chunks
     service = get_multimodal_search_service()
     result = await service.search(
         query=query,
         paper_ids=paper_ids,
-        user_id="stream",  # Placeholder for streaming
+        user_id=user_id,
         top_k=top_k,
         use_reranker=True
     )
@@ -416,11 +420,32 @@ Please provide a comprehensive answer based on the context above."""
             # Send citations
             citations = []
             for i, chunk in enumerate(context_chunks[:5], 1):
+                page_num = chunk.get("page_num")
+                if page_num is None:
+                    page_num = chunk.get("page")
+
+                text_preview = (
+                    chunk.get("text_preview")
+                    or chunk.get("content_preview")
+                    or chunk.get("snippet")
+                    or chunk.get("content_data", "")
+                )
+                text_preview = (text_preview or "")[:200]
+
+                score = chunk.get("score")
+                if score is None:
+                    score = chunk.get("similarity", 0.0)
+
                 citations.append({
                     "citation_number": i,
                     "paper_id": chunk.get("paper_id"),
-                    "content_preview": chunk.get("content_data", "")[:200],
-                    "score": chunk.get("score", 0.0)
+                    "section": chunk.get("section"),
+                    "score": score,
+                    "page_num": page_num,
+                    "text_preview": text_preview,
+                    # Legacy aliases kept for backward compatibility.
+                    "page": chunk.get("page", page_num),
+                    "content_preview": chunk.get("content_preview", text_preview),
                 })
             
             if citations:
@@ -432,7 +457,7 @@ Please provide a comprehensive answer based on the context above."""
             
         except Exception as e:
             logger.error(f"Streaming error: {e}")
-            error_event = StreamError(content=str(e))
+            error_event = StreamError(content="Streaming generation failed")
             yield format_sse_event(error_event.model_dump())
             yield format_sse_done()
     

@@ -56,12 +56,12 @@ export async function getSessionMessages(sessionId: string, limit = 100): Promis
 }
 
 export async function createSession(title = '新对话'): Promise<SessionRecord> {
-  const session = await chatApiClient.createSession();
-  if (title && session.title !== title) {
-    const updated = await chatApiClient.updateSession(session.id, title);
-    return updated as unknown as SessionRecord;
-  }
-  return session as unknown as SessionRecord;
+  const response = await apiClient.post<{ success: boolean; data: SessionRecord }>('/api/v1/sessions', {
+    title,
+    status: 'active',
+    metadata: {},
+  });
+  return response.data.data;
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {

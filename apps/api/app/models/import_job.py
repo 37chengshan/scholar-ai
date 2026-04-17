@@ -61,13 +61,13 @@ class ImportJob(Base):
 
     # Foreign keys
     user_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("users.id"), nullable=False
+        String(64), ForeignKey("users.id"), nullable=False
     )
     knowledge_base_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("knowledge_bases.id"), nullable=False
+        String(64), ForeignKey("knowledge_bases.id"), nullable=False
     )
     batch_id: Mapped[Optional[str]] = mapped_column(
-        String(32), ForeignKey("import_batches.id"), nullable=True
+        String(64), ForeignKey("import_batches.id"), nullable=True
     )  # Wave 3 linkage to ImportBatch
 
     # Source identification
@@ -110,7 +110,7 @@ class ImportJob(Base):
         String(32), nullable=True
     )  # paper_id/doi/arxiv_same_version/pdf_sha256/...
     dedupe_match_paper_id: Mapped[Optional[str]] = mapped_column(
-        String(32), nullable=True
+        String(64), nullable=True
     )
     dedupe_decision: Mapped[Optional[str]] = mapped_column(
         String(32), nullable=True
@@ -150,10 +150,10 @@ class ImportJob(Base):
 
     # Result linkage
     paper_id: Mapped[Optional[str]] = mapped_column(
-        String(32), ForeignKey("papers.id"), nullable=True
+        String(64), ForeignKey("papers.id"), nullable=True
     )
     processing_task_id: Mapped[Optional[str]] = mapped_column(
-        String(32), ForeignKey("processing_tasks.id"), nullable=True
+        String(64), ForeignKey("processing_tasks.id"), nullable=True
     )
 
     # Error handling
