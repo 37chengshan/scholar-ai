@@ -5,7 +5,7 @@
 
 ## 1. 当前视觉表现与体验问题 (Current UX/UI Friction)
 
-### 1   .1 页面空间节奏感不足
+### 1.1 页面空间节奏感不足
 虽然在 `KnowledgeBaseList.tsx` 和 `Layout.tsx` 中使用了 `font-serif` 和特定的间距，但在大屏显示时，边距可能过于拘泥于 `max-w-6xl`。**优化点**：增强网格系统，提供动态拉伸。
 
 ### 1.2 弹窗(Dialogs)与抽屉(Drawers)的生硬感
