@@ -33,7 +33,11 @@ export function KnowledgeWorkspaceShell() {
   const { kbId, kb, papers, importJobs, loadingKB, papersLoading, loadImportJobs, loadPapers, loadKnowledgeBase } = queries;
 
   const hasRunningJobs = importJobs.some(
-    (job) => job.status === 'created' || job.status === 'running' || job.status === 'awaiting_user_action'
+    (job) =>
+      job.status === 'created' ||
+      job.status === 'queued' ||
+      job.status === 'running' ||
+      job.status === 'awaiting_user_action'
   );
 
   useImportJobsPolling({

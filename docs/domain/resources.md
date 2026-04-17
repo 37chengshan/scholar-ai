@@ -20,6 +20,8 @@
 核心资源清单：
 
 - Paper：论文与元数据
+- ImportJob：导入任务与状态机
+- UploadSession：分片上传会话与断点恢复状态
 - Collection：文献集合与组织单元
 - Chunk：文本切片与向量化单元
 - ChatSession：会话上下文
@@ -39,6 +41,8 @@
 状态机：
 
 - Paper：uploaded -> parsing -> parsed -> indexed -> archived | failed
+- ImportJob：created -> queued -> running -> awaiting_user_action -> completed | failed | cancelled
+- UploadSession：created -> uploading -> completed | aborted | failed
 - Task：queued -> running -> succeeded | failed | canceled
 - ChatSession：active -> closed | archived
 - IndexArtifact：building -> ready | failed -> rebuilding
@@ -58,6 +62,8 @@
 可被异步任务修改的资源：
 
 - Paper（解析与索引状态）
+- ImportJob（导入阶段、错误态、重试态）
+- UploadSession（分片进度、缺片集合、完成态）
 - Chunk（生成、重算、清理）
 - Task（执行状态）
 - IndexArtifact（构建状态）

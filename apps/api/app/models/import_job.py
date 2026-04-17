@@ -47,7 +47,7 @@ class ImportJob(Base):
     Per D-08: State machine with status/stage/progress tracking.
 
     next_action JSONB field guides frontend on what to do next:
-    - {"type": "upload_file", "uploadUrl": "/api/v1/import-jobs/{id}/file"}
+    - {"type": "create_upload_session", "createSessionUrl": "/api/v1/import-jobs/{id}/upload-sessions"}
     - {"type": "awaiting_dedupe_decision", "matchedPaperId": "..."}
     - {"type": "retry", "message": "..."}
     """
@@ -168,7 +168,7 @@ class ImportJob(Base):
     # Frontend guidance - ADDED per plan fix
     next_action: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     # Example values:
-    # {"type": "upload_file", "uploadUrl": "/api/v1/import-jobs/{id}/file"}
+    # {"type": "create_upload_session", "createSessionUrl": "/api/v1/import-jobs/{id}/upload-sessions"}
     # {"type": "awaiting_dedupe_decision", "matchedPaperId": "..."}
     # {"type": "retry", "message": "..."}
 
@@ -223,10 +223,10 @@ class ImportJob(Base):
         return f"<ImportJob(id={self.id}, source_type={self.source_type}, status={self.status})>"
 
     def set_next_action_upload(self) -> None:
-        """Set next_action for local file upload."""
+        """Set next_action for local file upload session creation."""
         self.next_action = {
-            "type": "upload_file",
-            "uploadUrl": f"/api/v1/import-jobs/{self.id}/file",
+            "type": "create_upload_session",
+            "createSessionUrl": f"/api/v1/import-jobs/{self.id}/upload-sessions",
         }
 
     def set_next_action_dedupe_decision(

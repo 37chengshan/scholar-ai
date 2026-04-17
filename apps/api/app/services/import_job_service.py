@@ -81,8 +81,8 @@ class ImportJobService:
             initial_status = "created"
             initial_stage = "awaiting_input"
             next_action = {
-                "type": "upload_file",
-                "uploadUrl": f"/api/v1/import-jobs/{job_id}/file",
+                "type": "create_upload_session",
+                "createSessionUrl": f"/api/v1/import-jobs/{job_id}/upload-sessions",
             }
         else:
             # External sources start in queued/resolving_source

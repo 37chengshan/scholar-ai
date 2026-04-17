@@ -27,6 +27,7 @@ from app.api.imports.sources import router as sources_router
 from app.api.imports.dedupe import router as dedupe_router
 from app.api.imports.batches import router as batches_router
 from app.api.imports.events import router as events_router
+from app.api.imports.upload_sessions import router as upload_sessions_router
 
 from fastapi import APIRouter
 
@@ -37,5 +38,6 @@ router.include_router(sources_router)
 router.include_router(dedupe_router)
 router.include_router(batches_router)
 router.include_router(events_router)
+router.include_router(upload_sessions_router)
 
 __all__ = ["router"]

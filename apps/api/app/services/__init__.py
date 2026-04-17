@@ -20,6 +20,7 @@ from app.services.auth_service import (
 from app.services.paper_service import PaperService
 from app.services.storage_service import StorageService, get_storage_service
 from app.services.task_service import TaskService, PROGRESS_STAGES
+from app.services.upload_session_service import UploadSessionService
 
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     # Task service
     "TaskService",
     "PROGRESS_STAGES",
+    "UploadSessionService",
 ]
