@@ -58,7 +58,7 @@ class ParserConfig:
     """
 
     # OCR settings
-    do_ocr: bool = True  # Default enabled (was False)
+    do_ocr: bool = True  # Enable OCR fallback for low-text/scanned PDFs
     ocr_languages: List[str] = field(default_factory=lambda: ["en", "zh"])
 
     # Image/table extraction
@@ -155,20 +155,16 @@ class DoclingParser:
             os.environ["DOCLING_MODELS_PATH"] = str(model_path)
             logger.info("Using local Docling models", path=str(model_path))
 
-        # Per Sprint 4 Task 1: Use configurable options (defaults now enabled)
-        self.pipeline_options = PdfPipelineOptions(
-            generate_picture_images=self.config.generate_picture_images,
-            generate_table_images=self.config.generate_table_images,
-            images_scale=1.0,
-            do_ocr=self.config.do_ocr,  # Default is True now
-        )
+        # Keep legacy public attributes for compatibility with existing tests.
+        self.pipeline_options = self._create_pipeline_options(do_ocr=self.config.do_ocr)
+        self.converter = self._create_converter(self.pipeline_options)
 
-        self.converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=self.pipeline_options,
-                )
-            }
+        # PR7 route: born-digital defaults to native parser, then fallback to OCR if needed.
+        self.native_converter = self._create_converter(
+            self._create_pipeline_options(do_ocr=False)
+        )
+        self.ocr_converter = self._create_converter(
+            self._create_pipeline_options(do_ocr=True)
         )
 
         logger.info(
@@ -179,6 +175,38 @@ class DoclingParser:
             max_file_size_mb=self.config.max_file_size_mb,
             timeout_seconds=self.config.timeout_seconds,
         )
+
+    def _create_pipeline_options(self, do_ocr: bool) -> PdfPipelineOptions:
+        """Create Docling pipeline options with shared extraction settings."""
+        return PdfPipelineOptions(
+            generate_picture_images=self.config.generate_picture_images,
+            generate_table_images=self.config.generate_table_images,
+            images_scale=1.0,
+            do_ocr=do_ocr,
+        )
+
+    @staticmethod
+    def _create_converter(pipeline_options: PdfPipelineOptions) -> DocumentConverter:
+        """Create a converter bound to the provided pipeline options."""
+        return DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(
+                    pipeline_options=pipeline_options,
+                )
+            }
+        )
+
+    @staticmethod
+    def _should_retry_with_ocr(markdown: str, page_count: int) -> bool:
+        """Decide whether to retry parse with OCR based on text density."""
+        if page_count <= 0:
+            return False
+
+        non_whitespace_chars = len(re.sub(r"\s+", "", markdown or ""))
+        chars_per_page = non_whitespace_chars / page_count
+
+        # Very low text density typically means scanned/image-heavy PDF pages.
+        return chars_per_page < 80
 
     async def parse_pdf(self, pdf_path: str, force_ocr: bool = False) -> dict:
         """
@@ -224,25 +252,16 @@ class DoclingParser:
         )
 
         try:
-            # Task 1: Override OCR if force_ocr=True
+            parse_warnings: List[str] = []
+            parse_mode = "force_ocr" if force_ocr else "native"
+            ocr_used = force_ocr
+
+            # PR7 route: default to native parse first to avoid OCR overuse.
+            converter = self.ocr_converter if force_ocr else self.native_converter
+
             if force_ocr and not self.config.do_ocr:
                 logger.info("Force OCR override for scanned PDF", path=str(path))
-                # Recreate converter with OCR enabled
-                override_options = PdfPipelineOptions(
-                    generate_picture_images=self.config.generate_picture_images,
-                    generate_table_images=self.config.generate_table_images,
-                    images_scale=1.0,
-                    do_ocr=True,  # Override
-                )
-                converter = DocumentConverter(
-                    format_options={
-                        InputFormat.PDF: PdfFormatOption(
-                            pipeline_options=override_options,
-                        )
-                    }
-                )
-            else:
-                converter = self.converter
+                parse_warnings.append("force_ocr_override")
 
             # Task 3: Parse with timeout protection
             result = await asyncio.wait_for(
@@ -252,6 +271,33 @@ class DoclingParser:
             doc = result.document
 
             markdown = doc.export_to_markdown()
+
+            # Task 2: Unified field name 'page_count' (not 'pages')
+            page_count = len(doc.pages) if hasattr(doc, "pages") else 0
+
+            # PR7 route: fallback to OCR only when native text density is too low.
+            if (
+                not force_ocr
+                and self.config.do_ocr
+                and self._should_retry_with_ocr(markdown, page_count)
+            ):
+                logger.info(
+                    "Low text density detected, retrying with OCR",
+                    path=str(path),
+                    page_count=page_count,
+                )
+                parse_warnings.append("low_text_density_retry_with_ocr")
+
+                result_ocr = await asyncio.wait_for(
+                    asyncio.to_thread(self.ocr_converter.convert, path),
+                    timeout=self.config.timeout_seconds,
+                )
+                doc = result_ocr.document
+                markdown = doc.export_to_markdown()
+                page_count = len(doc.pages) if hasattr(doc, "pages") else 0
+                parse_mode = "ocr_fallback"
+                ocr_used = True
+                del result_ocr
 
             items = []
             for item, _level in doc.iterate_items():
@@ -292,14 +338,15 @@ class DoclingParser:
             del result
             gc.collect()
 
-            # Task 2: Unified field name 'page_count' (not 'pages')
-            page_count = len(doc.pages) if hasattr(doc, "pages") else 0
+            from app.config import settings
 
             logger.info(
                 "PDF parsed successfully",
                 path=str(path),
                 page_count=page_count,  # Unified field
                 items=len(items),
+                parse_mode=parse_mode,
+                ocr_used=ocr_used,
             )
 
             return {
@@ -308,6 +355,14 @@ class DoclingParser:
                 "page_count": page_count,  # Task 2: Always use 'page_count'
                 "metadata": {
                     "title": doc.name if hasattr(doc, "name") else None,
+                    "parse_mode": parse_mode,
+                    "ocr_used": ocr_used,
+                    "chunk_strategy": {
+                        "mode": "section_adaptive",
+                        "default_chunk_size": settings.CHUNK_SIZE,
+                        "default_chunk_overlap": settings.CHUNK_OVERLAP,
+                    },
+                    "parse_warnings": parse_warnings,
                 },
             }
 
@@ -460,7 +515,8 @@ class DoclingParser:
         from app.config import settings
         from app.core.imrad_extractor import get_section_chunk_params
 
-        chunk_size = chunk_size or settings.CHUNK_SIZE
+        explicit_chunk_override = chunk_size is not None
+        chunk_size = chunk_size if explicit_chunk_override else settings.CHUNK_SIZE
         chunk_overlap = chunk_overlap or settings.CHUNK_OVERLAP
 
         # Use section_spans if available, fall back to imrad_structure
@@ -492,7 +548,9 @@ class DoclingParser:
             adaptive_size = chunk_size
             if section:
                 section_params = get_section_chunk_params(section)
-                adaptive_size = chunk_size or section_params["size"]
+                # PR7 fix: section-specific size should apply unless caller explicitly overrides.
+                if not explicit_chunk_override:
+                    adaptive_size = section_params["size"]
 
             chunks.append(
                 {

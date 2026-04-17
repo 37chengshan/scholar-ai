@@ -221,7 +221,7 @@ class TestDoclingParserTimeout:
                 )
             )
 
-        with patch.object(parser.converter, "convert", side_effect=slow_convert):
+        with patch.object(parser.native_converter, "convert", side_effect=slow_convert):
             # Should raise ParseTimeoutError
             with pytest.raises(ParseTimeoutError, match="exceeded timeout"):
                 await parser.parse_pdf(tmp_path)
@@ -253,7 +253,9 @@ class TestFieldContractUnification:
         mock_result = Mock()
         mock_result.document = mock_doc
 
-        with patch.object(parser.converter, "convert", return_value=mock_result):
+        with patch.object(parser.native_converter, "convert", return_value=mock_result), patch.object(
+            parser.ocr_converter, "convert", return_value=mock_result
+        ):
             result = await parser.parse_pdf(tmp_path)
 
             # Task 2: Should have 'page_count' field (not 'pages' array)
@@ -290,7 +292,7 @@ class TestDoclingParserReturnStructure:
         mock_result = Mock()
         mock_result.document = mock_doc
 
-        with patch.object(parser.converter, "convert", return_value=mock_result):
+        with patch.object(parser.native_converter, "convert", return_value=mock_result):
             result = await parser.parse_pdf(tmp_path)
 
             # Verify all required fields
