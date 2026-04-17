@@ -89,4 +89,3 @@
 - [ ] 重塑 Chat 界面的气泡、Typography 及 Reasoning 状态展示。
 - [ ] 运行 TypeScript `tsc` 和构建检查确保无损。
 - [ ] 提交 PR `feat/pr8-ui-optimization` 并推送到远端。
- - [ ] 提交 PR `feat/pr8-ui-optimization` 并推送到远端。
