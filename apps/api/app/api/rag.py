@@ -35,6 +35,59 @@ from app.deps import CurrentUserId
 router = APIRouter()
 
 
+def _source_score(source: Dict) -> float:
+    """Read source score from unified field, with legacy fallback."""
+    score = source.get("score")
+    if score is None:
+        score = source.get("similarity", 0.0)
+    try:
+        return max(0.0, min(float(score), 1.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def calculate_confidence(answer: str, sources: List[dict]) -> float:
+    """Calculate confidence from coverage, diversity, and support strength.
+
+    Confidence dimensions:
+    - score coverage: average top source relevance
+    - evidence diversity: distinct paper/section support
+    - answer support: source volume and answer substance
+    """
+    if not sources:
+        return 0.0
+
+    ranked_sources = sorted(sources, key=_source_score, reverse=True)
+    top_sources = ranked_sources[:5]
+
+    # 1) Score coverage (dominant signal)
+    top_scores = [_source_score(source) for source in top_sources]
+    score_coverage = sum(top_scores) / len(top_scores) if top_scores else 0.0
+
+    # 2) Evidence diversity across papers/sections/pages
+    diversity_keys = set()
+    for source in top_sources:
+        paper_id = source.get("paper_id") or "unknown"
+        section = source.get("section")
+        page_num = source.get("page_num", source.get("page"))
+        location = section or (f"page:{page_num}" if page_num is not None else "unknown")
+        diversity_keys.add((paper_id, location))
+
+    evidence_diversity = min(len(diversity_keys) / max(len(top_sources), 1), 1.0)
+
+    # 3) Answer support strength (source count + answer length)
+    source_support = min(len(sources) / 5, 1.0)
+    answer_length_support = min(len((answer or "").split()) / 120, 1.0)
+    answer_support = 0.6 * source_support + 0.4 * answer_length_support
+
+    confidence = (
+        0.55 * score_coverage
+        + 0.25 * evidence_diversity
+        + 0.20 * answer_support
+    )
+    return round(min(confidence, 1.0), 4)
+
+
 # =============================================================================
 # Request/Response Models
 # =============================================================================
@@ -155,11 +208,7 @@ async def rag_query(
         answer = result.get("answer", "")
         sources = result.get("sources", [])
 
-        # Calculate confidence from top sources
-        confidence = 0.0
-        if sources:
-            similarities = [s.get("similarity", 0.0) for s in sources[:3]]
-            confidence = min(sum(similarities) / len(similarities), 1.0) if similarities else 0.0
+        confidence = calculate_confidence(answer, sources)
 
         # Build response (expanded_query/intent not available from orchestrator)
         response = RAGQueryResponse(
