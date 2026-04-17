@@ -1,0 +1,1 @@
+{"case_id":"rag.single","input":{"query":"what is method?"},"expected":{"min_source_count":1,"min_citation_count":1,"confidence":0.75,"latency_ms":380}}

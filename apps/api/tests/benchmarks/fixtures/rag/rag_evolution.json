@@ -1,0 +1,1 @@
+{"case_id":"rag.evolution","input":{"query":"evolution of yolo"},"expected":{"min_source_count":2,"min_citation_count":1,"confidence":0.7,"latency_ms":560}}

@@ -1,0 +1,1 @@
+{"case_id":"chat.cancel","input":{"query":"long generation"},"expected":{"stream_success":true,"supports_cancel":true,"latency_ms":220}}

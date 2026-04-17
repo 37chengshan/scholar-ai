@@ -1,0 +1,1 @@
+{"case_id":"rag.compare","input":{"query":"compare paper A and B"},"expected":{"min_source_count":2,"min_citation_count":2,"confidence":0.72,"latency_ms":520}}

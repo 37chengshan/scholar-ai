@@ -1,0 +1,1 @@
+{"case_id":"search.basic","input":{"query":"vision transformer"},"expected":{"result_count":5,"pagination_stable":true,"latency_ms":170}}
