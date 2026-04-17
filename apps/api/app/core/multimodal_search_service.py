@@ -33,6 +33,8 @@ from app.core.modality_fusion import detect_intent as detect_modality_intent, we
 from app.core.intent_rules import detect_intent as detect_query_intent
 from app.core.synonyms import expand_query
 from app.core.query_metadata_extractor import extract_metadata_filters
+from app.core.query_planner import plan_queries
+from app.core.bm25_service import get_sparse_recall_service
 from app.models.retrieval import RetrievedChunk, SearchConstraints
 from app.utils.logger import logger
 
@@ -54,6 +56,20 @@ class MultimodalSearchService:
         self.qwen3vl_service = get_qwen3vl_service()
         self.milvus = get_milvus_service()
         self.reranker = get_reranker_service()
+        self.sparse_recall = get_sparse_recall_service()
+
+    @staticmethod
+    def _raw_score(hit: Dict[str, Any]) -> float:
+        """Read vector score from canonical field with compatibility fallback."""
+        score = hit.get("score")
+        if score is None:
+            score = hit.get("similarity")
+        if score is None:
+            score = 1 - float(hit.get("distance", 0.5))
+        try:
+            return max(0.0, min(float(score), 1.0))
+        except (TypeError, ValueError):
+            return 0.0
 
     def _normalize_hit(self, hit: Dict[str, Any]) -> RetrievedChunk:
         """Normalize Milvus Raw Hit to unified RetrievedChunk schema.
@@ -72,8 +88,8 @@ class MultimodalSearchService:
         return RetrievedChunk(
             paper_id=hit.get("paper_id", ""),
             paper_title=hit.get("paper_title"),
-            text=hit.get("content_data") or hit.get("content") or "",
-            score=float(hit.get("score") or hit.get("similarity") or (1 - hit.get("distance", 0.5))),
+            text=hit.get("text") or hit.get("content_data") or hit.get("content") or "",
+            score=self._raw_score(hit),
             page_num=hit.get("page_num") or hit.get("page"),
             section=hit.get("section"),
             content_type=hit.get("content_type", "text"),
@@ -85,6 +101,50 @@ class MultimodalSearchService:
     def _extract_hit_text(hit: Dict[str, Any]) -> str:
         """Extract text content from a raw hit with canonical-first order."""
         return hit.get("text") or hit.get("content_data") or hit.get("content") or ""
+
+    def _build_structured_reranker_document(self, hit: Dict[str, Any]) -> str:
+        """Build structured text payload for reranker instead of plain content only."""
+        text = self._extract_hit_text(hit)
+        paper_title = hit.get("paper_title") or ""
+        section = hit.get("section") or ""
+        page_num = hit.get("page_num") or hit.get("page") or ""
+        content_type = hit.get("content_type") or "text"
+        return (
+            f"title: {paper_title}\n"
+            f"section: {section}\n"
+            f"page_num: {page_num}\n"
+            f"content_type: {content_type}\n"
+            f"text: {text}"
+        )
+
+    def _dedupe_hits(self, hits: List[Dict[str, Any]], limit: int = 20) -> List[Dict[str, Any]]:
+        """Deduplicate planned-query hits by semantic identity."""
+        deduped: Dict[tuple, Dict[str, Any]] = {}
+        for hit in hits:
+            key = (
+                hit.get("paper_id"),
+                hit.get("content_type"),
+                hit.get("page_num") or hit.get("page"),
+                (self._extract_hit_text(hit)[:300] if self._extract_hit_text(hit) else ""),
+            )
+
+            existing = deduped.get(key)
+            if existing is None or self._raw_score(hit) > self._raw_score(existing):
+                deduped[key] = hit
+
+        ranked = sorted(deduped.values(), key=self._raw_score, reverse=True)
+        return ranked[:limit]
+
+    def _apply_hybrid_sparse_scores(self, query: str, fused: List[Dict[str, Any]]) -> None:
+        """Apply dense+sparse hybrid score for final candidate ordering."""
+        for result in fused:
+            vector_score = self._raw_score(result)
+            sparse_score = self.sparse_recall.score(query, self._extract_hit_text(result))
+            hybrid_score = 0.75 * vector_score + 0.25 * sparse_score
+
+            result["vector_score"] = vector_score
+            result["sparse_score"] = sparse_score
+            result["hybrid_score"] = hybrid_score
 
     def compile_to_constraints(
         self,
@@ -194,8 +254,13 @@ class MultimodalSearchService:
             paper_count=len(paper_ids),
         )
 
-        # Step 3: Expand query with synonyms per D-04
-        expanded_query = expand_query(query)
+        # Step 3: Query planning + expansion for hybrid retrieval
+        planner_queries = plan_queries(query, query_intent)
+        expanded_queries = [expand_query(q) for q in planner_queries]
+        if not expanded_queries:
+            expanded_queries = [expand_query(query)]
+
+        expanded_query = expanded_queries[0]
         logger.info(f"Expanded query: {expanded_query[:100]}")
 
         # Step 4: Extract metadata filters per D-07
@@ -208,8 +273,8 @@ class MultimodalSearchService:
             metadata_filters, user_id, paper_ids
         )
 
-        # Step 5: Encode expanded query with Qwen3VL (2048-dim)
-        query_embedding = self.qwen3vl_service.encode_text(expanded_query)
+        # Step 5: Encode planned queries for dense retrieval
+        query_embeddings = [self.qwen3vl_service.encode_text(q) for q in expanded_queries]
 
         # Step 6: Search Milvus across modalities with constraints pushdown
         content_types = content_types or ["text", "image", "table"]
@@ -217,21 +282,23 @@ class MultimodalSearchService:
 
         for content_type in content_types:
             try:
-                # Apply constraints to Milvus search per D-07
-                results = self.milvus.search_contents_v2(
-                    embedding=query_embedding,
-                    user_id=user_id,
-                    content_type=content_type,
-                    top_k=20,
-                    constraints=constraints,
-                )
+                # Run multiple planned dense queries and merge candidates.
+                planned_hits: List[Dict[str, Any]] = []
+                for query_embedding in query_embeddings:
+                    results = self.milvus.search_contents_v2(
+                        embedding=query_embedding,
+                        user_id=user_id,
+                        content_type=content_type,
+                        top_k=20,
+                        constraints=constraints,
+                    )
+                    planned_hits.extend(results)
 
-                # Results already filtered by constraints expr, no additional paper_ids filter needed
-                multimodal_results[content_type] = results
+                multimodal_results[content_type] = self._dedupe_hits(planned_hits, limit=20)
 
                 logger.debug(
                     f"Milvus {content_type} search with constraints pushdown",
-                    results=len(results),
+                    results=len(multimodal_results[content_type]),
                     paper_ids_in_constraints=len(constraints.paper_ids),
                 )
             except Exception as e:
@@ -250,11 +317,15 @@ class MultimodalSearchService:
             intent=query_intent,
         )
 
-        # Step 5: ReRanker (optional)
+        # Step 5: Hybrid dense+sparse scoring
+        self._apply_hybrid_sparse_scores(query, fused)
+        fused.sort(key=lambda x: x.get("hybrid_score", 0.0), reverse=True)
+
+        # Step 6: Structured ReRanker (optional)
         if use_reranker and len(fused) > 10:
             try:
-                # Extract content for reranking
-                documents = [self._extract_hit_text(r) for r in fused[:20]]
+                # Build structured payload for reranking.
+                documents = [self._build_structured_reranker_document(r) for r in fused[:20]]
                 reranked = self.reranker.rerank(query, documents, top_k=top_k)
 
                 # Reorder fused results by reranked scores
@@ -270,7 +341,7 @@ class MultimodalSearchService:
                     error=str(e),
                 )
 
-        # Step 6: Intent-based result formatting (per D-15)
+        # Step 7: Intent-based result formatting (per D-15)
         # Normalize fused results to unified schema per D-02
         normalized_fused = [self._normalize_hit(r).model_dump() for r in fused]
         final_results = normalized_fused[:top_k]
@@ -294,6 +365,8 @@ class MultimodalSearchService:
             "expanded_query": expanded_query,
             "intent": modality_intent,
             "query_intent": query_intent,
+            "planner_queries": planner_queries,
+            "retrieval_mode": "hybrid_dense_sparse",
             "metadata_filters": metadata_filters,
             "weights": weights,
             "results": final_results,
@@ -324,7 +397,7 @@ class MultimodalSearchService:
 
         # Apply reranker scores to fused results
         for result in fused:
-            content = self._extract_hit_text(result)
+            content = self._build_structured_reranker_document(result)
             result["reranker_score"] = content_to_score.get(content, 0.0)
 
         # Sort by reranker score

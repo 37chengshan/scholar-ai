@@ -25,6 +25,7 @@ from app.core.query_decomposer import (
     QueryType,
 )
 from app.core.multimodal_search_service import get_multimodal_search_service
+from app.core.citation_verifier import get_citation_verifier
 
 
 class AgenticRetrievalOrchestrator:
@@ -54,6 +55,7 @@ class AgenticRetrievalOrchestrator:
         self.decomposer = decomposer or QueryDecomposer()
         self.convergence_checker = convergence_checker or ConvergenceChecker()
         self.search_service = get_multimodal_search_service()
+        self.citation_verifier = get_citation_verifier()
 
     async def retrieve(
         self,
@@ -180,16 +182,21 @@ class AgenticRetrievalOrchestrator:
         # Collect all sources
         all_sources = self._collect_sources(all_results)
 
+        verified_answer, verification_report = (
+            self.citation_verifier.prune_unsupported_claims(final_answer, all_sources)
+        )
+
         logger.info(
             "Agentic retrieval completed",
             query=query[:50],
             rounds=rounds_executed,
             converged=converged,
             sources=len(all_sources),
+            citation_support=verification_report.get("support_score"),
         )
 
         return {
-            "answer": final_answer,
+            "answer": verified_answer,
             "sub_questions": [
                 {"question": sq.get("question"), "rationale": sq.get("rationale")}
                 for sq in (sub_questions if sub_questions else [])
@@ -201,6 +208,7 @@ class AgenticRetrievalOrchestrator:
                 "query_type": query_type or "single",
                 "paper_count": len(paper_ids) if paper_ids else 0,
                 "subquestion_count": len(sub_questions) if sub_questions else 0,
+                "citation_verification": verification_report,
             },
         }
 
