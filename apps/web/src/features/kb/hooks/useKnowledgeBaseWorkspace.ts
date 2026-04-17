@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { useKBWorkspaceStore } from '@/features/kb/state/kbWorkspaceStore';
 import { useKnowledgeBaseQueries } from '@/features/kb/hooks/useKnowledgeBaseQueries';
@@ -6,6 +6,7 @@ import { useKnowledgeBaseSearch } from '@/features/kb/hooks/useKnowledgeBaseSear
 
 export function useKnowledgeBaseWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const initializedRef = useRef(false);
   const {
     activeTab: storeTab,
     isImportDialogOpen,
@@ -19,7 +20,15 @@ export function useKnowledgeBaseWorkspace() {
   const queries = useKnowledgeBaseQueries();
   const search = useKnowledgeBaseSearch(queries.kbId);
 
-  const activeTab = useMemo(() => searchParams.get('tab') ?? storeTab, [searchParams, storeTab]);
+  const urlTab = searchParams.get('tab');
+  const activeTab = useMemo(() => urlTab ?? storeTab, [storeTab, urlTab]);
+
+  useEffect(() => {
+    if (!initializedRef.current && !urlTab && storeTab !== 'papers') {
+      setActiveTab('papers');
+    }
+    initializedRef.current = true;
+  }, [setActiveTab, storeTab, urlTab]);
 
   useEffect(() => {
     if (activeTab !== storeTab) {
