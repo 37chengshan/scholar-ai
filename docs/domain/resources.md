@@ -26,6 +26,8 @@
 - ChatMessage：会话消息
 - Task：异步任务
 - IndexArtifact：索引或检索产物
+- ImportJob：统一导入任务（上传/解析/去重/入库）
+- ImportBatch：批量导入会话
 
 资源关系：
 
@@ -40,6 +42,8 @@
 - Task：queued -> running -> succeeded | failed | canceled
 - ChatSession：active -> closed | archived
 - IndexArtifact：building -> ready | failed -> rebuilding
+- ImportJob：created -> queued -> running -> awaiting_user_action -> completed | failed | cancelled
+- ImportBatch：created -> running -> completed | failed | cancelled | partial
 
 关键生命周期事件：
 
@@ -57,6 +61,8 @@
 - Chunk（生成、重算、清理）
 - Task（执行状态）
 - IndexArtifact（构建状态）
+- ImportJob（阶段推进与终态）
+- ImportBatch（聚合计数与整体状态）
 
 ## Required Updates
 

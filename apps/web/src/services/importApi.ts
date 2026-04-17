@@ -108,6 +108,14 @@ export interface ImportJob {
 const importSdk = createImportApi(sdkHttpClient);
 
 function toImportJob(dto: ImportJobDto): ImportJob {
+  const raw = dto as ImportJobDto & Record<string, unknown>;
+  const source = (raw.source ?? {}) as Record<string, unknown>;
+  const preview = (raw.preview ?? {}) as Record<string, unknown>;
+  const dedupe = (raw.dedupe ?? {}) as Record<string, unknown>;
+  const file = (raw.file ?? {}) as Record<string, unknown>;
+  const paper = (raw.paper ?? null) as Record<string, unknown> | null;
+  const task = (raw.task ?? null) as Record<string, unknown> | null;
+
   return {
     importJobId: dto.importJobId,
     knowledgeBaseId: dto.knowledgeBaseId,
@@ -115,39 +123,50 @@ function toImportJob(dto: ImportJobDto): ImportJob {
     status: dto.status,
     stage: dto.stage,
     progress: dto.progress ?? 0,
-    nextAction: null,
+    nextAction: (raw.nextAction as Record<string, unknown> | null) ?? null,
     retryCount: dto.retryCount,
-    version: null,
-    externalIds: undefined,
+    version: (raw.version as string | null) ?? null,
+    externalIds: (raw.externalIds as Record<string, string> | undefined) ?? undefined,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
     startedAt: dto.startedAt ?? null,
     completedAt: dto.completedAt,
     cancelledAt: dto.cancelledAt,
     source: {
-      rawInput: '',
-      normalizedRef: null,
-      externalIds: {},
+      rawInput: (source.rawInput as string) ?? '',
+      normalizedRef: (source.normalizedRef as string | null) ?? null,
+      externalIds: (source.externalIds as Record<string, string>) ?? {},
     },
     preview: {
-      title: null,
-      authors: [],
-      year: null,
-      venue: null,
+      title: (preview.title as string | null) ?? null,
+      authors: (preview.authors as string[]) ?? [],
+      year: (preview.year as number | null) ?? null,
+      venue: (preview.venue as string | null) ?? null,
     },
     dedupe: {
-      status: 'unchecked',
-      matchedPaperId: null,
-      matchType: null,
-      decision: null,
+      status: (dedupe.status as ImportJobDedupe['status']) ?? 'unchecked',
+      matchedPaperId: (dedupe.matchedPaperId as string | null) ?? null,
+      matchType: (dedupe.matchType as string | null) ?? null,
+      decision: (dedupe.decision as string | null) ?? null,
     },
     file: {
-      storageKey: null,
-      sha256: null,
-      sizeBytes: null,
+      storageKey: (file.storageKey as string | null) ?? null,
+      sha256: (file.sha256 as string | null) ?? null,
+      sizeBytes: (file.sizeBytes as number | null) ?? null,
     },
-    paper: null,
-    task: null,
+    paper: paper
+      ? {
+          paperId: (paper.paperId as string | null) ?? null,
+          title: (paper.title as string | null) ?? null,
+        }
+      : null,
+    task: task
+      ? {
+          processingTaskId: (task.processingTaskId as string | null) ?? null,
+          status: (task.status as string | null) ?? null,
+          checkpointStage: (task.checkpointStage as string | null) ?? null,
+        }
+      : null,
     error: dto.error
       ? {
           code: dto.error.code,
@@ -214,6 +233,19 @@ export type DedupeDecisionType = 'reuse_existing' | 'import_as_new_version' | 'f
 export interface DedupeDecisionRequest {
   decision: DedupeDecisionType;
   matchedPaperId?: string;
+}
+
+export interface BatchFileUploadItem {
+  importJobId: string;
+  filename: string;
+  file: File;
+}
+
+export interface BatchImportItemResponse {
+  importJobId: string;
+  sourceType: SourceType;
+  status: string;
+  nextAction: Record<string, unknown> | null;
 }
 
 // === API Methods ===
@@ -309,10 +341,51 @@ export const importApi = {
   createBatch: async (
     kbId: string,
     items: CreateImportRequest[]
-  ): Promise<ApiResponse<{ batchJobId: string; status: string; totalItems: number; items: ImportJob[] }>> => {
+  ): Promise<ApiResponse<{ batchJobId: string; status: string; totalItems: number; items: BatchImportItemResponse[] }>> => {
     const response = await apiClient.post(
       `/api/v1/knowledge-bases/${kbId}/imports/batch`,
       { items }
+    );
+    return { success: true, data: response.data };
+  },
+
+  /**
+   * Upload local files for a batch import job using manifest mapping.
+   */
+  uploadBatchFiles: async (
+    batchJobId: string,
+    items: BatchFileUploadItem[]
+  ): Promise<
+    ApiResponse<{
+      batchJobId: string;
+      totalItems: number;
+      acceptedCount: number;
+      rejectedCount: number;
+      accepted: Array<{ importJobId: string; filename: string; status: string }>;
+      rejected: Array<{ importJobId: string; filename: string; reason: string }>;
+    }>
+  > => {
+    const formData = new FormData();
+    formData.append(
+      'manifest',
+      JSON.stringify(
+        items.map((item) => ({
+          importJobId: item.importJobId,
+          filename: item.filename,
+        }))
+      )
+    );
+
+    for (const item of items) {
+      formData.append('files', item.file, item.filename);
+    }
+
+    const response = await apiClient.post(
+      `/api/v1/import-batches/${batchJobId}/files`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }
     );
     return { success: true, data: response.data };
   },
