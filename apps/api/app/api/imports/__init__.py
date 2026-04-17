@@ -14,6 +14,7 @@ Wave 3 endpoints per D-06:
 - POST /import-jobs/{job_id}/dedupe-decision - Submit dedupe decision
 - POST /knowledge-bases/{kb_id}/imports/batch - Batch import
 - GET /import-batches/{batch_id} - Get batch status
+- POST /import-batches/{batch_id}/files - Upload local files for batch jobs
 
 Wave 5 endpoints per D-09:
 - POST /import-jobs/{job_id}/retry - Retry failed job
