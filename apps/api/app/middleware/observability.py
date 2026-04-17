@@ -27,6 +27,9 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
         should_defer_cleanup = False
 
+        request.state.request_id = request_id
+        request.state.route = route
+
         set_request_context(request_id=request_id, route=route, user_id=user_id)
         bind_request_context(request_id=request_id, route=route, user_id=user_id)
 
@@ -39,6 +42,8 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
+            user_id = getattr(request.state, "user_id", user_id)
+            bind_request_context(request_id=request_id, route=route, user_id=user_id)
             duration_ms = (time.perf_counter() - start) * 1000
             logger.info(
                 "request_completed",
@@ -71,6 +76,8 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
             return response
         except Exception as exc:
+            user_id = getattr(request.state, "user_id", user_id)
+            bind_request_context(request_id=request_id, route=route, user_id=user_id)
             duration_ms = (time.perf_counter() - start) * 1000
             logger.error(
                 "request_failed",

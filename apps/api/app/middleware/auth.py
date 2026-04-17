@@ -23,7 +23,7 @@ from app.core.database import redis_db
 from app.services.auth_service import User, get_user_by_id
 from app.utils.security import verify_token
 from app.utils.problem_detail import ProblemDetail, ErrorTypes
-from app.utils.logger import logger
+from app.utils.logger import logger, bind_request_context
 
 
 # OAuth2 scheme for OpenAPI documentation and Authorization header fallback
@@ -130,6 +130,17 @@ async def get_current_user(
                 title="Unauthorized",
                 detail="Invalid token. Please log in again.",
                 instance=instance,
+            )
+
+        request.state.user_id = user_id
+        request_id_for_bind = getattr(request.state, "request_id", None) or request.headers.get(
+            "X-Request-ID"
+        )
+        if request_id_for_bind:
+            bind_request_context(
+                request_id=request_id_for_bind,
+                route=getattr(request.state, "route", instance),
+                user_id=user_id,
             )
 
         # Check blacklist in Redis

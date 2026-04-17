@@ -533,7 +533,8 @@ export function useChatStream(
     (envelope: SSEEventEnvelope) => {
       // HARD RULE 0.2: message_id validation (skip for session_start which initializes it)
       const eventType = envelope.event_type;
-      if (eventType !== 'session_start' && envelope.message_id !== messageIdRef.current) {
+      const hasMessageBinding = Boolean(envelope.message_id);
+      if (eventType !== 'session_start' && hasMessageBinding && envelope.message_id !== messageIdRef.current) {
         trackStreamEvent({
           event: 'stale_event_ignored',
           expectedMessageId: messageIdRef.current,
