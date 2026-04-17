@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { importApi } from '@/services/importApi';
 import { kbApi } from '@/services/kbApi';
 import { toast } from 'sonner';
+import { trackImportEvent, trackSearchEvent } from '@/lib/observability/telemetry';
 
 export function useSearchImportFlow() {
   const navigate = useNavigate();
@@ -23,17 +24,24 @@ export function useSearchImportFlow() {
 
   const loadKnowledgeBases = useCallback(async () => {
     setLoadingKBs(true);
+    trackSearchEvent({ event: 'import_kb_list_loading_started' });
     try {
       const response = await kbApi.list({ limit: 100 });
       setKnowledgeBases(response.knowledgeBases || []);
+      trackSearchEvent({
+        event: 'import_kb_list_loaded',
+        count: response.knowledgeBases?.length || 0,
+      });
     } catch {
       toast.error('加载知识库列表失败');
+      trackSearchEvent({ event: 'import_kb_list_load_failed' });
     } finally {
       setLoadingKBs(false);
     }
   }, []);
 
   const startImportSelection = useCallback(async (paper: any) => {
+    trackImportEvent({ event: 'import_selection_started', paperId: paper?.id });
     setPendingImportPaper(paper);
     setShowKBSelectModal(true);
     await loadKnowledgeBases();
@@ -71,6 +79,7 @@ export function useSearchImportFlow() {
         return;
       }
       const jobId = createResponse.data.importJobId;
+      trackImportEvent({ event: 'import_job_created', jobId, kbId });
 
       toast.success('论文导入任务已创建');
       setShowKBSelectModal(false);
@@ -90,10 +99,16 @@ export function useSearchImportFlow() {
           return;
         }
         if (jobResponse.data.status === 'completed' && jobResponse.data.paper?.paperId) {
+          trackImportEvent({
+            event: 'import_completed',
+            jobId,
+            paperId: jobResponse.data.paper.paperId,
+          });
           navigate(`/read/${jobResponse.data.paper.paperId}`);
           return;
         }
         if (jobResponse.data.status === 'failed') {
+          trackImportEvent({ event: 'import_failed', jobId });
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -101,6 +116,7 @@ export function useSearchImportFlow() {
     } catch (error: any) {
       if (isActiveRequest()) {
         toast.error(error?.response?.data?.error?.detail || '导入失败');
+        trackImportEvent({ event: 'import_failed', error: error?.message || 'unknown' });
       }
     } finally {
       if (isActiveRequest()) {
@@ -120,6 +136,7 @@ export function useSearchImportFlow() {
     importToKnowledgeBase,
     cancelImport: () => {
       requestIdRef.current += 1;
+      trackImportEvent({ event: 'import_cancelled' });
       if (isMountedRef.current) {
         setImportingPaperId(null);
       }

@@ -168,7 +168,17 @@ async def rag_query(
     - 支持多轮对话 (通过conversation_id)
     - 使用 AgenticRetrievalOrchestrator 进行引用格式化处理
     """
+    run_id = str(uuid.uuid4())
+    started = time.perf_counter()
     try:
+        logger.info(
+            "run_started",
+            event_type="run_started",
+            run_id=run_id,
+            route="/api/v1/rag/query",
+            query_type=request.query_type,
+            user_id=user_id,
+        )
         logger.info(f"RAG query: {request.question}, type: {request.query_type}, user: {user_id}")
 
         # Check cache first (with user_id and version per D-04)
@@ -184,6 +194,15 @@ async def rag_query(
 
         if cached:
             logger.info(f"Returning cached response for query: {request.question[:50]}...")
+            duration_ms = (time.perf_counter() - started) * 1000
+            logger.info(
+                "run_completed",
+                event_type="run_completed",
+                run_id=run_id,
+                route="/api/v1/rag/query",
+                status="cached",
+                duration_ms=round(duration_ms, 2),
+            )
             return RAGQueryResponse(
                 answer=cached.get("answer", ""),
                 query=request.question,
@@ -196,6 +215,8 @@ async def rag_query(
         # Use AgenticRetrievalOrchestrator for proper citation formatting
         orchestrator = AgenticRetrievalOrchestrator(max_rounds=1)
 
+        retrieve_started = time.perf_counter()
+
         result = await orchestrator.retrieve(
             query=request.question,
             query_type=request.query_type,
@@ -207,6 +228,7 @@ async def rag_query(
         # Extract answer and sources from orchestrator result
         answer = result.get("answer", "")
         sources = result.get("sources", [])
+        retrieve_duration_ms = (time.perf_counter() - retrieve_started) * 1000
 
         confidence = calculate_confidence(answer, sources)
 
@@ -242,10 +264,31 @@ async def rag_query(
         if request.conversation_id:
             await _update_conversation(request, answer, sources, user_id)
 
+        duration_ms = (time.perf_counter() - started) * 1000
+        logger.info(
+            "run_completed",
+            event_type="run_completed",
+            run_id=run_id,
+            route="/api/v1/rag/query",
+            status="success",
+            duration_ms=round(duration_ms, 2),
+            rag_retrieve_duration_ms=round(retrieve_duration_ms, 2),
+            source_count=len(sources),
+            confidence=confidence,
+        )
+
         return response
 
     except Exception as e:
         logger.error(f"RAG query error: {e}")
+        logger.error(
+            "run_failed",
+            event_type="run_failed",
+            run_id=run_id,
+            route="/api/v1/rag/query",
+            error=str(e),
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"查询失败: {str(e)}")
@@ -270,7 +313,17 @@ async def rag_query_stream(
     - Event格式: data: {"type": "token", "content": "..."}
     - 结束标记: data: [DONE]
     """
+    run_id = str(uuid.uuid4())
+    started = time.perf_counter()
     try:
+        logger.info(
+            "stream_started",
+            event_type="stream_started",
+            run_id=run_id,
+            route="/api/v1/rag/stream",
+            query_type=request.query_type,
+            user_id=user_id,
+        )
         logger.info(f"RAG stream query: {request.question}, user: {user_id}")
 
         paper_ids = request.paper_ids or []
@@ -288,6 +341,14 @@ async def rag_query_stream(
         if cached:
             # Stream cached response
             logger.info(f"Streaming cached response")
+            logger.info(
+                "stream_completed",
+                event_type="stream_completed",
+                run_id=run_id,
+                route="/api/v1/rag/stream",
+                status="cached",
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+            )
             cached_answer = cached.get("answer", "")
             cached_citations = cached.get("sources", [])
 
@@ -316,6 +377,12 @@ async def rag_query_stream(
             )
 
         # Use streaming handler for non-cached queries
+        logger.info(
+            "rag_answer_started",
+            event_type="rag_answer_started",
+            run_id=run_id,
+            route="/api/v1/rag/stream",
+        )
         return await stream_rag_response(
             query=request.question,
             paper_ids=paper_ids,
@@ -326,6 +393,14 @@ async def rag_query_stream(
 
     except Exception as e:
         logger.error(f"RAG stream error: {e}")
+        logger.error(
+            "stream_failed",
+            event_type="stream_failed",
+            run_id=run_id,
+            route="/api/v1/rag/stream",
+            error=str(e),
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
 
         # Return error as SSE event
         async def error_stream():
@@ -514,7 +589,17 @@ async def agentic_search(
     - cross_paper: Compare/contrast multiple papers
     - evolution: Track changes across paper versions (e.g., "YOLO evolution")
     """
+    run_id = str(uuid.uuid4())
+    started = time.perf_counter()
     try:
+        logger.info(
+            "run_started",
+            event_type="run_started",
+            run_id=run_id,
+            route="/api/v1/rag/agentic",
+            query_type=request.query_type,
+            user_id=user_id,
+        )
         logger.info(
             f"Agentic search: {request.query}, type: {request.query_type}, user: {user_id}"
         )
@@ -533,6 +618,18 @@ async def agentic_search(
             top_k_per_subquestion=request.top_k,
         )
 
+        duration_ms = (time.perf_counter() - started) * 1000
+        logger.info(
+            "run_completed",
+            event_type="run_completed",
+            run_id=run_id,
+            route="/api/v1/rag/agentic",
+            duration_ms=round(duration_ms, 2),
+            rounds_executed=result.get("rounds_executed"),
+            source_count=len(result.get("sources", [])),
+            converged=result.get("converged"),
+        )
+
         return AgenticSearchResponse(
             answer=result["answer"],
             sub_questions=result["sub_questions"],
@@ -544,6 +641,14 @@ async def agentic_search(
 
     except Exception as e:
         logger.error(f"Agentic search error: {e}")
+        logger.error(
+            "run_failed",
+            event_type="run_failed",
+            run_id=run_id,
+            route="/api/v1/rag/agentic",
+            error=str(e),
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Agentic search failed: {str(e)}")

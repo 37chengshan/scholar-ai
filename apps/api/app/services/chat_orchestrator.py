@@ -49,7 +49,9 @@ from app.models.chat import (
 from app.models.confirmation import ConfirmationState
 from app.services.message_service import message_service
 from app.config import settings
-from app.utils.logger import logger
+from app.core.observability.context import set_run_context
+from app.core.observability.events import build_event
+from app.utils.logger import logger, bind_run_context, clear_observability_context
 
 
 # ============================================================
@@ -622,12 +624,27 @@ class ChatOrchestrator:
         Yields:
             SSE event strings with message_id binding
         """
+        run_id = str(uuid.uuid4())
+        set_run_context(run_id=run_id, session_id=session_id)
+
         # ============================================================
         # Step 1: Create assistant message for binding (HARD RULE 0.2)
         # ============================================================
         message_id = await self._create_assistant_message(
             session_id=session_id,
             user_id=user_id,
+        )
+        bind_run_context(run_id=run_id, session_id=session_id, message_id=message_id)
+        logger.info(
+            "run_started",
+            **build_event(
+                event_type="run_started",
+                status="started",
+                run_id=run_id,
+                session_id=session_id,
+                message_id=message_id,
+                task_type=task_type,
+            ),
         )
 
         runner, _, _, _ = initialize_agent_components()
@@ -949,6 +966,19 @@ class ChatOrchestrator:
                     )
 
                 # Close message binding
+                logger.info(
+                    "run_completed",
+                    **build_event(
+                        event_type="run_completed",
+                        status="completed",
+                        run_id=run_id,
+                        session_id=session_id,
+                        message_id=message_id,
+                        phase=self._current_phase,
+                        duration_ms=result.get("total_time_ms"),
+                        success=bool(result.get("success")),
+                    ),
+                )
                 self._close_message_binding()
                 break
 
@@ -982,10 +1012,23 @@ class ChatOrchestrator:
                 )
 
                 # Close message binding
+                logger.error(
+                    "run_failed",
+                    **build_event(
+                        event_type="run_failed",
+                        status="error",
+                        run_id=run_id,
+                        session_id=session_id,
+                        message_id=message_id,
+                        phase="error",
+                        error=event_data.get("error", "Unknown error"),
+                    ),
+                )
                 self._close_message_binding()
                 break
 
         await agent_task
+        clear_observability_context()
 
     # ============================================================
     # Helper methods for event formatting

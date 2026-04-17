@@ -15,6 +15,7 @@
  */
 
 import { useReducer, useRef, useCallback, useEffect } from 'react';
+import { trackStreamEvent } from '@/lib/observability/telemetry';
 
 // ============================================================================
 // Type Definitions
@@ -533,6 +534,12 @@ export function useChatStream(
       // HARD RULE 0.2: message_id validation (skip for session_start which initializes it)
       const eventType = envelope.event_type;
       if (eventType !== 'session_start' && envelope.message_id !== messageIdRef.current) {
+        trackStreamEvent({
+          event: 'stale_event_ignored',
+          expectedMessageId: messageIdRef.current,
+          receivedMessageId: envelope.message_id,
+          eventType,
+        });
         console.warn(
           `[useChatStream] SSE event message_id mismatch. Expected: ${messageIdRef.current}, Got: ${envelope.message_id}. Ignoring.`
         );
@@ -552,6 +559,11 @@ export function useChatStream(
             taskType: (data.task_type as TaskType) || 'general',
             messageId: envelope.message_id,
           });
+          trackStreamEvent({
+            event: 'stream_started',
+            sessionId: data.session_id as string,
+            messageId: envelope.message_id,
+          });
           break;
 
         case 'phase':
@@ -560,6 +572,12 @@ export function useChatStream(
             type: 'PHASE_CHANGE',
             phase: (data.phase as AgentPhase) || 'idle',
             label: (data.label as string) || '',
+          });
+          trackStreamEvent({
+            event: 'phase_changed',
+            phase: (data.phase as AgentPhase) || 'idle',
+            label: (data.label as string) || '',
+            messageId: envelope.message_id,
           });
           break;
 
@@ -587,6 +605,11 @@ export function useChatStream(
             id: (data.id as string) || (data.tool_call_id as string) || `tc-${Date.now()}`,
             tool: (data.tool as string) || (data.tool_name as string) || 'unknown',
             label: (data.label as string) || (data.display_name as string) || (data.tool_name as string) || 'Tool',
+          });
+          trackStreamEvent({
+            event: 'tool_call_seen',
+            tool: (data.tool as string) || (data.tool_name as string) || 'unknown',
+            messageId: envelope.message_id,
           });
           break;
 
@@ -620,6 +643,11 @@ export function useChatStream(
               params: (data.parameters as Record<string, unknown>) || {},
             },
           });
+          trackStreamEvent({
+            event: 'confirmation_required',
+            tool: (data.tool_name as string) || 'unknown',
+            messageId: envelope.message_id,
+          });
           break;
 
         case 'done':
@@ -629,6 +657,12 @@ export function useChatStream(
             cost: (data.cost as number) || 0,
             durationMs: (data.total_time_ms as number) || (data.total_duration as number) || 0,
           });
+          trackStreamEvent({
+            event: 'stream_completed',
+            tokensUsed: (data.tokens_used as number) || 0,
+            durationMs: (data.total_time_ms as number) || (data.total_duration as number) || 0,
+            messageId: envelope.message_id,
+          });
           break;
 
         case 'error':
@@ -636,6 +670,11 @@ export function useChatStream(
             type: 'ERROR',
             code: (data.code as string) || 'UNKNOWN',
             message: (data.message as string) || (data.error as string) || 'Stream error',
+          });
+          trackStreamEvent({
+            event: 'stream_error',
+            code: (data.code as string) || 'UNKNOWN',
+            messageId: envelope.message_id,
           });
           break;
 
@@ -687,6 +726,7 @@ export function useChatStream(
     (reason: string = 'User cancelled') => {
       forceFlush();
       bufferedDispatch({ type: 'CANCEL', reason });
+      trackStreamEvent({ event: 'stream_cancelled', reason, messageId: messageIdRef.current });
     },
     [forceFlush, bufferedDispatch]
   );
