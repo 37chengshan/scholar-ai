@@ -55,10 +55,14 @@ class ParserConfig:
     """Docling parser configuration with sensible defaults.
 
     Per Sprint 4 Task 1: Configurable options for OCR and multimodal extraction.
+    Per PR7 Phase 7A: Two-stage smart parsing (native → OCR fallback).
     """
 
     # OCR settings
-    do_ocr: bool = True  # Enable OCR fallback for low-text/scanned PDFs
+    # Per PR7: do_ocr controls fallback behavior, NOT whether to use OCR initially
+    # - False: use native parser first, only fallback to OCR if text density is low
+    # - True: initialize OCR upfront (legacy, performance-critical, can be override via PARSER_DO_OCR env var)
+    do_ocr: bool = False  # Enable OCR fallback for low-text/scanned PDFs (smart mode)
     ocr_languages: List[str] = field(default_factory=lambda: ["en", "zh"])
     ocr_retry_min_chars_per_page: int = 80
 
@@ -199,7 +203,15 @@ class DoclingParser:
         )
 
     def _should_retry_with_ocr(self, markdown: str, page_count: int) -> bool:
-        """Decide whether to retry parse with OCR based on text density."""
+        """Decide whether to retry parse with OCR based on text density.
+        
+        Per PR7: Smart fallback mechanism.
+        - If native parser produces < 80 chars/page on average, it's likely:
+          - Scanned PDF (images not text)
+          - Image-heavy PDF (only captions/labels in text)
+          - OCR will help recover text from images
+        - Otherwise, native parser result is good and OCR is wasteful
+        """
         if page_count <= 0:
             return False
 

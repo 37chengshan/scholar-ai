@@ -1,3 +1,12 @@
+---
+owner: web-platform
+status: superseded
+depends_on:
+  - PR10_KB_Chat_Search_workspace_分层与稳定化方案
+last_verified_at: '2026-04-18'
+evidence_commits: []
+---
+
 # PR20 UI 截图细节还原与深度美化落实方案
 
 ## 一、 目标说明

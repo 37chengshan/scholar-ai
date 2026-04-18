@@ -29,6 +29,9 @@
 | PR7_PR8_Chat稳定性_AgentNative_RAG升级实施方案 | ai-runtime | in-progress | PR5,PR10 | 2026-04-17 | wip-pr7-pr8,wip-review-2026-04-17 | 本轮 PR7 P7-A/B/C 与 PR8 P8-A 已完成并通过严格复核 |
 | PR10_KB_Chat_Search_workspace_分层与稳定化方案 | web-platform | in-progress | PR5 | 2026-04-17 | 9a7332e,9208b73,cecfccf,wip-review-2026-04-17 | 第一轮收尾清单已补录严格复核结果 |
 | PR19_上传链路收口_与_完整上传体验重做计划_v3 | app-foundation | in-progress | PR5 | 2026-04-17 | wip-pr19-upload-workspace | 上传链路收口与工作台体验重做推进中 |
+| PR18_Celery_ImportPipeline_Stability_Refactor_Plan | app-foundation | superseded | PR19_上传链路收口_与_完整上传体验重做计划_v3 | 2026-04-18 | - | 已并入 PR19 上传链路主计划，不再单独执行 |
+| PR20_UI截图细节还原方案 | web-platform | superseded | PR10_KB_Chat_Search_workspace_分层与稳定化方案 | 2026-04-18 | - | 已被统一工作台分层与稳定化计划覆盖 |
+| PR20_前端杂志风美化与性能优化_深度落实方案 | web-platform | superseded | PR10_KB_Chat_Search_workspace_分层与稳定化方案 | 2026-04-18 | - | 已合并进入现行前端治理与工作台主线 |
 | PR11_Harness_Observability_文件级实施方案 | ai-platform | done | PR10 | 2026-04-17 | 89a9d9a | 已完成，进入维护态 |
 | PR12_Benchmark_基线评测_文件级实施方案 | ai-platform | done | PR11 | 2026-04-17 | 84fd597 | 已完成，进入阈值维护态 |
 

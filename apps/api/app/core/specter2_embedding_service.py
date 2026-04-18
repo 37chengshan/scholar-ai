@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoModel, AutoTokenizer
 
 from app.utils.logger import logger
 
@@ -38,7 +38,7 @@ try:
     ADAPTERS_AVAILABLE = True
 except ImportError:
     ADAPTERS_AVAILABLE = False
-    logger.warning("adapters library not installed. SPECTER2 will use base model only.")
+    logger.warning("adapters library not installed. SPECTER2 will fall back to base model.")
 
 
 class Specter2EmbeddingService:
@@ -86,14 +86,9 @@ class Specter2EmbeddingService:
                 - regression: For regression tasks
             device: 'cuda', 'cpu', or None for auto
         """
-        if not ADAPTERS_AVAILABLE:
-            raise ImportError(
-                "SPECTER 2 requires 'adapters' library. "
-                "Install with: pip install adapters"
-            )
-
         self.adapter_name = adapter
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self._adapters_enabled = ADAPTERS_AVAILABLE
 
         self._tokenizer: Optional[Any] = None
         self._model: Optional[Any] = None
@@ -113,16 +108,23 @@ class Specter2EmbeddingService:
             # Load tokenizer
             self._tokenizer = AutoTokenizer.from_pretrained(self.BASE_MODEL)
 
-            # Load base model with adapter support
-            self._model = AutoAdapterModel.from_pretrained(self.BASE_MODEL)
+            if self._adapters_enabled:
+                # Load base model with adapter support
+                self._model = AutoAdapterModel.from_pretrained(self.BASE_MODEL)
 
-            # Load and activate adapter
-            adapter_path = self.ADAPTERS.get(self.adapter_name, self.ADAPTERS["proximity"])
-            adapter_name = self._model.load_adapter(
-                adapter_path,
-                source="hf",
-                set_active=True
-            )
+                # Load and activate adapter
+                adapter_path = self.ADAPTERS.get(
+                    self.adapter_name,
+                    self.ADAPTERS["proximity"],
+                )
+                self._model.load_adapter(
+                    adapter_path,
+                    source="hf",
+                    set_active=True,
+                )
+            else:
+                # Fallback path for environments where adapters cannot be installed
+                self._model = AutoModel.from_pretrained(self.BASE_MODEL)
 
             self._model.to(self.device)
             self._model.eval()
@@ -131,6 +133,7 @@ class Specter2EmbeddingService:
                 "SPECTER 2 model loaded",
                 device=self.device,
                 adapter=self.adapter_name,
+                adapters_enabled=self._adapters_enabled,
                 parameters=sum(p.numel() for p in self._model.parameters()),
             )
 

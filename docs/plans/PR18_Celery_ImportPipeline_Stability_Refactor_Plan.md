@@ -1,3 +1,12 @@
+---
+owner: app-foundation
+status: superseded
+depends_on:
+  - PR19_上传链路收口_与_完整上传体验重做计划_v3
+last_verified_at: '2026-04-18'
+evidence_commits: []
+---
+
 # PR18 Celery Upload/Import Pipeline 稳定性重构计划
 
 ## 1. 背景与目标

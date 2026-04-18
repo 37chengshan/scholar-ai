@@ -37,8 +37,9 @@ class TestParserConfig:
         """Test ParserConfig has correct defaults per Sprint 4."""
         config = ParserConfig()
 
-        # Task 1: OCR enabled by default (was False)
-        assert config.do_ocr is True, "OCR should be enabled by default"
+        # Per PR7 Phase 7A: OCR smart fallback (not enabled by default)
+        # do_ocr=False means native parser first, then OCR fallback if text density < 80 chars/page
+        assert config.do_ocr is False, "OCR should be disabled by default (smart fallback via _should_retry_with_ocr)"
         assert config.ocr_retry_min_chars_per_page == 80
 
         # Task 1: Image/table extraction enabled by default (was False)
@@ -76,8 +77,8 @@ class TestParserConfig:
         """Test ParserConfig loads from application settings."""
         config = ParserConfig.from_settings()
 
-        # Should match settings defaults
-        assert config.do_ocr is True
+        # Should match settings defaults (per PR7: smart fallback)
+        assert config.do_ocr is False  # Native parser first, OCR fallback only if needed
         assert config.ocr_retry_min_chars_per_page == 80
         assert config.max_file_size_mb == 50
         assert config.timeout_seconds == 300
@@ -105,8 +106,8 @@ class TestDoclingParserConfig:
         """Test DoclingParser defaults load from settings when config not provided."""
         parser = DoclingParser()
 
-        # Should use defaults from settings (Task 1: enabled by default)
-        assert parser.config.do_ocr is True
+        # Should use defaults from settings (per PR7: smart fallback)
+        assert parser.config.do_ocr is False  # Native first, OCR fallback only if text density low
         assert parser.config.generate_picture_images is True
         assert parser.config.generate_table_images is True
 
