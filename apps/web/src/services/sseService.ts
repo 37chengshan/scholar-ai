@@ -281,7 +281,7 @@ export interface SSEHandlers {
  * Parse SSE event data into SSEEventEnvelope format
  *
  * HARD RULE 0.2: Extracts message_id from payload.
- * If message_id is missing, logs a warning (backward compatibility).
+ * Non-heartbeat events without message_id are treated as protocol errors.
  *
  * @param eventType - Event type from 'event:' line
  * @param payload - parsed JSON data from 'data:' line
@@ -290,14 +290,14 @@ export interface SSEHandlers {
 export function parseToEnvelope<T>(eventType: SSEEventType, payload: T): SSEEventEnvelope<T> {
   const messageId = (payload as any).message_id;
 
-  if (!messageId) {
-    console.warn('[SSE] Event missing message_id:', eventType, payload);
+  if (!messageId && eventType !== 'heartbeat') {
+    throw new Error(`[SSE] Event missing message_id: ${eventType}`);
   }
 
   return {
     event: eventType,
     data: payload,
-    message_id: messageId || '', // Fallback for backward compatibility
+    message_id: messageId || '',
   };
 }
 
@@ -511,7 +511,9 @@ export class SSEService {
       // Extract message_id (HARD RULE 0.2)
       const messageId = payload.message_id || '';
       if (!messageId && eventType !== 'heartbeat') {
-        console.warn('[SSE] Event missing message_id:', eventType);
+        this.currentHandlers.onError(new Error(`[SSE] Event missing message_id: ${eventType}`));
+        this.disconnect();
+        return;
       }
 
       // Set currentMessageId from session_start (HARD RULE 0.2)

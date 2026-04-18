@@ -232,7 +232,30 @@ class ChatOrchestrator:
             message_id=message_id,
             content_length=len(content),
         )
-        # TODO: Implement message update in message_service
+        updated = await message_service.update_message(
+            message_id=message_id,
+            content=content,
+        )
+        if not updated:
+            logger.warning(
+                "Assistant message update missed target",
+                message_id=message_id,
+            )
+    
+    async def _safe_update_assistant_message(
+        self,
+        message_id: str,
+        content: str,
+    ) -> None:
+        """Best-effort assistant message update that never breaks streaming."""
+        try:
+            await self._update_assistant_message(message_id=message_id, content=content)
+        except Exception as e:
+            logger.warning(
+                "Assistant message update failed (non-blocking)",
+                message_id=message_id,
+                error=str(e),
+            )
 
     def _close_message_binding(self, message_id: str | None, final_phase: AgentPhase) -> None:
         """Close current message_id binding.
@@ -682,6 +705,7 @@ class ChatOrchestrator:
         reasoning_seq = 0  # Sequence number for reasoning chunks
         content_seq = 0  # Sequence number for content chunks
         accumulated_content = ""  # Track final content for message update
+        tool_registry: Dict[str, Dict[str, Any]] = {}
 
         # ============================================================
         # Step 2: Emit session_start event
@@ -824,6 +848,10 @@ class ChatOrchestrator:
                     tool_name = event_data.get("tool", event_data.get("name", "unknown"))
                     tool_id = event_data.get("id", f"tool_{event_counter}")
                     tool_params = event_data.get("parameters", event_data.get("arguments", {}))
+                    tool_registry[tool_id] = {
+                        "tool": tool_name,
+                        "parameters": tool_params,
+                    }
 
                     # Infer tool label
                     tool_label = self._get_tool_label(tool_name)
@@ -843,8 +871,11 @@ class ChatOrchestrator:
                     )
 
                 elif event_type == "tool_result":
-                    tool_name = event_data.get("tool", "unknown")
                     tool_id = event_data.get("id", f"tool_{event_counter}")
+                    tool_name = event_data.get("tool")
+                    if not tool_name and tool_id in tool_registry:
+                        tool_name = tool_registry[tool_id].get("tool")
+                    display_tool_name = tool_name or "tool"
                     success = event_data.get("success", False)
                     error_msg = event_data.get("error")
                     data_summary = event_data.get("data")
@@ -858,14 +889,42 @@ class ChatOrchestrator:
                         SSEEventType.TOOL_RESULT,
                         ToolResultEventData(
                             id=tool_id,
-                            tool=tool_name,
-                            label=self._get_tool_label(tool_name),
+                            tool=display_tool_name,
+                            label=self._get_tool_label(display_tool_name),
                             status="success" if success else "failed",
                             summary=summary,
                         ).model_dump(),
                         message_id=message_id,
                         event_id=event_id,
                     )
+
+                    tool_payload = {
+                        "id": tool_id,
+                        "tool": tool_name,
+                        "success": success,
+                        "error": error_msg,
+                        "data": data_summary,
+                    }
+
+                    try:
+                        await message_service.save_message(
+                            session_id=session_id,
+                            role="tool",
+                            content=json.dumps(tool_payload, ensure_ascii=False),
+                            tool_name=tool_name if tool_name and tool_name != "unknown" else None,
+                            tool_params=(
+                                tool_registry.get(tool_id, {}).get("parameters")
+                                if tool_id in tool_registry
+                                else None
+                            ),
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Tool message persistence failed (non-blocking)",
+                            session_id=session_id,
+                            tool_id=tool_id,
+                            error=str(e),
+                        )
 
                 elif event_type == "agent_complete":
                     result = event_data
@@ -964,7 +1023,7 @@ class ChatOrchestrator:
                         )
 
                         # Update assistant message content
-                        await self._update_assistant_message(message_id, final_content)
+                        await self._safe_update_assistant_message(message_id, final_content)
 
                     else:
                         # Emit error phase

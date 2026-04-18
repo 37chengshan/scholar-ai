@@ -177,6 +177,53 @@ class MessageService:
             )
             return int(result.scalar_one() or 0)
 
+    async def update_message(
+        self,
+        message_id: str,
+        content: str,
+        db: Optional[AsyncSession] = None,
+    ) -> bool:
+        """Update an existing message content.
+
+        Returns True when a row is updated, otherwise False.
+        """
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        if db:
+            result = await db.execute(
+                update(ChatMessage)
+                .where(ChatMessage.id == message_id)
+                .values(content=content)
+            )
+            return (result.rowcount or 0) > 0
+
+        async with AsyncSessionLocal() as session:
+            try:
+                # Keep session activity in sync with final assistant output.
+                session_result = await session.execute(
+                    select(ChatMessage.session_id).where(ChatMessage.id == message_id)
+                )
+                session_id = session_result.scalar_one_or_none()
+
+                result = await session.execute(
+                    update(ChatMessage)
+                    .where(ChatMessage.id == message_id)
+                    .values(content=content)
+                )
+
+                if (result.rowcount or 0) > 0 and session_id:
+                    await session.execute(
+                        update(Session)
+                        .where(Session.id == session_id)
+                        .values(last_activity_at=now)
+                    )
+
+                await session.commit()
+                return (result.rowcount or 0) > 0
+            except Exception:
+                await session.rollback()
+                raise
+
     async def delete_session_messages(self, session_id: str) -> int:
         """Delete all messages for a session.
 

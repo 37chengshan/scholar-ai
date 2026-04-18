@@ -184,35 +184,5 @@ async def parse_pdf(
                 logger.warning(f"Failed to cleanup temp file: {e}")
 
 
-@router.post("/pdf/batch", status_code=status.HTTP_202_ACCEPTED)
-async def parse_pdfs_batch(files: list[UploadFile] = File(...)):
-    """
-    批量解析PDF（异步任务）
-
-    返回任务ID用于轮询状态。
-    实际处理由后台worker完成。
-    """
-    # TODO: 实现批量解析，创建processing_tasks记录
-    # 这需要与Node.js后端协调创建任务
-
-    logger.info(f"Batch upload received: {len(files)} files")
-
-    return {
-        "status": "pending",
-        "task_id": None,  # TODO: Create actual task
-        "file_count": len(files),
-        "message": "批量解析任务已提交，请等待实现",
-    }
-
-
-@router.get("/pdf/status/{task_id}", status_code=status.HTTP_200_OK)
-async def get_parse_status(task_id: str):
-    """
-    查询PDF解析任务状态
-
-    用于异步批量解析的状态轮询。
-    """
-    # TODO: 从数据库查询任务状态
-    # 需要与Node.js后端协调获取任务状态
-
-    return {"task_id": task_id, "status": "unknown", "message": "状态查询接口待实现"}
+# NOTE(PR22-A): batch/status stubs are intentionally removed.
+# They previously exposed placeholder behavior and violated contract reliability.

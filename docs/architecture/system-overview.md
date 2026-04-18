@@ -55,6 +55,8 @@
 SSE/异步链路：
 
 - SSE 事件命名、载荷与完成信号遵循 docs/architecture/api-contract.md。
+- Chat 流式事件仅接受 canonical event types，不再接收 legacy alias 映射。
+- 除 heartbeat 外，所有业务 SSE 事件必须携带 `message_id`。
 - 长任务必须可观测，至少提供 queued/running/succeeded/failed 状态。
 
 外部依赖与运行时组件：
