@@ -41,6 +41,116 @@ class PaperCreateResponse(BaseModel):
     data: dict
 
 
+class PaperResponse(BaseModel):
+    """Single paper response with full details."""
+
+    success: bool = True
+    data: "PaperData"
+    meta: Optional[dict] = None
+
+
+class PaperData(BaseModel):
+    """Full paper data structure."""
+
+    id: str
+    title: str
+    authors: list[str]
+    year: Optional[int] = None
+    abstract: Optional[str] = None
+    doi: Optional[str] = None
+    arxiv_id: Optional[str] = None
+    pdf_url: Optional[str] = None
+    pdf_path: Optional[str] = None
+    content: Optional[str] = None
+    imrad_json: Optional[dict] = None
+    status: str
+    file_size: Optional[int] = None
+    page_count: Optional[int] = None
+    keywords: Optional[list[str]] = None
+    venue: Optional[str] = None
+    citations: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    user_id: str
+    storage_key: Optional[str] = None
+    reading_notes: Optional[str] = None
+    notes_version: Optional[int] = None
+    starred: bool = False
+    project_id: Optional[str] = None
+    batch_id: Optional[str] = None
+    upload_progress: Optional[int] = None
+    upload_status: Optional[str] = None
+    uploaded_at: Optional[str] = None
+    processingStatus: Optional[str] = None
+    progress: int = 0
+    processingError: Optional[str] = None
+    chunks: Optional[list["ChunkData"]] = None
+
+
+class ChunkData(BaseModel):
+    """Paper chunk data structure."""
+
+    id: str
+    content: str
+    section: Optional[str] = None
+    page_start: Optional[int] = None
+    page_end: Optional[int] = None
+    is_table: bool = False
+    is_figure: bool = False
+
+
+class BatchDeleteResponse(BaseModel):
+    """Batch delete operation response."""
+
+    success: bool = True
+    data: "BatchDeleteData"
+
+
+class BatchDeleteData(BaseModel):
+    """Batch delete result data."""
+
+    deletedCount: int = Field(description="Number of papers successfully deleted")
+    requestedCount: int = Field(description="Total number of papers requested for deletion")
+    failedIds: list[str] = Field(
+        default_factory=list,
+        description="IDs of papers that failed to delete"
+    )
+    message: str
+
+
+class BatchStarResponse(BaseModel):
+    """Batch star/unstar operation response."""
+
+    success: bool = True
+    data: "BatchStarData"
+
+
+class BatchStarData(BaseModel):
+    """Batch star result data."""
+
+    updatedCount: int = Field(description="Number of papers successfully updated")
+    requestedCount: int = Field(description="Total number of papers requested")
+    failedIds: list[str] = Field(
+        default_factory=list,
+        description="IDs of papers that failed to update"
+    )
+    starred: bool = Field(description="Starred status applied")
+    message: str
+
+
+class MessageResponse(BaseModel):
+    """Simple message response."""
+
+    success: bool = True
+    data: "MessageData"
+
+
+class MessageData(BaseModel):
+    """Message data structure."""
+
+    message: str
+
+
 class PaperUpdateRequest(BaseModel):
     """Request to update paper metadata."""
 
@@ -170,6 +280,15 @@ __all__ = [
     "PaperListResponse",
     "PaperCreateRequest",
     "PaperCreateResponse",
+    "PaperResponse",
+    "PaperData",
+    "ChunkData",
+    "BatchDeleteResponse",
+    "BatchDeleteData",
+    "BatchStarResponse",
+    "BatchStarData",
+    "MessageResponse",
+    "MessageData",
     "PaperUpdateRequest",
     "StarredRequest",
     "WebhookRequest",
