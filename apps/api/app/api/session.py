@@ -22,6 +22,7 @@ from app.utils.session_manager import session_manager
 from app.utils.logger import logger
 from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
+from app.api._shared.responses import MessageResponse
 
 router = APIRouter()
 
@@ -40,6 +41,13 @@ class SessionResponse(BaseModel):
 
 class SessionListResponse(BaseModel):
     """Response wrapper for sessions list."""
+
+    success: bool = True
+    data: Dict[str, Any]
+
+
+class SessionMessagesResponse(BaseModel):
+    """Response for session messages."""
 
     success: bool = True
     data: Dict[str, Any]
@@ -335,6 +343,7 @@ async def delete_session(session_id: str, user_id: str = CurrentUserId):
 
 @router.get(
     "/{session_id}/messages",
+    response_model=SessionMessagesResponse,
     summary="Get session messages",
     description="Retrieve chat history for a session. Returns user messages, agent responses, and tool call records.",
 )
@@ -389,15 +398,15 @@ async def get_session_messages(
             offset=offset,
         )
 
-        return {
-            "success": True,
-            "data": {
+        return SessionMessagesResponse(
+            success=True,
+            data={
                 "session_id": session_id,
                 "messages": messages,
                 "total": len(messages),
                 "limit": limit,
             },
-        }
+        )
 
     except HTTPException:
         raise

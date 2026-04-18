@@ -25,6 +25,7 @@ from app.models.paper import Paper
 from app.utils.logger import logger
 from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
+from app.api._shared.responses import DeleteResponse
 
 router = APIRouter()
 
@@ -60,6 +61,13 @@ class ProjectListResponse(BaseModel):
 
     success: bool = True
     data: List[dict]
+
+
+class PaperAssignmentResponse(BaseModel):
+    """Response for paper assignment to project."""
+
+    success: bool = True
+    data: dict
 
 
 # =============================================================================
@@ -265,7 +273,7 @@ async def update_project(
         )
 
 
-@router.delete("/{project_id}")
+@router.delete("/{project_id}", response_model=DeleteResponse)
 async def delete_project(
     project_id: str, user_id: str = CurrentUserId, db: AsyncSession = Depends(get_db)
 ):
@@ -291,7 +299,7 @@ async def delete_project(
 
         logger.info("Project deleted", project_id=project_id, user_id=user_id)
 
-        return {"success": True, "data": {"id": project_id, "deleted": True}}
+        return DeleteResponse(success=True, data={"id": project_id, "deleted": True})
 
     except HTTPException:
         raise
@@ -303,7 +311,7 @@ async def delete_project(
         )
 
 
-@router.patch("/paper/{paper_id}")
+@router.patch("/paper/{paper_id}", response_model=PaperAssignmentResponse)
 async def assign_paper_to_project(
     paper_id: str,
     request: PaperProjectUpdate,
@@ -355,14 +363,14 @@ async def assign_paper_to_project(
             user_id=user_id,
         )
 
-        return {
-            "success": True,
-            "data": {
+        return PaperAssignmentResponse(
+            success=True,
+            data={
                 "id": paper.id,
                 "title": paper.title,
                 "projectId": paper.project_id,
             },
-        }
+        )
 
     except HTTPException:
         raise
