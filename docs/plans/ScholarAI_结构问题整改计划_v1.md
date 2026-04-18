@@ -21,7 +21,7 @@ evidence_commits:
 
 **已完成的治理基础设施：**
 - `.github/workflows/` 已存在（含 `governance-baseline.yml`、`test.yml`）
-- `.github/PULL_REQUEST_TEMPLATE.md` 已存在且内容完整
+- `.github/pull_request_template.md` 已存在且内容完整
 - `.github/ISSUE_TEMPLATE/` 已存在（含 bug-report、feature-request、governance-task 模板）
 - 四个治理脚本全部存在：`check-doc-governance.sh`、`check-code-boundaries.sh`、`check-structure-boundaries.sh`、`check-governance.sh`
 - `docs/architecture/api-contract.md` 已存在，使用 `limit/offset` 分页规范
@@ -133,7 +133,7 @@ evidence_commits:
 - `.github/workflows/` **已存在**，包含：
   - `governance-baseline.yml` - 治理基线检查工作流
   - `test.yml` - 测试工作流
-- `.github/PULL_REQUEST_TEMPLATE.md` **已存在**且内容完整
+- `.github/pull_request_template.md` **已存在**且内容完整
 - `.github/ISSUE_TEMPLATE/` **已存在**（bug-report、feature-request、governance-task）
 - `scripts/check-structure-boundaries.sh` 现在应能通过
 
@@ -414,7 +414,7 @@ Phase 5 (迁移准备)
 
 **已完成：**
 - ✅ `.github/workflows/` 目录已存在（含 `governance-baseline.yml`、`test.yml`）
-- ✅ `.github/PULL_REQUEST_TEMPLATE.md` 已存在且内容完整
+- ✅ `.github/pull_request_template.md` 已存在且内容完整
 - ✅ `.github/ISSUE_TEMPLATE/` 已存在（bug-report、feature-request、governance-task）
 - ✅ 四个治理脚本全部存在
 
@@ -432,7 +432,7 @@ Phase 5 (迁移准备)
 
 **操作：** 验证现有工作流是否包含四个治理脚本执行，如已包含则无需修改，如未包含则补充。
 
-##### 任务 0.2：验证 `.github/PULL_REQUEST_TEMPLATE.md` ✅ 已存在且完整
+##### 任务 0.2：验证 `.github/pull_request_template.md` ✅ 已存在且完整
 
 **当前状态：已存在**
 已包含 Summary、Verification checklist、Contract impact、Governance Checklist 等字段。
@@ -459,7 +459,7 @@ Phase 5 (迁移准备)
 |------|--------|---------------|----------|
 | 1 | 治理脚本全部通过 | `bash scripts/check-doc-governance.sh && bash scripts/check-structure-boundaries.sh && bash scripts/check-code-boundaries.sh && bash scripts/check-governance.sh` | Exit code = 0 |
 | 2 | GitHub Actions 工作流存在 | `test -f .github/workflows/governance-baseline.yml || test -f .github/workflows/governance.yml` | Exit code = 0 |
-| 3 | PR 模板存在 | `test -f .github/PULL_REQUEST_TEMPLATE.md` | Exit code = 0 ✅ |
+| 3 | PR 模板存在 | `test -f .github/pull_request_template.md` | Exit code = 0 ✅ |
 | 4 | apps README 包含约束说明 | `grep -q "Current implementation lives in frontend" apps/web/README.md && grep -q "Current implementation lives in backend-python" apps/api/README.md` | Exit code = 0 ✅ |
 | 5 | Issue 模板存在 | `test -d .github/ISSUE_TEMPLATE` | Exit code = 0 ✅ |
 
@@ -476,7 +476,7 @@ echo "=== Phase 0 验收开始 ==="
 # 1. 检查文件存在
 echo "[1/5] 检查必需文件..."
 test -f .github/workflows/governance-baseline.yml || test -f .github/workflows/governance.yml
-test -f .github/PULL_REQUEST_TEMPLATE.md
+test -f .github/pull_request_template.md
 test -d .github/ISSUE_TEMPLATE
 echo "✓ 文件存在"
 
@@ -1445,7 +1445,7 @@ echo "=== Phase 5 验收完成 ✓ ==="
 
 ### 仓库治理
 - `.github/workflows/governance.yml`
-- `.github/PULL_REQUEST_TEMPLATE.md`
+- `.github/pull_request_template.md`
 - `docs/adr/0002-delay-physical-migration-until-boundary-convergence.md`
 - `docs/governance/core-boundary-baseline.md`（建议）
 

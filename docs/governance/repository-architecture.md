@@ -36,7 +36,7 @@ scholar-ai/
 └── .github/
     ├── workflows/
     ├── ISSUE_TEMPLATE/
-    └── PULL_REQUEST_TEMPLATE.md
+    └── pull_request_template.md
 ```
 
 ## Canonical Rules
