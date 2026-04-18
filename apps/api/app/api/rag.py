@@ -9,7 +9,7 @@ Provides endpoints for:
 
 import time
 import uuid
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.responses import StreamingResponse
@@ -36,14 +36,14 @@ router = APIRouter()
 
 
 def _source_score(source: Dict) -> float:
-    """Read source score from unified field, with legacy fallback."""
+    """Read source score from strict unified field."""
     score = source.get("score")
     if score is None:
-        score = source.get("similarity", 0.0)
+        raise ValueError("Missing required retrieval field: score")
     try:
         return max(0.0, min(float(score), 1.0))
     except (TypeError, ValueError):
-        return 0.0
+        raise ValueError("Invalid retrieval field: score")
 
 
 def normalize_source_contract(source: Dict) -> Dict:
@@ -54,28 +54,30 @@ def normalize_source_contract(source: Dict) -> Dict:
     - page_num
     - text_preview
 
-    Legacy aliases are preserved when already present to avoid client regressions.
+    Strict mode rejects legacy aliases and requires canonical fields.
     """
     normalized = dict(source)
     normalized["score"] = _source_score(source)
 
     page_num = source.get("page_num")
     if page_num is None:
-        page_num = source.get("page")
+        raise ValueError("Missing required retrieval field: page_num")
     normalized["page_num"] = page_num
 
     if normalized.get("text_preview") is None:
-        normalized["text_preview"] = (
-            source.get("content_preview")
-            or source.get("snippet")
-            or source.get("content")
-            or ""
-        )
+        text_preview = source.get("text")
+        if text_preview is None:
+            raise ValueError("Missing required retrieval field: text_preview")
+        normalized["text_preview"] = text_preview[:300]
 
     return normalized
 
 
-def calculate_confidence(answer: str, sources: List[dict]) -> float:
+def calculate_confidence(
+    answer: str,
+    sources: List[dict],
+    with_explain: bool = False,
+) -> float | Tuple[float, Dict[str, object]]:
     """Calculate confidence from coverage, diversity, and support strength.
 
     Confidence dimensions:
@@ -115,7 +117,22 @@ def calculate_confidence(answer: str, sources: List[dict]) -> float:
         + 0.25 * evidence_diversity
         + 0.20 * answer_support
     )
-    return round(min(confidence, 1.0), 4)
+    final_confidence = round(min(confidence, 1.0), 4)
+
+    if not with_explain:
+        return final_confidence
+
+    explain = {
+        "score_coverage": round(score_coverage, 4),
+        "evidence_diversity": round(evidence_diversity, 4),
+        "answer_support": round(answer_support, 4),
+        "weights": {
+            "score_coverage": 0.55,
+            "evidence_diversity": 0.25,
+            "answer_support": 0.20,
+        },
+    }
+    return final_confidence, explain
 
 
 # =============================================================================
@@ -140,6 +157,7 @@ class RAGQueryResponse(BaseModel):
     metadata_filters: Optional[Dict] = Field(None, description="提取的元数据过滤条件")
     sources: List[dict] = Field(..., description="引用来源")
     confidence: float = Field(..., ge=0, le=1, description="置信度")
+    confidence_explain: Optional[Dict] = Field(None, description="置信度解释信息")
     conversation_id: Optional[str] = Field(None, description="对话会话ID")
     cached: bool = Field(False, description="是否来自缓存")
 
@@ -242,6 +260,7 @@ async def rag_query(
                 query=request.question,
                 sources=cached_sources,
                 confidence=cached.get("confidence", 0.0),
+                confidence_explain=cached.get("confidence_explain"),
                 conversation_id=request.conversation_id,
                 cached=True
             )
@@ -264,7 +283,11 @@ async def rag_query(
         sources = [normalize_source_contract(source) for source in result.get("sources", [])]
         retrieve_duration_ms = (time.perf_counter() - retrieve_started) * 1000
 
-        confidence = calculate_confidence(answer, sources)
+        confidence, confidence_explain = calculate_confidence(
+            answer,
+            sources,
+            with_explain=True,
+        )
 
         # Build response (expanded_query/intent not available from orchestrator)
         response = RAGQueryResponse(
@@ -275,6 +298,7 @@ async def rag_query(
             metadata_filters=None,  # Not available from AgenticRetrievalOrchestrator
             sources=sources,
             confidence=confidence,
+            confidence_explain=confidence_explain,
             conversation_id=request.conversation_id,
             cached=False
         )
@@ -287,7 +311,8 @@ async def rag_query(
             response={
                 "answer": answer,
                 "sources": sources,
-                "confidence": confidence
+                "confidence": confidence,
+                "confidence_explain": confidence_explain,
             },
             query_type=request.query_type,
             retrieval_version="v2",

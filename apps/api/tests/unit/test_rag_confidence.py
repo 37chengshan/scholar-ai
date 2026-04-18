@@ -1,4 +1,4 @@
-"""Unit tests for PR8 confidence calculation in RAG API."""
+"""Unit tests for confidence calculation with strict retrieval contract."""
 
 import os
 
@@ -17,12 +17,12 @@ def test_confidence_prefers_higher_scores():
     answer = "This answer is supported by multiple high-quality sources."
 
     low_score_sources = [
-        {"paper_id": "p1", "section": "intro", "score": 0.30},
-        {"paper_id": "p2", "section": "method", "score": 0.35},
+        {"paper_id": "p1", "section": "intro", "score": 0.30, "page_num": 1, "text_preview": "a"},
+        {"paper_id": "p2", "section": "method", "score": 0.35, "page_num": 2, "text_preview": "b"},
     ]
     high_score_sources = [
-        {"paper_id": "p1", "section": "intro", "score": 0.80},
-        {"paper_id": "p2", "section": "method", "score": 0.85},
+        {"paper_id": "p1", "section": "intro", "score": 0.80, "page_num": 1, "text_preview": "a"},
+        {"paper_id": "p2", "section": "method", "score": 0.85, "page_num": 2, "text_preview": "b"},
     ]
 
     assert calculate_confidence(answer, high_score_sources) > calculate_confidence(
@@ -34,14 +34,14 @@ def test_confidence_rewards_evidence_diversity():
     answer = "A moderately detailed answer with references."
 
     single_location_sources = [
-        {"paper_id": "p1", "section": "results", "score": 0.8},
-        {"paper_id": "p1", "section": "results", "score": 0.79},
-        {"paper_id": "p1", "section": "results", "score": 0.78},
+        {"paper_id": "p1", "section": "results", "score": 0.8, "page_num": 1, "text_preview": "a"},
+        {"paper_id": "p1", "section": "results", "score": 0.79, "page_num": 2, "text_preview": "b"},
+        {"paper_id": "p1", "section": "results", "score": 0.78, "page_num": 3, "text_preview": "c"},
     ]
     diverse_sources = [
-        {"paper_id": "p1", "section": "intro", "score": 0.8},
-        {"paper_id": "p2", "section": "method", "score": 0.79},
-        {"paper_id": "p3", "section": "results", "score": 0.78},
+        {"paper_id": "p1", "section": "intro", "score": 0.8, "page_num": 1, "text_preview": "a"},
+        {"paper_id": "p2", "section": "method", "score": 0.79, "page_num": 2, "text_preview": "b"},
+        {"paper_id": "p3", "section": "results", "score": 0.78, "page_num": 3, "text_preview": "c"},
     ]
 
     assert calculate_confidence(answer, diverse_sources) > calculate_confidence(
@@ -49,15 +49,17 @@ def test_confidence_rewards_evidence_diversity():
     )
 
 
-def test_confidence_accepts_legacy_similarity_field():
-    answer = "Legacy source format still computes confidence."
+def test_confidence_raises_when_score_missing():
+    answer = "Missing score must fail under strict contract."
     sources = [
-        {"paper_id": "p1", "page": 1, "similarity": 0.72},
-        {"paper_id": "p2", "page": 2, "similarity": 0.68},
+        {"paper_id": "p1", "page_num": 1, "text_preview": "sample"},
     ]
 
-    value = calculate_confidence(answer, sources)
-    assert 0.0 < value <= 1.0
+    try:
+        calculate_confidence(answer, sources)
+        assert False, "Expected ValueError for missing score"
+    except ValueError as exc:
+        assert "score" in str(exc)
 
 
 def test_normalize_source_contract_keeps_canonical_fields():
@@ -77,26 +79,31 @@ def test_normalize_source_contract_keeps_canonical_fields():
     assert normalized["content_preview"] == "legacy-preview"
 
 
-def test_normalize_source_contract_falls_back_to_legacy_aliases():
+def test_normalize_source_contract_requires_canonical_fields():
     source = {
         "paper_id": "p2",
-        "similarity": 0.66,
-        "page": 4,
-        "content_preview": "legacy content",
+        "score": 0.66,
+        "page_num": 4,
+        "text_preview": "canonical content",
     }
 
     normalized = normalize_source_contract(source)
 
     assert normalized["score"] == 0.66
     assert normalized["page_num"] == 4
-    assert normalized["text_preview"] == "legacy content"
+    assert normalized["text_preview"] == "canonical content"
 
 
-def test_confidence_uses_canonical_score_over_legacy_similarity():
-    answer = "Confidence should use canonical score when both are present."
-    canonical_sources = [{"paper_id": "p1", "score": 0.9, "similarity": 0.1}]
-    legacy_only_sources = [{"paper_id": "p1", "similarity": 0.1}]
+def test_confidence_explain_contains_expected_dimensions():
+    answer = "A grounded answer with multiple supporting sources and enough detail."
+    sources = [
+        {"paper_id": "p1", "section": "intro", "score": 0.80, "page_num": 1, "text_preview": "a"},
+        {"paper_id": "p2", "section": "method", "score": 0.78, "page_num": 2, "text_preview": "b"},
+    ]
 
-    assert calculate_confidence(answer, canonical_sources) > calculate_confidence(
-        answer, legacy_only_sources
-    )
+    score, explain = calculate_confidence(answer, sources, with_explain=True)
+    assert 0.0 < score <= 1.0
+    assert "score_coverage" in explain
+    assert "evidence_diversity" in explain
+    assert "answer_support" in explain
+    assert "weights" in explain

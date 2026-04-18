@@ -27,18 +27,18 @@ class TestBuildContextWithCitations:
         """Test basic citation format with paper_title and section."""
         chunks = [
             {
-                "content": "YOLOv1 introduces a unified object detection framework.",
+                "text": "YOLOv1 introduces a unified object detection framework.",
                 "paper_title": "YOLOv1 Paper",
                 "section": "Introduction",
-                "page": 1,
-                "similarity": 0.75,
+                "page_num": 1,
+                "score": 0.75,
             },
             {
-                "content": "The architecture uses a single neural network.",
+                "text": "The architecture uses a single neural network.",
                 "paper_title": "YOLOv1 Paper",
                 "section": "Method",
-                "page": 3,
-                "similarity": 0.80,
+                "page_num": 3,
+                "score": 0.80,
             },
         ]
 
@@ -55,11 +55,11 @@ class TestBuildContextWithCitations:
         """Test citation falls back to Page when section is missing."""
         chunks = [
             {
-                "content": "Some important finding here.",
+                "text": "Some important finding here.",
                 "paper_title": "Test Paper",
                 "section": None,
-                "page": 5,
-                "similarity": 0.70,
+                "page_num": 5,
+                "score": 0.70,
             },
         ]
 
@@ -68,31 +68,31 @@ class TestBuildContextWithCitations:
         assert "[Test Paper, Page 5]" in result
         assert "Some important finding" in result
 
-    def test_high_similarity_chunk_extended_length(
+    def test_high_score_chunk_extended_length(
         self, orchestrator: AgenticRetrievalOrchestrator
     ):
-        """Test high similarity (>0.85) chunks get extended to 300 chars."""
+        """Test high score (>0.85) chunks get extended to 300 chars."""
         long_content = (
             "This is a very important and highly relevant chunk that contains "
             "detailed information about the methodology and should be preserved "
-            "in its entirety because it has high similarity score. The content "
+            "in its entirety because it has high score score. The content "
             "continues here with more details about the implementation specifics "
             "and experimental results that demonstrate the effectiveness of the "
             "proposed approach. We need to ensure this content is preserved well."
         )
         chunks = [
             {
-                "content": long_content,
+                "text": long_content,
                 "paper_title": "Important Paper",
                 "section": "Results",
-                "page": 10,
-                "similarity": 0.90,  # > 0.85 threshold
+                "page_num": 10,
+                "score": 0.90,  # > 0.85 threshold
             },
         ]
 
         result = orchestrator._build_context_with_citations(chunks)
 
-        # Should contain ~300 chars of content (extended for high similarity)
+        # Should contain ~300 chars of content (extended for high score)
         assert len(result) > 250  # Has substantial content preserved
         assert "[Important Paper, Results]" in result
 
@@ -108,11 +108,11 @@ class TestBuildContextWithCitations:
         )
         chunks = [
             {
-                "content": long_content,
+                "text": long_content,
                 "paper_title": "Normal Paper",
                 "section": "Discussion",
-                "page": 8,
-                "similarity": 0.75,  # Below 0.85 threshold
+                "page_num": 8,
+                "score": 0.75,  # Below 0.85 threshold
             },
         ]
 
@@ -136,12 +136,12 @@ class TestBuildContextWithCitations:
         """Test citation uses paper_id when paper_title is missing."""
         chunks = [
             {
-                "content": "Content without title.",
+                "text": "Content without title.",
                 "paper_title": None,
                 "paper_id": "paper-uuid-123",
                 "section": "Abstract",
-                "page": 1,
-                "similarity": 0.70,
+                "page_num": 1,
+                "score": 0.70,
             },
         ]
 
@@ -155,25 +155,25 @@ class TestBuildContextWithCitations:
         """Test multiple chunks are formatted with clear separation."""
         chunks = [
             {
-                "content": "First chunk content.",
+                "text": "First chunk content.",
                 "paper_title": "Paper A",
                 "section": "Intro",
-                "page": 1,
-                "similarity": 0.80,
+                "page_num": 1,
+                "score": 0.80,
             },
             {
-                "content": "Second chunk content.",
+                "text": "Second chunk content.",
                 "paper_title": "Paper B",
                 "section": "Method",
-                "page": 5,
-                "similarity": 0.75,
+                "page_num": 5,
+                "score": 0.75,
             },
             {
-                "content": "Third chunk content.",
+                "text": "Third chunk content.",
                 "paper_title": "Paper A",
                 "section": "Results",
-                "page": 10,
-                "similarity": 0.88,
+                "page_num": 10,
+                "score": 0.88,
             },
         ]
 
@@ -211,10 +211,10 @@ class TestCollectSourcesWithCitations:
                                 "id": "chunk-1",
                                 "paper_id": "yolo-paper",
                                 "paper_title": "YOLO: Unified Detection",
-                                "content": "YOLO is a unified framework.",
+                                "text": "YOLO is a unified framework.",
                                 "section": "Introduction",
-                                "page": 1,
-                                "similarity": 0.85,
+                                "page_num": 1,
+                                "score": 0.85,
                             }
                         ],
                         "success": True,
@@ -243,10 +243,10 @@ class TestCollectSourcesWithCitations:
                                 "id": "chunk-2",
                                 "paper_id": "test-paper",
                                 "paper_title": "Test Paper",
-                                "content": "Some content.",
+                                "text": "Some content.",
                                 "section": None,
-                                "page": 7,
-                                "similarity": 0.70,
+                                "page_num": 7,
+                                "score": 0.70,
                             }
                         ],
                         "success": True,
@@ -273,10 +273,10 @@ class TestCollectSourcesWithCitations:
                                 "id": "chunk-3",
                                 "paper_id": "uuid-abc-123",
                                 "paper_title": None,
-                                "content": "Content here.",
+                                "text": "Content here.",
                                 "section": "Results",
-                                "page": 5,
-                                "similarity": 0.75,
+                                "page_num": 5,
+                                "score": 0.75,
                             }
                         ],
                         "success": True,
@@ -303,10 +303,10 @@ class TestCollectSourcesWithCitations:
                                 "id": "chunk-same",
                                 "paper_id": "paper-1",
                                 "paper_title": "Paper 1",
-                                "content": "Shared content.",
+                                "text": "Shared content.",
                                 "section": "Intro",
-                                "page": 1,
-                                "similarity": 0.80,
+                                "page_num": 1,
+                                "score": 0.80,
                             }
                         ],
                         "success": True,
@@ -322,10 +322,10 @@ class TestCollectSourcesWithCitations:
                                 "id": "chunk-same",  # Same ID as round 1
                                 "paper_id": "paper-1",
                                 "paper_title": "Paper 1",
-                                "content": "Shared content.",
+                                "text": "Shared content.",
                                 "section": "Intro",
-                                "page": 1,
-                                "similarity": 0.82,
+                                "page_num": 1,
+                                "score": 0.82,
                             }
                         ],
                         "success": True,
@@ -340,10 +340,10 @@ class TestCollectSourcesWithCitations:
         assert len(sources) == 1
         assert sources[0]["citation"] == "[Paper 1, Intro]"
 
-    def test_sources_sorted_by_similarity(
+    def test_sources_sorted_by_score(
         self, orchestrator: AgenticRetrievalOrchestrator
     ):
-        """Test sources are sorted by similarity descending."""
+        """Test sources are sorted by score descending."""
         all_results = [
             {
                 "round": 1,
@@ -354,25 +354,28 @@ class TestCollectSourcesWithCitations:
                                 "id": "chunk-low",
                                 "paper_id": "paper-1",
                                 "paper_title": "Paper A",
-                                "content": "Low similarity.",
+                                "text": "Low score.",
                                 "section": "Intro",
-                                "similarity": 0.60,
+                                "page_num": 1,
+                                "score": 0.60,
                             },
                             {
                                 "id": "chunk-high",
                                 "paper_id": "paper-2",
                                 "paper_title": "Paper B",
-                                "content": "High similarity.",
+                                "text": "High score.",
                                 "section": "Results",
-                                "similarity": 0.90,
+                                "page_num": 2,
+                                "score": 0.90,
                             },
                             {
                                 "id": "chunk-mid",
                                 "paper_id": "paper-3",
                                 "paper_title": "Paper C",
-                                "content": "Mid similarity.",
+                                "text": "Mid score.",
                                 "section": "Method",
-                                "similarity": 0.75,
+                                "page_num": 3,
+                                "score": 0.75,
                             },
                         ],
                         "success": True,
@@ -384,10 +387,10 @@ class TestCollectSourcesWithCitations:
         sources = orchestrator._collect_sources(all_results)
 
         assert len(sources) == 3
-        # Sorted by similarity descending
-        assert sources[0]["similarity"] == 0.90
-        assert sources[1]["similarity"] == 0.75
-        assert sources[2]["similarity"] == 0.60
+        # Sorted by score descending
+        assert sources[0]["score"] == 0.90
+        assert sources[1]["score"] == 0.75
+        assert sources[2]["score"] == 0.60
         # Citations present
         assert sources[0]["citation"] == "[Paper B, Results]"
         assert sources[1]["citation"] == "[Paper C, Method]"
@@ -417,9 +420,10 @@ class TestCollectSourcesWithCitations:
                                 "id": "chunk-valid",
                                 "paper_id": "paper-ok",
                                 "paper_title": "Valid Paper",
-                                "content": "Valid content.",
+                                "text": "Valid content.",
                                 "section": "Intro",
-                                "similarity": 0.80,
+                                "page_num": 1,
+                                "score": 0.80,
                             }
                         ],
                         "success": True,
@@ -487,16 +491,16 @@ More content here [Paper C, Section 3]."""
         # Should need fallback (density < threshold)
         chunks = [
             {
-                "content": "YOLOv1 content here.",
+                "text": "YOLOv1 content here.",
                 "paper_title": "YOLOv1",
                 "section": "Intro",
-                "similarity": 0.80,
+                "score": 0.80,
             },
             {
-                "content": "YOLOv2 content here.",
+                "text": "YOLOv2 content here.",
                 "paper_title": "YOLOv2",
                 "section": "Method",
-                "similarity": 0.75,
+                "score": 0.75,
             },
         ]
 
@@ -511,8 +515,8 @@ More content here [Paper C, Section 3]."""
 
         # 2 citations in short answer -> good density
         chunks = [
-            {"content": "Content", "paper_title": "Paper A", "section": "Intro"},
-            {"content": "Content", "paper_title": "Paper B", "section": "Method"},
+            {"text": "Content", "paper_title": "Paper A", "section": "Intro"},
+            {"text": "Content", "paper_title": "Paper B", "section": "Method"},
         ]
 
         needs_fallback = orchestrator._needs_citation_fallback(answer, len(chunks))
@@ -531,17 +535,17 @@ Methods described in [Paper B, Method] are effective.
         chunks = [
             {
                 "id": "c1",
-                "content": "Findings content",
+                "text": "Findings content",
                 "paper_title": "Paper A",
                 "section": "Results",
-                "similarity": 0.85,
+                "score": 0.85,
             },
             {
                 "id": "c2",
-                "content": "Methods content",
+                "text": "Methods content",
                 "paper_title": "Paper B",
                 "section": "Method",
-                "similarity": 0.80,
+                "score": 0.80,
             },
         ]
 
@@ -576,17 +580,19 @@ Methods described in [Paper B, Method] are effective.
         chunks = [
             {
                 "id": "c1",
-                "content": "YOLOv1 introduced unified detection framework.",
+                "text": "YOLOv1 introduced unified detection framework.",
                 "paper_title": "YOLOv1 Paper",
                 "section": "Introduction",
-                "similarity": 0.85,
+                "page_num": 1,
+                "score": 0.85,
             },
             {
                 "id": "c2",
-                "content": "YOLOv2 improved with anchor boxes.",
+                "text": "YOLOv2 improved with anchor boxes.",
                 "paper_title": "YOLOv2 Paper",
                 "section": "Method",
-                "similarity": 0.80,
+                "page_num": 2,
+                "score": 0.80,
             },
         ]
 
@@ -628,22 +634,25 @@ class TestBuildFallbackAnswer:
         """Test fallback answer groups chunks by section."""
         chunks = [
             {
-                "content": "YOLOv1 intro content.",
+                "text": "YOLOv1 intro content.",
                 "paper_title": "YOLOv1",
                 "section": "Introduction",
-                "similarity": 0.80,
+                "page_num": 1,
+                "score": 0.80,
             },
             {
-                "content": "YOLOv1 method content.",
+                "text": "YOLOv1 method content.",
                 "paper_title": "YOLOv1",
                 "section": "Method",
-                "similarity": 0.75,
+                "page_num": 2,
+                "score": 0.75,
             },
             {
-                "content": "YOLOv2 intro content.",
+                "text": "YOLOv2 intro content.",
                 "paper_title": "YOLOv2",
                 "section": "Introduction",
-                "similarity": 0.85,
+                "page_num": 3,
+                "score": 0.85,
             },
         ]
 
@@ -666,11 +675,11 @@ class TestBuildFallbackAnswer:
         """Test fallback uses [Paper Title, Section] citation format."""
         chunks = [
             {
-                "content": "Important finding.",
+                "text": "Important finding.",
                 "paper_title": "Test Paper",
                 "section": "Results",
-                "page": 5,
-                "similarity": 0.90,
+                "page_num": 5,
+                "score": 0.90,
             },
         ]
 
@@ -688,11 +697,11 @@ class TestBuildFallbackAnswer:
         """Test fallback uses Page format when section is missing."""
         chunks = [
             {
-                "content": "Content without section.",
+                "text": "Content without section.",
                 "paper_title": "Paper X",
                 "section": None,
-                "page": 10,
-                "similarity": 0.70,
+                "page_num": 10,
+                "score": 0.70,
             },
         ]
 
@@ -709,11 +718,12 @@ class TestBuildFallbackAnswer:
         """Test fallback uses paper_id when paper_title is missing."""
         chunks = [
             {
-                "content": "Content without title.",
+                "text": "Content without title.",
                 "paper_title": None,
                 "paper_id": "uuid-123",
                 "section": "Abstract",
-                "similarity": 0.75,
+                "page_num": 1,
+                "score": 0.75,
             },
         ]
 
@@ -730,16 +740,18 @@ class TestBuildFallbackAnswer:
         """Test fallback answer uses proper structure with headers and bullets."""
         chunks = [
             {
-                "content": "First finding.",
+                "text": "First finding.",
                 "paper_title": "Paper A",
                 "section": "Results",
-                "similarity": 0.80,
+                "page_num": 1,
+                "score": 0.80,
             },
             {
-                "content": "Second finding.",
+                "text": "Second finding.",
                 "paper_title": "Paper B",
                 "section": "Results",
-                "similarity": 0.75,
+                "page_num": 2,
+                "score": 0.75,
             },
         ]
 
@@ -771,10 +783,11 @@ class TestBuildFallbackAnswer:
         long_content = "Very long content. " * 50  # ~1000 chars
         chunks = [
             {
-                "content": long_content,
+                "text": long_content,
                 "paper_title": "Long Paper",
                 "section": "Intro",
-                "similarity": 0.80,
+                "page_num": 1,
+                "score": 0.80,
             },
         ]
 
