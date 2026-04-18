@@ -146,7 +146,7 @@ export function CitationsPanel({ citations, className }: CitationsPanelProps) {
   return (
     <div
       className={clsx(
-        'border-t border-border/50 pt-3 mt-3',
+        'border-t border-zinc-200 pt-3 mt-3',
         className
       )}
     >
@@ -189,8 +189,8 @@ export function CitationsPanel({ citations, className }: CitationsPanelProps) {
                 transition={{ duration: 0.2 }}
                 onClick={() => handleCitationClick(citation)}
                 className={clsx(
-                  'w-full text-left p-3 rounded-lg border border-border/50 bg-muted/30',
-                  'hover:bg-muted/50 transition-colors group'
+                  'w-full text-left p-2.5 border-l-2 border-zinc-200 bg-zinc-50/50',
+                  'hover:bg-zinc-50 transition-colors group'
                 )}
               >
                 {/* Header: Icon + Title + Relevance */}
@@ -208,7 +208,7 @@ export function CitationsPanel({ citations, className }: CitationsPanelProps) {
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <span className={clsx(
-                      'text-xs px-1.5 py-0.5 rounded-full font-mono',
+                      'text-[10px] px-1.5 py-0.5 rounded-none font-mono border',
                       relevanceColor
                     )}>
                       {formatRelevance(citation.score)}

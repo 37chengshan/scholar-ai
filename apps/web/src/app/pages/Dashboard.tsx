@@ -151,7 +151,7 @@ async function fetchRecentPapers() {
           </div>
 
           {/* Header Info - High Density */}
-          <div className="flex justify-between items-end border-b border-border/50 pb-4">
+          <div className="flex justify-between items-end border-b border-zinc-200 pb-4">
             <div className="flex gap-6 items-center">
               <div className="flex flex-col">
                 <span className="text-[9px] font-bold tracking-[0.3em] uppercase text-primary">{t.sysStatus}</span>
@@ -167,7 +167,7 @@ async function fetchRecentPapers() {
                 </div>
               </div>
             </div>
-            <div className="text-right text-[9px] font-mono tracking-[0.2em] text-muted-foreground uppercase bg-muted/50 px-2.5 py-1.5 rounded-sm border border-border/50">
+            <div className="text-right text-[9px] font-mono tracking-[0.2em] text-muted-foreground uppercase bg-zinc-50 px-2.5 py-1.5 border border-zinc-200">
               {new Date().toISOString().split('T')[0]}
             </div>
           </div>
@@ -186,7 +186,7 @@ async function fetchRecentPapers() {
               { label: t.deepReads, value: stats?.queryCount || "—", desc: t.analyzedDocs, icon: Eye, trend: "+8%" },
               { label: t.globalQueries, value: stats?.queryCount || "—", desc: t.extSearches, icon: Search, trend: "+1.5%" },
             ].map((kpi, i) => (
-              <div key={i} className="group flex flex-col gap-2.5 border-b border-black/10 py-4 hover:border-primary/50 transition-colors relative overflow-hidden">
+              <div key={i} className="group flex flex-col gap-2.5 border-b border-zinc-200 py-4 hover:border-primary/50 transition-colors relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/0 via-primary/0 to-primary/0 group-hover:from-primary/20 group-hover:via-primary group-hover:to-primary/20 transition-all duration-500" />
                 <div className="flex justify-between items-start">
                   <span className="text-[8px] font-bold tracking-[0.2em] uppercase text-muted-foreground flex items-center gap-1.5">
@@ -212,7 +212,7 @@ async function fetchRecentPapers() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 p-5 shadow-sm"
+              className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 p-5"
             >
               <div className="flex justify-between items-end border-b border-border/50 pb-3 mb-4">
                 <div className="flex items-center gap-2">
@@ -288,7 +288,7 @@ async function fetchRecentPapers() {
             className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[300px]"
           >
             {/* Main Chart */}
-            <div className="lg:col-span-8 bg-card border border-border/50 p-5 shadow-sm flex flex-col">
+            <div className="lg:col-span-8 bg-card border border-zinc-200 p-5 flex flex-col">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-3">
                   <h3 className="font-serif text-base font-bold tracking-tight">{t.ingestVel}</h3>
@@ -339,7 +339,7 @@ async function fetchRecentPapers() {
             </div>
 
             {/* Secondary Stats / Pie Chart */}
-            <div className="lg:col-span-4 bg-card border border-border/50 p-5 shadow-sm flex flex-col">
+            <div className="lg:col-span-4 bg-card border border-zinc-200 p-5 flex flex-col">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-serif text-base font-bold tracking-tight">{t.subjDist}</h3>
               </div>

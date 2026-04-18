@@ -102,12 +102,12 @@ export function KnowledgeWorkspaceShell() {
   return (
     <div className="relative min-h-screen bg-background">
       <PaperTexture />
-      <div className="space-y-8 pb-20 px-6 max-w-7xl mx-auto relative z-10">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b-4 border-zinc-900">
-          <div className="space-y-4">
+      <div className="space-y-6 pb-20 px-6 max-w-7xl mx-auto relative z-10">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 pb-5 magazine-hairline">
+          <div className="space-y-3">
             <Link
               to="/knowledge-bases"
-              className="inline-flex items-center gap-2 text-zinc-500 hover:text-primary transition-colors text-sm font-bold uppercase tracking-wider mb-2"
+              className="inline-flex items-center gap-2 text-zinc-500 hover:text-primary transition-colors text-xs font-bold uppercase tracking-[0.16em] mb-1"
               onClick={(event) => {
                 event.preventDefault();
                 navigate('/knowledge-bases');
@@ -117,14 +117,14 @@ export function KnowledgeWorkspaceShell() {
               返回知识库列表
             </Link>
             <div className="flex items-center gap-4">
-              <h1 className="text-4xl md:text-5xl font-black font-serif uppercase tracking-tight text-zinc-900 leading-none">
+              <h1 className="text-3xl md:text-4xl font-black font-serif uppercase tracking-tight text-zinc-900 leading-none">
                 {kb.name}
               </h1>
-              <span className="bg-zinc-100 border border-zinc-300 px-3 py-1 font-mono text-sm text-zinc-600 shadow-[2px_2px_0px_0px_rgba(24,24,27,0.2)]">
+              <span className="bg-zinc-50 border border-zinc-200 px-2.5 py-1 font-mono text-xs text-zinc-500">
                 {kbId}
               </span>
             </div>
-            <div className="flex flex-wrap gap-4 text-sm font-bold uppercase tracking-wider text-zinc-500 pt-2">
+            <div className="flex flex-wrap gap-4 text-xs font-bold uppercase tracking-[0.14em] text-zinc-500 pt-1">
               <span className="flex items-center gap-2">
                 <Database className="w-4 h-4" /> {kb.embeddingModel} Model
               </span>
@@ -137,69 +137,69 @@ export function KnowledgeWorkspaceShell() {
           <div className="flex items-center gap-4 shrink-0">
             <button
               onClick={() => syncTab('uploads')}
-              className="flex items-center gap-2 bg-zinc-900 hover:bg-primary text-white px-6 py-4 font-bold uppercase tracking-wide transition-all  hover: hover:-translate-y-1 hover:-translate-x-1"
+              className="flex items-center gap-2 border border-zinc-300 bg-white hover:border-primary hover:text-primary text-zinc-800 px-4 py-2.5 font-bold uppercase tracking-[0.14em] text-xs transition-colors"
             >
-              <UploadCloud className="w-5 h-5" />
+              <UploadCloud className="w-4 h-4" />
               上传工作台
             </button>
             <button
               onClick={() => setImportDialogOpen(true)}
-              className="flex items-center gap-2 bg-zinc-900 hover:bg-primary text-white px-6 py-4 font-bold uppercase tracking-wide transition-all  hover: hover:-translate-y-1 hover:-translate-x-1"
+              className="flex items-center gap-2 border border-zinc-300 bg-white hover:border-primary hover:text-primary text-zinc-800 px-4 py-2.5 font-bold uppercase tracking-[0.14em] text-xs transition-colors"
             >
-              <UploadCloud className="w-5 h-5" />
+              <UploadCloud className="w-4 h-4" />
               导入来源
             </button>
             <button
               onClick={() => navigate(`/chat?kbId=${kb.id}`)}
-              className="flex items-center gap-2 bg-primary hover:bg-zinc-900 text-white px-6 py-4 font-bold uppercase tracking-wide transition-all  hover: hover:-translate-y-1 hover:-translate-x-1"
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 font-bold uppercase tracking-[0.14em] text-xs transition-colors"
             >
-              <MessageSquare className="w-5 h-5" />
+              <MessageSquare className="w-4 h-4" />
               对整个知识库提问
             </button>
           </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={syncTab} className="w-full">
-          <TabsList className="flex flex-wrap border-b-2 border-zinc-200 bg-transparent h-auto p-0 gap-0 w-full justify-start">
+          <TabsList className="flex flex-wrap border-b border-zinc-200 bg-transparent h-auto p-0 gap-0 w-full justify-start">
             <TabsTrigger value="papers" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'papers'
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
+                ? 'border-primary text-zinc-900 bg-transparent'
+                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
             }`}>
               <span className="flex items-center justify-center gap-2"><Library className="w-4 h-4" /> 论文列表</span>
             </TabsTrigger>
             <TabsTrigger value="import-status" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'import-status'
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
+                ? 'border-primary text-zinc-900 bg-transparent'
+                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
             }`}>
               <span className="flex items-center justify-center gap-2"><Clock3 className="w-4 h-4" /> 导入状态</span>
             </TabsTrigger>
             <TabsTrigger value="uploads" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'uploads'
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
+                ? 'border-primary text-zinc-900 bg-transparent'
+                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
             }`}>
               <span className="flex items-center justify-center gap-2"><UploadCloud className="w-4 h-4" /> 上传工作台</span>
             </TabsTrigger>
             <TabsTrigger value="search" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'search'
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
+                ? 'border-primary text-zinc-900 bg-transparent'
+                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
             }`}>
               <span className="flex items-center justify-center gap-2"><Search className="w-4 h-4" /> 知识库检索</span>
             </TabsTrigger>
             <TabsTrigger value="runs" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'runs'
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
+                ? 'border-primary text-zinc-900 bg-transparent'
+                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
             }`}>
               <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> Run 历史</span>
             </TabsTrigger>
             <TabsTrigger value="chat" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'chat'
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
+                ? 'border-primary text-zinc-900 bg-transparent'
+                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
             }`}>
               <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> 问答</span>
             </TabsTrigger>

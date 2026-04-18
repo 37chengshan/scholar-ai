@@ -117,10 +117,10 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
 
   // Badge variants
   const badgeClasses: Record<ToolCall['status'], string> = {
-    pending: 'bg-muted text-muted-foreground',
-    running: 'bg-primary/10 text-primary',
-    success: 'bg-green-100 text-green-700',
-    error: 'bg-destructive/10 text-destructive',
+    pending: 'bg-zinc-100 text-zinc-500 border border-zinc-200',
+    running: 'bg-primary/10 text-primary border border-primary/30',
+    success: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    error: 'bg-red-50 text-red-600 border border-red-200',
   };
 
   // Status icon
@@ -142,13 +142,13 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
   return (
     <div
       className={clsx(
-        'rounded-lg border border-border/50 bg-card overflow-hidden',
+        'border-l-2 border-zinc-200 bg-transparent overflow-hidden',
         className
       )}
     >
       {/* Compact row */}
       <div
-        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-zinc-50 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {/* Icon */}
@@ -166,7 +166,7 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
         </div>
 
         {/* Status badge */}
-        <Badge className={clsx('text-xs', badgeClasses[toolCall.status])}>
+        <Badge className={clsx('text-[10px] rounded-none font-bold tracking-[0.12em] uppercase', badgeClasses[toolCall.status])}>
           <StatusIcon className={clsx('w-3 h-3', toolCall.status === 'running' && 'animate-spin')} />
           {getStatusLabel(toolCall.status, isZh)}
         </Badge>
@@ -199,7 +199,7 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
               {/* Parameters */}
               <div>
                 <div className="text-xs font-semibold mb-1 text-muted-foreground">{t.parameters}</div>
-                <pre className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded text-xs font-mono overflow-x-auto max-h-40">
+                <pre className="bg-zinc-50 p-2 border border-zinc-200 rounded-none text-xs font-mono overflow-x-auto max-h-40">
                   {JSON.stringify(toolCall.parameters, null, 2)}
                 </pre>
               </div>
@@ -209,11 +209,11 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
                 <div>
                   <div className="text-xs font-semibold mb-1 text-muted-foreground">{t.result}</div>
                   {typeof toolCall.result === 'string' ? (
-                    <div className="text-sm text-foreground whitespace-pre-wrap">
+                    <div className="text-sm text-foreground whitespace-pre-wrap border-l-2 border-zinc-200 pl-2">
                       {toolCall.result}
                     </div>
                   ) : typeof toolCall.result === 'object' ? (
-                    <pre className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded text-xs font-mono overflow-x-auto max-h-40">
+                    <pre className="bg-zinc-50 p-2 border border-zinc-200 rounded-none text-xs font-mono overflow-x-auto max-h-40">
                       {JSON.stringify(toolCall.result, null, 2)}
                     </pre>
                   ) : null}

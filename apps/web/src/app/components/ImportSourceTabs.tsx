@@ -69,7 +69,7 @@ export function ImportSourceTabs({
     <>
       <div
         className={cn(
-          'border-2 border-dashed rounded-lg p-8 text-center transition-colors',
+          'border border-dashed rounded-none p-8 text-center transition-colors',
           'border-border/50 hover:border-primary/50 hover:bg-primary/5'
         )}
         onDrop={onFileDrop}
@@ -106,7 +106,7 @@ export function ImportSourceTabs({
             {files.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center gap-3 rounded-md border border-border/50 px-3 py-2 bg-card"
+                className="flex items-center gap-3 border border-border/50 px-3 py-2 bg-card rounded-none"
               >
                 <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-sm flex-1 truncate">{file.name}</span>
