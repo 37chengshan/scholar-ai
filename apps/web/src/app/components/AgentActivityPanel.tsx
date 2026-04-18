@@ -2,7 +2,7 @@
  * AgentActivityPanel Component
  *
  * Right sidebar panel for Chat page showing:
- * - Tool call history (thought, tool_call, tool_result events)
+ * - Tool call history (reasoning, tool_call, tool_result events)
  * - Token consumption statistics
  * - Cost estimation
  * - Execution timeline
@@ -79,7 +79,7 @@ function calculateStats(events: SSEEvent[]): ActivityStats {
       if (event.result?.tokensUsed) stats.totalTokens += event.result.tokensUsed;
       if (event.result?.duration) stats.totalTime += event.result.duration;
     }
-    if (event.type === 'thought') {
+    if (event.type === 'reasoning') {
       stats.thoughts++;
     }
   });
@@ -226,7 +226,7 @@ export function AgentActivityPanel({
   }, [events]);
   
   const thoughts = useMemo(() => {
-    return events.filter(e => e.type === 'thought').map(e => ({
+    return events.filter(e => e.type === 'reasoning').map(e => ({
       content: e.content,
       timestamp: e.timestamp,
     }));

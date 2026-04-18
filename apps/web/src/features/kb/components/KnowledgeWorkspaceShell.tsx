@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 import { PaperTexture } from '@/app/components/PaperTexture';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { ImportDialog } from '@/app/components/ImportDialog';
+import { UnifiedErrorState, UnifiedLoadingState } from '@/app/components/UnifiedFeedbackState';
 import { toast } from 'sonner';
 import { useKnowledgeBaseWorkspace } from '@/features/kb/hooks/useKnowledgeBaseWorkspace';
 import { useImportWorkflow } from '@/features/kb/hooks/useImportWorkflow';
@@ -75,9 +76,7 @@ export function KnowledgeWorkspaceShell() {
     return (
       <div className="relative min-h-screen bg-background">
         <PaperTexture />
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
+        <UnifiedLoadingState fullScreen={true} label="正在加载知识库..." />
       </div>
     );
   }
@@ -86,14 +85,14 @@ export function KnowledgeWorkspaceShell() {
     return (
       <div className="relative min-h-screen bg-background">
         <PaperTexture />
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-          <div className="text-zinc-500 font-medium">知识库不存在或已删除</div>
-          <button
-            onClick={() => navigate('/knowledge-bases')}
-            className="bg-zinc-900 hover:bg-primary text-white px-6 py-3 font-bold uppercase tracking-wide"
-          >
-            返回列表
-          </button>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <UnifiedErrorState
+            title="知识库不存在或已删除"
+            description="该资源可能已被移除，或当前账号无访问权限。"
+            retryLabel="返回列表"
+            onRetry={() => navigate('/knowledge-bases')}
+            className="max-w-md"
+          />
         </div>
       </div>
     );

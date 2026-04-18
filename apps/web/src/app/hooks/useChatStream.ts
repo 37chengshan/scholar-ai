@@ -16,6 +16,10 @@
 
 import { useReducer, useRef, useCallback, useEffect } from 'react';
 import { trackStreamEvent } from '@/lib/observability/telemetry';
+import {
+  normalizeSSEEventEnvelope,
+  type RawSSEEventEnvelope,
+} from '@/features/chat/adapters/sseEventAdapter';
 
 // ============================================================================
 // Type Definitions
@@ -143,7 +147,7 @@ export type SSEAction =
 /**
  * SSE event envelope from backend
  */
-export interface SSEEventEnvelope {
+export interface SSEEventEnvelope extends RawSSEEventEnvelope {
   message_id: string;
   event_type: string;
   data: unknown;
@@ -531,8 +535,14 @@ export function useChatStream(
    */
   const handleSSEEvent = useCallback(
     (envelope: SSEEventEnvelope) => {
+      const normalizedEnvelope = normalizeSSEEventEnvelope(envelope);
+      if (!normalizedEnvelope) {
+        console.warn(`[useChatStream] Unknown event type: ${envelope.event_type}`);
+        return;
+      }
+
       // HARD RULE 0.2: message_id validation (skip for session_start which initializes it)
-      const eventType = envelope.event_type;
+      const eventType = normalizedEnvelope.event_type;
       const hasMessageBinding = Boolean(envelope.message_id);
       if (eventType !== 'session_start' && hasMessageBinding && envelope.message_id !== messageIdRef.current) {
         trackStreamEvent({
@@ -548,27 +558,26 @@ export function useChatStream(
       }
 
       // Convert envelope to action based on event_type
-      const data = envelope.data as Record<string, unknown>;
+      const data = normalizedEnvelope.data;
 
       switch (eventType) {
         case 'session_start':
           // Initialize message_id binding
-          messageIdRef.current = envelope.message_id;
+          messageIdRef.current = normalizedEnvelope.message_id;
           bufferedDispatch({
             type: 'SESSION_START',
             sessionId: data.session_id as string,
             taskType: (data.task_type as TaskType) || 'general',
-            messageId: envelope.message_id,
+            messageId: normalizedEnvelope.message_id,
           });
           trackStreamEvent({
             event: 'stream_started',
             sessionId: data.session_id as string,
-            messageId: envelope.message_id,
+            messageId: normalizedEnvelope.message_id,
           });
           break;
 
         case 'phase':
-        case 'phase_change':
           bufferedDispatch({
             type: 'PHASE_CHANGE',
             phase: (data.phase as AgentPhase) || 'idle',
@@ -578,13 +587,12 @@ export function useChatStream(
             event: 'phase_changed',
             phase: (data.phase as AgentPhase) || 'idle',
             label: (data.label as string) || '',
-            messageId: envelope.message_id,
+            messageId: normalizedEnvelope.message_id,
           });
           break;
 
-        case 'thought':
         case 'reasoning':
-          // thought/reasoning events go to reasoning buffer
+          // reasoning events go to reasoning buffer
           const content = (data.delta as string) || (data.content as string) || '';
           if (content) {
             bufferedDispatch({ type: 'REASONING_CHUNK', delta: content });
@@ -610,7 +618,7 @@ export function useChatStream(
           trackStreamEvent({
             event: 'tool_call_seen',
             tool: (data.tool as string) || (data.tool_name as string) || 'unknown',
-            messageId: envelope.message_id,
+            messageId: normalizedEnvelope.message_id,
           });
           break;
 
@@ -647,7 +655,7 @@ export function useChatStream(
           trackStreamEvent({
             event: 'confirmation_required',
             tool: (data.tool_name as string) || 'unknown',
-            messageId: envelope.message_id,
+            messageId: normalizedEnvelope.message_id,
           });
           break;
 
@@ -662,7 +670,7 @@ export function useChatStream(
             event: 'stream_completed',
             tokensUsed: (data.tokens_used as number) || 0,
             durationMs: (data.total_time_ms as number) || (data.total_duration as number) || 0,
-            messageId: envelope.message_id,
+            messageId: normalizedEnvelope.message_id,
           });
           break;
 
@@ -675,16 +683,13 @@ export function useChatStream(
           trackStreamEvent({
             event: 'stream_error',
             code: (data.code as string) || 'UNKNOWN',
-            messageId: envelope.message_id,
+            messageId: normalizedEnvelope.message_id,
           });
           break;
 
         case 'heartbeat':
           // Ignore heartbeat events
           break;
-
-        default:
-          console.warn(`[useChatStream] Unknown event type: ${eventType}`);
       }
     },
     [bufferedDispatch]

@@ -32,9 +32,6 @@ import type {
   CitationItem,
 } from './chat';
 
-// SSE Event Types
-export * from './sse';
-
 // Chat Types (re-export for external modules)
 export * from './chat';
 
