@@ -1,4 +1,6 @@
 import { ChatWorkspaceV2 } from '@/features/chat/workspace/ChatWorkspaceV2';
+import { ChatLegacy } from './ChatLegacy';
+import { useChatWorkspaceV2Gate } from '@/features/chat/workspace/rollout';
 import type { AgentRun } from '@/features/chat/types/run';
 
 interface ChatRunContainerProps {
@@ -6,6 +8,8 @@ interface ChatRunContainerProps {
 }
 
 export function ChatRunContainer({ run }: ChatRunContainerProps) {
+  const enableV2 = useChatWorkspaceV2Gate();
+
   return (
     <section
       data-testid="chat-run-container"
@@ -13,7 +17,7 @@ export function ChatRunContainer({ run }: ChatRunContainerProps) {
       data-run-status={run.status}
       data-run-scope={run.scope}
     >
-      <ChatWorkspaceV2 />
+      {enableV2 ? <ChatWorkspaceV2 /> : <ChatLegacy />}
     </section>
   );
 }

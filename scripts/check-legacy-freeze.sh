@@ -38,7 +38,8 @@ if ! grep -Eq '^docs/plans/.*\.md$|^docs/reports/.*计划A.*\.md$' <<<"$changed_
   exit 1
 fi
 
-if ! git log --format=%B "${merge_base}"..HEAD | grep -Eqi 'Migration-Task:'; then
+commit_messages="$(git log --format=%B "${merge_base}"..HEAD)"
+if ! grep -Eqi 'Migration-Task:' <<<"$commit_messages"; then
   echo "[legacy-freeze] failed: legacy components changed but commit messages lack 'Migration-Task:' marker" >&2
   echo "[legacy-freeze] requirement: include 'Migration-Task: <task-id-or-link>' in at least one commit message" >&2
   exit 1

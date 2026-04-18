@@ -59,11 +59,7 @@ export type SSEEventType =
   | 'cancel'
   | 'done'
   | 'heartbeat'
-  | 'error'
-  // Legacy event types (deprecated but kept for backward compatibility)
-  | 'thought'
-  | 'thinking_status'
-  | 'step_progress';
+  | 'error';
 
 /**
  * SSEEventEnvelope - Standard envelope for all SSE events
