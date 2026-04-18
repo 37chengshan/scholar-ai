@@ -34,6 +34,7 @@ E2E 覆盖范围：
 - 上传论文 -> 解析 -> 检索/对话
 - 创建会话 -> 发送消息 -> 流式返回
 - 核心失败路径（鉴权失败、解析失败、超时）
+- 关键链路阻断：Chat、KB、Retrieval
 
 必测核心链路：
 
@@ -51,6 +52,10 @@ E2E 覆盖范围：
 - packages/types 与 packages/sdk 构建检查
 - 后端 pytest 最小子集
 - 核心文档存在性与路径正确性
+- phase 交付台账一致性校验
+- 分支生命周期校验
+- 契约 gate 与 fallback 到期校验
+- E2E gate manifest 校验
 
 测试产物不入库规则：
 
@@ -79,7 +84,13 @@ E2E 覆盖范围：
 	- bash scripts/check-structure-boundaries.sh
 	- bash scripts/check-code-boundaries.sh
 	- bash scripts/check-governance.sh
+	- bash scripts/check-phase-tracking.sh
+	- bash scripts/check-branch-lifecycle.sh
+	- bash scripts/check-contract-gate.sh
+	- bash scripts/check-fallback-expiry.sh
+	- bash scripts/check-e2e-gate.sh --mode manifest
 	- cd apps/web && npm run type-check
+	- cd apps/web && npm run test:e2e:ci
 	- cd packages/types && npm run build
 	- cd packages/sdk && npm run build
 	- cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
@@ -88,8 +99,11 @@ E2E 覆盖范围：
 	- 核心文档存在性检查
 	- frontend type-check
 	- backend pytest 冒烟
+	- contract gate
+	- fallback expiry gate
+	- e2e gate
 
 ## Open Questions
 
-- 是否在 CI 强制 E2E 冒烟，还是先保留手动触发。
+- 如何在保留执行时长可控的前提下扩大 E2E 阻断覆盖面。
 - 是否对 SSE 增加专门的契约测试快照。

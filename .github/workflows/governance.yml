@@ -16,7 +16,7 @@ jobs:
       - name: Verify governance scripts
         run: |
           set -euo pipefail
-          chmod +x scripts/check-governance.sh scripts/check-doc-governance.sh scripts/check-structure-boundaries.sh scripts/check-code-boundaries.sh scripts/check-runtime-hygiene.sh
+          chmod +x scripts/check-governance.sh scripts/check-doc-governance.sh scripts/check-structure-boundaries.sh scripts/check-code-boundaries.sh scripts/check-runtime-hygiene.sh scripts/check-phase-tracking.sh scripts/check-branch-lifecycle.sh scripts/check-contract-gate.sh scripts/check-fallback-expiry.sh scripts/check-e2e-gate.sh
           bash scripts/check-runtime-hygiene.sh tracked
           bash scripts/check-governance.sh
 

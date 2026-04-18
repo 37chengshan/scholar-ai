@@ -27,16 +27,11 @@ SSE Event Types:
 """
 
 import json
-import asyncio
 from typing import AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.config import settings
 from app.models.chat import (
     ChatStreamRequest,
     ChatConfirmRequest,

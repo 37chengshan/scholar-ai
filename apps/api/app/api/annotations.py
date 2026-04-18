@@ -10,9 +10,9 @@ Provides CRUD endpoints for PDF annotations:
 import re
 from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException, Depends, Query, status
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, desc, asc
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -21,6 +21,7 @@ from app.models.paper import Paper
 from app.utils.logger import logger
 from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
+from app.api._shared.responses import DeleteResponse
 
 router = APIRouter()
 
@@ -271,7 +272,7 @@ async def update_annotation(
         )
 
 
-@router.delete("/{annotation_id}")
+@router.delete("/{annotation_id}", response_model=DeleteResponse)
 async def delete_annotation(
     annotation_id: str,
     user_id: str = CurrentUserId,
@@ -295,7 +296,7 @@ async def delete_annotation(
 
         logger.info("Annotation deleted", annotation_id=annotation_id, user_id=user_id)
 
-        return {"success": True, "data": {"id": annotation_id, "deleted": True}}
+        return DeleteResponse(success=True, data={"id": annotation_id, "deleted": True})
 
     except HTTPException:
         raise

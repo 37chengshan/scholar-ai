@@ -26,6 +26,7 @@ from app.models.knowledge_base import KnowledgeBase
 from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 from app.utils.logger import logger
+from app.api._shared.responses import DeleteResponse
 
 
 router = APIRouter()
@@ -517,7 +518,7 @@ async def update_knowledge_base(
         )
 
 
-@router.delete("/{kb_id}")
+@router.delete("/{kb_id}", response_model=DeleteResponse)
 async def delete_knowledge_base(
     kb_id: str,
     user_id: str = CurrentUserId,
@@ -541,7 +542,7 @@ async def delete_knowledge_base(
         await db.delete(kb)
         logger.info("Knowledge base deleted", kb_id=kb_id, user_id=user_id)
 
-        return {"success": True, "data": {"id": kb_id, "deleted": True}}
+        return DeleteResponse(success=True, data={"id": kb_id, "deleted": True})
 
     except HTTPException:
         raise

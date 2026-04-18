@@ -27,6 +27,13 @@
 - 主要风险：
 - 回滚方式：
 
+## 交付单元追踪
+<!-- 与 docs/governance/phase-delivery-ledger.md 保持一致 -->
+- Phase ID:
+- Deliverable Unit:
+- Migration-Task:
+- 未覆盖项:
+
 ## 自测清单
 <!-- 至少勾掉你实际跑过的项，不要全勾 -->
 ### 仓库治理

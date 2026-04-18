@@ -10,11 +10,16 @@ required_files=(
   "AGENTS.md"
   "architecture.md"
   ".gitignore"
-  ".github/PULL_REQUEST_TEMPLATE.md"
+  ".github/pull_request_template.md"
   ".github/ISSUE_TEMPLATE/bug-report.yml"
   ".github/ISSUE_TEMPLATE/feature-request.yml"
   ".github/ISSUE_TEMPLATE/governance-task.yml"
   ".github/workflows/governance.yml"
+  ".github/workflows/contract-gate.yml"
+  ".github/workflows/fallback-expiry-gate.yml"
+  ".github/workflows/branch-lifecycle.yml"
+  ".github/workflows/e2e-gate.yml"
+  ".github/workflows/governance-kpi.yml"
   "docs/architecture/system-overview.md"
   "docs/architecture/api-contract.md"
   "docs/domain/resources.md"
@@ -24,9 +29,20 @@ required_files=(
   "docs/development/testing-strategy.md"
   "docs/governance/code-boundary-baseline.md"
   "docs/governance/harness-engineering-playbook.md"
+  "docs/governance/phase-delivery-ledger.md"
+  "docs/governance/branch-lifecycle-policy.md"
+  "docs/governance/fallback-register.yaml"
+  "docs/governance/governance-kpi-spec.md"
+  "docs/governance/e2e-failure-handbook.md"
   "docs/plans/PLAN_STATUS.md"
   "scripts/check-legacy-freeze.sh"
   "scripts/check-plan-governance.sh"
+  "scripts/check-phase-tracking.sh"
+  "scripts/check-branch-lifecycle.sh"
+  "scripts/check-contract-gate.sh"
+  "scripts/check-fallback-expiry.sh"
+  "scripts/check-e2e-gate.sh"
+  "scripts/audit-governance-kpi.sh"
   "scripts/check-runtime-hygiene.sh"
   "scripts/clean-repo-artifacts.sh"
 )
@@ -61,9 +77,14 @@ done
 
 bash scripts/check-doc-governance.sh
 bash scripts/check-plan-governance.sh
+bash scripts/check-phase-tracking.sh
 bash scripts/check-legacy-freeze.sh
 bash scripts/check-structure-boundaries.sh
 bash scripts/check-code-boundaries.sh
+bash scripts/check-branch-lifecycle.sh
+bash scripts/check-contract-gate.sh
+bash scripts/check-fallback-expiry.sh
+bash scripts/check-e2e-gate.sh --mode manifest
 bash scripts/check-runtime-hygiene.sh tracked
 
 echo "governance baseline check passed"

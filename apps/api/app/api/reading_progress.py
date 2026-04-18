@@ -68,6 +68,22 @@ class ProgressListResponse(BaseModel):
     data: List[ProgressWithPaperResponse]
 
 
+class ProgressData(BaseModel):
+    """Progress data structure."""
+    id: Optional[str] = None
+    paper_id: str
+    user_id: str
+    current_page: int
+    total_pages: Optional[int] = None
+    last_read_at: Optional[str] = None
+
+
+class ProgressSingleResponse(BaseModel):
+    """Response for single paper progress."""
+    success: bool = True
+    data: ProgressData
+
+
 # =============================================================================
 # CRUD Endpoints
 # =============================================================================
@@ -118,7 +134,7 @@ async def list_reading_progress(
         )
 
 
-@router.get("/{paper_id}")
+@router.get("/{paper_id}", response_model=ProgressSingleResponse)
 async def get_paper_progress(
     paper_id: str,
     user_id: str = CurrentUserId,
@@ -149,28 +165,28 @@ async def get_paper_progress(
 
         if not progress:
             # Return default progress if not exists
-            return {
-                "success": True,
-                "data": {
-                    "paper_id": paper_id,
-                    "user_id": user_id,
-                    "current_page": 1,
-                    "total_pages": paper.page_count,
-                    "last_read_at": None
-                }
-            }
+            return ProgressSingleResponse(
+                success=True,
+                data=ProgressData(
+                    paper_id=paper_id,
+                    user_id=user_id,
+                    current_page=1,
+                    total_pages=paper.page_count,
+                    last_read_at=None
+                )
+            )
 
-        return {
-            "success": True,
-            "data": {
-                "id": progress.id,
-                "paper_id": progress.paper_id,
-                "user_id": progress.user_id,
-                "current_page": progress.current_page,
-                "total_pages": progress.total_pages,
-                "last_read_at": progress.last_read_at.isoformat() if progress.last_read_at else None
-            }
-        }
+        return ProgressSingleResponse(
+            success=True,
+            data=ProgressData(
+                id=progress.id,
+                paper_id=progress.paper_id,
+                user_id=progress.user_id,
+                current_page=progress.current_page,
+                total_pages=progress.total_pages,
+                last_read_at=progress.last_read_at.isoformat() if progress.last_read_at else None
+            )
+        )
 
     except HTTPException:
         raise
@@ -182,7 +198,7 @@ async def get_paper_progress(
         )
 
 
-@router.post("/{paper_id}")
+@router.post("/{paper_id}", response_model=ProgressSingleResponse)
 async def upsert_paper_progress(
     paper_id: str,
     request: ProgressCreate,
@@ -239,17 +255,17 @@ async def upsert_paper_progress(
             user_id=user_id
         )
 
-        return {
-            "success": True,
-            "data": {
-                "id": progress.id,
-                "paper_id": progress.paper_id,
-                "user_id": progress.user_id,
-                "current_page": progress.current_page,
-                "total_pages": progress.total_pages,
-                "last_read_at": progress.last_read_at.isoformat() if progress.last_read_at else None
-            }
-        }
+        return ProgressSingleResponse(
+            success=True,
+            data=ProgressData(
+                id=progress.id,
+                paper_id=progress.paper_id,
+                user_id=progress.user_id,
+                current_page=progress.current_page,
+                total_pages=progress.total_pages,
+                last_read_at=progress.last_read_at.isoformat() if progress.last_read_at else None
+            )
+        )
 
     except HTTPException:
         raise

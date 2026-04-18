@@ -49,6 +49,11 @@
 - ImportJob：created -> queued -> running -> awaiting_user_action -> completed | failed | cancelled
 - ImportBatch：created -> running -> completed | failed | cancelled | partial
 
+Paper 交互资源补充：
+
+- PaperStar：用户与 Paper 的收藏关系资源，操作入口为 `/api/v1/papers/{paperId}/star`。
+- PaperBatchOperation：批量操作结果资源，至少包含 `successItems` 与 `failedItems`。
+
 关键生命周期事件：
 
 - paper.uploaded
@@ -75,6 +80,7 @@
 - 新增资源类型：同步更新本文件与 docs/architecture/api-contract.md。
 - 资源状态迁移变化：同步更新 apps/api/app/models 与本文件。
 - 新增异步任务：同步补充可修改资源列表。
+- 资源契约边界变化：同步更新 docs/governance/fallback-register.yaml 与相关 gate 脚本规则（如适用）。
 
 ## Verification
 

@@ -20,6 +20,10 @@
 - PR 流程：docs/development/pr-process.md
 - 测试策略：docs/development/testing-strategy.md
 - Harness 治理：docs/governance/harness-engineering-playbook.md
+- Phase 台账：docs/governance/phase-delivery-ledger.md
+- 分支生命周期：docs/governance/branch-lifecycle-policy.md
+- 治理 KPI：docs/governance/governance-kpi-spec.md
+- E2E 失败手册：docs/governance/e2e-failure-handbook.md
 - ADR 索引：docs/adr
 
 ## Rules
