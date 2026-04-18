@@ -74,6 +74,7 @@ API 变更必须同步更新：
 - 契约表面变更必须通过 contract gate（并同步 api-contract/resources）。
 - fallback 引入必须写入 fallback-register，且通过到期检查。
 - 关键链路必须通过 E2E gate 后才允许合并。
+- import/chat 契约变更必须通过 `tests/integration/test_imports_chat_contract.py`。
 
 ## Required Updates
 
@@ -91,6 +92,7 @@ API 变更必须同步更新：
 - 运行 bash scripts/check-branch-lifecycle.sh。
 - 运行 bash scripts/check-contract-gate.sh。
 - 运行 bash scripts/check-fallback-expiry.sh。
+- 运行 `cd apps/api && .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1`。
 
 ## Open Questions
 

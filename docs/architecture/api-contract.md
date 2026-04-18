@@ -11,7 +11,7 @@
 ## Source of Truth
 
 - 仓库级契约：docs/architecture/api-contract.md
-- 后端实现细节：backend-python/docs/API_CONTRACT.md
+- 后端实现细节：apps/api/docs/API_CONTRACT.md
 - 资源生命周期：docs/domain/resources.md
 - 跨端共享契约：packages/types
 - 跨端 typed client：packages/sdk
@@ -111,6 +111,8 @@ SSE 事件规范：
 - 每个事件必须包含可解析 JSON 载荷。
 - 长连接必须有 heartbeat 或等价保活策略。
 - done 为唯一完成事件，不得与错误事件混用。
+- Chat 流式接口仅接受 canonical 事件类型，不再支持 legacy alias 映射。
+- 除 heartbeat 外，所有业务事件必须携带 `message_id`。
 
 Import Pipeline 契约补充：
 
@@ -233,6 +235,7 @@ ImportJob `nextAction` 补充：
 - 抽样检查错误路径是否为 RFC 7807。
 - 抽样检查分页接口参数与 meta 字段是否一致。
 - 抽样检查受保护接口的 401/403 行为。
+- 运行 `cd apps/api && .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1`，冻结导入批次与 Chat 主链路契约。
 
 ## Open Questions
 
