@@ -186,6 +186,8 @@ async def chat_stream(
                         session_id=session_id,
                         user_id=user_id,
                         auto_confirm=auto_confirm,
+                        mode=request.mode,
+                        scope=request.scope,
                     ):
                         # Buffer events for ordered transmission
                         if event.startswith("event:"):

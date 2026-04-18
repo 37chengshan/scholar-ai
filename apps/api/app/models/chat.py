@@ -26,6 +26,14 @@ class ChatStreamRequest(BaseModel):
         min_length=1,
         max_length=10000,
     )
+    mode: Literal["auto", "rag", "agent"] = Field(
+        default="auto",
+        description="Execution mode (auto, rag, agent)",
+    )
+    scope: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Query scope ({type: paper|knowledge_base|general, paper_id?, knowledge_base_id?})",
+    )
     context: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Additional context (paper_ids, auto_confirm, etc.)",

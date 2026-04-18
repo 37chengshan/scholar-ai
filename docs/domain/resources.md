@@ -38,6 +38,23 @@
 - ChatSession 包含多个 ChatMessage。
 - Task 作用于 Paper、Collection 或 IndexArtifact。
 
+ChatSession/ChatMessage 读取契约约束：
+
+- `GET /api/v1/sessions/{session_id}/messages` 必须返回：
+	- `total`：会话消息全量总数
+	- `limit` / `offset`：分页窗口
+	- `order`：消息时间序（`asc` 或 `desc`）
+	- `pagination.has_more` / `pagination.returned` / `pagination.next_offset`
+- 禁止把 `total` 语义降级为“当前页长度”。
+
+Chat 查询作用域资源约束：
+
+- Chat stream 请求允许 `scope`：
+	- `paper`（绑定单论文）
+	- `knowledge_base`（绑定知识库）
+	- `general`（全局无绑定）
+- `mode` 固定枚举：`auto | rag | agent`。
+
 状态机：
 
 - Paper：uploaded -> parsing -> parsed -> indexed -> archived | failed

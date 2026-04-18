@@ -625,6 +625,8 @@ class ChatOrchestrator:
         session_id: str,
         user_id: str,
         auto_confirm: bool = False,
+        mode: str = "auto",
+        scope: Optional[Dict[str, Any]] = None,
         task_type: TaskType = "general",
     ) -> AsyncIterator[str]:
         """Execute Agent with real-time SSE streaming.
@@ -641,6 +643,8 @@ class ChatOrchestrator:
             session_id: Session UUID
             user_id: User UUID
             auto_confirm: Auto-confirm dangerous operations
+            mode: Execution mode (auto|rag|agent)
+            scope: Optional scope ({type: paper|knowledge_base|general, ...})
             task_type: Task type for routing (single_paper, kb_qa, compare, general)
 
         Yields:
@@ -666,6 +670,8 @@ class ChatOrchestrator:
                 session_id=session_id,
                 message_id=message_id,
                 task_type=task_type,
+                mode=mode,
+                scope_type=(scope or {}).get("type"),
             ),
         )
 

@@ -132,6 +132,63 @@ Chat 流协议真源：
 - app/services/chat_orchestrator.py 负责 message_id 绑定与事件编排。
 - app/api/chat.py 负责 stream 接口对外契约。
 
+Chat stream 请求体契约（冻结）：
+
+- 路径：`POST /api/v1/chat/stream`
+- 请求体：
+
+```json
+{
+  "session_id": "session-uuid",
+  "message": "请总结这篇论文的贡献",
+  "mode": "auto",
+  "scope": {
+    "type": "paper",
+    "paper_id": "paper-uuid"
+  },
+  "context": {
+    "auto_confirm": false
+  }
+}
+```
+
+- 字段语义：
+  - `mode`：`auto | rag | agent`，默认 `auto`。
+  - `scope.type`：`paper | knowledge_base | general`。
+  - `scope.paper_id` 仅在 `scope.type=paper` 时有效。
+  - `scope.knowledge_base_id` 仅在 `scope.type=knowledge_base` 时有效。
+  - `context`：可选扩展上下文，保持向后兼容。
+
+Session messages 契约（冻结）：
+
+- 路径：`GET /api/v1/sessions/{session_id}/messages`
+- 查询参数：`limit`、`offset`、`order(asc|desc)`
+- 响应体：
+
+```json
+{
+  "success": true,
+  "data": {
+    "session_id": "session-uuid",
+    "messages": [],
+    "total": 120,
+    "limit": 50,
+    "offset": 0,
+    "order": "desc",
+    "pagination": {
+      "has_more": true,
+      "returned": 50,
+      "next_offset": 50
+    }
+  }
+}
+```
+
+- 分页语义：
+  - `total` 是该会话消息全量总数，不是当前页长度。
+  - `returned` 是本次返回条数。
+  - `next_offset` 基于 `offset + returned` 计算。
+
 Paper 资源契约补充：
 
 - `GET /api/v1/papers`：返回 `data.items[]` 与 `meta.limit/offset/total`。

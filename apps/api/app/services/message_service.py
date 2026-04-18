@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import uuid
 
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
@@ -93,6 +93,7 @@ class MessageService:
         session_id: str,
         limit: int = 50,
         offset: int = 0,
+        order: str = "desc",
         db: Optional[AsyncSession] = None,
     ) -> List[Dict]:
         """Retrieve messages for a session with pagination.
@@ -101,6 +102,7 @@ class MessageService:
             session_id: Session UUID
             limit: Maximum number of messages (default 50)
             offset: Offset for pagination (default 0)
+            order: Sort order by created_at (asc|desc, default desc)
             db: Optional database session (for transaction continuity)
 
         Returns:
@@ -110,22 +112,26 @@ class MessageService:
 
         async with session_context if not db else session_context:
             try:
+                query = (
+                    select(ChatMessage)
+                    .where(ChatMessage.session_id == session_id)
+                )
+
+                if order == "asc":
+                    query = query.order_by(ChatMessage.created_at.asc())
+                else:
+                    query = query.order_by(ChatMessage.created_at.desc())
+
+                query = query.limit(limit).offset(offset)
+
                 if db:
                     result = await db.execute(
-                        select(ChatMessage)
-                        .where(ChatMessage.session_id == session_id)
-                        .order_by(ChatMessage.created_at.desc())
-                        .limit(limit)
-                        .offset(offset)
+                        query
                     )
                 else:
                     async with AsyncSessionLocal() as session:
                         result = await session.execute(
-                            select(ChatMessage)
-                            .where(ChatMessage.session_id == session_id)
-                            .order_by(ChatMessage.created_at.desc())
-                            .limit(limit)
-                            .offset(offset)
+                            query
                         )
 
                 messages = result.scalars().all()
@@ -148,6 +154,28 @@ class MessageService:
                     "Failed to get messages", error=str(e), session_id=session_id
                 )
                 raise
+
+    async def count_messages(
+        self,
+        session_id: str,
+        db: Optional[AsyncSession] = None,
+    ) -> int:
+        """Count total messages for a session (without pagination)."""
+        if db:
+            result = await db.execute(
+                select(func.count()).select_from(ChatMessage).where(
+                    ChatMessage.session_id == session_id
+                )
+            )
+            return int(result.scalar_one() or 0)
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(func.count()).select_from(ChatMessage).where(
+                    ChatMessage.session_id == session_id
+                )
+            )
+            return int(result.scalar_one() or 0)
 
     async def delete_session_messages(self, session_id: str) -> int:
         """Delete all messages for a session.
