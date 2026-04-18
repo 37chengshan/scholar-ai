@@ -55,6 +55,7 @@ async def test_upload_pdf_to_kb_creates_kb_bound_paper():
     with (
         patch("app.api.kb.kb_import.os.makedirs"),
         patch("app.api.kb.kb_import.aiofiles.open", return_value=mock_open),
+        patch("app.api.kb.kb_import.process_single_pdf_task.delay") as mock_delay,
     ):
         response = await upload_pdf_to_kb(
             "kb-123",
@@ -73,6 +74,7 @@ async def test_upload_pdf_to_kb_creates_kb_bound_paper():
     assert added_upload_history.paper_id == added_paper.id
     assert added_upload_history.filename == "paper.pdf"
     assert kb.paper_count == 1
+    mock_delay.assert_called_once_with(added_paper.id)
     assert response.data["kbId"] == "kb-123"
     assert response.data["paperId"] == added_paper.id
     assert response.data["taskId"] == added_task.id

@@ -117,6 +117,7 @@ from app.models.token_usage_log import TokenUsageLog
 
 # Upload tracking
 from app.models.upload_history import UploadHistory
+from app.models.upload_session import UploadSession
 
 # =============================================================================
 # SQLAlchemy ORM Models
@@ -156,6 +157,7 @@ __all__ = [
     "Session",
     "ChatMessage",
     "UploadHistory",
+    "UploadSession",
     "PaperBatch",
     "Config",
     "KnowledgeMap",

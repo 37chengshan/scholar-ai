@@ -46,6 +46,7 @@ class ImportJobService:
         db: AsyncSession,
         options: Dict[str, Any] = None,
         batch_id: Optional[str] = None,
+        auto_commit: bool = True,
     ) -> ImportJob:
         """Create ImportJob with appropriate initial next_action.
 
@@ -80,8 +81,8 @@ class ImportJobService:
             initial_status = "created"
             initial_stage = "awaiting_input"
             next_action = {
-                "type": "upload_file",
-                "uploadUrl": f"/api/v1/import-jobs/{job_id}/file",
+                "type": "create_upload_session",
+                "createSessionUrl": f"/api/v1/import-jobs/{job_id}/upload-sessions",
             }
         else:
             # External sources start in queued/resolving_source
@@ -110,8 +111,12 @@ class ImportJobService:
         )
 
         db.add(job)
-        await db.commit()
-        await db.refresh(job)
+        if auto_commit:
+            await db.commit()
+            await db.refresh(job)
+        else:
+            await db.flush()
+            await db.refresh(job)
 
         logger.info(
             "ImportJob created",
@@ -161,10 +166,10 @@ class ImportJobService:
     async def update_status(
         self,
         job: ImportJob,
-        status: str,
         stage: str,
         progress: int,
         db: AsyncSession,
+        status: Optional[str] = None,
         next_action: Optional[Dict[str, Any]] = None,
     ) -> ImportJob:
         """Update state machine with optional next_action.
@@ -180,7 +185,8 @@ class ImportJobService:
         Returns:
             Updated ImportJob
         """
-        job.status = status
+        new_status = status or job.status
+        job.status = new_status
         job.stage = stage
         job.progress = progress
         job.updated_at = datetime.now(timezone.utc)
@@ -189,11 +195,11 @@ class ImportJobService:
             job.next_action = next_action
 
         # Update timestamp fields based on status
-        if status == "running" and job.started_at is None:
+        if new_status == "running" and job.started_at is None:
             job.started_at = datetime.now(timezone.utc)
-        elif status == "completed":
+        elif new_status == "completed":
             job.completed_at = datetime.now(timezone.utc)
-        elif status == "cancelled":
+        elif new_status == "cancelled":
             job.cancelled_at = datetime.now(timezone.utc)
 
         await db.commit()
@@ -202,7 +208,7 @@ class ImportJobService:
         logger.info(
             "ImportJob status updated",
             job_id=job.id,
-            status=status,
+            status=new_status,
             stage=stage,
             progress=progress,
             next_action=next_action,

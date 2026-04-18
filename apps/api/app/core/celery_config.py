@@ -54,6 +54,7 @@ celery_app = Celery(
     include=[
         "app.tasks.pdf_tasks",  # PDF processing tasks
         "app.workers.import_worker",  # ImportJob processing worker (Wave 5)
+        "app.workers.finalize_import_job",  # Unified finalize worker
     ],
 )
 
@@ -76,6 +77,19 @@ celery_app.conf.update(
     worker_disable_rate_limits=False,
     # Result backend
     result_expires=3600,  # 1 hour TTL for task results
+    # Minimal queue boundaries for upload/import pipeline
+    task_routes={
+        "app.workers.import_worker.process_import_job": {"queue": "import.process"},
+        "app.tasks.pdf_tasks.process_single_pdf_task": {"queue": "pdf.process"},
+        "app.tasks.pdf_tasks.process_pdf_batch_task": {"queue": "pdf.process"},
+        "app.workers.finalize_import_job.finalize_import_job_success_task": {
+            "queue": "import.finalize"
+        },
+        "app.workers.finalize_import_job.finalize_import_job_failure_task": {
+            "queue": "import.finalize"
+        },
+        "app.tasks.upload_maintenance_tasks.*": {"queue": "upload.maintenance"},
+    },
 )
 
 # Export for use in tasks
