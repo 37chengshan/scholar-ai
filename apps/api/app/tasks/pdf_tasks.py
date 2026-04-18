@@ -8,26 +8,22 @@ Per D-09: Rate limiting at 120/min for LLM API protection
 """
 
 import asyncio
-import os
 import uuid
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional
 
-import asyncpg
+from sqlalchemy import select, func, update
 
 from app.core.celery_config import celery_app
 from app.workers.pdf_worker import PDFProcessor
-from app.workers.import_worker import on_processing_task_complete
 from app.utils.logger import logger
+from app.database import AsyncSessionLocal
+from app.models import Paper, ProcessingTask, PaperBatch
+from app.models.import_job import ImportJob
 
 
 # Current concurrency level (will be adjusted by memory monitor)
 _current_concurrency = 8
-
-
-def _get_database_url() -> str:
-    return os.getenv(
-        "DATABASE_URL",
-        "postgresql://scholarai:scholarai123@localhost:5432/scholarai",
-    )
 
 
 def get_current_concurrency() -> int:
@@ -41,6 +37,81 @@ def set_current_concurrency(value: int):
     _current_concurrency = value
 
 
+_TASK_STAGE_TO_IMPORT_STAGE = {
+    "processing_ocr": ("parsing", 60),
+    "parsing": ("parsing", 65),
+    "extracting_imrad": ("chunking", 75),
+    "generating_notes": ("embedding", 85),
+    "storing_vectors": ("indexing", 92),
+    "indexing_multimodal": ("finalizing", 95),
+}
+
+
+async def _sync_import_job_stage(
+    db,
+    processing_task_id: str,
+    task_stage: str,
+):
+    """Mirror ProcessingTask progress into ImportJob when linked by processing_task_id."""
+    mapped = _TASK_STAGE_TO_IMPORT_STAGE.get(task_stage)
+    if not mapped:
+        return
+
+    result = await db.execute(
+        select(ImportJob).where(ImportJob.processing_task_id == processing_task_id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        return
+
+    if job.status in {"completed", "failed", "cancelled"}:
+        return
+
+    import_stage, progress = mapped
+    job.status = "running"
+    job.stage = import_stage
+    job.progress = progress
+    job.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+
+
+async def _sync_import_job_terminal(
+    db,
+    processing_task_id: Optional[str],
+    terminal_status: str,
+    error_message: Optional[str] = None,
+):
+    """Set ImportJob to terminal status with idempotent guard."""
+    if not processing_task_id:
+        return
+
+    result = await db.execute(
+        select(ImportJob).where(ImportJob.processing_task_id == processing_task_id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        return
+
+    if job.status in {"completed", "cancelled"}:
+        return
+
+    now = datetime.now(timezone.utc)
+    if terminal_status == "completed":
+        job.status = "completed"
+        job.stage = "completed"
+        job.progress = 100
+        job.completed_at = now
+        job.next_action = None
+    else:
+        job.status = "failed"
+        job.stage = "failed"
+        job.error_code = "PROCESSING_FAILED"
+        job.error_message = error_message or "Processing failed"
+        job.next_action = {"type": "retry", "message": job.error_message}
+    job.updated_at = now
+    await db.commit()
+
+
 @celery_app.task(bind=True, rate_limit='120/m')
 def process_pdf_batch_task(self, batch_id: str):
     """
@@ -51,15 +122,15 @@ def process_pdf_batch_task(self, batch_id: str):
     """
 
     async def _process_batch():
-        conn = await asyncpg.connect(_get_database_url())
-        try:
+        async with AsyncSessionLocal() as db:
             # Query papers for this batch (only uploaded ones)
-            rows = await conn.fetch(
-                """SELECT id FROM papers
-                   WHERE batch_id = $1 AND upload_status = 'completed'""",
-                batch_id,
+            result = await db.execute(
+                select(Paper.id).where(
+                    Paper.batch_id == batch_id,
+                    Paper.upload_status == 'completed'
+                )
             )
-            papers = [r['id'] for r in rows]
+            papers = result.scalars().all()
 
             if not papers:
                 logger.info(f"No uploaded papers found for batch {batch_id}")
@@ -86,34 +157,39 @@ def process_pdf_batch_task(self, batch_id: str):
             await asyncio.gather(*tasks, return_exceptions=True)
 
             # Update batch status
-            completed = await conn.fetchval(
-                """SELECT COUNT(*) FROM papers
-                   WHERE batch_id = $1 AND status = 'completed'""",
-                batch_id,
-            ) or 0
+            completed_result = await db.execute(
+                select(func.count()).select_from(Paper).where(
+                    Paper.batch_id == batch_id,
+                    Paper.status == 'completed'
+                )
+            )
+            completed = completed_result.scalar() or 0
 
-            failed = await conn.fetchval(
-                """SELECT COUNT(*) FROM papers
-                   WHERE batch_id = $1 AND status = 'failed'""",
-                batch_id,
-            ) or 0
+            failed_result = await db.execute(
+                select(func.count()).select_from(Paper).where(
+                    Paper.batch_id == batch_id,
+                    Paper.status == 'failed'
+                )
+            )
+            failed = failed_result.scalar() or 0
 
             status = 'completed' if failed == 0 else 'partial_failure'
-            await conn.execute(
-                """UPDATE paper_batches SET status = $1 WHERE id = $2""",
-                status,
-                batch_id,
+            await db.execute(
+                update(PaperBatch).where(PaperBatch.id == batch_id).values(status=status)
             )
+            await db.commit()
 
             logger.info(f"Batch {batch_id} complete: {completed} success, {failed} failed")
-        finally:
-            await conn.close()
 
     # Run async function in sync Celery task
     asyncio.run(_process_batch())
 
 
-async def process_single_pdf_async(paper_id: str, celery_task):
+async def process_single_pdf_async(
+    paper_id: str,
+    celery_task,
+    processing_task_id: Optional[str] = None,
+):
     """
     Process single PDF with progress updates.
 
@@ -121,125 +197,159 @@ async def process_single_pdf_async(paper_id: str, celery_task):
     Updates Celery task state for progress tracking.
     """
     processor = PDFProcessor()
-    conn = await asyncpg.connect(_get_database_url())
+    task_id: Optional[str] = processing_task_id
 
-    try:
-        existing_task = await conn.fetchrow(
-            """SELECT id, storage_key
-               FROM processing_tasks
-               WHERE paper_id = $1
-               ORDER BY created_at DESC NULLS LAST, updated_at DESC NULLS LAST
-               LIMIT 1""",
-            paper_id,
-        )
+    async with AsyncSessionLocal() as db:
+        try:
+            # Check if task already exists
+            if processing_task_id:
+                result = await db.execute(
+                    select(ProcessingTask).where(ProcessingTask.id == processing_task_id)
+                )
+            else:
+                result = await db.execute(
+                    select(ProcessingTask).where(ProcessingTask.paper_id == paper_id)
+                )
+            existing_task = result.scalar_one_or_none()
 
-        if existing_task:
-            task_id = existing_task["id"]
-            storage_key = existing_task["storage_key"]
-            await conn.execute(
-                """UPDATE processing_tasks
-                   SET status = 'processing',
-                       updated_at = NOW(),
-                       error_message = NULL
-                   WHERE id = $1""",
-                task_id,
+            if existing_task:
+                task_id = existing_task.id
+                storage_key = existing_task.storage_key
+                # Update status to processing
+                existing_task.status = 'processing'
+                existing_task.updated_at = datetime.now(timezone.utc)
+            else:
+                # Create new task record with UUID
+                task_id = processing_task_id or str(uuid.uuid4())
+                # Get storage_key from papers table
+                paper_result = await db.execute(
+                    select(Paper.storage_key).where(Paper.id == paper_id)
+                )
+                storage_key = paper_result.scalar_one_or_none()
+
+                new_task = ProcessingTask(
+                    id=task_id,
+                    paper_id=paper_id,
+                    status='processing',
+                    storage_key=storage_key or '',
+                )
+                db.add(new_task)
+
+            await db.commit()
+
+            # Processing stages with progress percentages (per D-05)
+            stages = [
+                ('processing_ocr', 15),
+                ('parsing', 30),
+                ('extracting_imrad', 45),
+                ('generating_notes', 60),
+                ('storing_vectors', 75),
+                ('indexing_multimodal', 90),
+            ]
+
+            # Execute stages
+            for stage_name, progress in stages:
+                # Update Celery state for progress tracking
+                celery_task.update_state(
+                    state='PROGRESS',
+                    meta={
+                        'paper_id': paper_id,
+                        'stage': stage_name,
+                        'progress': progress
+                    }
+                )
+
+                # Update processing_task status
+                await db.execute(
+                    update(ProcessingTask).where(ProcessingTask.id == task_id).values(status=stage_name)
+                )
+                await db.commit()
+                await _sync_import_job_stage(db, task_id, stage_name)
+
+                # Execute stage using PDFProcessor
+                # Note: PDFProcessor.process_pdf_task handles all stages internally
+                # This is a simplified version - actual implementation would call individual stages
+                logger.info(f"Processing paper {paper_id} at stage {stage_name}")
+
+            # Use PDFProcessor to process the PDF
+            success = await processor.process_pdf_task(task_id)
+
+            if success:
+                # Mark as completed
+                await db.execute(
+                    update(ProcessingTask).where(ProcessingTask.id == task_id).values(
+                        status='completed',
+                        completed_at=datetime.now(timezone.utc)
+                    )
+                )
+                await db.execute(
+                    update(Paper).where(Paper.id == paper_id).values(status='completed')
+                )
+                await db.commit()
+                await _sync_import_job_terminal(db, task_id, "completed")
+
+                # Backward-compatible fallback callback.
+                try:
+                    from app.workers.import_worker import on_processing_task_complete
+                    on_processing_task_complete.delay(task_id, paper_id)
+                except Exception as callback_error:
+                    logger.warning(
+                        "Failed to enqueue import completion callback",
+                        processing_task_id=task_id,
+                        paper_id=paper_id,
+                        error=str(callback_error),
+                    )
+
+                # Update Celery state
+                celery_task.update_state(
+                    state='COMPLETED',
+                    meta={'paper_id': paper_id, 'progress': 100}
+                )
+            else:
+                raise Exception("PDF processing failed")
+
+        except Exception as e:
+            logger.error(f"Failed to process paper {paper_id}: {e}")
+
+            # Record error details (per D-08)
+            # Note: error_stage and error_time fields not in current ProcessingTask model
+            # Storing error info in error_message with context
+            error_detail = f"[stage: processing] {str(e)}"
+            if task_id:
+                await db.execute(
+                    update(ProcessingTask).where(ProcessingTask.id == task_id).values(
+                        error_message=error_detail,
+                        status='failed'
+                    )
+                )
+            else:
+                await db.execute(
+                    update(ProcessingTask).where(ProcessingTask.paper_id == paper_id).values(
+                        error_message=error_detail,
+                        status='failed'
+                    )
+                )
+            await db.execute(
+                update(Paper).where(Paper.id == paper_id).values(status='failed')
             )
-        else:
-            task_id = str(uuid.uuid4())
-            storage_key = await conn.fetchval(
-                'SELECT storage_key FROM papers WHERE id = $1',
-                paper_id,
-            )
-            await conn.execute(
-                """INSERT INTO processing_tasks (id, paper_id, status, storage_key)
-                   VALUES ($1, $2, 'processing', $3)""",
-                task_id,
-                paper_id,
-                storage_key or '',
-            )
+            await db.commit()
+            await _sync_import_job_terminal(db, task_id, "failed", error_detail)
 
-        stages = [
-            ('processing_ocr', 15),
-            ('parsing', 30),
-            ('extracting_imrad', 45),
-            ('generating_notes', 60),
-            ('storing_vectors', 75),
-            ('indexing_multimodal', 90),
-        ]
-
-        for stage_name, progress in stages:
-            celery_task.update_state(
-                state='PROGRESS',
-                meta={
-                    'paper_id': paper_id,
-                    'stage': stage_name,
-                    'progress': progress
-                }
-            )
-            await conn.execute(
-                """UPDATE processing_tasks
-                   SET status = $1,
-                       updated_at = NOW()
-                   WHERE id = $2""",
-                stage_name,
-                task_id,
-            )
-            logger.info(f"Processing paper {paper_id} at stage {stage_name}")
-
-        success = await processor.process_pdf_task(task_id)
-
-        if success:
-            await conn.execute(
-                """UPDATE processing_tasks
-                   SET status = 'completed',
-                       completed_at = NOW(),
-                       updated_at = NOW()
-                   WHERE id = $1""",
-                task_id,
-            )
-            await conn.execute(
-                """UPDATE papers
-                   SET status = 'completed',
-                       "updatedAt" = NOW()
-                   WHERE id = $1""",
-                paper_id,
-            )
-            on_processing_task_complete.delay(task_id, paper_id)
-            celery_task.update_state(
-                state='COMPLETED',
-                meta={'paper_id': paper_id, 'progress': 100}
-            )
-        else:
-            raise Exception("PDF processing failed")
-
-    except Exception as e:
-        logger.error(f"Failed to process paper {paper_id}: {e}")
-        error_detail = f"[stage: processing] {str(e)}"
-        await conn.execute(
-            """UPDATE processing_tasks
-               SET error_message = $1,
-                   status = 'failed',
-                   updated_at = NOW()
-               WHERE paper_id = $2""",
-            error_detail,
-            paper_id,
-        )
-        await conn.execute(
-            """UPDATE papers
-               SET status = 'failed',
-                   "updatedAt" = NOW()
-               WHERE id = $1""",
-            paper_id,
-        )
-        raise
-    finally:
-        await conn.close()
+            raise
 
 
-@celery_app.task(bind=True, rate_limit='120/m')
-def process_single_pdf_task(self, paper_id: str):
+@celery_app.task(
+    bind=True,
+    rate_limit='120/m',
+    max_retries=3,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
+def process_single_pdf_task(self, paper_id: str, processing_task_id: Optional[str] = None):
     """Standalone task to process single PDF (used for retry)."""
-    asyncio.run(process_single_pdf_async(paper_id, self))
+    asyncio.run(process_single_pdf_async(paper_id, self, processing_task_id))
 
 
 @celery_app.task
@@ -247,22 +357,20 @@ def retry_batch_failed_papers_task(batch_id: str):
     """Retry all failed papers in a batch."""
 
     async def _retry_failed():
-        conn = await asyncpg.connect(_get_database_url())
-        try:
+        async with AsyncSessionLocal() as db:
             # Find failed papers
-            rows = await conn.fetch(
-                """SELECT id FROM papers
-                   WHERE batch_id = $1 AND status = 'failed'""",
-                batch_id,
+            result = await db.execute(
+                select(Paper.id).where(
+                    Paper.batch_id == batch_id,
+                    Paper.status == 'failed'
+                )
             )
-            failed_papers = [r['id'] for r in rows]
+            failed_papers = result.scalars().all()
 
             logger.info(f"Retrying {len(failed_papers)} failed papers in batch {batch_id}")
 
             # Trigger retry for each
             for paper_id in failed_papers:
                 process_single_pdf_task.delay(paper_id)
-        finally:
-            await conn.close()
 
     asyncio.run(_retry_failed())

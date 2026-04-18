@@ -34,7 +34,11 @@ export function KnowledgeWorkspaceShell() {
   const { kbId, kb, papers, importJobs, loadingKB, papersLoading, loadImportJobs, loadPapers, loadKnowledgeBase } = queries;
 
   const hasRunningJobs = importJobs.some(
-    (job) => job.status === 'created' || job.status === 'running' || job.status === 'awaiting_user_action'
+    (job) =>
+      job.status === 'created' ||
+      job.status === 'queued' ||
+      job.status === 'running' ||
+      job.status === 'awaiting_user_action'
   );
 
   useImportJobsPolling({
@@ -225,8 +229,8 @@ export function KnowledgeWorkspaceShell() {
 
           <TabsContent value="uploads" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
             <UploadWorkspace
-              kbId={kb.id}
-              onImportStateChanged={() => {
+              knowledgeBaseId={kb.id}
+              onQueueComplete={() => {
                 void Promise.all([
                   loadImportJobs({ silent: true }),
                   loadPapers({ silent: true }),
@@ -263,7 +267,6 @@ export function KnowledgeWorkspaceShell() {
         onOpenChange={setImportDialogOpen}
         knowledgeBaseId={kb.id}
         knowledgeBaseName={kb.name}
-        onOpenUploadWorkspace={() => syncTab('uploads')}
         onImportComplete={() => {
           void handleImportCompleted();
           toast.success('导入任务已提交');

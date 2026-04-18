@@ -20,15 +20,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from celery import shared_task
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.celery_config import celery_app
 from app.database import AsyncSessionLocal
 from app.models.import_job import ImportJob
 from app.models.paper import Paper
 from app.models.task import ProcessingTask
-from app.models.knowledge_base_paper import KnowledgeBasePaper
 from app.services.import_job_service import ImportJobService
 from app.services.import_dedupe_service import ImportDedupeService
 from app.services.source_adapters import (
@@ -51,7 +49,14 @@ def get_adapter(source_type: str):
     return adapters.get(source_type)
 
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
 def process_import_job(self, job_id: str):
     """Process ImportJob through full state machine with ProcessingTask sync.
 
@@ -74,6 +79,72 @@ def process_import_job(self, job_id: str):
                 logger.error(f"ImportJob {job_id} not found")
                 return
 
+            if job.status in {"completed", "cancelled"}:
+                logger.info(
+                    f"Skip ImportJob {job_id}: terminal status",
+                    status=job.status,
+                )
+                return
+
+            if (
+                job.processing_task_id
+                and job.status in {"queued", "running"}
+                and job.stage in {
+                    "triggering_processing",
+                    "parsing",
+                    "chunking",
+                    "embedding",
+                    "indexing",
+                    "finalizing",
+                }
+            ):
+                logger.info(
+                    f"Skip ImportJob {job_id}: processing task already linked",
+                    processing_task_id=job.processing_task_id,
+                    stage=job.stage,
+                )
+                return
+
+            if job.status in {"queued", "created"}:
+                claim_result = await db.execute(
+                    update(ImportJob)
+                    .where(
+                        ImportJob.id == job_id,
+                        ImportJob.status.in_(["queued", "created"]),
+                    )
+                    .values(
+                        status="running",
+                        updated_at=datetime.now(timezone.utc),
+                    )
+                    .returning(ImportJob.id)
+                )
+                claimed_job_id = claim_result.scalar_one_or_none()
+                await db.commit()
+
+                if not claimed_job_id:
+                    await db.refresh(job)
+                    logger.info(
+                        f"Skip ImportJob {job_id}: claimed by another worker",
+                        status=job.status,
+                    )
+                    return
+
+                await db.refresh(job)
+                if job.started_at is None:
+                    job.started_at = datetime.now(timezone.utc)
+                    await db.commit()
+            elif job.status == "running":
+                if job.processing_task_id:
+                    logger.info(
+                        f"Skip ImportJob {job_id}: already running with processing task",
+                        processing_task_id=job.processing_task_id,
+                    )
+                    return
+                logger.info(
+                    f"Resume ImportJob {job_id}: running without processing task",
+                    stage=job.stage,
+                )
+
             try:
                 logger.info(
                     f"Processing ImportJob {job_id}",
@@ -82,8 +153,13 @@ def process_import_job(self, job_id: str):
                     stage=job.stage,
                 )
 
-                # Stage: resolving_source (skip for local_file)
-                if job.source_type != "local_file":
+                resume_from_materialization = (
+                    job.stage in {"materializing_paper", "attaching_to_kb", "triggering_processing"}
+                    or job.dedupe_decision in {"import_as_new_version", "force_new_paper"}
+                )
+
+                # Stage: resolving_source (skip for local_file and dedupe resume path)
+                if job.source_type != "local_file" and not resume_from_materialization:
                     await service.update_status(
                         job, status="running", stage="resolving_source", progress=5, db=db
                     )
@@ -112,114 +188,140 @@ def process_import_job(self, job_id: str):
                     # Store resolution on ImportJob fields (NOT job.resolution - undefined!)
                     await set_resolution(service, job, resolution, db)
 
-                # Stage: fetching_metadata
-                await service.update_status(
-                    job, stage="fetching_metadata", progress=10, db=db
-                )
                 metadata = None
-
-                if job.source_type != "local_file":
-                    adapter = get_adapter(job.source_type)
-                    resolution = await adapter.resolve(job.source_ref_raw)
-                    metadata = await adapter.fetch_metadata(resolution)
-
-                    # Store metadata on ImportJob fields
-                    await set_metadata(service, job, metadata, db)
-
-                # Stage: downloading_pdf (for external sources)
-                if job.source_type != "local_file":
-                    if not metadata or not metadata.pdf_available:
-                        await service.update_status(
-                            job,
-                            status="awaiting_user_action",
-                            stage="awaiting_user_action",
-                            error_code="NO_PDF",
-                            error_message="PDF not available, please upload manually",
-                            db=db,
-                        )
-                        return
-
+                if not resume_from_materialization:
+                    # Stage: fetching_metadata
                     await service.update_status(
-                        job, stage="downloading_pdf", progress=20, db=db
+                        job, stage="fetching_metadata", progress=10, db=db
                     )
 
-                    # Generate storage key
-                    storage_key = f"uploads/{job.user_id}/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}/{job_id}.pdf"
-                    local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
-                    file_path = os.path.join(local_storage_path, storage_key)
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-                    try:
+                    if job.source_type != "local_file":
                         adapter = get_adapter(job.source_type)
                         resolution = await adapter.resolve(job.source_ref_raw)
-                        await adapter.acquire_pdf(resolution, local_storage_path, storage_key)
+                        metadata = await adapter.fetch_metadata(resolution)
 
-                        # Set file info
-                        job.storage_key = storage_key
-                        await db.commit()
-                    except Exception as e:
-                        await service.set_error(
-                            job,
-                            error_code="PDF_DOWNLOAD_FAILED",
-                            error_message=str(e),
-                            db=db,
+                        # Store metadata on ImportJob fields
+                        await set_metadata(service, job, metadata, db)
+
+                    # Stage: downloading_pdf (for external sources)
+                    if job.source_type != "local_file":
+                        if not metadata or not metadata.pdf_available:
+                            job.status = "awaiting_user_action"
+                            job.stage = "awaiting_user_action"
+                            job.progress = 20
+                            job.error_code = "NO_PDF"
+                            job.error_message = "PDF not available, please upload manually"
+                            job.next_action = {
+                                "type": "create_upload_session",
+                                "createSessionUrl": f"/api/v1/import-jobs/{job.id}/upload-sessions",
+                                "message": "PDF not available, please upload manually",
+                            }
+                            job.updated_at = datetime.now(timezone.utc)
+                            await db.commit()
+                            return
+
+                        await service.update_status(
+                            job, stage="downloading_pdf", progress=20, db=db
                         )
-                        return
 
-                # Stage: validating_pdf
-                await service.update_status(job, stage="validating_pdf", progress=25, db=db)
+                        # Generate storage key
+                        storage_key = f"uploads/{job.user_id}/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}/{job_id}.pdf"
+                        local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+                        file_path = os.path.join(local_storage_path, storage_key)
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-                # Validate magic bytes %PDF-
-                if job.storage_key:
-                    local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
-                    file_path = os.path.join(local_storage_path, job.storage_key)
-                    if os.path.exists(file_path):
-                        with open(file_path, "rb") as f:
-                            header = f.read(5)
-                            if not header.startswith(b"%PDF-"):
-                                await service.set_error(
-                                    job,
-                                    error_code="INVALID_PDF",
-                                    error_message="PDF magic bytes validation failed",
-                                    db=db,
-                                )
-                                return
+                        try:
+                            adapter = get_adapter(job.source_type)
+                            resolution = await adapter.resolve(job.source_ref_raw)
+                            await adapter.acquire_pdf(resolution, local_storage_path, storage_key)
 
-                # Stage: hashing_file
-                await service.update_status(job, stage="hashing_file", progress=30, db=db)
+                            # Set file info
+                            job.storage_key = storage_key
+                            await db.commit()
+                        except Exception as e:
+                            await service.set_error(
+                                job,
+                                error_code="PDF_DOWNLOAD_FAILED",
+                                error_message=str(e),
+                                db=db,
+                            )
+                            return
 
-                if job.storage_key:
-                    sha256 = await compute_hash(job.storage_key)
-                    job.file_sha256 = sha256
-                    await db.commit()
+                    # Stage: validating_pdf
+                    await service.update_status(job, stage="validating_pdf", progress=25, db=db)
 
-                # Stage: dedupe_check
-                await service.update_status(job, stage="dedupe_check", progress=35, db=db)
-                dedupe_result = await dedupe_service.check_dedup(job, db)
+                    # Validate magic bytes %PDF-
+                    if job.storage_key:
+                        local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+                        file_path = os.path.join(local_storage_path, job.storage_key)
+                        if os.path.exists(file_path):
+                            with open(file_path, "rb") as f:
+                                header = f.read(5)
+                                if not header.startswith(b"%PDF-"):
+                                    await service.set_error(
+                                        job,
+                                        error_code="INVALID_PDF",
+                                        error_message="PDF magic bytes validation failed",
+                                        db=db,
+                                    )
+                                    return
 
-                if dedupe_result.matched_paper_id:
-                    await service.set_awaiting_dedupe(
-                        job,
-                        matched_paper_id=dedupe_result.matched_paper_id,
-                        match_type=dedupe_result.match_type,
-                        db=db,
-                    )
+                    # Stage: hashing_file
+                    await service.update_status(job, stage="hashing_file", progress=30, db=db)
+
+                    if job.storage_key:
+                        sha256 = await compute_hash(job.storage_key)
+                        job.file_sha256 = sha256
+                        await db.commit()
+
+                    # Stage: dedupe_check
+                    await service.update_status(job, stage="dedupe_check", progress=35, db=db)
+                    if job.dedupe_decision in {"import_as_new_version", "force_new_paper"}:
+                        # User explicitly chose to continue with a new paper, skip second dedupe hit.
+                        job.dedupe_status = "resolved"
+                        await db.commit()
+                    else:
+                        dedupe_result = await dedupe_service.check_dedup(job, db)
+
+                        if dedupe_result.matched_paper_id:
+                            await service.set_awaiting_dedupe(
+                                job,
+                                matched_paper_id=dedupe_result.matched_paper_id,
+                                match_type=dedupe_result.match_type,
+                                db=db,
+                            )
+                            logger.info(
+                                f"ImportJob {job_id} paused for dedupe decision",
+                                matched_paper_id=dedupe_result.matched_paper_id,
+                                match_type=dedupe_result.match_type,
+                            )
+                            return  # Pause for user decision
+
+                        # No match, proceed to materialize paper
+                        job.dedupe_status = "no_match"
+                        await db.commit()
+                else:
                     logger.info(
-                        f"ImportJob {job_id} paused for dedupe decision",
-                        matched_paper_id=dedupe_result.matched_paper_id,
-                        match_type=dedupe_result.match_type,
+                        f"Resume ImportJob {job_id} from materialization stage",
+                        stage=job.stage,
+                        decision=job.dedupe_decision,
                     )
-                    return  # Pause for user decision
-
-                # No match, proceed to materialize paper
-                job.dedupe_status = "no_match"
-                await db.commit()
 
                 # Stage: materializing_paper
                 await service.update_status(job, stage="materializing_paper", progress=40, db=db)
-                paper_id = await create_paper_from_job(job, db)
-                job.paper_id = paper_id
-                await db.commit()
+                paper_id: Optional[str] = None
+                if job.paper_id:
+                    existing_paper = await db.execute(
+                        select(Paper).where(Paper.id == job.paper_id)
+                    )
+                    found_paper = existing_paper.scalar_one_or_none()
+                    if found_paper:
+                        paper_id = found_paper.id
+
+                if not paper_id:
+                    paper_id = await create_paper_from_job(job, db)
+                    job.paper_id = paper_id
+                    await db.commit()
 
                 # Stage: attaching_to_kb
                 await service.update_status(job, stage="attaching_to_kb", progress=45, db=db)
@@ -244,15 +346,14 @@ def process_import_job(self, job_id: str):
 
                 # Trigger existing PDF worker (via Celery)
                 from app.tasks.pdf_tasks import process_single_pdf_task
-                process_single_pdf_task.delay(paper_id)
+                process_single_pdf_task.delay(paper_id, processing_task_id)
 
                 logger.info(
                     f"ProcessingTask {processing_task_id} created for ImportJob {job_id}",
                     paper_id=paper_id,
                 )
-
-                # CRITICAL: Poll ProcessingTask status until completed
-                await track_processing_stages(service, job, processing_task_id, db)
+                # Return immediately to avoid blocking single-concurrency Celery workers.
+                return
 
             except Exception as e:
                 logger.exception(f"ImportJob {job_id} failed: {e}")
@@ -267,8 +368,15 @@ def process_import_job(self, job_id: str):
     asyncio.run(_process())
 
 
-@celery_app.task
-def on_processing_task_complete(processing_task_id: str, paper_id: str):
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
+def on_processing_task_complete(self, processing_task_id: str, paper_id: str):
     """Callback when ProcessingTask completes - marks ImportJob as completed.
 
     This should be called by pdf_worker when ProcessingTask finishes.
@@ -290,6 +398,13 @@ def on_processing_task_complete(processing_task_id: str, paper_id: str):
             job = result.scalar_one_or_none()
 
             if job:
+                if job.status in {"completed", "cancelled"}:
+                    logger.info(
+                        f"Skip callback sync for ImportJob {job.id}: terminal status",
+                        status=job.status,
+                    )
+                    return
+
                 service = ImportJobService()
                 await service.update_status(
                     job,
@@ -411,88 +526,6 @@ async def attach_paper_to_kb(job: ImportJob, paper_id: str, db):
     logger.info(
         f"Paper {paper_id} uses KB {job.knowledge_base_id} (set in create_paper_from_job)",
         import_job_id=job.id,
-    )
-
-
-async def track_processing_stages(
-    service: ImportJobService,
-    job: ImportJob,
-    processing_task_id: str,
-    db,
-):
-    """Poll ProcessingTask and update ImportJob stages.
-
-    CRITICAL: ImportJob tracks parsing/chunking/embedding/indexing stages
-    based on ProcessingTask checkpoint/status.
-    ImportJob is NOT completed until ProcessingTask.status == 'completed'.
-    """
-    max_wait_seconds = 3600  # 1 hour max
-    poll_interval = 5  # 5 seconds between polls
-    waited = 0
-
-    while waited < max_wait_seconds:
-        # Get ProcessingTask status
-        result = await db.execute(
-            select(ProcessingTask).where(ProcessingTask.id == processing_task_id)
-        )
-        task = result.scalar_one_or_none()
-
-        if not task:
-            logger.error(f"ProcessingTask {processing_task_id} not found")
-            await service.set_error(
-                job,
-                error_code="TASK_NOT_FOUND",
-                error_message="ProcessingTask disappeared",
-                db=db,
-            )
-            return
-
-        # Update ImportJob stage based on ProcessingTask checkpoint_stage
-        checkpoint = task.checkpoint_stage
-
-        if checkpoint == "parsed":
-            await service.update_status(job, stage="parsing", progress=60, db=db)
-        elif checkpoint == "chunked":
-            await service.update_status(job, stage="chunking", progress=70, db=db)
-        elif checkpoint == "embedded":
-            await service.update_status(job, stage="embedding", progress=80, db=db)
-        elif checkpoint == "indexed":
-            await service.update_status(job, stage="indexing", progress=90, db=db)
-
-        # Check if completed
-        if task.status == "completed":
-            await service.update_status(job, stage="finalizing", progress=95, db=db)
-            # Final completion is done by callback, not here
-            logger.info(
-                f"ImportJob {job.id} finalizing - ProcessingTask {processing_task_id} completed",
-            )
-            return
-
-        # Check if failed
-        if task.status == "failed":
-            await service.set_error(
-                job,
-                error_code="PROCESSING_FAILED",
-                error_message=task.error_message or "Processing failed",
-                db=db,
-            )
-            return
-
-        await asyncio.sleep(poll_interval)
-        waited += poll_interval
-
-        # Refresh job from DB to check for cancellation
-        await db.refresh(job)
-        if job.status == "cancelled":
-            logger.info(f"ImportJob {job.id} cancelled during processing")
-            return
-
-    # Timeout
-    await service.set_error(
-        job,
-        error_code="PROCESSING_TIMEOUT",
-        error_message="Processing took too long (>1 hour)",
-        db=db,
     )
 
 
