@@ -1,7 +1,6 @@
-import { Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { Button } from '@/app/components/ui/button';
 import { PaperListItem } from '@/app/components/PaperListItem';
+import { UnifiedEmptyState, UnifiedLoadingState } from '@/app/components/UnifiedFeedbackState';
 import type { KBPaperListItem } from '@/services/kbApi';
 
 interface KnowledgePapersPanelProps {
@@ -14,19 +13,17 @@ export function KnowledgePapersPanel({ papers, loading, onImport }: KnowledgePap
   const navigate = useNavigate();
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-      </div>
-    );
+    return <UnifiedLoadingState label="正在加载论文列表..." />;
   }
 
   if (papers.length === 0) {
     return (
-      <div className="bg-white border-2 border-zinc-900 p-10 text-center space-y-4 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)]">
-        <div className="text-zinc-600 font-medium">当前知识库还没有论文</div>
-        <Button onClick={onImport}>导入第一篇论文</Button>
-      </div>
+      <UnifiedEmptyState
+        title="当前知识库还没有论文"
+        description="导入第一篇论文后即可开始检索、问答和笔记。"
+        actionLabel="导入第一篇论文"
+        onAction={onImport}
+      />
     );
   }
 

@@ -4,6 +4,7 @@ import type { ChatStreamState } from '@/app/hooks/useChatStream';
 import type { ThinkingStep } from '@/app/components/ThinkingProcess';
 import { TypingText } from '@/app/components/TypingText';
 import { renderContentWithCitations } from '@/app/components/CitationsPanel';
+import { UnifiedEmptyState, UnifiedErrorState } from '@/app/components/UnifiedFeedbackState';
 import { ReasoningPanel } from '@/features/chat/components/reasoning-panel/ReasoningPanel';
 import { ToolTimelinePanel } from '@/features/chat/components/tool-timeline/ToolTimelinePanel';
 import { CitationPanel } from '@/features/chat/components/citation-panel/CitationPanel';
@@ -45,10 +46,8 @@ export function MessageFeed({
   return (
     <div className="flex-1 overflow-y-auto px-6 py-5">
       {localMessages.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center h-full text-center">
-          <Bot className="w-16 h-16 text-primary/20 mb-4" />
-          <p className="text-lg font-serif text-muted-foreground mb-2">{labels.noMessages}</p>
-          <p className="text-sm text-muted-foreground/60">{labels.sendFirst}</p>
+        <div className="max-w-2xl mx-auto mt-12">
+          <UnifiedEmptyState title={labels.noMessages} description={labels.sendFirst} />
         </div>
       ) : (
         <div className="space-y-6 max-w-5xl mx-auto">
@@ -151,9 +150,13 @@ export function MessageFeed({
       )}
 
       {streamState.error && (
-        <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 px-4 py-2 rounded-lg mt-4 max-w-4xl mx-auto">
-          <AlertCircle className="w-4 h-4" />
-          {streamState.error.message}
+        <div className="max-w-2xl mx-auto mt-6">
+          <UnifiedErrorState
+            title="对话流中断"
+            description={streamState.error.message}
+            retryLabel={labels.stop}
+            onRetry={onStop}
+          />
         </div>
       )}
     </div>
