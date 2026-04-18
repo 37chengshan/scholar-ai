@@ -1,0 +1,99 @@
+{
+  "runAt": "2026-04-17T16:34:30.296Z",
+  "steps": {
+    "login": {
+      "success": true,
+      "account": "pr19-1776443707913@example.com"
+    },
+    "createKnowledgeBase": {
+      "success": true,
+      "kbId": "d106e851-804e-4fa7-b7bf-6dd7574c8d50",
+      "kbName": "PR19-E2E-1776443708414"
+    },
+    "uploadThreePapers": {
+      "success": true,
+      "queueItems": 3,
+      "resumeButtonsSeen": 1,
+      "metricsRowCount": 6
+    },
+    "chatSingleAndMultiTurn": {
+      "success": true,
+      "turns": 2
+    }
+  },
+  "uiObservations": [
+    "Chat 动态占位出现: false",
+    "Chat 进入流式状态: true",
+    "Chat 停止按钮出现: false",
+    "上传指标行数: 6",
+    "断网后上传任务可转为暂停并手动继续（当前为整文件上传恢复，不是分片级续传）"
+  ],
+  "metrics": {
+    "uploadRows": [
+      {
+        "fileName": "2604.01232v1.pdf",
+        "createJobMs": "38 ms",
+        "uploadMs": "46 ms",
+        "totalMs": "84 ms",
+        "network": "online",
+        "result": "queued"
+      },
+      {
+        "fileName": "2604.01228v1.pdf",
+        "createJobMs": "40 ms",
+        "uploadMs": "160 ms",
+        "totalMs": "200 ms",
+        "network": "online",
+        "result": "queued"
+      },
+      {
+        "fileName": "2604.01226v1.pdf",
+        "createJobMs": "36 ms",
+        "uploadMs": "147 ms",
+        "totalMs": "183 ms",
+        "network": "online",
+        "result": "queued"
+      },
+      {
+        "fileName": "2604.01232v1.pdf",
+        "createJobMs": "48 ms",
+        "uploadMs": "101 ms",
+        "totalMs": "149 ms",
+        "network": "online",
+        "result": "queued"
+      },
+      {
+        "fileName": "2604.01226v1.pdf",
+        "createJobMs": "27 ms",
+        "uploadMs": "94 ms",
+        "totalMs": "121 ms",
+        "network": "online",
+        "result": "queued"
+      },
+      {
+        "fileName": "2604.01228v1.pdf",
+        "createJobMs": "24 ms",
+        "uploadMs": "54 ms",
+        "totalMs": "79 ms",
+        "network": "online",
+        "result": "queued"
+      }
+    ],
+    "chatTurns": [
+      {
+        "question": "请基于当前知识库给出论文主题概览与关键结论。",
+        "totalMs": 10027,
+        "enteredStreamingState": true,
+        "placeholderVisible": false,
+        "stopButtonVisible": false
+      },
+      {
+        "question": "继续：把上面的结论整理成三条可执行的研究建议。",
+        "totalMs": 10032,
+        "enteredStreamingState": true,
+        "placeholderVisible": false,
+        "stopButtonVisible": false
+      }
+    ]
+  }
+}
