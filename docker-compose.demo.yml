@@ -158,6 +158,8 @@ services:
       - MILVUS_HOST=milvus-standalone
       - MILVUS_PORT=19530
       - PYTHONUNBUFFERED=1
+    volumes:
+      - ./uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy

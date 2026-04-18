@@ -186,17 +186,21 @@ test.describe('PR19 最小真实流程联调', () => {
 
     let completedCount = 0;
     let failedCount = 0;
+    let importState: 'pending' | 'done' | 'failed' = 'pending';
 
     await expect
       .poll(async () => {
         completedCount = await page.getByText(/已完成|完成/).count();
         failedCount = await page.getByText(/失败|数据异常/).count();
-        return completedCount > 0 ? 'done' : failedCount > 0 ? 'failed' : 'pending';
+        importState = completedCount > 0 ? 'done' : failedCount > 0 ? 'failed' : 'pending';
+        return importState;
       }, {
         timeout: 300000,
         intervals: [1000, 2000, 5000],
       })
-      .toBe('done');
+      .not.toBe('pending');
+
+    expect(importState).toBe('done');
 
     const uploadRows: Array<Record<string, string>> = [
       {
