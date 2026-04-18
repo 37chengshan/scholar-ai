@@ -197,6 +197,14 @@ Paper 资源契约补充：
 - `POST /api/v1/papers/{paperId}/star`：只允许返回统一 envelope，不允许裸布尔返回。
 - `POST /api/v1/papers/batch-delete`：批量删除必须返回可追踪结果（成功列表与失败列表）。
 
+Search API 契约补充：
+
+- `GET /api/v1/search/unified`：统一搜索接口
+  - 查询参数：`query`、`limit`、`offset`、`year_from`（可选）、`year_to`（可选）
+  - 响应格式：返回 `data.results[]` 与 `meta.limit/offset/total`
+  - 客户端实现：支持 AbortSignal 用于请求取消（frontend request cancellation）
+  - 前端额外功能：支持会话搜索（session-side filtering）与结果缓存（react-query keepPreviousData）
+
 Plan C 契约治理约束：
 
 - 契约表面改动（apps/api/app/api, apps/api/app/models, apps/web/src/services, packages/types, packages/sdk）必须同步更新本文件与 `docs/domain/resources.md`。

@@ -69,6 +69,7 @@ Paper 交互资源补充：
 
 - PaperStar：用户与 Paper 的收藏关系资源，操作入口为 `/api/v1/papers/{paperId}/star`。
 - PaperBatchOperation：批量操作结果资源，至少包含 `successItems` 与 `failedItems`。
+- SearchResult：搜索结果资源，支持论文与知识片段的统一搜索，包括请求取消与前端缓存策略。
 
 关键生命周期事件：
 
