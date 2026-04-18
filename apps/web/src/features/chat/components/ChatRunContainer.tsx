@@ -1,4 +1,4 @@
-import { ChatLegacy } from './ChatLegacy';
+import { ChatWorkspaceV2 } from '@/features/chat/workspace/ChatWorkspaceV2';
 import type { AgentRun } from '@/features/chat/types/run';
 
 interface ChatRunContainerProps {
@@ -13,7 +13,7 @@ export function ChatRunContainer({ run }: ChatRunContainerProps) {
       data-run-status={run.status}
       data-run-scope={run.scope}
     >
-      <ChatLegacy />
+      <ChatWorkspaceV2 />
     </section>
   );
 }
