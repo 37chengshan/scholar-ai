@@ -26,6 +26,8 @@ export function SearchWorkspace() {
     setQuery,
     results,
     loading,
+    isInitialLoading,
+    isPageFetching,
     error,
     page,
     totalPages,
@@ -148,6 +150,8 @@ export function SearchWorkspace() {
             activeSource={workspace.activeSource}
             query={query}
             loading={loading}
+            isInitialLoading={isInitialLoading}
+            isPageFetching={isPageFetching}
             error={error}
             results={results}
             authorResults={authorSearch.authorResults}
@@ -168,7 +172,7 @@ export function SearchWorkspace() {
             <SearchPagination
               hasPrev={Boolean(hasPrev)}
               hasMore={Boolean(hasMore)}
-              loading={loading}
+              loading={isPageFetching}
               page={page}
               totalPages={totalPages}
               prevPage={prevPage}

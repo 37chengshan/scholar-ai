@@ -9,6 +9,7 @@ describe('SessionSidebar', () => {
     const onCreateSession = vi.fn();
     const onSwitchSession = vi.fn();
     const onDeleteSession = vi.fn();
+    const onSearchChange = vi.fn();
 
     render(
       <SessionSidebar
@@ -29,22 +30,53 @@ describe('SessionSidebar', () => {
           search: 'Search...',
           history: 'History',
           newChat: 'New Chat',
+          noSearchResults: 'No matching sessions',
           messageSuffix: 'messages',
         }}
+        searchValue=""
+        onSearchChange={onSearchChange}
         onCreateSession={onCreateSession}
         onSwitchSession={onSwitchSession}
         onDeleteSession={onDeleteSession}
       />
     );
 
-    const buttons = screen.getAllByRole('button');
-    await user.click(buttons[0]);
+    await user.click(screen.getByTestId('session-create-button'));
     expect(onCreateSession).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByText('Alpha'));
     expect(onSwitchSession).toHaveBeenCalledWith('session-1');
 
-    await user.click(buttons[1]);
+    await user.click(screen.getByTestId('session-delete-session-1'));
     expect(onDeleteSession).toHaveBeenCalledTimes(1);
+
+    await user.type(screen.getByTestId('session-search-input'), 'alp');
+    expect(onSearchChange).toHaveBeenCalled();
+  });
+
+  it('shows search empty state when no session matches', () => {
+    render(
+      <SessionSidebar
+        sessions={[]}
+        currentSessionId={null}
+        loading={false}
+        labels={{
+          terminal: 'Terminal',
+          sessions: 'Sessions',
+          search: 'Search...',
+          history: 'History',
+          newChat: 'New Chat',
+          noSearchResults: 'No matching sessions',
+          messageSuffix: 'messages',
+        }}
+        searchValue="zz-not-found"
+        onSearchChange={vi.fn()}
+        onCreateSession={vi.fn()}
+        onSwitchSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('session-empty-state')).toHaveTextContent('No matching sessions');
   });
 });

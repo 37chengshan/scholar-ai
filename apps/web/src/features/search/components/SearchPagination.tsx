@@ -1,3 +1,5 @@
+import { Loader2 } from 'lucide-react';
+
 interface SearchPaginationProps {
   hasPrev: boolean;
   hasMore: boolean;
@@ -25,12 +27,18 @@ export function SearchPagination({
   labels,
 }: SearchPaginationProps) {
   return (
-    <div className="flex justify-center items-center gap-4 mt-8 pt-6 border-t border-border/50">
+    <div
+      className="flex justify-center items-center gap-4 mt-8 pt-6 border-t border-border/50"
+      data-testid="search-pagination"
+      aria-busy={loading}
+    >
       <button
         onClick={prevPage}
         disabled={!hasPrev || loading}
+        data-testid="search-pagination-prev"
         className="px-4 py-2 bg-card border border-border rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
       >
+        {loading && <Loader2 className="inline-block w-3 h-3 animate-spin mr-1" />}
         {labels.prevPage}
       </button>
       <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 rounded-sm">
@@ -42,8 +50,10 @@ export function SearchPagination({
       <button
         onClick={nextPage}
         disabled={!hasMore || loading}
+        data-testid="search-pagination-next"
         className="px-4 py-2 bg-primary text-primary-foreground border border-primary rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
       >
+        {loading && <Loader2 className="inline-block w-3 h-3 animate-spin mr-1" />}
         {labels.nextPage}
       </button>
     </div>

@@ -8,6 +8,7 @@ interface SessionSidebarCopy {
   search: string;
   history: string;
   newChat: string;
+  noSearchResults: string;
   messageSuffix: string;
 }
 
@@ -16,6 +17,8 @@ interface SessionSidebarProps {
   currentSessionId: string | null;
   loading: boolean;
   labels: SessionSidebarCopy;
+  searchValue: string;
+  onSearchChange: (value: string) => void;
   onCreateSession: () => void;
   onSwitchSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string, event: React.MouseEvent) => void;
@@ -26,6 +29,8 @@ export function SessionSidebar({
   currentSessionId,
   loading,
   labels,
+  searchValue,
+  onSearchChange,
   onCreateSession,
   onSwitchSession,
   onDeleteSession,
@@ -39,6 +44,7 @@ export function SessionSidebar({
         </div>
         <button
           onClick={onCreateSession}
+          data-testid="session-create-button"
           className="w-8 h-8 border border-zinc-300 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
         >
           <Plus className="w-4 h-4" />
@@ -51,6 +57,10 @@ export function SessionSidebar({
           <input
             type="text"
             placeholder={labels.search}
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+            aria-label={labels.search}
+            data-testid="session-search-input"
             className="w-full bg-transparent border-b border-zinc-200 pl-6 pr-1 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/40"
           />
         </div>
@@ -66,13 +76,16 @@ export function SessionSidebar({
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : sessions.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">{labels.newChat}</div>
+          <div className="text-center py-8 text-muted-foreground text-sm" data-testid="session-empty-state">
+            {searchValue.trim() ? labels.noSearchResults : labels.newChat}
+          </div>
         ) : (
           <div className="space-y-1">
             {sessions.map((session) => (
               <div
                 key={session.id}
                 onClick={() => onSwitchSession(session.id)}
+                data-testid="session-item"
                 className={clsx(
                   'w-full text-left px-3 py-2.5 transition-colors group flex items-start gap-2 cursor-pointer border-b border-zinc-100',
                   currentSessionId === session.id
@@ -96,6 +109,7 @@ export function SessionSidebar({
                 </div>
                 <button
                   onClick={(event) => onDeleteSession(session.id, event)}
+                  data-testid={`session-delete-${session.id}`}
                   className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 transition-opacity flex-shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />

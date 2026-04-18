@@ -33,7 +33,10 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: Search
   const isInternal = result.source === 'internal';
 
   return (
-    <div className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all duration-300 relative overflow-hidden">
+    <div
+      className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all duration-300 relative overflow-hidden"
+      data-testid="search-result-card"
+    >
       <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500" />
 
       <div className="flex justify-between items-start">

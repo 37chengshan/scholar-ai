@@ -27,10 +27,14 @@ export function SearchToolbar({
               type="text"
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
+              data-testid="search-query-input"
               className="flex-1 bg-transparent border-none text-sm font-serif font-bold tracking-wide focus:outline-none focus:ring-0 placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
               placeholder={placeholder}
             />
-            <button className="bg-primary text-primary-foreground px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-secondary transition-colors h-full shadow-sm shadow-primary/20">
+            <button
+              className="bg-primary text-primary-foreground px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-secondary transition-colors h-full shadow-sm shadow-primary/20"
+              data-testid="search-query-button"
+            >
               {queryLabel}
             </button>
           </div>

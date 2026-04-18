@@ -145,7 +145,8 @@ export async function unified(
   limit: number = 20,
   offset: number = 0,
   year_from?: number,
-  year_to?: number
+  year_to?: number,
+  signal?: AbortSignal
 ): Promise<{
   query: string;
   results: Array<{
@@ -192,7 +193,9 @@ export async function unified(
       year_from: number | null;
       year_to: number | null;
     };
-  }>(`/api/v1/search/unified?${params.toString()}`);
+  }>(`/api/v1/search/unified?${params.toString()}`, {
+    signal,
+  });
 
   return response.data;
 }

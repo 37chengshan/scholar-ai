@@ -1,4 +1,5 @@
 import { motion } from 'motion/react';
+import { Loader2 } from 'lucide-react';
 import { SearchResultCard } from '@/app/components/SearchResultCard';
 import { AuthorResultCard } from '@/app/components/AuthorResultCard';
 import { NoSearchResultsState } from '@/app/components/EmptyState';
@@ -9,6 +10,8 @@ interface SearchResultsPanelProps {
   activeSource: string;
   query: string;
   loading: boolean;
+  isInitialLoading: boolean;
+  isPageFetching: boolean;
   error: string | null;
   results: SearchResults | null;
   authorResults: AuthorSearchResult[];
@@ -29,6 +32,8 @@ export function SearchResultsPanel({
   activeSource,
   query,
   loading,
+  isInitialLoading,
+  isPageFetching,
   error,
   results,
   authorResults,
@@ -38,9 +43,9 @@ export function SearchResultsPanel({
   onAddToLibrary,
   onAuthorClick,
 }: SearchResultsPanelProps) {
-  if (loading) {
+  if (isInitialLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-64" data-testid="search-initial-loading">
         <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           {labels.searching}
         </div>
@@ -67,12 +72,24 @@ export function SearchResultsPanel({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="space-y-8"
-    >
+    <div className="space-y-4" data-testid="search-results-panel">
+      {loading && isPageFetching && (
+        <div
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+          data-testid="search-page-loading"
+          aria-live="polite"
+        >
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          {labels.searching}
+        </div>
+      )}
+
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="space-y-8"
+      >
       {activeSource === 'authors' && (
         <div>
           <h2 className="font-semibold mb-4 text-lg">
@@ -129,6 +146,7 @@ export function SearchResultsPanel({
       {activeSource !== 'authors' && results.internal.length === 0 && results.external.length === 0 && (
         <NoSearchResultsState query={query} />
       )}
-    </motion.div>
+      </motion.div>
+    </div>
   );
 }

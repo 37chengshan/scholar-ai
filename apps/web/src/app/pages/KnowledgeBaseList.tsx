@@ -114,19 +114,6 @@ export function KnowledgeBaseList() {
     }
   };
 
-  const handleBatchExport = async () => {
-    try {
-      const ids = Array.from(selectedIds);
-      if (ids.length === 0) return;
-      
-      // Note: batch export is stub in backend, but we call real API
-      toast.info(`批量导出功能暂未完全实现`);
-      setSelectedIds(new Set());
-    } catch (err: any) {
-      toast.error(err.message || '批量导出失败');
-    }
-  };
-
   const handleCreate = () => {
     setShowCreateDialog(true);
   };
@@ -302,10 +289,19 @@ export function KnowledgeBaseList() {
               <Trash2 className="h-3.5 w-3.5 mr-1.5" />
               删除
             </Button>
-            <Button variant="outline" size="sm" onClick={handleBatchExport}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              aria-disabled="true"
+              aria-describedby="batch-export-soon-hint"
+            >
               <Download className="h-3.5 w-3.5 mr-1.5" />
-              导出
+              导出（即将上线）
             </Button>
+            <span id="batch-export-soon-hint" className="text-xs text-muted-foreground">
+              批量导出能力即将上线
+            </span>
             <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
               取消选择
             </Button>
