@@ -25,6 +25,7 @@ required_files=(
   "docs/governance/code-boundary-baseline.md"
   "docs/governance/harness-engineering-playbook.md"
   "docs/plans/PLAN_STATUS.md"
+  "scripts/check-legacy-freeze.sh"
   "scripts/check-plan-governance.sh"
   "scripts/check-runtime-hygiene.sh"
   "scripts/clean-repo-artifacts.sh"
@@ -60,6 +61,7 @@ done
 
 bash scripts/check-doc-governance.sh
 bash scripts/check-plan-governance.sh
+bash scripts/check-legacy-freeze.sh
 bash scripts/check-structure-boundaries.sh
 bash scripts/check-code-boundaries.sh
 bash scripts/check-runtime-hygiene.sh tracked
