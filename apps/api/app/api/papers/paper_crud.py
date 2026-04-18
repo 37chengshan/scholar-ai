@@ -26,6 +26,15 @@ from .paper_shared import (
     PaperListResponse,
     PaperCreateRequest,
     PaperCreateResponse,
+    PaperResponse,
+    PaperData,
+    ChunkData,
+    BatchDeleteResponse,
+    BatchDeleteData,
+    BatchStarResponse,
+    BatchStarData,
+    MessageResponse,
+    MessageData,
     create_error_response,
     format_paper_response,
     datetime,
@@ -230,7 +239,7 @@ async def create_paper(
     )
 
 
-@router.get("/{paper_id}")
+@router.get("/{paper_id}", response_model=PaperResponse)
 async def get_paper(
     request: Request,
     paper_id: str,
@@ -262,22 +271,22 @@ async def get_paper(
 
     if includeChunks:
         paper_dict["chunks"] = [
-            {
-                "id": c.id,
-                "content": c.content,
-                "section": c.section,
-                "page_start": c.page_start,
-                "page_end": c.page_end,
-                "is_table": c.is_table,
-                "is_figure": c.is_figure,
-            }
+            ChunkData(
+                id=c.id,
+                content=c.content,
+                section=c.section,
+                page_start=c.page_start,
+                page_end=c.page_end,
+                is_table=c.is_table,
+                is_figure=c.is_figure,
+            )
             for c in result["chunks"]
         ]
 
-    return {"success": True, "data": paper_dict}
+    return PaperResponse(success=True, data=PaperData(**paper_dict))
 
 
-@router.patch("/{paper_id}")
+@router.patch("/{paper_id}", response_model=PaperResponse)
 async def update_paper(
     request: Request,
     paper_id: str,
@@ -305,10 +314,10 @@ async def update_paper(
             instance=instance,
         )
 
-    return {"success": True, "data": format_paper_response(paper)}
+    return PaperResponse(success=True, data=PaperData(**format_paper_response(paper)))
 
 
-@router.delete("/{paper_id}")
+@router.delete("/{paper_id}", response_model=MessageResponse)
 async def delete_paper(
     request: Request,
     paper_id: str,
@@ -334,7 +343,7 @@ async def delete_paper(
             instance=instance,
         )
 
-    return {"success": True, "data": {"message": "Paper deleted successfully"}}
+    return MessageResponse(success=True, data=MessageData(message="Paper deleted successfully"))
 
 
 class BatchDeleteRequest(BaseModel):
@@ -348,7 +357,7 @@ class BatchStarRequest(BaseModel):
     starred: bool = Field(..., description="True to star, False to unstar")
 
 
-@router.post("/batch-delete")
+@router.post("/batch-delete", response_model=BatchDeleteResponse)
 async def batch_delete_papers(
     body: BatchDeleteRequest,
     current_user: User = Depends(get_current_user),
@@ -366,17 +375,18 @@ async def batch_delete_papers(
         paper_ids=paper_ids,
     )
 
-    return {
-        "success": True,
-        "data": {
-            "deletedCount": deleted_count,
-            "requestedCount": requested_count,
-            "message": f"Successfully deleted {deleted_count} of {requested_count} papers",
-        },
-    }
+    return BatchDeleteResponse(
+        success=True,
+        data=BatchDeleteData(
+            deletedCount=deleted_count,
+            requestedCount=requested_count,
+            failedIds=[],  # Service returns count only; per-item errors tracked in future
+            message=f"Successfully deleted {deleted_count} of {requested_count} papers",
+        ),
+    )
 
 
-@router.post("/batch/star")
+@router.post("/batch/star", response_model=BatchStarResponse)
 async def batch_star_papers(
     request: Request,
     body: BatchStarRequest,
@@ -397,15 +407,16 @@ async def batch_star_papers(
         starred=starred,
     )
 
-    return {
-        "success": True,
-        "data": {
-            "updatedCount": updated_count,
-            "requestedCount": requested_count,
-            "starred": starred,
-            "message": f"Successfully updated starred status for {updated_count} papers",
-        },
-    }
+    return BatchStarResponse(
+        success=True,
+        data=BatchStarData(
+            updatedCount=updated_count,
+            requestedCount=requested_count,
+            failedIds=[],  # Service returns count only; per-item errors tracked in future
+            starred=starred,
+            message=f"Successfully updated starred status for {updated_count} papers",
+        ),
+    )
 
 
 __all__ = ["router"]
