@@ -28,6 +28,7 @@
 - 回滚方式：
 
 ## 交付单元追踪
+<!-- 与 docs/governance/phase-delivery-ledger.md 保持一致 -->
 - Phase ID:
 - Deliverable Unit:
 - Migration-Task:
@@ -82,4 +83,3 @@
 ## 关联 Issue / 背景
 - Closes #
 - Related #
-

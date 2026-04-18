@@ -190,7 +190,6 @@ Session messages 契约（冻结）：
   - `total` 是该会话消息全量总数，不是当前页长度。
   - `returned` 是本次返回条数。
   - `next_offset` 基于 `offset + returned` 计算。
-
 Paper 资源契约补充：
 
 - `GET /api/v1/papers`：返回 `data.items[]` 与 `meta.limit/offset/total`。
