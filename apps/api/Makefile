@@ -1,4 +1,4 @@
-.PHONY: help db-migrate db-history db-check db-stamp db-reset db-diff db-diff-strict
+.PHONY: help db-migrate db-history db-check db-stamp db-reset db-diff db-diff-strict preflight preflight-strict
 
 ENV ?= development
 
@@ -30,3 +30,9 @@ endif
 	@echo "⚠️  Resetting database (ENV=development)..."
 	alembic downgrade base && alembic upgrade head
 	@echo "✅ DB reset complete"
+
+preflight:     ## Run runtime preflight checks (report only)
+	@PYTHONPATH=. python scripts/preflight_check.py
+
+preflight-strict:  ## Run runtime preflight checks (fail on errors)
+	@PYTHONPATH=. python scripts/preflight_check.py --strict

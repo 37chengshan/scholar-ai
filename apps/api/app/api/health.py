@@ -1,6 +1,8 @@
 """健康检查路由 - 区分 liveness 和 readiness"""
 
 from fastapi import APIRouter, Request, status
+from fastapi.responses import JSONResponse
+from app.services.system_service import get_services_health
 from app.utils.problem_detail import Errors
 
 router = APIRouter()
@@ -13,6 +15,12 @@ async def liveness_check():
     Kubernetes liveness probe - 只检查进程是否存活
     如果这个端点返回 200，说明进程在运行
     """
+    return {"status": "alive", "service": "scholarai-ai"}
+
+
+@router.get("/basic", status_code=status.HTTP_200_OK)
+async def basic_health_check():
+    """Basic probe - process alive + static metadata only."""
     return {"status": "alive", "service": "scholarai-ai"}
 
 
@@ -80,9 +88,25 @@ async def readiness_check(request: Request):
     return {
         "status": "ready" if all_basic_ready else "not_ready",
         "service": "scholarai-ai",
+        "profile": getattr(request.app.state, "ai_startup_mode", "lazy"),
         "ai_services": services_status,
         "note": "AI services are lazy-loaded for faster startup",
     }
+
+
+@router.get("/deep")
+async def deep_health_check():
+    """Deep probe - runtime dependency checks.
+
+    Returns 200 when all dependencies are healthy, otherwise 503.
+    """
+    health = await get_services_health()
+    status_code = (
+        status.HTTP_200_OK
+        if health.get("status") == "healthy"
+        else status.HTTP_503_SERVICE_UNAVAILABLE
+    )
+    return JSONResponse(content=health, status_code=status_code)
 
 
 @router.get("", status_code=status.HTTP_200_OK)
