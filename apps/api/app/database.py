@@ -213,18 +213,39 @@ async def ensure_non_production_tables(table_names: Iterable[str]) -> None:
     requested_names = tuple(table_names)
     _load_model_metadata()
 
-    requested_tables = [
-        Base.metadata.tables[name]
-        for name in requested_names
-        if name in Base.metadata.tables
-    ]
+    metadata_tables = Base.metadata.tables
 
-    if not requested_tables:
+    resolved_keys: set[str] = set()
+
+    def add_with_dependencies(table_key: str) -> None:
+        if table_key in resolved_keys:
+            return
+
+        table = metadata_tables.get(table_key)
+        if table is None:
+            return
+
+        for foreign_key in table.foreign_keys:
+            target_table_key = foreign_key.target_fullname.split(".", 1)[0]
+            add_with_dependencies(target_table_key)
+
+        resolved_keys.add(table_key)
+
+    for name in requested_names:
+        add_with_dependencies(name)
+
+    if not resolved_keys:
         logger.warning(
             "No SQLAlchemy tables resolved for non-production bootstrap",
             table_names=list(requested_names),
         )
         return
+
+    requested_tables = [
+        table
+        for table in Base.metadata.sorted_tables
+        if table.key in resolved_keys
+    ]
 
     async with engine.begin() as conn:
         await conn.run_sync(
@@ -237,6 +258,7 @@ async def ensure_non_production_tables(table_names: Iterable[str]) -> None:
     logger.info(
         "Ensured non-production SQLAlchemy tables",
         table_names=[table.name for table in requested_tables],
+        requested_names=list(requested_names),
     )
 
 
