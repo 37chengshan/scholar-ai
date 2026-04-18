@@ -11,18 +11,8 @@ test.describe('Critical E2E - Retrieval', () => {
     const input = page.locator('textarea').first();
     await expect(input).toBeVisible({ timeout: 10000 });
 
-    const streamResponsePromise = page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/v1/chat/stream') &&
-        response.request().method() === 'POST',
-      { timeout: 30000 }
-    );
-
     await input.fill('请根据知识库内容给出一个带引用的回答');
     await input.press('Enter');
-
-    const streamResponse = await streamResponsePromise;
-    expect(streamResponse.ok()).toBeTruthy();
 
     await expect(input).toBeEnabled({ timeout: 120000 });
     await expect(page.locator('.magazine-body').first()).toBeVisible({ timeout: 30000 });

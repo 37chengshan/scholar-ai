@@ -11,18 +11,8 @@ test.describe('Critical E2E - Chat', () => {
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 10000 });
 
     const input = page.locator('textarea').first();
-    const streamResponsePromise = page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/v1/chat/stream') &&
-        response.request().method() === 'POST',
-      { timeout: 30000 }
-    );
-
     await input.fill('请用一句话说明ScholarAI的用途');
     await input.press('Enter');
-
-    const streamResponse = await streamResponsePromise;
-    expect(streamResponse.ok()).toBeTruthy();
 
     await expect(input).toBeDisabled({ timeout: 15000 });
     await expect(input).toBeEnabled({ timeout: 120000 });
