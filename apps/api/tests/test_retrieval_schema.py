@@ -239,28 +239,27 @@ class TestNormalizeHit:
         assert normalized.page_num == 15
         assert normalized.section == "Results"
 
-    def test_normalize_hit_legacy_field_fallback(self):
-        """Test fallback to legacy field names."""
+    def test_normalize_hit_requires_canonical_fields(self):
+        """Test canonical field names are used directly."""
         from app.models.retrieval import RetrievedChunk
 
-        # Hit with legacy fields
-        legacy_hit = {
-            "paper_id": "paper-legacy",
-            "content": "Legacy content field",  # not content_data
-            "similarity": 0.78,  # not score
-            "page": 20,  # not page_num
+        canonical_hit = {
+            "paper_id": "paper-canonical",
+            "text": "Canonical content field",
+            "score": 0.78,
+            "page_num": 20,
         }
 
-        # Simulate _normalize_hit conversion
+        # Simulate strict canonical conversion
         normalized = RetrievedChunk(
-            paper_id=legacy_hit.get("paper_id", ""),
-            text=legacy_hit.get("content_data") or legacy_hit.get("content") or "",
-            score=float(legacy_hit.get("score") or legacy_hit.get("similarity") or 0.5),
-            page_num=legacy_hit.get("page_num") or legacy_hit.get("page"),
-            content_type=legacy_hit.get("content_type", "text"),
+            paper_id=canonical_hit.get("paper_id", ""),
+            text=canonical_hit.get("text") or "",
+            score=float(canonical_hit.get("score", 0.0)),
+            page_num=canonical_hit.get("page_num"),
+            content_type=canonical_hit.get("content_type", "text"),
         )
 
-        assert normalized.text == "Legacy content field"
+        assert normalized.text == "Canonical content field"
         assert normalized.score == 0.78
         assert normalized.page_num == 20
 
@@ -319,8 +318,8 @@ class TestAgenticRetrievalFieldUsage:
         top_chunks = unified_chunks[:3]
         summaries = []
         for i, chunk in enumerate(top_chunks):
-            text = chunk.get("text", chunk.get("content_data", chunk.get("content", "")))
-            score = chunk.get("score", chunk.get("similarity", 0.0))
+            text = chunk.get("text", "")
+            score = chunk.get("score", 0.0)
             paper_id = chunk.get("paper_id", "unknown")
 
             content_preview = text[:150] + "..." if len(text) > 150 else text
@@ -368,9 +367,9 @@ class TestAgenticRetrievalFieldUsage:
                     chunk_id = chunk.get("id") or chunk.get("chunk_id")
                     if chunk_id and chunk_id not in seen_chunks:
                         seen_chunks.add(chunk_id)
-                        text = chunk.get("text", chunk.get("content_data", chunk.get("content", "")))
-                        score = chunk.get("score", chunk.get("similarity", 0.0))
-                        page_num = chunk.get("page_num", chunk.get("page"))
+                        text = chunk.get("text", "")
+                        score = chunk.get("score", 0.0)
+                        page_num = chunk.get("page_num")
 
                         sources.append({
                             "chunk_id": chunk_id,

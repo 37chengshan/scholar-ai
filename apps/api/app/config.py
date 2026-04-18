@@ -12,6 +12,7 @@ Usage:
 """
 
 import os
+from typing import Dict
 from functools import lru_cache
 from typing import List, Optional
 
@@ -63,6 +64,11 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "info"
     PORT: int = 8000
     ENVIRONMENT: str = "development"  # development | staging | production
+    RUNTIME_PROFILE: Optional[str] = None  # dev-lite | dev-full | prod
+    AI_STARTUP_MODE: Optional[str] = None  # eager | lazy | off
+    PREFLIGHT_ON_STARTUP: bool = False
+    REQUIRED_PYTHON_MAJOR: int = 3
+    REQUIRED_PYTHON_MINOR: int = 11
 
     def validate_production_settings(self) -> None:
         """Validate settings for production environment.
@@ -273,6 +279,11 @@ class Settings(BaseSettings):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        runtime_profile = self.RUNTIME_PROFILE or self._default_runtime_profile()
+        ai_startup_mode = self.AI_STARTUP_MODE or self._default_ai_startup_mode(runtime_profile)
+        object.__setattr__(self, "RUNTIME_PROFILE", runtime_profile)
+        object.__setattr__(self, "AI_STARTUP_MODE", ai_startup_mode)
+
         # Load JWT public key from file if configured
         if self.JWT_INTERNAL_PUBLIC_KEY_FILE and os.path.exists(
             self.JWT_INTERNAL_PUBLIC_KEY_FILE
@@ -280,6 +291,24 @@ class Settings(BaseSettings):
             with open(self.JWT_INTERNAL_PUBLIC_KEY_FILE, "r") as f:
                 # Need to set on the instance, not class
                 object.__setattr__(self, "JWT_INTERNAL_PUBLIC_KEY", f.read())
+
+    def _default_runtime_profile(self) -> str:
+        env_to_profile: Dict[str, str] = {
+            "development": "dev-lite",
+            "staging": "dev-full",
+            "production": "prod",
+            "test": "dev-lite",
+        }
+        return env_to_profile.get(self.ENVIRONMENT, "dev-lite")
+
+    @staticmethod
+    def _default_ai_startup_mode(runtime_profile: str) -> str:
+        profile_to_mode: Dict[str, str] = {
+            "dev-lite": "lazy",
+            "dev-full": "lazy",
+            "prod": "eager",
+        }
+        return profile_to_mode.get(runtime_profile, "lazy")
 
 
 @lru_cache()

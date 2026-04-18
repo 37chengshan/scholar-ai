@@ -80,6 +80,7 @@ from app.utils.logger import logger
 from app.core.milvus_service import get_milvus_service
 from app.core.reranker.factory import get_reranker_service
 from app.core.embedding.factory import get_embedding_service
+from app.utils.preflight import run_preflight
 
 # Middleware
 from app.middleware.cors import get_cors_config
@@ -154,6 +155,8 @@ async def lifespan(app: FastAPI):
         raise
 
     logger.info("🤖 ScholarAI AI Service starting...")
+    logger.info(f"🧭 Runtime profile: {settings.RUNTIME_PROFILE}")
+    logger.info(f"⚙️ AI startup mode: {settings.AI_STARTUP_MODE}")
     logger.info(f"📚 Log level: {settings.LOG_LEVEL}")
     logger.info(f"🔗 Database: {settings.DB_HOST}")
     logger.info(f"🕸️  Neo4j: {settings.NEO4J_HOST}")
@@ -178,34 +181,48 @@ async def lifespan(app: FastAPI):
     # 2. Neo4j + Redis
     await init_databases()
 
-    # Initialize AI services at startup (not lazy)
-    # Load embedding and reranker models immediately
-    logger.info("Initializing AI services at startup...")
+    if settings.PREFLIGHT_ON_STARTUP:
+        preflight_report = run_preflight(strict=True)
+        logger.info(
+            "✅ Startup preflight passed",
+            profile=preflight_report.get("profile"),
+            ai_startup_mode=preflight_report.get("ai_startup_mode"),
+        )
 
-    # 1. Embedding Service (Qwen3-VL-Embedding-2B)
-    try:
-        logger.info("Loading Embedding model...")
-        embedding_service = get_embedding_service()
-        embedding_service.load_model()
-        app.state.embedding_service = embedding_service
-        logger.info("✅ Embedding model loaded successfully")
-    except Exception as e:
-        logger.error(f"❌ Failed to load Embedding model: {e}")
-        app.state.embedding_service = None
+    app.state.runtime_profile = settings.RUNTIME_PROFILE
+    app.state.ai_startup_mode = settings.AI_STARTUP_MODE
+    app.state.milvus_service = None
+    app.state.embedding_service = None
+    app.state.reranker_service = None
 
-    # 2. Reranker Service (Qwen3-VL-Reranker-2B)
-    try:
-        logger.info("Loading ReRanker model...")
-        reranker_service = get_reranker_service()
-        reranker_service.load_model()
-        app.state.reranker_service = reranker_service
-        logger.info("✅ ReRanker model loaded successfully")
-    except Exception as e:
-        logger.error(f"❌ Failed to load ReRanker model: {e}")
-        app.state.reranker_service = None
+    if settings.AI_STARTUP_MODE == "off":
+        logger.warning("AI startup mode is off; AI services will not initialize automatically")
+    elif settings.AI_STARTUP_MODE == "lazy":
+        logger.info("AI startup mode is lazy; AI services will initialize on-demand")
+    else:
+        logger.info("AI startup mode is eager; initializing AI services at startup")
 
-    # 3. Milvus (lazy - connection only)
-    app.state.milvus_service = None  # Lazy init on first use
+    if settings.AI_STARTUP_MODE == "eager":
+        # 1. Embedding Service (Qwen3-VL-Embedding-2B)
+        try:
+            logger.info("Loading Embedding model...")
+            embedding_service = get_embedding_service()
+            embedding_service.load_model()
+            app.state.embedding_service = embedding_service
+            logger.info("✅ Embedding model loaded successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to load Embedding model: {e}")
+
+        # 2. Reranker Service (Qwen3-VL-Reranker-2B)
+        try:
+            logger.info("Loading ReRanker model...")
+            reranker_service = get_reranker_service()
+            reranker_service.load_model()
+            app.state.reranker_service = reranker_service
+            logger.info("✅ ReRanker model loaded successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to load ReRanker model: {e}")
+
     app.state.ai_services_initialized = True
 
     yield

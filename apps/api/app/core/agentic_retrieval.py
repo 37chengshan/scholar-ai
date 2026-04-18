@@ -16,6 +16,7 @@ Usage:
 """
 
 import asyncio
+import re
 from typing import Any, Dict, List, Optional
 
 from app.utils.logger import logger
@@ -220,37 +221,18 @@ class AgenticRetrievalOrchestrator:
         - score
         - page_num
 
-        Legacy fields are read only for compatibility at this boundary.
+        Strict mode only accepts canonical fields.
         """
         text = chunk.get("text")
         score = chunk.get("score")
         page_num = chunk.get("page_num")
-        used_legacy_fields = False
 
         if text is None:
-            text = chunk.get("content_data")
-            if text is None:
-                text = chunk.get("content", "")
-            used_legacy_fields = True
-
+            raise ValueError("Missing required retrieval field: text")
         if score is None:
-            if chunk.get("similarity") is not None:
-                score = chunk.get("similarity")
-            elif chunk.get("distance") is not None:
-                score = 1 - float(chunk.get("distance", 0.5))
-            else:
-                score = 0.0
-            used_legacy_fields = True
-
-        if page_num is None and chunk.get("page") is not None:
-            page_num = chunk.get("page")
-            used_legacy_fields = True
-
-        if used_legacy_fields:
-            logger.debug(
-                "Legacy retrieval fields normalized at boundary",
-                paper_id=chunk.get("paper_id"),
-            )
+            raise ValueError("Missing required retrieval field: score")
+        if page_num is None:
+            raise ValueError("Missing required retrieval field: page_num")
 
         try:
             normalized_score = max(0.0, min(float(score), 1.0))
@@ -261,6 +243,18 @@ class AgenticRetrievalOrchestrator:
         normalized["text"] = text or ""
         normalized["score"] = normalized_score
         normalized["page_num"] = page_num
+        normalized["source_id"] = (
+            chunk.get("source_id")
+            or chunk.get("id")
+            or chunk.get("chunk_id")
+        )
+        normalized["section_path"] = chunk.get("section_path") or chunk.get("section")
+        normalized["content_subtype"] = (
+            chunk.get("content_subtype")
+            or chunk.get("content_type")
+            or "paragraph"
+        )
+        normalized["anchor_text"] = chunk.get("anchor_text") or (text[:200] if text else "")
         normalized["paper_title"] = chunk.get("paper_title") or chunk.get("paper_id")
         normalized["section"] = chunk.get("section") or chunk.get("content_section")
         return normalized
@@ -778,6 +772,94 @@ Based on {len(all_results)} rounds of retrieval with {len(evidence_blocks)} evid
 
         return "\n".join(summaries)
 
+    def _build_context_with_citations(self, chunks: List[Dict[str, Any]]) -> str:
+        """Build synthesis context with inline citations from canonical chunks."""
+        if not chunks:
+            return ""
+
+        blocks: List[str] = []
+        for chunk in chunks:
+            normalized = self._normalize_chunk_for_synthesis(chunk)
+            content = normalized.get("text", "")
+            score = normalized.get("score", 0.0)
+            max_len = 300 if score > 0.85 else 200
+
+            if len(content) > max_len:
+                preview = content[:max_len]
+                if score <= 0.85:
+                    last_sentence = max(preview.rfind(". "), preview.rfind("。"))
+                    if last_sentence > 80:
+                        preview = preview[: last_sentence + 1]
+                content = preview.strip() + "..."
+
+            citation = self._format_citation(normalized)
+            blocks.append(f"{content} {citation}")
+
+        return "\n\n".join(blocks)
+
+    @staticmethod
+    def _extract_citations_from_answer(answer: str) -> List[tuple[str, str]]:
+        """Extract [Paper, Section] citation markers from answer text."""
+        pattern = re.compile(r"\[([^,\]]+),\s*([^\]]+)\]")
+        return [(paper.strip(), loc.strip()) for paper, loc in pattern.findall(answer or "")]
+
+    def _calculate_citation_density(self, answer: str) -> float:
+        """Compute citation density as citations per token."""
+        citations = self._extract_citations_from_answer(answer)
+        token_count = max(len((answer or "").split()), 1)
+        return len(citations) / token_count
+
+    def _needs_citation_fallback(self, answer: str, chunk_count: int) -> bool:
+        """Decide whether citation fallback answer is needed."""
+        if chunk_count <= 0:
+            return True
+        if not answer or not answer.strip():
+            return True
+        density = self._calculate_citation_density(answer)
+        return density < 0.05
+
+    def _build_fallback_answer(self, chunks: List[Dict[str, Any]], query: str) -> str:
+        """Build deterministic fallback answer grouped by evidence section."""
+        if not chunks:
+            return "No relevant information found for the query."
+
+        normalized_chunks = [self._normalize_chunk_for_synthesis(chunk) for chunk in chunks]
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for chunk in normalized_chunks:
+            section = chunk.get("section")
+            if not section:
+                page_num = chunk.get("page_num")
+                section = f"Page {page_num}" if page_num is not None else "General"
+            grouped.setdefault(section, []).append(chunk)
+
+        lines = [f"## Evidence Summary for: {query}"]
+        for section, section_chunks in grouped.items():
+            lines.append(f"\n### {section}")
+            sorted_chunks = sorted(section_chunks, key=lambda item: item.get("score", 0.0), reverse=True)
+            for chunk in sorted_chunks[:3]:
+                text = chunk.get("text", "")
+                preview = text[:220] + ("..." if len(text) > 220 else "")
+                lines.append(f"- {preview} {self._format_citation(chunk)}")
+
+        return "\n".join(lines)
+
+    def _validate_and_fix_citations(
+        self,
+        answer: str,
+        all_results: List[Dict[str, Any]],
+        query: str,
+    ) -> str:
+        """Validate citation density and fallback to deterministic evidence summary when needed."""
+        chunks: List[Dict[str, Any]] = []
+        for round_data in all_results:
+            for result in round_data.get("results", []):
+                if result.get("success", True):
+                    chunks.extend(result.get("chunks", []))
+
+        if self._needs_citation_fallback(answer, len(chunks)):
+            return self._build_fallback_answer(chunks, query)
+        return answer
+
     def _collect_sources(
         self,
         all_results: List[Dict[str, Any]],
@@ -810,19 +892,18 @@ Based on {len(all_results)} rounds of retrieval with {len(evidence_blocks)} evid
 
                         sources.append(
                             {
-                                "chunk_id": chunk_id,
+                                "source_id": normalized_chunk.get("source_id") or chunk_id,
                                 "paper_id": normalized_chunk.get("paper_id"),
                                 "paper_title": normalized_chunk.get("paper_title"),
                                 "text_preview": text_preview,
                                 "page_num": page_num,
                                 "score": score,
+                                "section_path": normalized_chunk.get("section_path"),
+                                "content_subtype": normalized_chunk.get("content_subtype"),
+                                "anchor_text": normalized_chunk.get("anchor_text"),
                                 "section": normalized_chunk.get("section"),
                                 "content_type": normalized_chunk.get("content_type", "text"),
                                 "citation": citation,
-                                # Backward-compatible aliases for legacy consumers.
-                                "content_preview": text_preview,
-                                "page": page_num,
-                                "similarity": score,
                             }
                         )
 
