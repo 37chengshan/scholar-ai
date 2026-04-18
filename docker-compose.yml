@@ -188,7 +188,7 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     container_name: scholarai-celery-worker
-    command: celery -A app.core.celery_config worker --loglevel=info --concurrency=8
+    command: celery -A app.core.celery_config worker --loglevel=info --concurrency=8 -Q celery,import.process,import.finalize
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-scholarai}:${POSTGRES_PASSWORD:-scholarai123}@postgres:5432/${POSTGRES_DB:-scholarai}
       - REDIS_URL=redis://redis:6379/0

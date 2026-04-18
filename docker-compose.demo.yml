@@ -148,7 +148,7 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     container_name: scholarai-celery-worker
-    command: celery -A app.core.celery_config worker --loglevel=info --concurrency=8
+    command: celery -A app.core.celery_config worker --loglevel=info --concurrency=8 -Q celery,import.process,import.finalize
     env_file:
       - .env.docker
     environment:
