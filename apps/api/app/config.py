@@ -229,10 +229,15 @@ class Settings(BaseSettings):
     # PDF Parser Configuration (Docling)
     # =========================================================================
     # Per Sprint 4 Task 1: Configurable OCR and multimodal extraction
-    PARSER_DO_OCR: bool = True  # OCR enabled by default (was False)
+    # Per PR7 Phase 7A: OCR should NOT be enabled by default
+    # - born-digital PDFs use native parser (fast, accurate text order)
+    # - scanned/image-heavy PDFs auto-fallback to OCR when text density < 80 chars/page
+    # - This avoids speed degradation and parsing noise on well-formed PDFs
+    PARSER_DO_OCR: bool = False  # OCR disabled by default (smart fallback enabled)
     PARSER_GENERATE_PICTURE_IMAGES: bool = True  # Extract images
     PARSER_GENERATE_TABLE_IMAGES: bool = True  # Extract tables
     PARSER_OCR_LANGUAGE: str = "en,zh"  # English + Chinese
+    PARSER_OCR_RETRY_MIN_CHARS_PER_PAGE: int = 80  # Native parse fallback threshold
     PARSER_MAX_PAGES: int = 100  # Maximum pages to parse
     PARSER_MAX_FILE_SIZE_MB: int = 50  # Maximum file size (MB)
     PARSER_TIMEOUT_SECONDS: int = 300  # Parsing timeout (seconds)

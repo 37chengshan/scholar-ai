@@ -26,8 +26,8 @@ from app.models.session import SessionUpdate
 from app.core.agentic_retrieval import AgenticRetrievalOrchestrator
 from app.core.streaming import (
     stream_rag_response,
-    create_streaming_response,
-    mock_token_generator
+    format_sse_done,
+    format_sse_event,
 )
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.deps import CurrentUserId
@@ -46,6 +46,35 @@ def _source_score(source: Dict) -> float:
         return 0.0
 
 
+def normalize_source_contract(source: Dict) -> Dict:
+    """Normalize source payload to canonical retrieval contract.
+
+    Canonical fields:
+    - score
+    - page_num
+    - text_preview
+
+    Legacy aliases are preserved when already present to avoid client regressions.
+    """
+    normalized = dict(source)
+    normalized["score"] = _source_score(source)
+
+    page_num = source.get("page_num")
+    if page_num is None:
+        page_num = source.get("page")
+    normalized["page_num"] = page_num
+
+    if normalized.get("text_preview") is None:
+        normalized["text_preview"] = (
+            source.get("content_preview")
+            or source.get("snippet")
+            or source.get("content")
+            or ""
+        )
+
+    return normalized
+
+
 def calculate_confidence(answer: str, sources: List[dict]) -> float:
     """Calculate confidence from coverage, diversity, and support strength.
 
@@ -57,7 +86,8 @@ def calculate_confidence(answer: str, sources: List[dict]) -> float:
     if not sources:
         return 0.0
 
-    ranked_sources = sorted(sources, key=_source_score, reverse=True)
+    normalized_sources = [normalize_source_contract(source) for source in sources]
+    ranked_sources = sorted(normalized_sources, key=_source_score, reverse=True)
     top_sources = ranked_sources[:5]
 
     # 1) Score coverage (dominant signal)
@@ -69,7 +99,7 @@ def calculate_confidence(answer: str, sources: List[dict]) -> float:
     for source in top_sources:
         paper_id = source.get("paper_id") or "unknown"
         section = source.get("section")
-        page_num = source.get("page_num", source.get("page"))
+        page_num = source.get("page_num")
         location = section or (f"page:{page_num}" if page_num is not None else "unknown")
         diversity_keys.add((paper_id, location))
 
@@ -194,6 +224,10 @@ async def rag_query(
 
         if cached:
             logger.info(f"Returning cached response for query: {request.question[:50]}...")
+            cached_sources = [
+                normalize_source_contract(source)
+                for source in cached.get("sources", [])
+            ]
             duration_ms = (time.perf_counter() - started) * 1000
             logger.info(
                 "run_completed",
@@ -206,7 +240,7 @@ async def rag_query(
             return RAGQueryResponse(
                 answer=cached.get("answer", ""),
                 query=request.question,
-                sources=cached.get("sources", []),
+                sources=cached_sources,
                 confidence=cached.get("confidence", 0.0),
                 conversation_id=request.conversation_id,
                 cached=True
@@ -227,7 +261,7 @@ async def rag_query(
 
         # Extract answer and sources from orchestrator result
         answer = result.get("answer", "")
-        sources = result.get("sources", [])
+        sources = [normalize_source_contract(source) for source in result.get("sources", [])]
         retrieve_duration_ms = (time.perf_counter() - retrieve_started) * 1000
 
         confidence = calculate_confidence(answer, sources)
@@ -262,7 +296,15 @@ async def rag_query(
 
         # Update conversation if conversation_id provided (with user_id per D-05)
         if request.conversation_id:
-            await _update_conversation(request, answer, sources, user_id)
+            try:
+                await _update_conversation(request, answer, sources, user_id)
+            except Exception as conv_err:
+                logger.warning(
+                    "Conversation update failed, continue returning answer",
+                    run_id=run_id,
+                    conversation_id=request.conversation_id,
+                    error=str(conv_err),
+                )
 
         duration_ms = (time.perf_counter() - started) * 1000
         logger.info(
@@ -291,7 +333,7 @@ async def rag_query(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"查询失败: {str(e)}")
+            detail=Errors.internal("查询失败")
         )
 
 
@@ -350,21 +392,23 @@ async def rag_query_stream(
                 duration_ms=round((time.perf_counter() - started) * 1000, 2),
             )
             cached_answer = cached.get("answer", "")
-            cached_citations = cached.get("sources", [])
+            cached_citations = [
+                normalize_source_contract(source)
+                for source in cached.get("sources", [])
+            ]
 
             async def stream_cached():
-                import json
                 # Stream answer as tokens
                 words = cached_answer.split()
                 for word in words:
-                    yield f'data: {{"type": "token", "content": "{word} "}}\n\n'
+                    yield format_sse_event({"type": "token", "content": f"{word} "})
 
                 # Send citations
                 if cached_citations:
-                    yield f'data: {{"type": "citations", "content": {json.dumps(cached_citations, ensure_ascii=False)}}}\n\n'
+                    yield format_sse_event({"type": "citations", "content": cached_citations})
 
                 # Send done marker
-                yield "data: [DONE]\n\n"
+                yield format_sse_done()
 
             return StreamingResponse(
                 stream_cached(),
@@ -388,7 +432,8 @@ async def rag_query_stream(
             paper_ids=paper_ids,
             conversation_id=request.conversation_id,
             query_type=request.query_type,
-            top_k=request.top_k
+            top_k=request.top_k,
+            user_id=user_id,
         )
 
     except Exception as e:
@@ -404,9 +449,8 @@ async def rag_query_stream(
 
         # Return error as SSE event
         async def error_stream():
-            import json
-            yield f'data: {{"type": "error", "content": "{str(e)}"}}\n\n'
-            yield "data: [DONE]\n\n"
+            yield format_sse_event({"type": "error", "content": "流式问答失败，请稍后重试"})
+            yield format_sse_done()
 
         return StreamingResponse(
             error_stream(),
@@ -461,7 +505,7 @@ async def create_conversation_session(
         logger.error(f"Create session error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"创建会话失败: {str(e)}")
+            detail=Errors.internal("创建会话失败")
         )
 
 
@@ -513,7 +557,7 @@ async def get_conversation(
         logger.error(f"Get session error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"获取会话失败: {str(e)}")
+            detail=Errors.internal("获取会话失败")
         )
 
 
@@ -562,7 +606,7 @@ async def delete_conversation(
         logger.error(f"Delete session error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"删除会话失败: {str(e)}")
+            detail=Errors.internal("删除会话失败")
         )
 
 
@@ -651,7 +695,7 @@ async def agentic_search(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Errors.internal(f"Agentic search failed: {str(e)}")
+            detail=Errors.internal("Agentic search failed")
         )
 
 

@@ -65,10 +65,13 @@ tar -czf "$OUTPUT_DIR/${PACKAGE_NAME}.tar.gz" \
     --exclude='apps/web/dist' \
     --exclude='apps/web/.vite' \
     --exclude='apps/web/coverage' \
+    --exclude='releases' \
+    --exclude='releases/*' \
+    --exclude='tests' \
+    --exclude='tests/evals/fixtures/papers' \
     --exclude='nginx/ssl' \
     --exclude='cookies.txt' \
-    --exclude='package.sh' \
-    .
+    --exclude='package.sh' .
 
 echo ""
 echo "=== 打包完成 ==="

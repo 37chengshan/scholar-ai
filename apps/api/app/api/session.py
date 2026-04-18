@@ -83,7 +83,9 @@ def _format_session_response(session) -> dict:
     summary="Create a new session",
     description="Create a new conversation session with optional title. Session expires after 30 days.",
 )
-async def create_session(session_data: SessionCreate, user_id: str = CurrentUserId):
+async def create_session(
+    session_data: Optional[SessionCreate] = None, user_id: str = CurrentUserId
+):
     """
     Create a new session.
 
@@ -95,8 +97,9 @@ async def create_session(session_data: SessionCreate, user_id: str = CurrentUser
         Created session with all fields
     """
     try:
+        payload = session_data or SessionCreate()
         session = await session_manager.create_session(
-            user_id=user_id, title=session_data.title
+            user_id=user_id, title=payload.title
         )
 
         logger.info(f"Created session {session.id} via API")

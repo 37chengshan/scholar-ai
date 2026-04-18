@@ -4,7 +4,9 @@ python-multipart>=0.0.6
 
 # PaperQA2 和 Docling
 paper-qa>=5.0.0,<6.0.0
-docling>=2.0.0,<3.0.0
+# Pin docling family to avoid pip resolution-too-deep in CI
+docling==2.58.0
+docling-core[chunking]==2.50.1
 
 # Zhipu AI SDK (替代 litellm)
 zhipuai>=2.1.5
@@ -22,7 +24,7 @@ asyncpg>=0.29.0
 # Note: llama-index-embeddings-huggingface and paperqa still have sentence-transformers as transitive dependency
 # FlagEmbedding>=1.3.5 supports transformers>=4.45.0
 FlagEmbedding>=1.3.5  # BGE-M3 for 1024-dim embeddings and BGE-Reranker
-adapters>=0.2.0  # For SPECTER 2
+# adapters has hard conflicts with transformers>=4.57; keep SPECTER2 optional fallback path without adapters
 
 # Semantic chunking (per D-03)
 llama-index-core>=0.10.0
@@ -38,7 +40,7 @@ pymilvus>=2.3.0
 # CLIP/SigLIP多模态嵌入
 # Qwen3-VL multimodal embedding (optional - requires transformers>=4.45.0)
 # qwen-vl-utils>=0.0.14  # Qwen3-VL utilities - disabled due to FlagEmbedding conflict
-transformers>=4.45.0,<4.50.0  # Compatible with FlagEmbedding 1.3.5+
+transformers>=4.57.0,<5.0.0  # Required for Qwen3-VL and RT-DETRv2 support
 torchvision>=0.15.0
 pillow>=10.0.0
 

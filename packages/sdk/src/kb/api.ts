@@ -23,10 +23,10 @@ export interface KnowledgeBaseApi {
 export function createKnowledgeBaseApi(client: HttpClient): KnowledgeBaseApi {
   return {
     list: (params) =>
-      client.get<KnowledgeBaseListResponse>('/api/v1/knowledge-bases', {
+      client.get<KnowledgeBaseListResponse>('/api/v1/knowledge-bases/', {
         params: params as Record<string, unknown> | undefined,
       }),
-    create: (data) => client.post<KnowledgeBaseDto>('/api/v1/knowledge-bases', data),
+    create: (data) => client.post<KnowledgeBaseDto>('/api/v1/knowledge-bases/', data),
     get: (id) => client.get<KnowledgeBaseDto>(`/api/v1/knowledge-bases/${id}`),
     update: (id, data) => client.patch<KnowledgeBaseDto>(`/api/v1/knowledge-bases/${id}`, data),
     delete: (id) => client.delete<{ deleted: boolean }>(`/api/v1/knowledge-bases/${id}`),

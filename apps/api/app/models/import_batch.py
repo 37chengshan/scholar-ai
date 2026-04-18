@@ -41,10 +41,10 @@ class ImportBatch(Base):
 
     # Foreign keys
     user_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("users.id"), nullable=False
+        String(64), ForeignKey("users.id"), nullable=False
     )
     knowledge_base_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey("knowledge_bases.id"), nullable=False
+        String(64), ForeignKey("knowledge_bases.id"), nullable=False
     )
 
     # Status aggregation

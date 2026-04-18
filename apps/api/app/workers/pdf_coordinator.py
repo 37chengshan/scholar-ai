@@ -241,19 +241,10 @@ class PDFCoordinator:
         logger.info("Task status updated", task_id=ctx.task_id, status=status)
 
 
-# Singleton pattern for coordinator
-_coordinator: Optional[PDFCoordinator] = None
-
-
 def get_pdf_coordinator() -> PDFCoordinator:
-    """Get or create PDFCoordinator singleton.
-
-    Singleton pattern for service reuse across tasks.
+    """Get a fresh PDFCoordinator instance.
 
     Returns:
         PDFCoordinator instance
     """
-    global _coordinator
-    if _coordinator is None:
-        _coordinator = PDFCoordinator()
-    return _coordinator
+    return PDFCoordinator()

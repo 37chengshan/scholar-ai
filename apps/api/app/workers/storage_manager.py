@@ -9,6 +9,7 @@ Per D-06: Batch storage reduces database round trips.
 """
 
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 import asyncpg
@@ -68,6 +69,23 @@ class StorageManager:
         snippet = chunk_text.replace("\n", " ").strip()
         anchor_text = snippet[:200]
 
+        figure_match = re.search(r"\b(?:figure|fig\.)\s*(\d+)\b", snippet, re.IGNORECASE)
+        table_match = re.search(r"\btable\s*(\d+)\b", snippet, re.IGNORECASE)
+        figure_id = f"figure-{figure_match.group(1)}" if figure_match else None
+        table_id = f"table-{table_match.group(1)}" if table_match else None
+
+        caption_match = re.search(
+            r"\b(?:figure|fig\.|table)\s*\d+\s*[:.-]\s*([^\n.]{1,120})",
+            chunk_text,
+            re.IGNORECASE,
+        )
+        caption = caption_match.group(1).strip() if caption_match else None
+
+        source_span = {
+            "start_char": 0,
+            "end_char": min(len(chunk_text), 200),
+        }
+
         nearby_explanation = ""
         lower_snippet = snippet.lower()
         if "figure" in lower_snippet or "fig." in lower_snippet:
@@ -76,12 +94,14 @@ class StorageManager:
             nearby_explanation = "contains_table_reference"
 
         return {
+            "evidence_version": "v1",
             "content_subtype": "paragraph",
             "section_path": section,
             "anchor_text": anchor_text,
-            "figure_id": None,
-            "table_id": None,
-            "caption": None,
+            "source_span": source_span,
+            "figure_id": figure_id,
+            "table_id": table_id,
+            "caption": caption,
             "nearby_explanation": nearby_explanation,
             "parse_mode": parse_metadata.get("parse_mode"),
             "ocr_used": parse_metadata.get("ocr_used"),
@@ -224,10 +244,33 @@ class StorageManager:
         all_contents = []
         text_contents = []
         parse_metadata = (ctx.parse_result or {}).get("metadata", {})
+        parse_items = (ctx.parse_result or {}).get("items")
+
+        if not isinstance(parse_items, list):
+            logger.warning(
+                "Missing parse_result.items, skipping vector storage",
+                task_id=ctx.task_id,
+            )
+            if ctx.parse_result is None:
+                ctx.parse_result = {}
+            if not isinstance(ctx.parse_result.get("metadata"), dict):
+                ctx.parse_result["metadata"] = {}
+            ctx.parse_result["metadata"]["quality_gate"] = {
+                "threshold": self.MIN_CHUNK_QUALITY,
+                "input_chunks": 0,
+                "indexed_chunks": 0,
+                "skipped_chunks": 0,
+                "image_records": len(ctx.image_results or []),
+                "table_records": len(ctx.table_results or []),
+                "skip_reason": "missing_parse_items",
+            }
+            return []
 
         # 1. Generate text chunks from parsed content
         chunks = self.parser.chunk_by_semantic(
-            ctx.parse_result["items"], paper_id=ctx.paper_id, imrad_structure=ctx.imrad
+            parse_items,
+            paper_id=ctx.paper_id,
+            imrad_structure=ctx.imrad,
         )
 
         # Assign sections based on IMRaD
@@ -299,6 +342,19 @@ class StorageManager:
             )
             embeddings = [[0.0] * self.EMBEDDING_DIM] * len(chunk_texts)
 
+        if len(embeddings) != len(chunk_texts):
+            logger.warning(
+                "Embedding count mismatch, normalizing length",
+                task_id=ctx.task_id,
+                chunk_count=len(chunk_texts),
+                embedding_count=len(embeddings),
+            )
+            if len(embeddings) < len(chunk_texts):
+                padding = [[0.0] * self.EMBEDDING_DIM] * (len(chunk_texts) - len(embeddings))
+                embeddings = embeddings + padding
+            else:
+                embeddings = embeddings[: len(chunk_texts)]
+
         # Add chunks with embeddings
         skipped_low_quality = 0
         for i, chunk in enumerate(chunks):
@@ -339,6 +395,20 @@ class StorageManager:
             text_contents.append(text_record)
             all_contents.append(text_record)
 
+        quality_gate = {
+            "threshold": self.MIN_CHUNK_QUALITY,
+            "input_chunks": len(chunks),
+            "indexed_chunks": len(text_contents),
+            "skipped_chunks": skipped_low_quality,
+            "image_records": len(ctx.image_results or []),
+            "table_records": len(ctx.table_results or []),
+        }
+
+        if ctx.parse_result is not None:
+            if "metadata" not in ctx.parse_result:
+                ctx.parse_result["metadata"] = {}
+            ctx.parse_result["metadata"]["quality_gate"] = quality_gate
+
         # 2. Add images
         if ctx.image_results:
             all_contents.extend(ctx.image_results)
@@ -350,17 +420,6 @@ class StorageManager:
         # 4. Batch insert to Milvus
         if all_contents:
             chunk_ids = self.milvus.insert_contents_batched(all_contents)
-
-            if ctx.parse_result is not None:
-                quality_gate = {
-                    "threshold": self.MIN_CHUNK_QUALITY,
-                    "input_chunks": len(chunks),
-                    "indexed_chunks": len(text_contents),
-                    "skipped_chunks": skipped_low_quality,
-                }
-                if "metadata" not in ctx.parse_result:
-                    ctx.parse_result["metadata"] = {}
-                ctx.parse_result["metadata"]["quality_gate"] = quality_gate
 
             logger.info(
                 "Vectors stored in Milvus",
@@ -374,7 +433,10 @@ class StorageManager:
             )
 
             ctx.chunk_results = text_contents
-            return chunk_ids[: len(text_contents)]
+            # Keep text chunk ids for graph linking, but preserve ids for image/table-only inserts.
+            if text_contents:
+                return chunk_ids[: len(text_contents)]
+            return chunk_ids
 
         return []
 
@@ -382,7 +444,7 @@ class StorageManager:
         self, ctx: PipelineContext, chunk_ids: List[int]
     ) -> None:
         """Store chunk and section nodes in Neo4j."""
-        if not chunk_ids:
+        if not chunk_ids or not (ctx.chunk_results or []):
             return
 
         try:

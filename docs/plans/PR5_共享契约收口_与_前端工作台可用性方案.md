@@ -1,16 +1,15 @@
 ---
 owner: app-foundation
-status: superseded
+status: in-progress
 depends_on:
-  - PR5
+  - PR4
 last_verified_at: 2026-04-17
-evidence_commits: []
-superseded_by: PR5_共享契约收口_与_前端工作台可用性方案
+evidence_commits:
+  - a07490b
+  - 0a123c9
 ---
 
-# PR-6：共享契约收口 → 前端工作台可用性（已废弃）
-
-> 状态说明：本计划已被 [docs/plans/PR5_共享契约收口_与_前端工作台可用性方案.md](docs/plans/PR5_共享契约收口_与_前端工作台可用性方案.md) 取代，不再作为 active 执行入口。
+# PR-5：共享契约收口 → 前端工作台可用性
 
 ## 1. 文档目的
 
@@ -865,32 +864,13 @@ citations / reasoning / tool timeline 不允许再维护自己的消息状态。
 
 ---
 
-## 10. 推荐 PR 划分
+口
 
-### 方案 A：推荐方案（更稳）
-
-#### PR-5A：共享契约收口
-范围：
-- `packages/types`
-- `packages/sdk`
-- `apps/web` service 契约改造
-- `apps/api` schema / stream 对齐
-
-#### PR-5B：KB Workspace
-范围：
-- KB 页面 shell 化
-- import / papers / search / quick chat 工作流打通
-
-#### PR-5C：Chat Workspace
-范围：
-- Chat 页面 shell 化
-- stream / session / message 状态收口
-
-### 方案 B：一次性多做一点
+#一次性多做一点
 
 如果你坚持加量，建议合并成：
 
-#### 一个大 PR：PR-5
+#### 一个大 PR：PR-6
 包含：
 1. 共享契约收口
 2. KB Workspace

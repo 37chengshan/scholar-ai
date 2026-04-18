@@ -1,4 +1,16 @@
-# PR6 执行优化方案（基于代码现状）
+---
+owner: app-foundation
+status: superseded
+depends_on:
+  - PR5
+last_verified_at: 2026-04-17
+evidence_commits: []
+superseded_by: PR5_共享契约收口_与_前端工作台可用性方案
+---
+
+# PR6 执行优化方案（基于代码现状，已废弃）
+
+> 状态说明：该优化方案的有效内容已经并入 [docs/plans/PR5_共享契约收口_与_前端工作台可用性方案.md](docs/plans/PR5_共享契约收口_与_前端工作台可用性方案.md) 和 [docs/plans/PR10_KB_Chat_Search_workspace_分层与稳定化方案.md](docs/plans/PR10_KB_Chat_Search_workspace_分层与稳定化方案.md)。
 
 ## 背景结论
 

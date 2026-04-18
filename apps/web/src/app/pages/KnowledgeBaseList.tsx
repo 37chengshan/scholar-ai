@@ -174,13 +174,13 @@ export function KnowledgeBaseList() {
       <PaperTexture />
       
       {/* Toolbar Header — Create button and Storage */}
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm">
+      <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm border-b border-zinc-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-zinc-100 p-4 border border-zinc-300">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-zinc-50 p-4 border border-zinc-200">
             {/* Create button */}
             <Button 
               onClick={handleCreate}
-              className="flex items-center gap-2 bg-primary hover:bg-zinc-900 text-white px-6 py-4 font-bold uppercase tracking-wide transition-all shadow-[4px_4px_0px_0px_rgba(24,24,27,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-3 font-bold uppercase tracking-[0.14em] transition-colors rounded-none"
             >
               <Plus className="w-5 h-5" />
               创建知识库
@@ -194,7 +194,7 @@ export function KnowledgeBaseList() {
               placeholder="搜索知识库..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border-2 border-zinc-300 pl-10 pr-4 py-3 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-secondary focus:ring-0 transition-colors"
+              className="w-full bg-white border border-zinc-300 pl-10 pr-4 py-3 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-primary focus:ring-0 transition-colors rounded-none"
             />
           </div>
           
@@ -214,7 +214,7 @@ export function KnowledgeBaseList() {
           
           {/* Sort dropdown */}
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as "updated" | "papers" | "name")}>
-            <SelectTrigger className="w-36 h-9 text-xs border-2 border-zinc-300 bg-white font-bold uppercase">
+            <SelectTrigger className="w-36 h-9 text-xs border border-zinc-300 bg-white font-bold uppercase rounded-none">
               <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
               <SelectValue />
             </SelectTrigger>
@@ -229,7 +229,7 @@ export function KnowledgeBaseList() {
           <Button
             variant={isBatchMode ? "default" : "outline"}
             size="sm"
-            className="gap-1.5 h-9 text-xs border-2 border-zinc-300 bg-white font-bold uppercase"
+            className="gap-1.5 h-9 text-xs border border-zinc-300 bg-white font-bold uppercase rounded-none"
             onClick={() => {
               setIsBatchMode(!isBatchMode);
               if (isBatchMode) setSelectedIds(new Set());
@@ -240,7 +240,7 @@ export function KnowledgeBaseList() {
           </Button>
           
           {/* View toggle */}
-          <div className="flex items-center gap-0.5 border-2 border-zinc-300 rounded-lg p-0.5 bg-white">
+          <div className="flex items-center gap-0.5 border border-zinc-300 rounded-none p-0.5 bg-white">
             <Button
               variant={viewMode === "card" ? "default" : "ghost"}
               size="icon"
@@ -266,7 +266,7 @@ export function KnowledgeBaseList() {
           
           {/* Storage Status */}
           {storageStats && (
-          <div className="flex items-center gap-3 bg-white border-2 border-zinc-900 px-4 py-3 shadow-[4px_4px_0px_0px_rgba(24,24,27,1)]">
+          <div className="flex items-center gap-3 bg-white border border-zinc-200 px-4 py-3">
             <HardDrive className="w-5 h-5 text-zinc-900" />
             <div className="flex-1">
               <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">

@@ -13,6 +13,7 @@ Endpoints:
 """
 
 import uuid
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -128,6 +129,13 @@ async def _hydrate_kb_stats(db: AsyncSession, kb: KnowledgeBase) -> dict:
     """Build a response payload with live counts where possible."""
     from app.models.paper import Paper, PaperChunk
 
+    def _normalize_timestamp(value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
     paper_count_result = await db.execute(
         select(func.count(Paper.id)).where(Paper.knowledge_base_id == kb.id)
     )
@@ -150,7 +158,8 @@ async def _hydrate_kb_stats(db: AsyncSession, kb: KnowledgeBase) -> dict:
     payload["paperCount"] = int(paper_count)
     payload["chunkCount"] = int(chunk_count)
 
-    effective_updated_at = kb.updated_at
+    effective_updated_at = _normalize_timestamp(kb.updated_at)
+    latest_paper_update = _normalize_timestamp(latest_paper_update)
     if latest_paper_update and (
         effective_updated_at is None or latest_paper_update > effective_updated_at
     ):

@@ -55,11 +55,16 @@ class ParserConfig:
     """Docling parser configuration with sensible defaults.
 
     Per Sprint 4 Task 1: Configurable options for OCR and multimodal extraction.
+    Per PR7 Phase 7A: Two-stage smart parsing (native → OCR fallback).
     """
 
     # OCR settings
-    do_ocr: bool = True  # Enable OCR fallback for low-text/scanned PDFs
+    # Per PR7: do_ocr controls fallback behavior, NOT whether to use OCR initially
+    # - False: use native parser first, only fallback to OCR if text density is low
+    # - True: initialize OCR upfront (legacy, performance-critical, can be override via PARSER_DO_OCR env var)
+    do_ocr: bool = False  # Enable OCR fallback for low-text/scanned PDFs (smart mode)
     ocr_languages: List[str] = field(default_factory=lambda: ["en", "zh"])
+    ocr_retry_min_chars_per_page: int = 80
 
     # Image/table extraction
     generate_picture_images: bool = True  # Default enabled (was False)
@@ -78,6 +83,7 @@ class ParserConfig:
         return cls(
             do_ocr=settings.PARSER_DO_OCR,
             ocr_languages=settings.PARSER_OCR_LANGUAGE.split(","),
+            ocr_retry_min_chars_per_page=settings.PARSER_OCR_RETRY_MIN_CHARS_PER_PAGE,
             generate_picture_images=settings.PARSER_GENERATE_PICTURE_IMAGES,
             generate_table_images=settings.PARSER_GENERATE_TABLE_IMAGES,
             max_num_pages=settings.PARSER_MAX_PAGES,
@@ -196,9 +202,16 @@ class DoclingParser:
             }
         )
 
-    @staticmethod
-    def _should_retry_with_ocr(markdown: str, page_count: int) -> bool:
-        """Decide whether to retry parse with OCR based on text density."""
+    def _should_retry_with_ocr(self, markdown: str, page_count: int) -> bool:
+        """Decide whether to retry parse with OCR based on text density.
+        
+        Per PR7: Smart fallback mechanism.
+        - If native parser produces < 80 chars/page on average, it's likely:
+          - Scanned PDF (images not text)
+          - Image-heavy PDF (only captions/labels in text)
+          - OCR will help recover text from images
+        - Otherwise, native parser result is good and OCR is wasteful
+        """
         if page_count <= 0:
             return False
 
@@ -206,7 +219,14 @@ class DoclingParser:
         chars_per_page = non_whitespace_chars / page_count
 
         # Very low text density typically means scanned/image-heavy PDF pages.
-        return chars_per_page < 80
+        return chars_per_page < self.config.ocr_retry_min_chars_per_page
+
+    def _enforce_page_limit(self, page_count: int) -> None:
+        """Raise when document page count exceeds configured limits."""
+        if page_count > self.config.max_num_pages:
+            raise PageLimitError(
+                f"Page count {page_count} exceeds page limit {self.config.max_num_pages}"
+            )
 
     async def parse_pdf(self, pdf_path: str, force_ocr: bool = False) -> dict:
         """
@@ -274,6 +294,7 @@ class DoclingParser:
 
             # Task 2: Unified field name 'page_count' (not 'pages')
             page_count = len(doc.pages) if hasattr(doc, "pages") else 0
+            self._enforce_page_limit(page_count)
 
             # PR7 route: fallback to OCR only when native text density is too low.
             if (
@@ -295,6 +316,7 @@ class DoclingParser:
                 doc = result_ocr.document
                 markdown = doc.export_to_markdown()
                 page_count = len(doc.pages) if hasattr(doc, "pages") else 0
+                self._enforce_page_limit(page_count)
                 parse_mode = "ocr_fallback"
                 ocr_used = True
                 del result_ocr
@@ -362,6 +384,7 @@ class DoclingParser:
                         "default_chunk_size": settings.CHUNK_SIZE,
                         "default_chunk_overlap": settings.CHUNK_OVERLAP,
                     },
+                    "ocr_retry_min_chars_per_page": self.config.ocr_retry_min_chars_per_page,
                     "parse_warnings": parse_warnings,
                 },
             }
@@ -517,7 +540,11 @@ class DoclingParser:
 
         explicit_chunk_override = chunk_size is not None
         chunk_size = chunk_size if explicit_chunk_override else settings.CHUNK_SIZE
-        chunk_overlap = chunk_overlap or settings.CHUNK_OVERLAP
+        chunk_overlap = settings.CHUNK_OVERLAP if chunk_overlap is None else chunk_overlap
+        min_chunk_size = settings.CHUNK_MIN_SIZE
+        max_chunk_size = settings.CHUNK_MAX_SIZE
+        if max_chunk_size < min_chunk_size:
+            max_chunk_size = min_chunk_size
 
         # Use section_spans if available, fall back to imrad_structure
         section_info = section_spans or imrad_structure
@@ -570,13 +597,13 @@ class DoclingParser:
         merged = self._merge_small_chunks_with_overlap(
             chunks,
             target_size=chunk_size,
-            min_size=100,
-            max_size=chunk_size + 100,
+            min_size=min_chunk_size,
+            max_size=max_chunk_size,
             overlap=chunk_overlap,
         )
 
         quality_report = self._evaluate_chunk_quality(
-            merged, chunk_size, max_size=chunk_size + 100
+            merged, chunk_size, max_size=max_chunk_size
         )
 
         logger.info(

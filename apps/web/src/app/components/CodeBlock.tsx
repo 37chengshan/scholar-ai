@@ -46,9 +46,9 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
   const displayLanguage = language || 'text';
 
   return (
-    <div className="relative my-3 rounded-lg overflow-hidden bg-gray-900">
+    <div className="relative my-3 overflow-hidden bg-[var(--color-paper-2)] border border-border/50 text-foreground magazine-code">
       {/* Header with language badge and copy button */}
-      <div className="flex items-center justify-between gap-2 px-4 py-2 bg-gray-800/50">
+      <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border/50 bg-muted/40">
         <span className="text-xs font-mono text-gray-400 lowercase">
           {displayLanguage}
         </span>

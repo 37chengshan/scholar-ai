@@ -48,7 +48,7 @@ export function AISummaryPanel({ paperId, summary }: AISummaryPanelProps) {
             </span>
           </div>
         ) : (
-          <div className="text-sm leading-relaxed whitespace-pre-wrap prose prose-sm max-w-none">
+          <div className="text-[15px] leading-loose whitespace-pre-wrap prose max-w-prose mx-auto magazine-body">
             {displaySummary}
           </div>
         )}

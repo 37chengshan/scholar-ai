@@ -37,8 +37,10 @@ class TestParserConfig:
         """Test ParserConfig has correct defaults per Sprint 4."""
         config = ParserConfig()
 
-        # Task 1: OCR enabled by default (was False)
-        assert config.do_ocr is True, "OCR should be enabled by default"
+        # Per PR7 Phase 7A: OCR smart fallback (not enabled by default)
+        # do_ocr=False means native parser first, then OCR fallback if text density < 80 chars/page
+        assert config.do_ocr is False, "OCR should be disabled by default (smart fallback via _should_retry_with_ocr)"
+        assert config.ocr_retry_min_chars_per_page == 80
 
         # Task 1: Image/table extraction enabled by default (was False)
         assert config.generate_picture_images is True, (
@@ -75,8 +77,9 @@ class TestParserConfig:
         """Test ParserConfig loads from application settings."""
         config = ParserConfig.from_settings()
 
-        # Should match settings defaults
-        assert config.do_ocr is True
+        # Should match settings defaults (per PR7: smart fallback)
+        assert config.do_ocr is False  # Native parser first, OCR fallback only if needed
+        assert config.ocr_retry_min_chars_per_page == 80
         assert config.max_file_size_mb == 50
         assert config.timeout_seconds == 300
 
@@ -103,8 +106,8 @@ class TestDoclingParserConfig:
         """Test DoclingParser defaults load from settings when config not provided."""
         parser = DoclingParser()
 
-        # Should use defaults from settings (Task 1: enabled by default)
-        assert parser.config.do_ocr is True
+        # Should use defaults from settings (per PR7: smart fallback)
+        assert parser.config.do_ocr is False  # Native first, OCR fallback only if text density low
         assert parser.config.generate_picture_images is True
         assert parser.config.generate_table_images is True
 
@@ -128,7 +131,7 @@ class TestDoclingParserForceOCR:
 
     @pytest.mark.asyncio
     async def test_force_ocr_override_creates_new_converter(self):
-        """Test force_ocr=True creates converter with OCR enabled."""
+        """Test force_ocr=True uses OCR converter even when default do_ocr is False."""
         config = ParserConfig(do_ocr=False)
         parser = DoclingParser(config=config)
 
@@ -137,18 +140,25 @@ class TestDoclingParserForceOCR:
             tmp.write(b"%PDF-1.4 test content")
             tmp_path = tmp.name
 
-        # Mock converter.convert to avoid real parsing
-        with patch.object(parser, "converter") as mock_converter:
-            mock_result = Mock()
-            mock_result.document = Mock()
-            mock_result.document.export_to_markdown.return_value = "test"
-            mock_result.document.iterate_items.return_value = []
-            mock_result.document.pages = []
+        mock_doc = Mock()
+        mock_doc.export_to_markdown.return_value = "OCR extracted text content"
+        mock_doc.iterate_items.return_value = []
+        mock_doc.pages = [Mock()]
+        mock_doc.name = "ocr.pdf"
 
-            # When force_ocr=True, should create new converter with do_ocr=True
-            # This is tested by checking the override_options creation in the code
-            # We can't directly mock the internal converter creation, so we verify
-            # the logic exists in the implementation
+        mock_result = Mock(document=mock_doc)
+
+        with patch.object(parser.native_converter, "convert", side_effect=AssertionError("Native converter should not run when force_ocr=True")), patch.object(
+            parser.ocr_converter,
+            "convert",
+            return_value=mock_result,
+        ) as ocr_convert:
+            result = await parser.parse_pdf(tmp_path, force_ocr=True)
+
+        assert result["metadata"]["parse_mode"] == "force_ocr"
+        assert result["metadata"]["ocr_used"] is True
+        assert "force_ocr_override" in result["metadata"]["parse_warnings"]
+        ocr_convert.assert_called_once()
 
         # Cleanup
         Path(tmp_path).unlink(missing_ok=True)
@@ -157,23 +167,46 @@ class TestDoclingParserForceOCR:
 class TestDoclingParserFileSizeLimit:
     """Tests for file size limit enforcement (Task 3)."""
 
-    def test_file_too_large_error_raised(self):
+    @pytest.mark.asyncio
+    async def test_file_too_large_error_raised(self):
         """Test FileTooLargeError is raised for oversized files."""
-        # Create a config with small limit for testing
-        config = ParserConfig(max_file_size_mb=1)  # 1MB limit
+        parser = DoclingParser(config=ParserConfig(max_file_size_mb=1))
 
-        # Create test file larger than limit (simulate)
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            # Write 2MB of data
             tmp.write(b"%PDF-1.4")
             tmp.write(b"\x00" * (2 * 1024 * 1024))
             tmp_path = tmp.name
 
-        # Check file size
-        file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
-        assert file_size_mb > 1, "Test file should be > 1MB"
+        with pytest.raises(FileTooLargeError, match="exceeds limit"):
+            await parser.parse_pdf(tmp_path)
 
-        # Cleanup
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+class TestDoclingParserPageLimit:
+    """Tests for page limit enforcement."""
+
+    @pytest.mark.asyncio
+    async def test_parse_pdf_checks_page_limit_before_processing_items(self):
+        config = ParserConfig(max_num_pages=1)
+        parser = DoclingParser(config=config)
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(b"%PDF-1.4 test")
+            tmp_path = tmp.name
+
+        mock_doc = Mock()
+        mock_doc.export_to_markdown.return_value = "test markdown"
+        mock_doc.iterate_items.return_value = []
+        mock_doc.pages = [Mock(), Mock()]  # 2 pages > limit 1
+        mock_doc.name = "too-many-pages.pdf"
+
+        mock_result = Mock(document=mock_doc)
+
+        with patch.object(parser.native_converter, "convert", return_value=mock_result):
+            with pytest.raises(PageLimitError, match="exceeds page limit"):
+                await parser.parse_pdf(tmp_path)
+
         Path(tmp_path).unlink(missing_ok=True)
 
     @pytest.mark.asyncio

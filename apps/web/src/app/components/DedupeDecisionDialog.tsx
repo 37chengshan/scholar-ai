@@ -39,7 +39,7 @@ interface MatchedPaperInfo {
 interface DedupeDecisionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  job: ImportJob;
+  job?: ImportJob | null;
   matchedPaper?: MatchedPaperInfo;
   matchType?: string;
   onDecision: (decision: DedupeDecisionRequest) => void;
@@ -93,6 +93,10 @@ export function DedupeDecisionDialog({
   isLoading = false,
 }: DedupeDecisionDialogProps) {
   const [selected, setSelected] = useState<DedupeDecisionType | null>(null);
+
+  if (!job) {
+    return null;
+  }
 
   // Get the title from job preview or raw input
   const importTitle = job.preview?.title || job.source?.rawInput || '未知论文';
