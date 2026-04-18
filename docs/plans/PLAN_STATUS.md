@@ -1,6 +1,6 @@
 # 计划状态总览
 
-最后更新：2026-04-17
+最后更新：2026-04-18
 
 ## 使用规则
 
@@ -34,6 +34,7 @@
 | PR20_前端杂志风美化与性能优化_深度落实方案 | web-platform | superseded | PR10_KB_Chat_Search_workspace_分层与稳定化方案 | 2026-04-18 | - | 已合并进入现行前端治理与工作台主线 |
 | PR11_Harness_Observability_文件级实施方案 | ai-platform | done | PR10 | 2026-04-17 | 89a9d9a | 已完成，进入维护态 |
 | PR12_Benchmark_基线评测_文件级实施方案 | ai-platform | done | PR11 | 2026-04-17 | 84fd597 | 已完成，进入阈值维护态 |
+| PlanA_前端架构与交互重构 | web-platform | in-progress | PR10,PR7_PR8 | 2026-04-18 | 9f58bb9,9a2fc2c | W0/W3/W1-2 已完成，正在推进 W4-W6 |
 
 ## 回填模板
 

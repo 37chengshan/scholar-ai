@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router';
-import { KnowledgeWorkspaceShell } from './KnowledgeWorkspaceShell';
+import { KnowledgeBaseDetailV2 } from './KnowledgeBaseDetailV2';
 
 export function KnowledgeBaseWorkspace() {
   const [searchParams] = useSearchParams();
@@ -7,7 +7,7 @@ export function KnowledgeBaseWorkspace() {
 
   return (
     <section data-testid="kb-workspace-root" data-active-tab={activeTab}>
-      <KnowledgeWorkspaceShell />
+      <KnowledgeBaseDetailV2 />
     </section>
   );
 }
