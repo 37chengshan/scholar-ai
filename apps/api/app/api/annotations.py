@@ -10,9 +10,9 @@ Provides CRUD endpoints for PDF annotations:
 import re
 from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException, Depends, Query, status
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, desc, asc
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
