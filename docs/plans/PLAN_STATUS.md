@@ -35,6 +35,7 @@
 | PR11_Harness_Observability_文件级实施方案 | ai-platform | done | PR10 | 2026-04-17 | 89a9d9a | 已完成，进入维护态 |
 | PR12_Benchmark_基线评测_文件级实施方案 | ai-platform | done | PR11 | 2026-04-17 | 84fd597 | 已完成，进入阈值维护态 |
 | PlanA_前端架构与交互重构 | web-platform | done | PR10,PR7_PR8 | 2026-04-18 | 9f58bb9,9a2fc2c,0b01076,43fe5c9,e02c880 | W0-W6 全部完成，进入维护态 |
+| PlanB_后端稳定性与RAG能力重构 | ai-runtime | in-progress | PlanA,PR12 | 2026-04-18 | 9e0ebec,389b3b7 | W0-W2 与 W4-W6 已完成并通过审查，W3/W7-W8 进行中 |
 
 ## 回填模板
 
