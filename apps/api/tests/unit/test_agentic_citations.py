@@ -228,6 +228,10 @@ class TestCollectSourcesWithCitations:
         assert len(sources) == 1
         assert "citation" in sources[0]
         assert sources[0]["citation"] == "[YOLO: Unified Detection, Introduction]"
+        assert sources[0]["source_id"] == "chunk-1"
+        assert sources[0]["section_path"] == "Introduction"
+        assert sources[0]["content_subtype"] == "paragraph"
+        assert sources[0]["anchor_text"].startswith("YOLO is a unified framework")
 
     def test_citation_fallback_to_page_when_no_section(
         self, orchestrator: AgenticRetrievalOrchestrator

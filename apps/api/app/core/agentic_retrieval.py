@@ -243,6 +243,18 @@ class AgenticRetrievalOrchestrator:
         normalized["text"] = text or ""
         normalized["score"] = normalized_score
         normalized["page_num"] = page_num
+        normalized["source_id"] = (
+            chunk.get("source_id")
+            or chunk.get("id")
+            or chunk.get("chunk_id")
+        )
+        normalized["section_path"] = chunk.get("section_path") or chunk.get("section")
+        normalized["content_subtype"] = (
+            chunk.get("content_subtype")
+            or chunk.get("content_type")
+            or "paragraph"
+        )
+        normalized["anchor_text"] = chunk.get("anchor_text") or (text[:200] if text else "")
         normalized["paper_title"] = chunk.get("paper_title") or chunk.get("paper_id")
         normalized["section"] = chunk.get("section") or chunk.get("content_section")
         return normalized
@@ -880,12 +892,15 @@ Based on {len(all_results)} rounds of retrieval with {len(evidence_blocks)} evid
 
                         sources.append(
                             {
-                                "chunk_id": chunk_id,
+                                "source_id": normalized_chunk.get("source_id") or chunk_id,
                                 "paper_id": normalized_chunk.get("paper_id"),
                                 "paper_title": normalized_chunk.get("paper_title"),
                                 "text_preview": text_preview,
                                 "page_num": page_num,
                                 "score": score,
+                                "section_path": normalized_chunk.get("section_path"),
+                                "content_subtype": normalized_chunk.get("content_subtype"),
+                                "anchor_text": normalized_chunk.get("anchor_text"),
                                 "section": normalized_chunk.get("section"),
                                 "content_type": normalized_chunk.get("content_type", "text"),
                                 "citation": citation,

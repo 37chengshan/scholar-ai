@@ -17,12 +17,12 @@ def test_confidence_prefers_higher_scores():
     answer = "This answer is supported by multiple high-quality sources."
 
     low_score_sources = [
-        {"paper_id": "p1", "section": "intro", "score": 0.30, "page_num": 1, "text_preview": "a"},
-        {"paper_id": "p2", "section": "method", "score": 0.35, "page_num": 2, "text_preview": "b"},
+        {"paper_id": "p1", "section": "intro", "score": 0.30, "page_num": 1, "text_preview": "a", "source_id": "s1", "section_path": "intro", "content_subtype": "paragraph", "anchor_text": "a"},
+        {"paper_id": "p2", "section": "method", "score": 0.35, "page_num": 2, "text_preview": "b", "source_id": "s2", "section_path": "method", "content_subtype": "paragraph", "anchor_text": "b"},
     ]
     high_score_sources = [
-        {"paper_id": "p1", "section": "intro", "score": 0.80, "page_num": 1, "text_preview": "a"},
-        {"paper_id": "p2", "section": "method", "score": 0.85, "page_num": 2, "text_preview": "b"},
+        {"paper_id": "p1", "section": "intro", "score": 0.80, "page_num": 1, "text_preview": "a", "source_id": "s1", "section_path": "intro", "content_subtype": "paragraph", "anchor_text": "a"},
+        {"paper_id": "p2", "section": "method", "score": 0.85, "page_num": 2, "text_preview": "b", "source_id": "s2", "section_path": "method", "content_subtype": "paragraph", "anchor_text": "b"},
     ]
 
     assert calculate_confidence(answer, high_score_sources) > calculate_confidence(
@@ -34,14 +34,14 @@ def test_confidence_rewards_evidence_diversity():
     answer = "A moderately detailed answer with references."
 
     single_location_sources = [
-        {"paper_id": "p1", "section": "results", "score": 0.8, "page_num": 1, "text_preview": "a"},
-        {"paper_id": "p1", "section": "results", "score": 0.79, "page_num": 2, "text_preview": "b"},
-        {"paper_id": "p1", "section": "results", "score": 0.78, "page_num": 3, "text_preview": "c"},
+        {"paper_id": "p1", "section": "results", "score": 0.8, "page_num": 1, "text_preview": "a", "source_id": "s1", "section_path": "results", "content_subtype": "paragraph", "anchor_text": "a"},
+        {"paper_id": "p1", "section": "results", "score": 0.79, "page_num": 2, "text_preview": "b", "source_id": "s2", "section_path": "results", "content_subtype": "paragraph", "anchor_text": "b"},
+        {"paper_id": "p1", "section": "results", "score": 0.78, "page_num": 3, "text_preview": "c", "source_id": "s3", "section_path": "results", "content_subtype": "paragraph", "anchor_text": "c"},
     ]
     diverse_sources = [
-        {"paper_id": "p1", "section": "intro", "score": 0.8, "page_num": 1, "text_preview": "a"},
-        {"paper_id": "p2", "section": "method", "score": 0.79, "page_num": 2, "text_preview": "b"},
-        {"paper_id": "p3", "section": "results", "score": 0.78, "page_num": 3, "text_preview": "c"},
+        {"paper_id": "p1", "section": "intro", "score": 0.8, "page_num": 1, "text_preview": "a", "source_id": "s1", "section_path": "intro", "content_subtype": "paragraph", "anchor_text": "a"},
+        {"paper_id": "p2", "section": "method", "score": 0.79, "page_num": 2, "text_preview": "b", "source_id": "s2", "section_path": "method", "content_subtype": "paragraph", "anchor_text": "b"},
+        {"paper_id": "p3", "section": "results", "score": 0.78, "page_num": 3, "text_preview": "c", "source_id": "s3", "section_path": "results", "content_subtype": "paragraph", "anchor_text": "c"},
     ]
 
     assert calculate_confidence(answer, diverse_sources) > calculate_confidence(
@@ -68,6 +68,10 @@ def test_normalize_source_contract_keeps_canonical_fields():
         "score": 0.91,
         "page_num": 8,
         "text_preview": "canonical",
+        "source_id": "s1",
+        "section_path": "results",
+        "content_subtype": "paragraph",
+        "anchor_text": "canonical",
         "content_preview": "legacy-preview",
     }
 
@@ -85,6 +89,10 @@ def test_normalize_source_contract_requires_canonical_fields():
         "score": 0.66,
         "page_num": 4,
         "text_preview": "canonical content",
+        "source_id": "s1",
+        "section_path": "intro",
+        "content_subtype": "paragraph",
+        "anchor_text": "canonical content",
     }
 
     normalized = normalize_source_contract(source)
@@ -97,8 +105,8 @@ def test_normalize_source_contract_requires_canonical_fields():
 def test_confidence_explain_contains_expected_dimensions():
     answer = "A grounded answer with multiple supporting sources and enough detail."
     sources = [
-        {"paper_id": "p1", "section": "intro", "score": 0.80, "page_num": 1, "text_preview": "a"},
-        {"paper_id": "p2", "section": "method", "score": 0.78, "page_num": 2, "text_preview": "b"},
+        {"paper_id": "p1", "section": "intro", "score": 0.80, "page_num": 1, "text_preview": "a", "source_id": "s1", "section_path": "intro", "content_subtype": "paragraph", "anchor_text": "a"},
+        {"paper_id": "p2", "section": "method", "score": 0.78, "page_num": 2, "text_preview": "b", "source_id": "s2", "section_path": "method", "content_subtype": "paragraph", "anchor_text": "b"},
     ]
 
     score, explain = calculate_confidence(answer, sources, with_explain=True)

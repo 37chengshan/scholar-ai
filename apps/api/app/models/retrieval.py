@@ -51,10 +51,29 @@ class RetrievedChunk(BaseModel):
         ge=0.0,
         le=1.0,
     )
+    source_id: Optional[str] = Field(
+        default=None,
+        description="Stable source/chunk identifier",
+    )
     page_num: Optional[int] = Field(
         default=None,
         description="Page number in paper (unified field, not 'page')",
         ge=1,
+    )
+    section_path: Optional[str] = Field(
+        default=None,
+        description="Canonical section path for retrieval contract",
+        max_length=200,
+    )
+    content_subtype: Optional[str] = Field(
+        default=None,
+        description="Canonical content subtype (paragraph/figure/table_caption/etc.)",
+        max_length=100,
+    )
+    anchor_text: Optional[str] = Field(
+        default=None,
+        description="Anchor snippet used for claim-level citation alignment",
+        max_length=300,
     )
     section: Optional[str] = Field(
         default=None,

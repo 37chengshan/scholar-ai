@@ -52,6 +52,10 @@ def normalize_source_contract(source: Dict) -> Dict:
     Canonical fields:
     - score
     - page_num
+    - source_id
+    - section_path
+    - content_subtype
+    - anchor_text
     - text_preview
 
     Strict mode rejects legacy aliases and requires canonical fields.
@@ -63,6 +67,28 @@ def normalize_source_contract(source: Dict) -> Dict:
     if page_num is None:
         raise ValueError("Missing required retrieval field: page_num")
     normalized["page_num"] = page_num
+
+    source_id = source.get("source_id") or source.get("chunk_id")
+    if source_id is None:
+        raise ValueError("Missing required retrieval field: source_id")
+    normalized["source_id"] = source_id
+
+    section_path = source.get("section_path") or source.get("section")
+    if section_path is None:
+        raise ValueError("Missing required retrieval field: section_path")
+    normalized["section_path"] = section_path
+
+    content_subtype = source.get("content_subtype") or source.get("content_type")
+    if content_subtype is None:
+        raise ValueError("Missing required retrieval field: content_subtype")
+    normalized["content_subtype"] = content_subtype
+
+    anchor_text = source.get("anchor_text")
+    if anchor_text is None:
+        anchor_text = source.get("text_preview")
+    if anchor_text is None:
+        raise ValueError("Missing required retrieval field: anchor_text")
+    normalized["anchor_text"] = anchor_text
 
     if normalized.get("text_preview") is None:
         text_preview = source.get("text")
@@ -236,7 +262,7 @@ async def rag_query(
             query=request.question,
             paper_ids=paper_ids,
             query_type=request.query_type,
-            retrieval_version="v2",
+            retrieval_version="v3",
             index_version="v1"
         )
 
@@ -315,7 +341,7 @@ async def rag_query(
                 "confidence_explain": confidence_explain,
             },
             query_type=request.query_type,
-            retrieval_version="v2",
+            retrieval_version="v3",
             index_version="v1"
         )
 
@@ -401,7 +427,7 @@ async def rag_query_stream(
             query=request.question,
             paper_ids=paper_ids,
             query_type=request.query_type,
-            retrieval_version="v2",
+            retrieval_version="v3",
             index_version="v1"
         )
 
