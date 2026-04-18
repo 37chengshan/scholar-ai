@@ -87,10 +87,18 @@ class NotesGenerator:
             model: ZhipuAI model name (defaults to glm-4.5-air)
         """
         self.model = model or os.getenv("LLM_MODEL", "glm-4.5-air")
-        self.llm_client = ZhipuLLMClient(model=self.model)
+        # Lazily create the LLM client so API startup does not hard-fail
+        # when optional AI credentials are not configured.
+        self.llm_client: Optional[ZhipuLLMClient] = None
         self.max_content_length = 15000  # Character limit to avoid context overflow
         self.max_tokens = 2000
         self.temperature = 0.3
+
+    def _get_llm_client(self) -> ZhipuLLMClient:
+        """Get or initialize the LLM client on demand."""
+        if self.llm_client is None:
+            self.llm_client = ZhipuLLMClient(model=self.model)
+        return self.llm_client
 
     def _truncate_content(self, content: str) -> str:
         """Truncate content to fit context window."""
@@ -142,7 +150,8 @@ class NotesGenerator:
         )
 
         try:
-            response = await self.llm_client.chat_completion(
+            llm_client = self._get_llm_client()
+            response = await llm_client.chat_completion(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
@@ -199,7 +208,8 @@ class NotesGenerator:
         )
 
         try:
-            response = await self.llm_client.chat_completion(
+            llm_client = self._get_llm_client()
+            response = await llm_client.chat_completion(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
                 max_tokens=self.max_tokens

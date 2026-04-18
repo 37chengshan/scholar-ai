@@ -12,7 +12,8 @@
  * - URL state synchronization support (initialQuery, initialPage)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import * as searchApi from '@/services/searchApi';
 
 export interface SearchResult {
@@ -50,6 +51,56 @@ export interface UseSearchOptions {
 }
 
 const PAGE_SIZE = 20;
+const SEARCH_QUERY_KEY = 'search-unified';
+
+interface FetchSearchParams {
+  query: string;
+  page: number;
+  filters?: SearchFilters;
+  signal?: AbortSignal;
+}
+
+async function fetchSearchResults({
+  query,
+  page,
+  filters,
+  signal,
+}: FetchSearchParams): Promise<SearchResults> {
+  const offset = page * PAGE_SIZE;
+  const data = await searchApi.unified(
+    query,
+    PAGE_SIZE,
+    offset,
+    filters?.yearFrom,
+    filters?.yearTo,
+    signal,
+  );
+
+  let internal = data.results.filter((result) => result.source === 'internal');
+  let external = data.results.filter((result) => result.source !== 'internal');
+
+  if (filters?.sources && filters.sources.length > 0) {
+    external = external.filter((result) =>
+      filters.sources!.some((source) => {
+        if (source === 'arxiv') return result.source === 'arxiv';
+        if (source === 'semantic-scholar' || source === 's2') return result.source === 's2';
+        return false;
+      }),
+    );
+  }
+
+  if (filters?.sortBy === 'date') {
+    const sortByYear = (a: SearchResult, b: SearchResult) => (b.year || 0) - (a.year || 0);
+    internal = [...internal].sort(sortByYear);
+    external = [...external].sort(sortByYear);
+  }
+
+  return {
+    internal,
+    external,
+    total: data.total,
+  };
+}
 
 /**
  * useSearch hook with debounce and filters
@@ -59,13 +110,21 @@ const PAGE_SIZE = 20;
  */
 export function useSearch(options: UseSearchOptions = {}) {
   const { debounceMs = 300, filters, initialQuery = '', initialPage = 0 } = options;
-  
+
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
   const [page, setPage] = useState(initialPage);
-  const [results, setResults] = useState<SearchResults | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const normalizedFilters = useMemo(
+    () => ({
+      yearFrom: filters?.yearFrom,
+      yearTo: filters?.yearTo,
+      sortBy: filters?.sortBy,
+      sources: [...(filters?.sources || [])].sort(),
+    }),
+    [filters?.yearFrom, filters?.yearTo, filters?.sortBy, filters?.sources],
+  );
+  const queryEnabled = debouncedQuery.trim().length > 0;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -77,63 +136,71 @@ export function useSearch(options: UseSearchOptions = {}) {
   }, [query, debounceMs]);
 
   useEffect(() => {
-    if (!debouncedQuery.trim()) {
-      setResults(null);
+    setPage(0);
+  }, [normalizedFilters.yearFrom, normalizedFilters.yearTo, normalizedFilters.sortBy, normalizedFilters.sources]);
+
+  const searchQuery = useQuery({
+    queryKey: [SEARCH_QUERY_KEY, debouncedQuery, page, normalizedFilters],
+    enabled: queryEnabled,
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) =>
+      fetchSearchResults({
+        query: debouncedQuery,
+        page,
+        filters: normalizedFilters,
+        signal,
+      }),
+  });
+
+  useEffect(() => {
+    if (!queryEnabled || !searchQuery.data) {
       setPage(0);
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (searchQuery.isPlaceholderData) {
+      return;
+    }
 
-    const offset = page * PAGE_SIZE;
+    const totalPages = Math.ceil(searchQuery.data.total / PAGE_SIZE);
+    if (page >= totalPages - 1) {
+      return;
+    }
 
-    searchApi.unified(
-      debouncedQuery,
-      PAGE_SIZE,
-      offset,
-      filters?.yearFrom,
-      filters?.yearTo
-    )
-      .then(data => {
-        let internal = data.results.filter(r => r.source === 'internal');
-        let external = data.results.filter(r => r.source !== 'internal');
+    const nextPage = page + 1;
+    void queryClient.prefetchQuery({
+      queryKey: [SEARCH_QUERY_KEY, debouncedQuery, nextPage, normalizedFilters],
+      queryFn: ({ signal }) =>
+        fetchSearchResults({
+          query: debouncedQuery,
+          page: nextPage,
+          filters: normalizedFilters,
+          signal,
+        }),
+    });
+  }, [debouncedQuery, normalizedFilters, page, queryClient, queryEnabled, searchQuery.data]);
 
-        if (filters?.sources && filters.sources.length > 0) {
-          external = external.filter(r =>
-            filters.sources!.some(s => {
-              if (s === 'arxiv') return r.source === 'arxiv';
-              if (s === 'semantic-scholar' || s === 's2') return r.source === 's2';
-              return false;
-            })
-          );
-        }
-
-        if (filters?.sortBy === 'date') {
-          const sortByYear = (a: SearchResult, b: SearchResult) => (b.year || 0) - (a.year || 0);
-          internal = [...internal].sort(sortByYear);
-          external = [...external].sort(sortByYear);
-        }
-
-        setResults({
-          internal,
-          external,
-          total: data.total,
-        });
-      })
-      .catch(err => {
-        setError(err.response?.data?.error?.detail || err.message || 'Search failed');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [debouncedQuery, page, filters?.yearFrom, filters?.yearTo, filters?.sources, filters?.sortBy]);
+  const shouldHidePlaceholderData = searchQuery.isPlaceholderData && page === 0;
+  const results = queryEnabled
+    ? shouldHidePlaceholderData
+      ? null
+      : (searchQuery.data ?? null)
+    : null;
+  const isInitialLoading = queryEnabled && searchQuery.isFetching && !searchQuery.data;
+  const isPageFetching = queryEnabled && searchQuery.isFetching && !!searchQuery.data;
+  const loading = isInitialLoading || isPageFetching;
+  const error = searchQuery.error
+    ? searchQuery.error instanceof Error
+      ? searchQuery.error.message
+      : 'Search failed'
+    : null;
 
   const nextPage = useCallback(() => {
-    if (results && (results.internal.length + results.external.length) >= PAGE_SIZE) {
+    const totalPages = results ? Math.ceil(results.total / PAGE_SIZE) : 0;
+    if (results && page < totalPages - 1) {
       setPage(p => p + 1);
     }
-  }, [results]);
+  }, [page, results]);
 
   const prevPage = useCallback(() => {
     setPage(p => Math.max(0, p - 1));
@@ -146,8 +213,6 @@ export function useSearch(options: UseSearchOptions = {}) {
   const clearSearch = useCallback(() => {
     setQuery('');
     setDebouncedQuery('');
-    setResults(null);
-    setError(null);
     setPage(0);
   }, []);
 
@@ -158,6 +223,8 @@ export function useSearch(options: UseSearchOptions = {}) {
     setQuery,
     results,
     loading,
+    isInitialLoading,
+    isPageFetching,
     error,
     clearSearch,
     page,

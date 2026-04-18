@@ -1,17 +1,9 @@
 import { expect, test } from '@playwright/test';
-
-const TEST_USER = {
-  email: 'test@example.com',
-  password: 'Test123!'
-};
+import { registerAndLogin } from './helpers/auth';
 
 test.describe('Critical E2E - Chat', () => {
-  test('login and complete one chat turn', async ({ page }) => {
-    await page.goto('/login');
-
-    await page.fill('input[type="email"]', TEST_USER.email);
-    await page.fill('input[type="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
+  test('login and complete one chat turn', async ({ page, request }) => {
+    await registerAndLogin(page, request);
 
     await page.waitForURL(/\/(dashboard|chat|knowledge-bases)/, { timeout: 20000 });
 
@@ -24,8 +16,6 @@ test.describe('Critical E2E - Chat', () => {
 
     await expect(input).toBeDisabled({ timeout: 15000 });
     await expect(input).toBeEnabled({ timeout: 120000 });
-
-    const messageCount = await page.locator('[data-testid="ai-response"], .message, .response').count();
-    expect(messageCount).toBeGreaterThan(0);
+    await expect(page.locator('.magazine-body').first()).toBeVisible({ timeout: 30000 });
   });
 });

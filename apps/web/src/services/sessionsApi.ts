@@ -46,12 +46,12 @@ export async function getSessionMessages(sessionId: string, limit = 100): Promis
 }
 
 export async function createSession(title = '新对话'): Promise<SessionRecord> {
-  const response = await apiClient.post<{ success: boolean; data: SessionRecord }>('/api/v1/sessions', {
+  const response = await apiClient.post<SessionRecord>('/api/v1/sessions', {
     title,
     status: 'active',
     metadata: {},
   });
-  return response.data.data;
+  return response.data;
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {

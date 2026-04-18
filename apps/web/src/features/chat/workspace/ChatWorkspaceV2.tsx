@@ -72,6 +72,7 @@ import type {
 export function ChatWorkspaceV2() {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
+  const [sessionSearchQuery, setSessionSearchQuery] = useState('');
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [agentUIState, setAgentUIState] = useState<AgentUIState>("IDLE");
   const [sending, setSending] = useState(false); // 防止重复发送
@@ -227,6 +228,27 @@ export function ChatWorkspaceV2() {
     () => sessions.filter((session) => Boolean(session?.id)),
     [sessions],
   );
+  const normalizedSessionSearchQuery = sessionSearchQuery.trim().toLowerCase();
+  const filteredSessions = useMemo(() => {
+    const sortedSessions = [...safeSessions].sort((a, b) => {
+      const left = new Date(a.updatedAt || a.createdAt).getTime();
+      const right = new Date(b.updatedAt || b.createdAt).getTime();
+      return right - left;
+    });
+
+    if (!normalizedSessionSearchQuery) {
+      return sortedSessions;
+    }
+
+    return sortedSessions.filter((session) => {
+      const title = session.title?.toLowerCase() || '';
+      const messageCountText = String(session.messageCount || 0);
+      return (
+        title.includes(normalizedSessionSearchQuery)
+        || messageCountText.includes(normalizedSessionSearchQuery)
+      );
+    });
+  }, [normalizedSessionSearchQuery, safeSessions]);
 
   const handleExitScope = useCallback(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -282,6 +304,7 @@ export function ChatWorkspaceV2() {
     }
     const session = await createSession(isZh ? "新对话" : "New Chat");
     if (session) {
+      setSessionSearchQuery('');
       setLocalMessages([]);
       setPlaceholderId(null);
       setSessionTokens(0); // 重置token计数
@@ -826,7 +849,7 @@ export function ChatWorkspaceV2() {
         className="flex-shrink-0"
       >
         <SessionSidebar
-          sessions={safeSessions}
+          sessions={filteredSessions}
           currentSessionId={currentSession?.id ?? null}
           loading={loading}
           labels={{
@@ -835,8 +858,11 @@ export function ChatWorkspaceV2() {
             search: t.search,
             history: t.history,
             newChat: t.newChat,
+            noSearchResults: isZh ? '未找到匹配会话' : 'No matching sessions',
             messageSuffix: isZh ? '条消息' : 'messages',
           }}
+          searchValue={sessionSearchQuery}
+          onSearchChange={setSessionSearchQuery}
           onCreateSession={handleNewSession}
           onSwitchSession={handleSwitchSession}
           onDeleteSession={handleDeleteSession}

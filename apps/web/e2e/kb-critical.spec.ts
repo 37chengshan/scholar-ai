@@ -1,17 +1,9 @@
 import { expect, test } from '@playwright/test';
-
-const TEST_USER = {
-  email: 'test@example.com',
-  password: 'Test123!'
-};
+import { registerAndLogin } from './helpers/auth';
 
 test.describe('Critical E2E - Knowledge Base', () => {
-  test('create one knowledge base successfully', async ({ page }) => {
-    await page.goto('/login');
-
-    await page.fill('input[type="email"]', TEST_USER.email);
-    await page.fill('input[type="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
+  test('create one knowledge base successfully', async ({ page, request }) => {
+    await registerAndLogin(page, request);
 
     await page.waitForURL(/\/(dashboard|chat|knowledge-bases)/, { timeout: 20000 });
 
