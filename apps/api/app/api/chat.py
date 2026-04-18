@@ -186,6 +186,8 @@ async def chat_stream(
                         session_id=session_id,
                         user_id=user_id,
                         auto_confirm=auto_confirm,
+                        mode=request.mode,
+                        scope=request.scope,
                     ):
                         # Buffer events for ordered transmission
                         if event.startswith("event:"):
@@ -209,42 +211,6 @@ async def chat_stream(
                                 yield event
                         else:
                             yield event
-
-                        # Persist tool_result messages
-                        if event.startswith("event: tool_result"):
-                            try:
-                                data_start = event.find("data: ") + 6
-                                data_json = event[data_start : event.rfind("\n")]
-                                event_data = json.loads(data_json)
-
-                                await message_service.save_message(
-                                    session_id=session_id,
-                                    role="tool",
-                                    content=json.dumps(event_data),
-                                    tool_name=event_data.get("tool", "unknown"),
-                                    tool_params=event_data.get("parameters", {}),
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    "Failed to save tool message", error=str(e)
-                                )
-
-                        # Persist assistant messages
-                        elif event.startswith("event: message"):
-                            try:
-                                data_start = event.find("data: ") + 6
-                                data_json = event[data_start : event.rfind("\n")]
-                                event_data = json.loads(data_json)
-
-                                await message_service.save_message(
-                                    session_id=session_id,
-                                    role="assistant",
-                                    content=event_data.get("content", ""),
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    "Failed to save assistant message", error=str(e)
-                                )
 
                 async for event in sse_manager.stream_with_heartbeat(
                     session_id, business_events()

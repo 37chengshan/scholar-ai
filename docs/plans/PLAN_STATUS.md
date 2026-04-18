@@ -32,6 +32,7 @@
 | PR18_Celery_ImportPipeline_Stability_Refactor_Plan | app-foundation | superseded | PR19_上传链路收口_与_完整上传体验重做计划_v3 | 2026-04-18 | - | PR18 | DU-20260418-001 | superseded | docs/plans | low | 已并入 PR19 上传链路主计划，不再单独执行 |
 | PR20_UI截图细节还原方案 | web-platform | superseded | PR10_KB_Chat_Search_workspace_分层与稳定化方案 | 2026-04-18 | - | PR20-UI | DU-20260418-002 | superseded | docs/plans | low | 已被统一工作台分层与稳定化计划覆盖 |
 | PR20_前端杂志风美化与性能优化_深度落实方案 | web-platform | superseded | PR10_KB_Chat_Search_workspace_分层与稳定化方案 | 2026-04-18 | - | PR20-VISUAL | DU-20260418-003 | superseded | docs/plans | low | 已合并进入现行前端治理与工作台主线 |
+| PR21_PR23_契约收口与持久化闭环三阶段执行计划 | app-foundation | in-progress | - | 2026-04-18 | wip-pr21-pr23-contract-close | PR21-PR23 | DU-20260418-007 | open | apps/api,apps/web,docs | high | 三阶段执行中，PR21已完成，PR22/PR23推进中 |
 | PR11_Harness_Observability_文件级实施方案 | ai-platform | done | PR10 | 2026-04-17 | 89a9d9a | PR11 | DU-20260417-009 | historical | scripts,docs | medium | 已完成，进入维护态 |
 | PR12_Benchmark_基线评测_文件级实施方案 | ai-platform | done | PR11 | 2026-04-17 | 84fd597 | PR12 | DU-20260417-010 | historical | scripts/docs/reports | medium | 已完成，进入阈值维护态 |
 | PlanA_前端架构与交互重构 | web-platform | done | PR10,PR7_PR8 | 2026-04-18 | 9f58bb9,9a2fc2c,0b01076,43fe5c9,e02c880 | PlanA | DU-20260418-004 | PR22 | apps/web,docs | high | W0-W6 全部完成，进入维护态 |

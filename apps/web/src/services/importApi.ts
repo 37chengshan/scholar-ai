@@ -351,6 +351,9 @@ export const importApi = {
 
   /**
    * Upload local files for a batch import job using manifest mapping.
+    * Contract note: backend may return partial success.
+    * - accepted[]: queued items
+    * - rejected[]: dropped items with explicit reason
    */
   uploadBatchFiles: async (
     batchJobId: string,

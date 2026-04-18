@@ -3,48 +3,33 @@ import { describe, expect, it } from 'vitest';
 import { normalizeSSEEventEnvelope } from './sseEventAdapter';
 
 describe('normalizeSSEEventEnvelope', () => {
-  it('maps thought to reasoning', () => {
+  it('accepts canonical reasoning events', () => {
     const normalized = normalizeSSEEventEnvelope({
       message_id: 'm1',
-      event_type: 'thought',
+      event_type: 'reasoning',
       data: { delta: 'thinking...' },
     });
 
     expect(normalized).not.toBeNull();
     expect(normalized?.event_type).toBe('reasoning');
-    expect(normalized?.legacy_event_type).toBe('thought');
   });
 
-  it('maps phase_change to phase', () => {
+  it('accepts canonical phase events', () => {
     const normalized = normalizeSSEEventEnvelope({
       message_id: 'm1',
-      event_type: 'phase_change',
+      event_type: 'phase',
       data: { phase: 'retrieving', label: 'retrieving docs' },
     });
 
     expect(normalized).not.toBeNull();
     expect(normalized?.event_type).toBe('phase');
-    expect(normalized?.legacy_event_type).toBe('phase_change');
     expect(normalized?.data.phase).toBe('retrieving');
   });
 
-  it('normalizes thinking_status to phase payload', () => {
+  it('returns null for legacy and unsupported events', () => {
     const normalized = normalizeSSEEventEnvelope({
       message_id: 'm1',
-      event_type: 'thinking_status',
-      data: { status: 'verifying' },
-    });
-
-    expect(normalized).not.toBeNull();
-    expect(normalized?.event_type).toBe('phase');
-    expect(normalized?.data.phase).toBe('verifying');
-    expect(normalized?.data.label).toBe('verifying');
-  });
-
-  it('returns null for unsupported events', () => {
-    const normalized = normalizeSSEEventEnvelope({
-      message_id: 'm1',
-      event_type: 'unknown_legacy_event',
+      event_type: 'thought',
       data: {},
     });
 

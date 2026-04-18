@@ -70,7 +70,7 @@ jobs:
       - name: Create test environment
         working-directory: apps/api
         run: |
-          cat > .env.test << EOF
+          cat > .env.test << 'ENVEOF'
           ENVIRONMENT=test
           DATABASE_URL=postgresql://test_user:test_password@localhost:5432/scholar_ai_test
           REDIS_URL=redis://localhost:6379/0
@@ -80,7 +80,7 @@ jobs:
           NEO4J_PASSWORD=scholarai123
           USE_LOCAL_STORAGE=true
           LOCAL_STORAGE_PATH=/tmp/uploads
-          EOF
+          ENVEOF
 
       - name: Start backend
         working-directory: apps/api

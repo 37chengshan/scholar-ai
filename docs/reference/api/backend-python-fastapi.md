@@ -310,8 +310,6 @@ SSE 事件类型: `routing_decision`, `thought`, `tool_call`, `tool_result`, `co
 | 方法 | 路径 | 功能 | 请求体 | 响应 | 认证 |
 |------|------|------|--------|------|------|
 | POST | `/parse/pdf` | 解析 PDF 文件 | `file (PDF), arxiv_id?, force_ocr?` | `{status, filename, page_count, markdown, items, imrad, metadata}` | 是 |
-| POST | `/parse/pdf/batch` | 批量解析 PDF | `files[] (PDF)` | `{status, task_id, file_count, message}` | 是 |
-| GET | `/parse/pdf/status/{task_id}` | 查询解析任务状态 | - | `{task_id, status, message}` | 是 | ⚠️ Stub |
 
 ---
 

@@ -16,7 +16,13 @@ export function buildChatStreamBody(params: ChatStreamParams): Record<string, un
   };
 
   if (params.scope) {
-    body.scope = params.scope;
+    body.scope = {
+      ...params.scope,
+      // Keep canonical payload shape for backend contract.
+      ...(params.scope.type === 'general'
+        ? { paper_id: undefined, knowledge_base_id: undefined }
+        : {}),
+    };
   }
 
   if (params.context) {

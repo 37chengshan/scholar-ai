@@ -41,6 +41,11 @@
 - [ ] `bash scripts/check-doc-governance.sh`
 - [ ] `bash scripts/check-structure-boundaries.sh`
 - [ ] `bash scripts/check-code-boundaries.sh`
+- [ ] `bash scripts/check-phase-tracking.sh`
+- [ ] `bash scripts/check-branch-lifecycle.sh`
+- [ ] `bash scripts/check-contract-gate.sh`
+- [ ] `bash scripts/check-fallback-expiry.sh`
+- [ ] `bash scripts/check-e2e-gate.sh --mode manifest`
 
 ### 前端
 - [ ] `cd apps/web && npm install`
@@ -50,6 +55,12 @@
 ### 后端
 - [ ] `cd apps/api && pip install -r requirements.txt`
 - [ ] `cd apps/api && pytest -q`
+- [ ] `cd apps/api && .venv/bin/python -m pytest -q tests/unit/test_services.py --maxfail=1`
+- [ ] `cd apps/api && .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1`
+
+### 共享包
+- [ ] `cd packages/types && npm run build`
+- [ ] `cd packages/sdk && npm run build`
 
 ## 文档是否需要同步
 <!-- 按 README 的 Source of Truth 来判断 -->
@@ -72,4 +83,3 @@
 ## 关联 Issue / 背景
 - Closes #
 - Related #
-

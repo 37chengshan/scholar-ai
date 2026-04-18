@@ -24,6 +24,29 @@ export interface MessageDto {
   created_at: string;
 }
 
+export type MessageOrder = 'asc' | 'desc';
+
+export interface SessionMessagesPagination {
+  has_more: boolean;
+  returned: number;
+  next_offset: number;
+}
+
+export interface SessionMessagesData {
+  session_id: string;
+  messages: MessageDto[];
+  total: number;
+  limit: number;
+  offset: number;
+  order: MessageOrder;
+  pagination: SessionMessagesPagination;
+}
+
+export interface SessionMessagesResponse {
+  success: boolean;
+  data: SessionMessagesData;
+}
+
 export interface CitationDto {
   paper_id: string;
   title: string;

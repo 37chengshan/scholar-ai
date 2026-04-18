@@ -352,6 +352,7 @@ async def get_session_messages(
     user_id: str = CurrentUserId,
     limit: int = 50,
     offset: int = 0,
+    order: str = "desc",
 ):
     """
     Retrieve chat history for a session.
@@ -366,6 +367,7 @@ async def get_session_messages(
         user_id: Authenticated user ID
         limit: Maximum number of messages (default 50)
         offset: Offset for pagination (default 0)
+        order: Sort order by created_at (asc|desc, default desc)
 
     Returns:
         List of ChatMessage objects
@@ -392,19 +394,35 @@ async def get_session_messages(
                 ),
             )
 
+        if order not in {"asc", "desc"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("order must be 'asc' or 'desc'"),
+            )
+
         messages = await message_service.get_messages(
             session_id=session_id,
             limit=limit,
             offset=offset,
+            order=order,
         )
+        total = await message_service.count_messages(session_id=session_id)
+        returned = len(messages)
 
         return SessionMessagesResponse(
             success=True,
             data={
                 "session_id": session_id,
                 "messages": messages,
-                "total": len(messages),
+                "total": total,
                 "limit": limit,
+                "offset": offset,
+                "order": order,
+                "pagination": {
+                    "has_more": (offset + returned) < total,
+                    "returned": returned,
+                    "next_offset": offset + returned,
+                },
             },
         )
 

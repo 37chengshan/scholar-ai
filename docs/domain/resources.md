@@ -28,7 +28,6 @@
 - ChatMessage：会话消息
 - Task：异步任务
 - IndexArtifact：索引或检索产物
-- ImportJob：统一导入任务（上传/解析/去重/入库）
 - ImportBatch：批量导入会话
 
 资源关系：
@@ -38,6 +37,24 @@
 - ChatSession 包含多个 ChatMessage。
 - Task 作用于 Paper、Collection 或 IndexArtifact。
 
+ChatSession/ChatMessage 读取契约约束：
+
+- `GET /api/v1/sessions/{session_id}/messages` 必须返回：
+	- `total`：会话消息全量总数
+	- `limit` / `offset`：分页窗口
+	- `order`：消息时间序（`asc` 或 `desc`）
+	- `pagination.has_more` / `pagination.returned` / `pagination.next_offset`
+- 禁止把 `total` 语义降级为“当前页长度”。
+- Chat SSE 除 heartbeat 外必须携带 `message_id`，并且与历史消息回读中的 `ChatMessage.id` 可追踪关联。
+
+Chat 查询作用域资源约束：
+
+- Chat stream 请求允许 `scope`：
+	- `paper`（绑定单论文）
+	- `knowledge_base`（绑定知识库）
+	- `general`（全局无绑定）
+- `mode` 固定枚举：`auto | rag | agent`。
+
 状态机：
 
 - Paper：uploaded -> parsing -> parsed -> indexed -> archived | failed
@@ -46,7 +63,6 @@
 - Task：queued -> running -> succeeded | failed | canceled
 - ChatSession：active -> closed | archived
 - IndexArtifact：building -> ready | failed -> rebuilding
-- ImportJob：created -> queued -> running -> awaiting_user_action -> completed | failed | cancelled
 - ImportBatch：created -> running -> completed | failed | cancelled | partial
 
 Paper 交互资源补充：
@@ -72,7 +88,6 @@ Paper 交互资源补充：
 - Chunk（生成、重算、清理）
 - Task（执行状态）
 - IndexArtifact（构建状态）
-- ImportJob（阶段推进与终态）
 - ImportBatch（聚合计数与整体状态）
 
 ## Required Updates
@@ -87,6 +102,7 @@ Paper 交互资源补充：
 - 抽样检查 API 响应中的资源状态是否在状态机集合内。
 - 抽样检查任务完成后资源状态迁移是否可追踪。
 - 抽样检查同一资源无重复命名或平行模型定义。
+- 运行 `cd apps/api && .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1`，验证 stream->messages 回读链路契约稳定。
 
 ## Open Questions
 

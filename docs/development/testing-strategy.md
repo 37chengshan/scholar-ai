@@ -28,6 +28,8 @@
 - API 路由到 service 的主链路
 - 数据库读写与任务状态变更
 - SSE 关键事件序列
+- Import Pipeline 批次接口部分成功契约（accepted/rejected）
+- Chat stream 到 session messages 回读契约一致性
 
 E2E 覆盖范围：
 
@@ -70,6 +72,8 @@ E2E 覆盖范围：
 - 鉴权与权限控制变更
 - SSE 事件语义变更
 - 路由命名或参数协议变更
+- 导入批次响应结构变更（`accepted/rejected/reason`）
+- 会话消息分页与 total 语义变更
 
 ## Required Updates
 
@@ -94,6 +98,7 @@ E2E 覆盖范围：
 	- cd packages/types && npm run build
 	- cd packages/sdk && npm run build
 	- cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
+	- cd apps/api && .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1
 
 - CI 最小验证：
 	- 核心文档存在性检查

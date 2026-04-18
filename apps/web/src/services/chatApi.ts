@@ -69,8 +69,10 @@ export async function getSessions(): Promise<Session[]> {
  * @returns Messages list
  */
 export async function getMessages(sessionId: string): Promise<Message[]> {
-  const messages = await chatSessionsApiClient.getMessages(sessionId);
-  return messages as unknown as Message[];
+  const response = await chatSessionsApiClient.getMessages(sessionId, {
+    order: 'desc',
+  });
+  return response.data.messages as unknown as Message[];
 }
 
 /**

@@ -17,7 +17,7 @@ records:
     owner: web-platform
     component: chat-streaming
     introduced_at: "2026-04-16"
-    expires_at: "2026-04-30"
-    removal_plan: "Delete temporary impute path after SSE contract hardening"
-    status: active
-    tracking_ref: "wip-pr10-streaming-hardening"
+    expires_at: "2026-04-18"
+    removal_plan: "Retired in PR22-C after enforcing message_id as required business-event field"
+    status: removed
+    tracking_ref: "pr22-c-sse-hardening"
