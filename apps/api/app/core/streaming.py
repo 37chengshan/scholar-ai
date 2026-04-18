@@ -371,10 +371,12 @@ async def stream_rag_response(
     
     # Build context from top chunks
     context_chunks = result.get("results", [])[:5]
-    context_text = "\n\n---\n\n".join([
-        f"[{i+1}] {chunk.get('content_data', '')}" 
-        for i, chunk in enumerate(context_chunks)
-    ])
+    context_text = "\n\n---\n\n".join(
+        [
+            f"[{i + 1}] {chunk.get('text') or chunk.get('content_data', '') or chunk.get('content', '')}"
+            for i, chunk in enumerate(context_chunks)
+        ]
+    )
     
     # Create LLM client
     llm_client = ZhipuLLMClient()
@@ -428,6 +430,7 @@ Please provide a comprehensive answer based on the context above."""
                     chunk.get("text_preview")
                     or chunk.get("content_preview")
                     or chunk.get("snippet")
+                    or chunk.get("text")
                     or chunk.get("content_data", "")
                 )
                 text_preview = (text_preview or "")[:200]
