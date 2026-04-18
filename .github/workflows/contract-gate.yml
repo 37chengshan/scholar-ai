@@ -1,0 +1,28 @@
+name: Contract Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  contract-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run contract gate
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check-contract-gate.sh
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            bash scripts/check-contract-gate.sh --base "$BASE_REF" --head HEAD
+          else
+            bash scripts/check-contract-gate.sh
+          fi

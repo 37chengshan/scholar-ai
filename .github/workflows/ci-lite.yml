@@ -31,6 +31,21 @@ jobs:
       - name: Run code boundary check
         run: bash scripts/check-code-boundaries.sh
 
+      - name: Run phase tracking check
+        run: bash scripts/check-phase-tracking.sh
+
+      - name: Run branch lifecycle check
+        run: bash scripts/check-branch-lifecycle.sh
+
+      - name: Run contract gate check
+        run: bash scripts/check-contract-gate.sh
+
+      - name: Run fallback expiry check
+        run: bash scripts/check-fallback-expiry.sh
+
+      - name: Run E2E gate manifest check
+        run: bash scripts/check-e2e-gate.sh --mode manifest
+
   web:
     name: Web Typecheck and Tests
     runs-on: ubuntu-latest

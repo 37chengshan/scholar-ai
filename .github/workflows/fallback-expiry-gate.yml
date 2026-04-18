@@ -1,0 +1,22 @@
+name: Fallback Expiry Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  fallback-expiry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run fallback expiry check
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check-fallback-expiry.sh
+          bash scripts/check-fallback-expiry.sh

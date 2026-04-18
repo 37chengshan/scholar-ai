@@ -14,11 +14,11 @@ Endpoints:
 """
 
 import os
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.database import get_db
@@ -44,7 +44,52 @@ from .paper_shared import (
 router = APIRouter()
 
 
-@router.get("/{paper_id}/status")
+# =============================================================================
+# Response Models
+# =============================================================================
+
+
+class PaperStatusResponse(BaseModel):
+    """Response for paper processing status."""
+
+    success: bool = True
+    data: dict = Field(default_factory=dict)
+
+
+class ChunksResponse(BaseModel):
+    """Response for paper chunks."""
+
+    success: bool = True
+    data: List[dict] = Field(default_factory=list)
+
+
+class TaskTriggerResponse(BaseModel):
+    """Response for task trigger operations."""
+
+    success: bool = True
+    data: dict = Field(default_factory=dict)
+
+
+class PaperSummaryResponse(BaseModel):
+    """Response for paper summary and notes."""
+
+    success: bool = True
+    data: dict = Field(default_factory=dict)
+
+
+class PaperResponse(BaseModel):
+    """Response for paper operations."""
+
+    success: bool = True
+    data: dict = Field(default_factory=dict)
+
+
+# =============================================================================
+# Endpoints
+# =============================================================================
+
+
+@router.get("/{paper_id}/status", response_model=PaperStatusResponse)
 async def get_paper_status(
     request: Request,
     paper_id: str,
@@ -93,7 +138,7 @@ async def get_paper_status(
     }
 
 
-@router.patch("/{paper_id}/starred")
+@router.patch("/{paper_id}/starred", response_model=PaperResponse)
 async def toggle_starred(
     request: Request,
     paper_id: str,
@@ -125,7 +170,7 @@ async def toggle_starred(
     paper.updated_at = datetime.now(timezone.utc)
     await db.refresh(paper)
 
-    return {"success": True, "data": format_paper_response(paper)}
+    return PaperResponse(success=True, data=format_paper_response(paper))
 
 
 @router.get("/{paper_id}/download")
@@ -186,7 +231,7 @@ async def download_paper(
     )
 
 
-@router.get("/{paper_id}/chunks")
+@router.get("/{paper_id}/chunks", response_model=ChunksResponse)
 async def get_paper_chunks(
     request: Request,
     paper_id: str,
@@ -221,9 +266,9 @@ async def get_paper_chunks(
     chunks_result = await db.execute(chunks_query)
     chunks = chunks_result.scalars().all()
 
-    return {
-        "success": True,
-        "data": [
+    return ChunksResponse(
+        success=True,
+        data=[
             {
                 "id": c.id,
                 "content": c.content,
@@ -236,10 +281,10 @@ async def get_paper_chunks(
             }
             for c in chunks
         ],
-    }
+    )
 
 
-@router.post("/{paper_id}/regenerate-chunks")
+@router.post("/{paper_id}/regenerate-chunks", response_model=TaskTriggerResponse)
 async def regenerate_chunks(
     request: Request,
     paper_id: str,
@@ -291,13 +336,13 @@ async def regenerate_chunks(
         )
         db.add(task)
 
-    return {
-        "success": True,
-        "data": {
+    return TaskTriggerResponse(
+        success=True,
+        data={
             "taskId": task_id,
             "message": "Chunk regeneration triggered",
         },
-    }
+    )
 
 
 class RegenerateNotesRequest(BaseModel):
@@ -305,7 +350,7 @@ class RegenerateNotesRequest(BaseModel):
     modificationRequest: Optional[str] = None
 
 
-@router.get("/{paper_id}/summary")
+@router.get("/{paper_id}/summary", response_model=PaperSummaryResponse)
 async def get_paper_summary(
     request: Request,
     paper_id: str,
@@ -332,19 +377,19 @@ async def get_paper_summary(
             instance=instance,
         )
 
-    return {
-        "success": True,
-        "data": {
+    return PaperSummaryResponse(
+        success=True,
+        data={
             "paperId": paper_id,
             "summary": paper.reading_notes,
             "imrad": paper.imrad_json,
             "status": paper.status,
             "hasNotes": paper.reading_notes is not None and len(paper.reading_notes) > 0,
         },
-    }
+    )
 
 
-@router.post("/{paper_id}/regenerate-notes")
+@router.post("/{paper_id}/regenerate-notes", response_model=TaskTriggerResponse)
 async def regenerate_notes(
     request: Request,
     paper_id: str,
@@ -409,14 +454,14 @@ async def regenerate_notes(
         modification_request=body.modificationRequest if body else None,
     )
 
-    return {
-        "success": True,
-        "data": {
+    return TaskTriggerResponse(
+        success=True,
+        data={
             "paperId": paper_id,
             "status": "pending",
             "message": "Notes regeneration triggered",
         },
-    }
+    )
 
 
 @router.get("/{paper_id}/notes/export")

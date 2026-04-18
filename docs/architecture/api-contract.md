@@ -132,6 +132,18 @@ Chat 流协议真源：
 - app/services/chat_orchestrator.py 负责 message_id 绑定与事件编排。
 - app/api/chat.py 负责 stream 接口对外契约。
 
+Paper 资源契约补充：
+
+- `GET /api/v1/papers`：返回 `data.items[]` 与 `meta.limit/offset/total`。
+- `GET /api/v1/papers/{paperId}`：返回单资源结构，字段命名遵循边界转换规则。
+- `POST /api/v1/papers/{paperId}/star`：只允许返回统一 envelope，不允许裸布尔返回。
+- `POST /api/v1/papers/batch-delete`：批量删除必须返回可追踪结果（成功列表与失败列表）。
+
+Plan C 契约治理约束：
+
+- 契约表面改动（apps/api/app/api, apps/api/app/models, apps/web/src/services, packages/types, packages/sdk）必须同步更新本文件与 `docs/domain/resources.md`。
+- 任何 fallback 契约兼容必须在 `docs/governance/fallback-register.yaml` 登记到期时间与删除计划。
+
 ## Required Updates
 
 - 新增接口：同步校验是否符合本契约。

@@ -215,6 +215,11 @@ table_status="$(extract_table_column "$plan_id" 4)"
 table_depends_on="$(extract_table_column "$plan_id" 5)"
 table_last_verified_at="$(extract_table_column "$plan_id" 6)"
 table_evidence="$(extract_table_column "$plan_id" 7)"
+table_phase_unit_id="$(extract_table_column "$plan_id" 8)"
+table_deliverable_unit_id="$(extract_table_column "$plan_id" 9)"
+table_pr_link="$(extract_table_column "$plan_id" 10)"
+table_coverage_scope="$(extract_table_column "$plan_id" 11)"
+table_risk_level="$(extract_table_column "$plan_id" 12)"
 
 if [[ -z "$table_status" ]]; then
     echo "[plan-governance] PLAN_STATUS missing row for $plan_id" >&2
@@ -263,6 +268,31 @@ if [[ "$status_value" == "done" || "$status_value" == "in-progress" ]]; then
       fi
     elif ! validate_evidence_list "$normalized_evidence_frontmatter" "false"; then
       echo "[plan-governance] invalid evidence_commits format for in-progress plan $plan_id" >&2
+      fail_count=$((fail_count + 1))
+    fi
+
+    if [[ -z "$table_phase_unit_id" || "$table_phase_unit_id" == "-" ]]; then
+      echo "[plan-governance] missing phase_unit_id in PLAN_STATUS for active/done plan $plan_id" >&2
+      fail_count=$((fail_count + 1))
+    fi
+
+    if [[ -z "$table_deliverable_unit_id" || ! "$table_deliverable_unit_id" =~ ^DU-[0-9]{8}-[0-9]{3}$ ]]; then
+      echo "[plan-governance] invalid deliverable_unit_id in PLAN_STATUS for active/done plan $plan_id" >&2
+      fail_count=$((fail_count + 1))
+    fi
+
+    if [[ -z "$table_pr_link" || "$table_pr_link" == "-" ]]; then
+      echo "[plan-governance] missing pr_link in PLAN_STATUS for active/done plan $plan_id" >&2
+      fail_count=$((fail_count + 1))
+    fi
+
+    if [[ -z "$table_coverage_scope" || "$table_coverage_scope" == "-" ]]; then
+      echo "[plan-governance] missing coverage_scope in PLAN_STATUS for active/done plan $plan_id" >&2
+      fail_count=$((fail_count + 1))
+    fi
+
+    if [[ ! "$table_risk_level" =~ ^(low|medium|high)$ ]]; then
+      echo "[plan-governance] invalid risk_level in PLAN_STATUS for active/done plan $plan_id: $table_risk_level" >&2
       fail_count=$((fail_count + 1))
     fi
   fi

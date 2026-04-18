@@ -1,0 +1,23 @@
+schema_version: 1
+owners:
+  - ai-runtime
+  - web-platform
+  - app-foundation
+  - ai-platform
+records:
+  - id: fb-20260418-rag-legacy-alias
+    owner: ai-runtime
+    component: retrieval-contract
+    introduced_at: "2026-04-10"
+    expires_at: "2026-04-17"
+    removal_plan: "Removed in PlanB W4-W8 migration"
+    status: removed
+    tracking_ref: "1514dd6"
+  - id: fb-20260418-chat-message-id-impute
+    owner: web-platform
+    component: chat-streaming
+    introduced_at: "2026-04-16"
+    expires_at: "2026-04-30"
+    removal_plan: "Delete temporary impute path after SSE contract hardening"
+    status: active
+    tracking_ref: "wip-pr10-streaming-hardening"

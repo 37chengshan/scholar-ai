@@ -14,7 +14,10 @@
 - 文档校验：docs/development/documentation-validation.md
 - API 契约：docs/architecture/api-contract.md
 - 测试策略：docs/development/testing-strategy.md
-- PR 模板：.github/PULL_REQUEST_TEMPLATE.md
+- PR 模板：.github/pull_request_template.md
+- Phase 台账：docs/governance/phase-delivery-ledger.md
+- 分支生命周期：docs/governance/branch-lifecycle-policy.md
+- Fallback 台账：docs/governance/fallback-register.yaml
 
 ## Rules
 
@@ -24,6 +27,12 @@
 - fix/<scope>-<summary>
 - chore/<scope>-<summary>
 - docs/<scope>-<summary>
+
+分支生命周期：
+
+- 所有分支必须登记 lifecycle_state（created/active/review-ready/merged/superseded/archived）。
+- active 分支超过 14 天无更新将触发阻断。
+- superseded 分支必须标注 replacement_branch。
 
 commit 规范：
 
@@ -37,6 +46,9 @@ PR 描述模板要求：
 - 风险与回滚
 - 验证命令与结果
 - 契约与文档同步情况
+- Phase ID 与 Deliverable Unit
+- 未覆盖项与风险等级
+- fallback 引入与退役计划（如适用）
 
 Review checklist：
 
@@ -59,11 +71,15 @@ API 变更必须同步更新：
 - 前端变更至少通过 type-check
 - 后端变更至少通过 pytest 冒烟（tests/unit/test_services.py）
 - 文档治理变更至少通过核心文档存在性检查
+- 契约表面变更必须通过 contract gate（并同步 api-contract/resources）。
+- fallback 引入必须写入 fallback-register，且通过到期检查。
+- 关键链路必须通过 E2E gate 后才允许合并。
 
 ## Required Updates
 
-- 调整审查门禁：同步更新 .github/PULL_REQUEST_TEMPLATE.md。
+- 调整审查门禁：同步更新 .github/pull_request_template.md。
 - 调整验证命令：同步更新 docs/development/testing-strategy.md。
+- 调整分支生命周期阈值：同步更新 docs/governance/branch-lifecycle-policy.md 与 scripts/check-branch-lifecycle.sh。
 
 ## Verification
 
@@ -71,6 +87,10 @@ API 变更必须同步更新：
 - 抽样检查 API 变更 PR 是否同步更新契约文档。
 - 抽样检查 branch 与 commit 命名是否符合规则。
 - 抽样检查结构治理 PR 是否附带治理脚本结果。
+- 运行 bash scripts/check-phase-tracking.sh。
+- 运行 bash scripts/check-branch-lifecycle.sh。
+- 运行 bash scripts/check-contract-gate.sh。
+- 运行 bash scripts/check-fallback-expiry.sh。
 
 ## Open Questions
 

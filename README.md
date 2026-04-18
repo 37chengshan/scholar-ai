@@ -34,6 +34,10 @@ ScholarAI 是面向学术阅读与知识工作流的全栈 AI 工程仓库，目
 - 测试策略：docs/development/testing-strategy.md
 - 代码边界基线：docs/governance/code-boundary-baseline.md
 - Harness 治理：docs/governance/harness-engineering-playbook.md
+- Phase 台账：docs/governance/phase-delivery-ledger.md
+- 分支生命周期：docs/governance/branch-lifecycle-policy.md
+- 治理 KPI：docs/governance/governance-kpi-spec.md
+- E2E 失败手册：docs/governance/e2e-failure-handbook.md
 - 仓库协同地图：AGENTS.md
 - 架构导航入口：architecture.md
 
@@ -58,6 +62,7 @@ ScholarAI 是面向学术阅读与知识工作流的全栈 AI 工程仓库，目
 - 变更资源生命周期：同时更新 docs/domain/resources.md。
 - 变更流程与规范：同时更新 docs/development 下对应文档。
 - 调整治理门禁或稳定化策略：同步更新 docs/governance/migration-conditions.md。
+- 调整 phase 追踪、分支生命周期、fallback 或 E2E 策略：同步更新 docs/governance 对应文档。
 
 ## Verification
 
@@ -83,6 +88,12 @@ bash scripts/check-doc-governance.sh
 bash scripts/check-structure-boundaries.sh
 bash scripts/check-code-boundaries.sh
 bash scripts/check-governance.sh
+bash scripts/check-phase-tracking.sh
+bash scripts/check-branch-lifecycle.sh
+bash scripts/check-contract-gate.sh
+bash scripts/check-fallback-expiry.sh
+bash scripts/check-e2e-gate.sh --mode manifest
+bash scripts/audit-governance-kpi.sh --window 14d --output docs/reports/governance-kpi/latest.md
 bash scripts/verify-all-phases.sh
 cd apps/web && npm run type-check
 cd apps/web && npm run test:run

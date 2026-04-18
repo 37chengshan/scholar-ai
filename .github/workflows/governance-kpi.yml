@@ -1,0 +1,27 @@
+name: Governance KPI
+
+on:
+  schedule:
+    - cron: "0 4 */14 * *"
+  workflow_dispatch:
+
+jobs:
+  governance-kpi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate KPI report
+        run: |
+          set -euo pipefail
+          chmod +x scripts/audit-governance-kpi.sh
+          bash scripts/audit-governance-kpi.sh --window 14d --output docs/reports/governance-kpi/latest.md
+
+      - name: Upload KPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-kpi-latest
+          path: docs/reports/governance-kpi/latest.md

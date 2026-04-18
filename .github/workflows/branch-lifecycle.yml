@@ -1,0 +1,22 @@
+name: Branch Lifecycle
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  branch-lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run branch lifecycle check
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check-branch-lifecycle.sh
+          bash scripts/check-branch-lifecycle.sh

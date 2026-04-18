@@ -12,7 +12,7 @@ if [[ ! -f .github/workflows/governance.yml && ! -f .github/workflows/governance
   exit 1
 fi
 
-test -f .github/PULL_REQUEST_TEMPLATE.md
+test -f .github/pull_request_template.md
 test -d .github/ISSUE_TEMPLATE
 echo "✓ 文件存在"
 
