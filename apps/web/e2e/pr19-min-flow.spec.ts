@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 
 const THIS_FILE = fileURLToPath(import.meta.url);
 const THIS_DIR = path.dirname(THIS_FILE);
-const REPORT_PATH = path.resolve(THIS_DIR, '../../docs/reports/pr19-min-flow-browser-report.json');
+const REPORT_PATH = path.resolve(THIS_DIR, '../../../docs/reports/pr19-min-flow-browser-report.json');
 
 const CANDIDATE_ACCOUNTS = [
   { email: 'test@example.com', password: 'Test123456' },
@@ -156,6 +156,7 @@ test.describe('PR19 最小真实流程联调', () => {
 
     const kbUrl = page.url();
     const kbId = kbUrl.split('/knowledge-bases/')[1]?.split('?')[0] || '';
+    expect(kbId).toBeTruthy();
 
     report.steps = {
       ...(report.steps as Record<string, unknown>),
@@ -205,6 +206,31 @@ test.describe('PR19 最小真实流程联调', () => {
     if (await startUploadButton.isEnabled()) {
       await startUploadButton.click();
     }
+
+    const queueItems = page.locator('[data-testid="upload-queue-item"]');
+    await expect
+      .poll(async () => {
+        const count = await queueItems.count();
+        let settled = 0;
+        for (let i = 0; i < count; i += 1) {
+          const text = ((await queueItems.nth(i).textContent()) || '').trim();
+          if (/已进入后台处理|已完成|上传失败/.test(text)) {
+            settled += 1;
+          }
+        }
+        return settled;
+      }, {
+        timeout: 180000,
+        intervals: [1000, 2000, 3000],
+      })
+      .toBeGreaterThan(0);
+
+    await expect
+      .poll(async () => await page.locator('[data-testid="upload-metrics-panel"] tbody tr').count(), {
+        timeout: 120000,
+        intervals: [1000, 2000, 3000],
+      })
+      .toBeGreaterThan(0);
 
     await expect
       .poll(async () => await page.getByText(/已进入后台处理|已完成/).count(), {
@@ -278,6 +304,8 @@ test.describe('PR19 最小真实流程联调', () => {
     fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true });
     fs.writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2), 'utf-8');
 
+    expect(turn1.enteredStreamingState || turn1.placeholderVisible).toBeTruthy();
+    expect(turn2.enteredStreamingState || turn2.placeholderVisible).toBeTruthy();
     expect(turn1.totalMs).toBeGreaterThan(0);
     expect(turn2.totalMs).toBeGreaterThan(0);
   });
