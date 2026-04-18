@@ -1,13 +1,14 @@
 """System API endpoints.
 
 Provides endpoints for system diagnostics:
+- GET /api/v1/system/health - System health check
 - GET /api/v1/system/storage - Get storage usage
 - GET /api/v1/system/logs/stream - SSE endpoint for log streaming
 """
 
 import asyncio
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
@@ -39,6 +40,25 @@ class StorageResponse(BaseModel):
     """Response for storage info."""
     success: bool = True
     data: Dict[str, StorageInfo]
+
+
+class ServiceHealth(BaseModel):
+    """Individual service health status."""
+    status: str
+    error: Optional[str] = None
+
+
+class SystemHealthData(BaseModel):
+    """System health data payload."""
+    status: str
+    services: Dict[str, ServiceHealth]
+    timestamp: str
+
+
+class SystemHealthResponse(BaseModel):
+    """Response for system health check."""
+    success: bool = True
+    data: SystemHealthData
 
 
 # =============================================================================
@@ -140,7 +160,7 @@ async def stream_logs(request: Request):
     )
 
 
-@router.get("/health")
+@router.get("/health", response_model=SystemHealthResponse)
 async def system_health():
     """System health check endpoint.
 
@@ -148,7 +168,7 @@ async def system_health():
     """
     health = await get_services_health()
 
-    return {
-        "success": True,
-        "data": health,
-    }
+    return SystemHealthResponse(
+        success=True,
+        data=SystemHealthData(**health),
+    )
