@@ -1,4 +1,4 @@
-.PHONY: help db-migrate db-history db-check db-stamp db-reset db-diff db-diff-strict preflight preflight-strict
+.PHONY: help db-migrate db-history db-check db-stamp db-reset db-diff db-diff-strict preflight preflight-strict baseline-docling
 
 ENV ?= development
 
@@ -36,3 +36,6 @@ preflight:     ## Run runtime preflight checks (report only)
 
 preflight-strict:  ## Run runtime preflight checks (fail on errors)
 	@PYTHONPATH=. python scripts/preflight_check.py --strict
+
+baseline-docling:  ## Generate born-digital vs scanned docling perf baseline
+	@PYTHONPATH=. python scripts/run_docling_perf_baseline.py
