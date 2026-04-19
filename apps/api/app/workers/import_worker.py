@@ -37,6 +37,16 @@ from app.services.source_adapters import (
 )
 from app.utils.logger import logger
 
+_worker_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def _run_async_in_worker_loop(coro):
+    global _worker_loop
+    if _worker_loop is None or _worker_loop.is_closed():
+        _worker_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_worker_loop)
+    return _worker_loop.run_until_complete(coro)
+
 
 def get_adapter(source_type: str):
     """Get source adapter by type."""
@@ -365,7 +375,7 @@ def process_import_job(self, job_id: str):
                 )
 
     # Run async function in sync Celery task
-    asyncio.run(_process())
+    _run_async_in_worker_loop(_process())
 
 
 @celery_app.task(
@@ -423,7 +433,7 @@ def on_processing_task_complete(self, processing_task_id: str, paper_id: str):
                     paper_id=paper_id,
                 )
 
-    asyncio.run(_callback())
+    _run_async_in_worker_loop(_callback())
 
 
 # =============================================================================
