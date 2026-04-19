@@ -21,6 +21,14 @@ from app.database import AsyncSessionLocal
 from app.models import Paper, ProcessingTask, PaperBatch
 from app.models.import_job import ImportJob
 
+def _run_with_fresh_async_db(coro):
+    from app.database import close_sqlalchemy_engine
+    try:
+        asyncio.run(close_sqlalchemy_engine())
+    except Exception:
+        pass
+    return asyncio.run(coro)
+
 
 # Current concurrency level (will be adjusted by memory monitor)
 _current_concurrency = 8
@@ -182,7 +190,7 @@ def process_pdf_batch_task(self, batch_id: str):
             logger.info(f"Batch {batch_id} complete: {completed} success, {failed} failed")
 
     # Run async function in sync Celery task
-    asyncio.run(_process_batch())
+    _run_with_fresh_async_db(_process_batch())
 
 
 async def process_single_pdf_async(
@@ -349,7 +357,7 @@ async def process_single_pdf_async(
 )
 def process_single_pdf_task(self, paper_id: str, processing_task_id: Optional[str] = None):
     """Standalone task to process single PDF (used for retry)."""
-    asyncio.run(process_single_pdf_async(paper_id, self, processing_task_id))
+    _run_with_fresh_async_db(process_single_pdf_async(paper_id, self, processing_task_id))
 
 
 @celery_app.task
@@ -373,4 +381,4 @@ def retry_batch_failed_papers_task(batch_id: str):
             for paper_id in failed_papers:
                 process_single_pdf_task.delay(paper_id)
 
-    asyncio.run(_retry_failed())
+    _run_with_fresh_async_db(_retry_failed())
