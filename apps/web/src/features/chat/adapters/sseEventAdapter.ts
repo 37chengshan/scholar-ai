@@ -40,6 +40,11 @@ export function normalizeSSEEventEnvelope(
   envelope: RawSSEEventEnvelope
 ): CanonicalSSEEventEnvelope | null {
   const data = ensureObjectData(envelope.data);
+  const maybeWrappedData =
+    typeof data.event === 'string' &&
+    Object.prototype.hasOwnProperty.call(data, 'data')
+      ? ensureObjectData(data.data)
+      : data;
 
   switch (envelope.event_type) {
     case 'session_start':
@@ -56,7 +61,7 @@ export function normalizeSSEEventEnvelope(
     case 'error':
       return {
         ...envelope,
-        data,
+        data: maybeWrappedData,
         event_type: envelope.event_type,
       };
 

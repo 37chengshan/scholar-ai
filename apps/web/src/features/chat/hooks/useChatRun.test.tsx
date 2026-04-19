@@ -6,7 +6,7 @@ import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore'
 describe('useChatRun', () => {
   it('derives single_paper scope when paperId exists', () => {
     useChatWorkspaceStore.setState({
-      scope: { paperId: 'p-1', kbId: null },
+      scope: { type: 'single_paper', id: 'p-1' },
       activeRunStatus: 'running',
       selectedRunId: 'run-1',
       mode: 'rag',
@@ -21,7 +21,7 @@ describe('useChatRun', () => {
 
   it('derives waiting_confirmation phase from run status', () => {
     useChatWorkspaceStore.setState({
-      scope: { paperId: null, kbId: 'kb-1' },
+      scope: { type: 'full_kb', id: 'kb-1' },
       activeRunStatus: 'waiting_confirmation',
       selectedRunId: 'run-2',
       mode: 'agent',

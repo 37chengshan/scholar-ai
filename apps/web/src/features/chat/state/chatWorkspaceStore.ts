@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import type { PendingAction, RunStatus } from '@/features/chat/types/run';
 
+export type WorkspaceScopeType = 'single_paper' | 'full_kb' | 'general' | 'error' | null;
+
+export interface WorkspaceScope {
+  type: WorkspaceScopeType;
+  id: string | null;
+  title?: string;
+  errorMessage?: string;
+}
+
 interface ChatWorkspaceState {
   selectedSessionId: string | null;
   selectedMessageId: string | null;
@@ -10,13 +19,12 @@ interface ChatWorkspaceState {
   timelinePanelOpen: boolean;
   recoveryBannerVisible: boolean;
   runArtifactsPanelOpen: boolean;
-  scope: {
-    paperId: string | null;
-    kbId: string | null;
-  };
+  scope: WorkspaceScope;
   mode: 'auto' | 'rag' | 'agent';
   composerDraft: string;
   rightPanelOpen: boolean;
+  isPinnedToBottom: boolean;
+  streamingMessageId: string | null;
   showDeleteConfirm: boolean;
   pendingDeleteSessionId: string | null;
   setSelectedSessionId: (id: string | null) => void;
@@ -27,10 +35,12 @@ interface ChatWorkspaceState {
   setTimelinePanelOpen: (open: boolean) => void;
   setRecoveryBannerVisible: (visible: boolean) => void;
   setRunArtifactsPanelOpen: (open: boolean) => void;
-  setScope: (scope: { paperId: string | null; kbId: string | null }) => void;
+  setScope: (scope: WorkspaceScope) => void;
   setMode: (mode: 'auto' | 'rag' | 'agent') => void;
   setComposerDraft: (draft: string) => void;
   setRightPanelOpen: (open: boolean) => void;
+  setIsPinnedToBottom: (pinned: boolean) => void;
+  setStreamingMessageId: (messageId: string | null) => void;
   setShowDeleteConfirm: (show: boolean) => void;
   setPendingDeleteSessionId: (id: string | null) => void;
 }
@@ -45,12 +55,14 @@ export const useChatWorkspaceStore = create<ChatWorkspaceState>((set) => ({
   recoveryBannerVisible: false,
   runArtifactsPanelOpen: false,
   scope: {
-    paperId: null,
-    kbId: null,
+    type: null,
+    id: null,
   },
   mode: 'auto',
   composerDraft: '',
   rightPanelOpen: true,
+  isPinnedToBottom: true,
+  streamingMessageId: null,
   showDeleteConfirm: false,
   pendingDeleteSessionId: null,
   setSelectedSessionId: (id) => set({ selectedSessionId: id }),
@@ -65,6 +77,8 @@ export const useChatWorkspaceStore = create<ChatWorkspaceState>((set) => ({
   setMode: (mode) => set({ mode }),
   setComposerDraft: (draft) => set({ composerDraft: draft }),
   setRightPanelOpen: (open) => set({ rightPanelOpen: open }),
+  setIsPinnedToBottom: (pinned) => set({ isPinnedToBottom: pinned }),
+  setStreamingMessageId: (messageId) => set({ streamingMessageId: messageId }),
   setShowDeleteConfirm: (show) => set({ showDeleteConfirm: show }),
   setPendingDeleteSessionId: (id) => set({ pendingDeleteSessionId: id }),
 }));
