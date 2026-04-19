@@ -116,12 +116,15 @@ services:
     environment:
       - NEO4J_DISABLED=true
       - OSS_ENDPOINT=local
+      - HF_HUB_OFFLINE=0
+      - TRANSFORMERS_OFFLINE=0
       - MILVUS_HOST=milvus-standalone
       - MILVUS_PORT=19530
     ports:
       - "8000:8000"
     volumes:
       - ./uploads:/app/uploads
+      - ~/.cache/huggingface:/root/.cache/huggingface:ro
       - backend_models:/app/models
       - ~/.cache/huggingface:/root/.cache/huggingface:ro
     depends_on:
@@ -149,7 +152,7 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     container_name: scholarai-celery-worker
-    command: celery -A app.core.celery_config worker --loglevel=info --concurrency=1 -Q celery,import.process,import.finalize,pdf.process
+    command: celery -A app.core.celery_config worker --pool=solo --loglevel=info --concurrency=1 -Q celery,import.process,import.finalize,pdf.process
     env_file:
       - .env.docker
     environment:
@@ -157,6 +160,8 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - OSS_ENDPOINT=local
+      - HF_HUB_OFFLINE=0
+      - TRANSFORMERS_OFFLINE=0
       - MILVUS_HOST=milvus-standalone
       - MILVUS_PORT=19530
       - PYTHONUNBUFFERED=1

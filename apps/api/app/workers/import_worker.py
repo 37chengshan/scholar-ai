@@ -37,14 +37,6 @@ from app.services.source_adapters import (
 )
 from app.utils.logger import logger
 
-def _run_with_fresh_async_db(coro):
-    from app.database import close_sqlalchemy_engine
-    try:
-        asyncio.run(close_sqlalchemy_engine())
-    except Exception:
-        pass
-    return asyncio.run(coro)
-
 
 def get_adapter(source_type: str):
     """Get source adapter by type."""
@@ -373,7 +365,7 @@ def process_import_job(self, job_id: str):
                 )
 
     # Run async function in sync Celery task
-    _run_with_fresh_async_db(_process())
+    asyncio.run(_process())
 
 
 @celery_app.task(
@@ -431,7 +423,7 @@ def on_processing_task_complete(self, processing_task_id: str, paper_id: str):
                     paper_id=paper_id,
                 )
 
-    _run_with_fresh_async_db(_callback())
+    asyncio.run(_callback())
 
 
 # =============================================================================
