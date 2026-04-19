@@ -330,7 +330,7 @@ async def kb_query(
         context_chunks = result.get("results", [])[:5]
         context_text = "\n\n---\n\n".join(
             [
-                f"[{i + 1}] {chunk.get('content_data', '')}"
+                f"[{i + 1}] {chunk.get('text') or chunk.get('content_data', '') or chunk.get('content', '')}"
                 for i, chunk in enumerate(context_chunks)
             ]
         )
@@ -383,7 +383,12 @@ Please provide a comprehensive answer based on the context above."""
                     "paperId": paper_id,
                     "paperTitle": paper_titles.get(paper_id),
                     "chunk_id": res.get("id"),
-                    "content_preview": res.get("content_data", "")[:200],
+                    "content_preview": (
+                        res.get("text")
+                        or res.get("content_data")
+                        or res.get("content")
+                        or ""
+                    )[:200],
                     "score": res.get("score", 0.0),
                     "page": res.get("page_num"),
                     "content_type": res.get("content_type"),

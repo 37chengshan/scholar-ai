@@ -122,13 +122,19 @@ async def search_library(
                 LibrarySearchResult(
                     id=str(r.get("id", "")),
                     paper_id=r.get("paper_id", ""),
-                    content=r.get("content_data", "")[:500]
-                    if r.get("content_data")
-                    else "",
+                    content=(
+                        r.get("text")
+                        or r.get("content_data")
+                        or r.get("content")
+                        or ""
+                    )[:500],
                     section=r.get("section"),
                     page=r.get("page_num"),
-                    rrf_score=r.get("reranker_score", r.get("distance", 0.0)),
-                    dense_score=r.get("distance", 0.0),
+                    rrf_score=r.get(
+                        "rrf_score",
+                        r.get("hybrid_score", r.get("score", r.get("distance", 0.0))),
+                    ),
+                    dense_score=r.get("score", r.get("distance", 0.0)),
                     sparse_score=0.0,
                     dense_rank=None,
                     sparse_rank=None,
@@ -371,15 +377,20 @@ async def fusion_search(
             library_results = []
             for r in result.get("results", []):
                 library_results.append(
-                    SearchResult(
-                        id=r.get("id", ""),
-                        title=r.get("title", "Unknown"),
-                        authors=[],
-                        year=r.get("year", 0),
-                        abstract=r.get("content_data", "")[:500],
-                        source="library",
-                        url="",
-                        pdfUrl=None,
+                SearchResult(
+                    id=r.get("id", ""),
+                    title=r.get("title", "Unknown"),
+                    authors=[],
+                    year=r.get("year", 0),
+                    abstract=(
+                        r.get("text")
+                        or r.get("content_data")
+                        or r.get("content")
+                        or ""
+                    )[:500],
+                    source="library",
+                    url="",
+                    pdfUrl=None,
                         citationCount=None,
                         arxivId=None,
                     )
