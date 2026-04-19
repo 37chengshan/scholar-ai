@@ -38,7 +38,7 @@ class UploadSessionService:
 
     def _upload_storage_key(self, user_id: str, import_job_id: str) -> str:
         now = datetime.now(timezone.utc)
-        return f"uploads/{user_id}/{now.strftime('%Y/%m/%d')}/{import_job_id}.pdf"
+        return f"{user_id}/{now.strftime('%Y/%m/%d')}/{import_job_id}.pdf"
 
     async def create_session(
         self,

@@ -9,6 +9,19 @@ from typing import Any, Dict
 
 import structlog
 
+def _resolve_log_level(raw_level: str | None) -> int:
+    """Resolve LOG_LEVEL env value into a valid logging level int."""
+    value = (raw_level or "INFO").strip()
+    if value.isdigit():
+        return int(value)
+
+    normalized = value.upper()
+    if normalized.startswith("LEVEL "):
+        normalized = normalized.split(" ", 1)[1].strip()
+
+    return logging.getLevelNamesMapping().get(normalized, logging.INFO)
+
+
 
 # 配置 structlog (compatible with structlog 25.x)
 # merge_contextvars processor automatically adds all bound contextvars to event dict
@@ -24,7 +37,7 @@ structlog.configure(
         else structlog.processors.JSONRenderer(),
     ],
     wrapper_class=structlog.make_filtering_bound_logger(
-        logging.getLevelName(os.getenv("LOG_LEVEL", "INFO"))
+        _resolve_log_level(os.getenv("LOG_LEVEL"))
     ),
 )
 

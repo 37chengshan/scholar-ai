@@ -23,11 +23,11 @@ Provides complete API services for ScholarAI:
 Wave 4 Integration - Unified backend replacing Node.js + Python split architecture.
 """
 
-# Set HuggingFace offline mode before importing any ML libraries
+# Set default HuggingFace mode before importing any ML libraries
 import os
 
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 from contextlib import asynccontextmanager
 from typing import Optional, Any

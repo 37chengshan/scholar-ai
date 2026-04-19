@@ -202,10 +202,10 @@ def _load_model_metadata() -> None:
 
 
 async def ensure_non_production_tables(table_names: Iterable[str]) -> None:
-    """Create a bounded set of missing tables for local/non-production use.
+    """Create missing SQLAlchemy tables for local/non-production use.
 
-    This is intentionally scoped to additive tables used by the import flow so
-    local brownfield databases can recover without forcing a full reset.
+    In non-production profiles we ensure the full metadata schema exists so
+    local stacks can boot without requiring manual migration steps.
     """
     if settings.ENVIRONMENT == "production":
         return
@@ -213,30 +213,15 @@ async def ensure_non_production_tables(table_names: Iterable[str]) -> None:
     requested_names = tuple(table_names)
     _load_model_metadata()
 
-    requested_tables = [
-        Base.metadata.tables[name]
-        for name in requested_names
-        if name in Base.metadata.tables
-    ]
-
-    if not requested_tables:
-        logger.warning(
-            "No SQLAlchemy tables resolved for non-production bootstrap",
-            table_names=list(requested_names),
-        )
-        return
-
     async with engine.begin() as conn:
         await conn.run_sync(
-            lambda sync_conn: Base.metadata.create_all(
-                sync_conn,
-                tables=requested_tables,
-            )
+            lambda sync_conn: Base.metadata.create_all(sync_conn)
         )
 
     logger.info(
         "Ensured non-production SQLAlchemy tables",
-        table_names=[table.name for table in requested_tables],
+        table_names=[table.name for table in Base.metadata.sorted_tables],
+        requested_names=list(requested_names),
     )
 
 
