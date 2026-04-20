@@ -745,6 +745,19 @@ export function useChatStream(
         case 'heartbeat':
           // Ignore heartbeat events
           break;
+
+        // Run protocol events — forwarded to runtime layer, not handled here
+        case 'run_start':
+        case 'run_phase_change':
+        case 'step_start':
+        case 'step_complete':
+        case 'run_complete':
+        case 'recovery_available':
+        case 'evidence':
+        case 'artifact':
+          // These are consumed by useRuntime.ingestEvent()
+          // No action needed in useChatStream
+          break;
       }
     },
     [bufferedDispatch]
