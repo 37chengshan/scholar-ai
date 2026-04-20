@@ -72,7 +72,7 @@ function ReadContent() {
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [scale, setScale] = useState(1.0);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [rightTab, setRightTab] = useState("annotations");
+  const [rightTab, setRightTab] = useState("notes");
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [panelWidth, setPanelWidth] = useState(360);
@@ -527,14 +527,14 @@ function ReadContent() {
               className="h-full flex flex-col"
             >
               <TabsList className="px-2 pt-2 justify-start shrink-0">
+                <TabsTrigger value="notes" className="text-xs">
+                  {isZh ? "笔记" : "Notes"}
+                </TabsTrigger>
                 <TabsTrigger value="annotations" className="text-xs">
                   {isZh ? "批注" : "Annotations"}
                 </TabsTrigger>
                 <TabsTrigger value="summary" className="text-xs">
                   {isZh ? "AI总结" : "AI Summary"}
-                </TabsTrigger>
-                <TabsTrigger value="notes" className="text-xs">
-                  {isZh ? "笔记" : "Notes"}
                 </TabsTrigger>
               </TabsList>
 

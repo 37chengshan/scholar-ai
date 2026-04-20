@@ -7,19 +7,19 @@ import { Sheet, SheetContent } from "./ui/sheet";
 import { useState } from "react";
 
 const navItemsEN = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "Overview" },
-  { to: "/knowledge-bases", icon: BookOpen, label: "Knowledge" },
+  { to: "/chat", icon: MessageSquare, label: "Chat" },
+  { to: "/knowledge-bases", icon: BookOpen, label: "Library" },
   { to: "/notes", icon: StickyNote, label: "Notes" },
-  { to: "/search", icon: Search, label: "Discovery" },
-  { to: "/chat", icon: MessageSquare, label: "Terminal" },
+  { to: "/search", icon: Search, label: "Search" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
 ];
 
 const navItemsZH = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "仪表盘" },
+  { to: "/chat", icon: MessageSquare, label: "AI 对话" },
   { to: "/knowledge-bases", icon: BookOpen, label: "知识库" },
   { to: "/notes", icon: StickyNote, label: "笔记" },
   { to: "/search", icon: Search, label: "检索" },
-  { to: "/chat", icon: MessageSquare, label: "终端对话" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "仪表盘" },
 ];
 
 export function Layout() {
@@ -134,15 +134,17 @@ export function Layout() {
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Content Area — No noise texture on Chat route */}
       <main className="flex-1 flex flex-col min-h-0 bg-background relative">
-        <svg className="absolute inset-0 w-full h-full opacity-[0.03] pointer-events-none z-50 mix-blend-multiply">
-          <filter id="noiseFilter">
-            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" />
-          </filter>
-          <rect width="100%" height="100%" filter="url(#noiseFilter)" />
-        </svg>
-        <div className={isChatRoute ? 'flex-1 overflow-hidden z-10' : 'flex-1 overflow-y-auto z-10'}>
+        {!isChatRoute && (
+          <svg className="absolute inset-0 w-full h-full opacity-[0.03] pointer-events-none z-10 mix-blend-multiply">
+            <filter id="noiseFilter">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" />
+            </filter>
+            <rect width="100%" height="100%" filter="url(#noiseFilter)" />
+          </svg>
+        )}
+        <div className={isChatRoute ? 'flex-1 overflow-hidden' : 'flex-1 overflow-y-auto z-10'}>
           <Outlet />
         </div>
       </main>

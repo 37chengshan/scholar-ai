@@ -3,7 +3,8 @@ import { clsx } from 'clsx';
 import type { ChatStreamState } from '@/app/hooks/useChatStream';
 import type { ThinkingStep } from '@/app/components/ThinkingProcess';
 import { renderContentWithCitations } from '@/app/components/CitationsPanel';
-import { UnifiedEmptyState, UnifiedErrorState } from '@/app/components/UnifiedFeedbackState';
+import { UnifiedErrorState } from '@/app/components/UnifiedFeedbackState';
+import { ChatEmptyState } from './ChatEmptyState';
 import { ReasoningPanel } from '@/features/chat/components/reasoning-panel/ReasoningPanel';
 import { ToolTimelinePanel } from '@/features/chat/components/tool-timeline/ToolTimelinePanel';
 import { CitationPanel } from '@/features/chat/components/citation-panel/CitationPanel';
@@ -23,11 +24,13 @@ interface MessageFeedProps {
   currentMessageId: string;
   thinkingSteps: ThinkingStep[];
   labels: MessageFeedCopy;
+  isZh?: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
   onCitationClick: (citation: CitationItem | undefined) => void;
   onStop: () => void;
   formatTime: (date: string) => string;
+  onSuggest?: (text: string) => void;
 }
 
 const safeToolTimeline = (timeline?: ToolTimelineItem[]) => (timeline || []).filter(Boolean);
@@ -56,18 +59,18 @@ export function MessageFeed({
   currentMessageId,
   thinkingSteps,
   labels,
+  isZh = true,
   messagesEndRef,
   scrollContainerRef,
   onCitationClick,
   onStop,
   formatTime,
+  onSuggest,
 }: MessageFeedProps) {
   return (
     <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-5">
       {renderMessages.length === 0 ? (
-        <div className="mx-auto mt-12 max-w-2xl">
-          <UnifiedEmptyState title={labels.noMessages} description={labels.sendFirst} />
-        </div>
+        <ChatEmptyState isZh={isZh} onSuggest={onSuggest} />
       ) : (
         <div className="mx-auto flex w-full flex-col gap-4">
           {renderMessages.map((message) => {
@@ -111,7 +114,7 @@ export function MessageFeed({
 
                   <div
                     className={clsx(
-                      'flex max-w-[min(44rem,100%)] flex-col gap-2',
+                      'group flex max-w-[min(44rem,100%)] flex-col gap-1',
                       isAssistant ? 'items-start' : 'items-end',
                     )}
                   >
@@ -147,8 +150,8 @@ export function MessageFeed({
 
                       <div
                         className={clsx(
-                          'mt-1.5 text-[15px] leading-[1.65]',
-                          isAssistant ? 'font-serif magazine-body' : 'font-sans font-medium',
+                          'mt-1.5 text-sm leading-relaxed',
+                          isAssistant ? 'font-sans text-foreground/90' : 'font-sans font-medium',
                         )}
                       >
                         {showStreamingMeta && (
@@ -199,8 +202,11 @@ export function MessageFeed({
                     />
 
                     {tokenCount !== undefined && tokenCount > 0 && !isStreaming && (
-                      <div className="text-xs text-muted-foreground font-mono">
-                        Token: {tokenCount.toLocaleString()}
+                      <div
+                        className="text-[10px] text-zinc-400 font-mono opacity-0 group-hover:opacity-100 transition-opacity"
+                        title={costValue > 0 ? `Token: ${tokenCount.toLocaleString()} · ¥${costValue.toFixed(4)}` : undefined}
+                      >
+                        {tokenCount.toLocaleString()} tokens
                         {costValue > 0 && ` · ¥${costValue.toFixed(4)}`}
                       </div>
                     )}

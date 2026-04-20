@@ -9,6 +9,9 @@ import { Layout } from "./components/Layout";
 import { LoadingFallback } from "./components/LoadingFallback";
 import { useAuth } from "@/contexts/AuthContext";
 
+// Default authenticated landing page
+const DEFAULT_APP_ROUTE = "/chat";
+
 // Lazy load pages (Landing and Login/Register are critical, keep as regular imports)
 const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
 const KnowledgeBaseList = lazy(() => import("./pages/KnowledgeBaseList").then(m => ({ default: m.KnowledgeBaseList })));
@@ -71,6 +74,11 @@ export const router = createBrowserRouter([
     // Layout is a wrapper for all app pages, no path needed
     element: <Layout />,
     children: [
+      {
+        // Default authenticated route: redirect to chat
+        index: true,
+        element: <Navigate to={DEFAULT_APP_ROUTE} replace />,
+      },
       {
         path: "dashboard",
         element: <LazyRoute><ProtectedRoute><Dashboard /></ProtectedRoute></LazyRoute>,

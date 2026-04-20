@@ -79,7 +79,7 @@ export function Register() {
 
       // Auto-login after successful registration
       await login(email, password);
-      navigate("/dashboard");
+      navigate("/chat");
     } catch (err: any) {
       const errorMessage = err.message || (isZh ? "注册失败" : "Registration failed");
       setError(errorMessage);
