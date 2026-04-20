@@ -17,7 +17,7 @@ Business logic is delegated to:
 
 SSE Event Types:
 - routing_decision: Query routing result (Task 1.4, first event)
-- thought: Agent thinking process
+- reasoning: Agent reasoning stream
 - tool_call: Tool execution start
 - tool_result: Tool execution result
 - confirmation_required: Needs user approval
@@ -27,7 +27,7 @@ SSE Event Types:
 """
 
 import json
-from typing import AsyncIterator
+from typing import Any, AsyncIterator, Dict
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -76,17 +76,18 @@ async def chat_stream(
 
     SSE Events (Task 1.4 minimum loop):
     - event: routing_decision - Query routing result (FIRST event)
-    - event: thinking_status - Agent thinking
+    - event: reasoning - Agent reasoning stream
     - event: message - Final response
     - event: done - Stream complete
     - event: error - Error occurred (MUST follow with done per P2)
 
     Additional events:
-    - event: thought - Agent thinking process
     - event: tool_call - Tool execution start
     - event: tool_result - Tool execution result
     - event: confirmation_required - Needs user approval
     """
+    session_id = request.session_id or "unknown-session"
+
     try:
         logger.info(
             "Chat stream started",
@@ -116,6 +117,32 @@ async def chat_stream(
         # Task 1.4: Create SSEEventBuffer for ordered events
         event_buffer = SSEEventBuffer(session_id=session_id)
 
+        def _normalize_sse_payload(
+            event_type: str,
+            raw_payload: Dict[str, Any],
+        ) -> Dict[str, Any]:
+            """Normalize nested SSE envelope payload to flat event data.
+
+            chat_orchestrator.stream_sse_event_v2 emits payload as:
+            {"event": str, "data": {...}, "message_id": str}
+            This gateway must flatten it so frontend receives fields like
+            {"delta": "...", "message_id": "..."}.
+            """
+            if not isinstance(raw_payload, dict):
+                return {"content": raw_payload}
+
+            # New orchestrator envelope format
+            if "data" in raw_payload and "message_id" in raw_payload:
+                inner_data = raw_payload.get("data")
+                normalized = (
+                    dict(inner_data) if isinstance(inner_data, dict) else {"content": inner_data}
+                )
+                normalized["message_id"] = raw_payload.get("message_id")
+                return normalized
+
+            # Legacy flat payload format
+            return dict(raw_payload)
+
         auto_confirm = False
         if request.context:
             auto_confirm = request.context.get("auto_confirm", False)
@@ -127,16 +154,52 @@ async def chat_stream(
             P2: Ensure error events are followed by done events.
             """
             try:
-                last_event_id = None
-                if "last-event-id" in http_request.headers:
-                    last_event_id = http_request.headers["last-event-id"]
+                last_event_id = http_request.headers.get("last-event-id")
+                current_message_id = ""
 
-                # Replay missed events on reconnect
+                # Reconnect requests are replay-only. They must never restart business execution,
+                # otherwise one user turn can be persisted/executed twice.
                 if last_event_id:
+                    logger.info(
+                        "Reconnect stream detected, entering replay-only mode",
+                        session_id=session_id,
+                        last_event_id=last_event_id,
+                    )
+
+                    replayed_events = 0
+                    replay_has_terminal = False
+
                     async for replay_event in sse_manager.handle_reconnect(
                         session_id, last_event_id
                     ):
+                        replayed_events += 1
+                        if "event: done" in replay_event or "event: error" in replay_event:
+                            replay_has_terminal = True
                         yield replay_event
+
+                    if replayed_events == 0:
+                        error_event = await event_buffer.emit(
+                            SSEEventType.ERROR,
+                            ErrorEventData(
+                                code="REPLAY_NOT_FOUND",
+                                message=f"No replayable events found for Last-Event-ID: {last_event_id}",
+                                recoverable=False,
+                            ).model_dump()
+                            | {"message_id": f"{session_id}:replay"},
+                        )
+                        yield error_event.to_sse_format()
+
+                    if not replay_has_terminal:
+                        done_event = await event_buffer.emit(
+                            SSEEventType.DONE,
+                            {
+                                "status": "replay_complete",
+                                "message_id": current_message_id or f"{session_id}:replay",
+                            },
+                        )
+                        yield done_event.to_sse_format()
+
+                    return
 
                 # Task 1.4: Route query complexity (async with LLM fallback)
                 routing_result = await complexity_router.route_async(request.message)
@@ -148,26 +211,18 @@ async def chat_stream(
                     confidence=routing_result["confidence"],
                 )
 
-                # Task 1.4: Send routing_decision event (FIRST event, per P2 minimum loop)
-                routing_event = await event_buffer.emit(
-                    "routing_decision",
-                    {
-                        "complexity": routing_result["complexity"],
-                        "method": routing_result["method"],
-                        "confidence": routing_result["confidence"],
-                        "reasoning": routing_result.get("reasoning", ""),
-                        "query_preview": request.message[:100],
-                    }
-                )
-                yield routing_event.to_sse_format()
+                # routing_decision must carry message_id (HARD RULE 0.2), so emit it
+                # only after session_start establishes the bound assistant message.
+                routing_emitted = False
 
                 async def business_events() -> AsyncIterator[str]:
                     """Generate business events with message persistence.
 
                     Task 1.4: Routing determines execution path:
-                    - simple → RAG mode (thinking_status → message → done)
+                    - simple → RAG mode (reasoning → message → done)
                     - complex → Agent mode (multi-step, simplified for MVP)
                     """
+                    nonlocal routing_emitted
                     try:
                         await message_service.save_message(
                             session_id=session_id,
@@ -201,9 +256,43 @@ async def chat_stream(
                                 data_json = event[data_start : event.rfind("\n")]
                                 try:
                                     event_data = json.loads(data_json)
-                                    # Buffer the event
-                                    buffered_event = await event_buffer.emit(event_type, event_data)
+                                    normalized_payload = _normalize_sse_payload(
+                                        event_type,
+                                        event_data,
+                                    )
+
+                                    # Buffer normalized event payload
+                                    buffered_event = await event_buffer.emit(
+                                        event_type,
+                                        normalized_payload,
+                                    )
                                     yield buffered_event.to_sse_format()
+
+                                    if (
+                                        event_type == "session_start"
+                                        and normalized_payload.get("message_id")
+                                    ):
+                                        current_message_id = str(normalized_payload.get("message_id"))
+
+                                    # Emit routing_decision once message binding is available.
+                                    if (
+                                        event_type == "session_start"
+                                        and not routing_emitted
+                                        and normalized_payload.get("message_id")
+                                    ):
+                                        routing_event = await event_buffer.emit(
+                                            "routing_decision",
+                                            {
+                                                "complexity": routing_result["complexity"],
+                                                "method": routing_result["method"],
+                                                "confidence": routing_result["confidence"],
+                                                "reasoning": routing_result.get("reasoning", ""),
+                                                "query_preview": request.message[:100],
+                                                "message_id": normalized_payload.get("message_id"),
+                                            },
+                                        )
+                                        yield routing_event.to_sse_format()
+                                        routing_emitted = True
                                 except json.JSONDecodeError:
                                     # Fallback to original event if parsing fails
                                     yield event
@@ -224,15 +313,21 @@ async def chat_stream(
                 error_event = await event_buffer.emit(
                     SSEEventType.ERROR,
                     ErrorEventData(
-                        type="error", error=str(e), details=None
-                    ).model_dump(),
+                        code="STREAM_ERROR",
+                        message=str(e),
+                        recoverable=False,
+                    ).model_dump()
+                    | {"message_id": current_message_id or f"{session_id}:stream_error"},
                 )
                 yield error_event.to_sse_format()
 
                 # P2: MUST send done event after error (frontend otherwise hangs)
                 done_event = await event_buffer.emit(
                     SSEEventType.DONE,
-                    {"status": "error_terminated"}
+                    {
+                        "status": "error_terminated",
+                        "message_id": current_message_id or f"{session_id}:stream_error",
+                    },
                 )
                 yield done_event.to_sse_format()
 
@@ -259,15 +354,21 @@ async def chat_stream(
             error_event = await temp_buffer.emit(
                 SSEEventType.ERROR,
                 ErrorEventData(
-                    type="error", error=error_msg, details=None
-                ).model_dump(),
+                    code="STREAM_INIT_ERROR",
+                    message=error_msg,
+                    recoverable=False,
+                ).model_dump()
+                | {"message_id": f"{session_id}:init_error"},
             )
             yield error_event.to_sse_format()
 
             # P2: MUST send done after error
             done_event = await temp_buffer.emit(
                 SSEEventType.DONE,
-                {"status": "init_error"}
+                {
+                    "status": "init_error",
+                    "message_id": f"{session_id}:init_error",
+                },
             )
             yield done_event.to_sse_format()
 

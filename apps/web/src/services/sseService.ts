@@ -238,39 +238,28 @@ export type AnySSEEventEnvelope =
   | ErrorEvent;
 
 /**
- * Legacy SSE Event structure (for backward compatibility)
- *
- * IMPORTANT: 'type' field comes from 'event:' line (authoritative), not from JSON.type
- * 'content' field contains the entire JSON payload from 'data:' line
+ * @deprecated Compatibility-only shape for UI components that still consume
+ * flattened event records. Transport handlers emit SSEEventEnvelope.
  */
 export interface SSEEvent {
-  /** Event type from 'event:' line - authoritative source */
   type: SSEEventType;
-  /** Entire JSON payload from 'data:' line */
-  content: any;
-  /** Optional timestamp from payload */
+  content?: any;
   timestamp?: string;
-  /** Tool name for tool_call/tool_result events */
   tool?: string;
-  /** Tool result for tool_result events */
   result?: any;
-  /** Event type string (same as type, for backward compatibility) */
   event?: string;
-  /** Raw data payload (same as content, for backward compatibility) */
   data?: any;
-  /** Message ID for event correlation (HARD RULE 0.2) */
   message_id?: string;
 }
 
 /**
  * SSE Event Handlers
  *
- * Supports both legacy SSEEvent and new SSEEventEnvelope format.
  * HARD RULE 0.2: message_id is required for event correlation.
  */
 export interface SSEHandlers {
-  /** Handler for all non-terminal events (supports both formats) */
-  onMessage: (event: SSEEvent | SSEEventEnvelope) => void;
+  /** Handler for all non-terminal events in canonical envelope format */
+  onEnvelope: (event: SSEEventEnvelope) => void;
   /** Handler for errors */
   onError: (error: Error) => void;
   /** Handler for stream completion */
@@ -298,22 +287,6 @@ export function parseToEnvelope<T>(eventType: SSEEventType, payload: T): SSEEven
     event: eventType,
     data: payload,
     message_id: messageId || '',
-  };
-}
-
-/**
- * Create legacy SSEEvent from envelope (backward compatibility)
- */
-export function envelopeToLegacy<T>(envelope: SSEEventEnvelope<T>): SSEEvent {
-  return {
-    type: envelope.event,
-    content: envelope.data,
-    timestamp: (envelope.data as any).timestamp,
-    tool: (envelope.data as any).tool,
-    result: (envelope.data as any).result || (envelope.data as any).data,
-    event: envelope.event,
-    data: envelope.data,
-    message_id: envelope.message_id,
   };
 }
 
@@ -551,18 +524,6 @@ export class SSEService {
         message_id: messageId,
       };
 
-      // Also create legacy SSEEvent for backward compatibility
-      const event: SSEEvent = {
-        type: eventType as SSEEventType,  // From event: line (authoritative)
-        content: payload,                 // Entire JSON payload
-        timestamp: (payload as any)?.timestamp,
-        tool: (payload as any)?.tool,
-        result: (payload as any)?.result || (payload as any)?.data,
-        event: eventType,
-        data: payload,
-        message_id: messageId,
-      };
-
       // Handle special event types
       if (eventType === 'done') {
         this.isDisconnecting = true;
@@ -596,8 +557,8 @@ export class SSEService {
       } else if (eventType === 'heartbeat') {
         // Keepalive - SSE comment format, ignored
       } else {
-        // Emit both envelope and legacy format (consumers can choose)
-        this.currentHandlers.onMessage(event);
+        // Emit canonical envelope only.
+        this.currentHandlers.onEnvelope(envelope);
       }
     } catch (err) {
       console.error('[SSE] Failed to parse event:', err, dataStr);

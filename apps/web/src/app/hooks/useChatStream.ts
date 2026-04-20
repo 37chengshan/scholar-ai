@@ -659,6 +659,18 @@ export function useChatStream(
           });
           break;
 
+        case 'cancel':
+          bufferedDispatch({
+            type: 'CANCEL',
+            reason: (data.reason as string) || 'cancelled',
+          });
+          trackStreamEvent({
+            event: 'stream_cancelled',
+            reason: (data.reason as string) || 'cancelled',
+            messageId: normalizedEnvelope.message_id,
+          });
+          break;
+
         case 'done':
           bufferedDispatch({
             type: 'STREAM_COMPLETE',

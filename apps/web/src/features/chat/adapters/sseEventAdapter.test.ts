@@ -6,7 +6,7 @@ describe('normalizeSSEEventEnvelope', () => {
   it('accepts canonical reasoning events', () => {
     const normalized = normalizeSSEEventEnvelope({
       message_id: 'm1',
-      event_type: 'reasoning',
+      event: 'reasoning',
       data: { delta: 'thinking...' },
     });
 
@@ -24,6 +24,18 @@ describe('normalizeSSEEventEnvelope', () => {
     expect(normalized).not.toBeNull();
     expect(normalized?.event_type).toBe('phase');
     expect(normalized?.data.phase).toBe('retrieving');
+  });
+
+  it('accepts cancel events', () => {
+    const normalized = normalizeSSEEventEnvelope({
+      message_id: 'm1',
+      event_type: 'cancel',
+      data: { reason: 'user_cancelled' },
+    });
+
+    expect(normalized).not.toBeNull();
+    expect(normalized?.event_type).toBe('cancel');
+    expect(normalized?.data.reason).toBe('user_cancelled');
   });
 
   it('returns null for legacy and unsupported events', () => {

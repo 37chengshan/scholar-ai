@@ -34,7 +34,6 @@ from app.models.chat import (
     MessageEventData,
     SSEEvent,
     SSEEventType,
-    ThoughtEventData,
     ToolCallEventData,
     ToolResultEventData,
 )
@@ -184,7 +183,6 @@ __all__ = [
     "ChatConfirmRequest",
     "SSEEvent",
     "SSEEventType",
-    "ThoughtEventData",
     "ToolCallEventData",
     "ToolResultEventData",
     "ConfirmationRequiredEventData",

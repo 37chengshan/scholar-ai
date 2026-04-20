@@ -9,11 +9,11 @@ describe('SSEService', () => {
   });
 
   it('surfaces backend SSE error events through onError and disconnects', () => {
-    const onMessage = vi.fn();
+    const onEnvelope = vi.fn();
     const onError = vi.fn();
     const onDone = vi.fn();
 
-    (service as any).currentHandlers = { onMessage, onError, onDone };
+    (service as any).currentHandlers = { onEnvelope, onError, onDone };
     (service as any).abortController = new AbortController();
     (service as any).isDisconnecting = false;
 
@@ -25,17 +25,17 @@ describe('SSEService', () => {
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
     expect(onError.mock.calls[0][0].message).toBe('Agent execution failed');
-    expect(onMessage).not.toHaveBeenCalled();
+    expect(onEnvelope).not.toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
     expect((service as any).abortController).toBeNull();
   });
 
   it('rejects business events without message_id', () => {
-    const onMessage = vi.fn();
+    const onEnvelope = vi.fn();
     const onError = vi.fn();
     const onDone = vi.fn();
 
-    (service as any).currentHandlers = { onMessage, onError, onDone };
+    (service as any).currentHandlers = { onEnvelope, onError, onDone };
     (service as any).abortController = new AbortController();
     (service as any).isDisconnecting = false;
 
@@ -47,17 +47,17 @@ describe('SSEService', () => {
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
     expect(onError.mock.calls[0][0].message).toContain('missing message_id');
-    expect(onMessage).not.toHaveBeenCalled();
+    expect(onEnvelope).not.toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
     expect((service as any).abortController).toBeNull();
   });
 
   it('unwraps envelope payload and forwards flat message delta', () => {
-    const onMessage = vi.fn();
+    const onEnvelope = vi.fn();
     const onError = vi.fn();
     const onDone = vi.fn();
 
-    (service as any).currentHandlers = { onMessage, onError, onDone };
+    (service as any).currentHandlers = { onEnvelope, onError, onDone };
     (service as any).abortController = new AbortController();
     (service as any).isDisconnecting = false;
 
@@ -72,16 +72,16 @@ describe('SSEService', () => {
 
     expect(onError).not.toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
-    expect(onMessage).toHaveBeenCalledTimes(1);
+    expect(onEnvelope).toHaveBeenCalledTimes(1);
 
-    const event = onMessage.mock.calls[0][0];
-    expect(event.type).toBe('message');
+    const event = onEnvelope.mock.calls[0][0];
+    expect(event.event).toBe('message');
     expect(event.message_id).toBe('m2');
-    expect(event.content).toEqual({ delta: 'hello world', seq: 1 });
+    expect(event.data).toEqual({ delta: 'hello world', seq: 1 });
   });
 
   it('clears lastEventId on fresh connect', () => {
-    const onMessage = vi.fn();
+    const onEnvelope = vi.fn();
     const onError = vi.fn();
     const onDone = vi.fn();
 
@@ -90,7 +90,7 @@ describe('SSEService', () => {
       .spyOn(service as any, 'startStreaming')
       .mockResolvedValue(undefined);
 
-    service.connect('/api/v1/chat/stream', { onMessage, onError, onDone }, { session_id: 's1' });
+    service.connect('/api/v1/chat/stream', { onEnvelope, onError, onDone }, { session_id: 's1' });
 
     expect((service as any).lastEventId).toBeNull();
     expect(startStreamingSpy).toHaveBeenCalledWith(false);

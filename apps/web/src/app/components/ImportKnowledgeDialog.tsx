@@ -14,8 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Progress } from "../components/ui/progress";
 import { cn } from "../components/ui/utils";
 import { toast } from "sonner";
-import * as papersApi from "@/services/papersApi";
-import { kbApi } from "@/services/kbApi";
+import { kbApi, importApi } from "@/services/kbApi";
 
 interface ImportKnowledgeDialogProps {
   open: boolean;
@@ -89,13 +88,17 @@ export function ImportKnowledgeDialog({
     setFiles((prev) => prev.map((file) => (file.id === id ? updater(file) : file)));
   }, []);
 
-  const pollPaperStatus = useCallback(async (paperId: string, fileId: string) => {
+  const pollImportJobStatus = useCallback(async (importJobId: string, fileId: string) => {
     const maxAttempts = 60;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const status = await papersApi.getStatus(paperId);
-      const normalizedStatus = String(status.status).toLowerCase();
-      const progress = typeof status.progress === "number" ? status.progress : 0;
+      const response = await importApi.get(importJobId);
+      if (!response.success || !response.data) {
+        throw new Error("获取导入任务状态失败");
+      }
+
+      const normalizedStatus = String(response.data.status).toLowerCase();
+      const progress = typeof response.data.progress === "number" ? response.data.progress : 0;
 
       if (normalizedStatus === "completed") {
         setFileState(fileId, (file) => ({
@@ -106,8 +109,8 @@ export function ImportKnowledgeDialog({
         return;
       }
 
-      if (normalizedStatus === "failed") {
-        throw new Error(status.errorMessage || "处理失败");
+      if (normalizedStatus === "failed" || normalizedStatus === "cancelled") {
+        throw new Error(response.data.error?.message || "处理失败");
       }
 
       setFileState(fileId, (file) => ({
@@ -147,14 +150,16 @@ export function ImportKnowledgeDialog({
           }));
 
           const response = await kbApi.uploadPdf(knowledgeBaseId, file);
-          const paperId = response.paperId;
+          if (!response.importJobId) {
+            throw new Error("导入任务创建失败");
+          }
 
           setFileState(fileItem.id, (current) => ({
             ...current,
-            progress: 60,
+            progress: 40,
           }));
 
-          await pollPaperStatus(paperId, fileItem.id);
+          await pollImportJobStatus(response.importJobId, fileItem.id);
 
           setFileState(fileItem.id, (current) => ({
             ...current,

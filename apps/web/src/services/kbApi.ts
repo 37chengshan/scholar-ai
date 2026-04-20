@@ -23,6 +23,7 @@ import type {
   StorageStatsDto,
 } from '@scholar-ai/types';
 import { sdkHttpClient } from './sdkHttpClient';
+import { importApi } from './importApi';
 
 // Export importApi for ImportJob operations
 export { importApi } from './importApi';
@@ -60,6 +61,14 @@ export interface KBUploadHistoryRecord {
     title: string;
     filename: string;
   } | null;
+}
+
+export interface KBLegacyImportResponse {
+  importJobId: string;
+  paperId?: string | null;
+  taskId: string;
+  status: string;
+  message: string;
 }
 
 export type KBStorageStats = StorageStatsDto;
@@ -131,31 +140,63 @@ export const kbApi = {
   // === Import ===
 
   /** Upload PDF to KB */
-  uploadPdf: async (kbId: string, file: File): Promise<{ paperId: string, taskId: string, status: string, message: string }> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+  uploadPdf: async (kbId: string, file: File): Promise<KBLegacyImportResponse> => {
+    const created = await importApi.create(kbId, {
+      sourceType: 'local_file',
+      payload: { filename: file.name },
     });
-    const data = response.data as {
-      paperId: string;
-      taskId: string;
-      status: string;
-      message: string;
+    if (!created.success || !created.data) {
+      throw new Error('Failed to create import job');
+    }
+
+    const importJobId = created.data.importJobId;
+    await importApi.uploadFile(importJobId, file);
+
+    return {
+      importJobId,
+      paperId: null,
+      taskId: importJobId,
+      status: 'queued',
+      message: 'Import job created and queued',
     };
-    return data;
   },
 
   /** Import from URL/DOI */
-  importFromUrl: async (kbId: string, url: string): Promise<{ paperId: string, taskId: string }> => {
-    const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/import-url`, { url });
-    return response.data as { paperId: string, taskId: string };
+  importFromUrl: async (kbId: string, url: string): Promise<KBLegacyImportResponse> => {
+    const created = await importApi.create(kbId, {
+      sourceType: 'pdf_url',
+      payload: { input: url },
+    });
+    if (!created.success || !created.data) {
+      throw new Error('Failed to create URL import job');
+    }
+
+    return {
+      importJobId: created.data.importJobId,
+      paperId: null,
+      taskId: created.data.importJobId,
+      status: created.data.status,
+      message: 'Import job queued',
+    };
   },
 
   /** Import from arXiv */
-  importFromArxiv: async (kbId: string, arxivId: string): Promise<{ paperId: string, taskId: string }> => {
-    const response = await apiClient.post(`/api/v1/knowledge-bases/${kbId}/import-arxiv`, { arxivId });
-    return response.data as { paperId: string, taskId: string };
+  importFromArxiv: async (kbId: string, arxivId: string): Promise<KBLegacyImportResponse> => {
+    const created = await importApi.create(kbId, {
+      sourceType: 'arxiv',
+      payload: { input: arxivId },
+    });
+    if (!created.success || !created.data) {
+      throw new Error('Failed to create arXiv import job');
+    }
+
+    return {
+      importJobId: created.data.importJobId,
+      paperId: null,
+      taskId: created.data.importJobId,
+      status: created.data.status,
+      message: 'Import job queued',
+    };
   },
 
   // === Search & Query ===

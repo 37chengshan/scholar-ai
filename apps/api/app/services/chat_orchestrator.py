@@ -41,10 +41,6 @@ from app.models.chat import (
     DoneEventData,
     ErrorEventData,
     ConfirmationRequiredEventData,
-    ThoughtEventData,  # Legacy
-    MessageEventData as LegacyMessageEventData,  # Legacy
-    ToolCallEventData as LegacyToolCallEventData,  # Legacy
-    ToolResultEventData as LegacyToolResultEventData,  # Legacy
 )
 from app.models.confirmation import ConfirmationState
 from app.services.message_service import message_service
@@ -203,6 +199,7 @@ class ChatOrchestrator:
             session_id=session_id,
             role="assistant",
             content="",  # Empty initially, will be updated later
+            count_towards_stats=False,
         )
 
         logger.info(
@@ -993,6 +990,11 @@ class ChatOrchestrator:
                                     event_id=event_id,
                                 )
 
+                        # Persist assistant content before terminal done event.
+                        # Some SSE clients disconnect immediately after receiving done,
+                        # so updates after done can be skipped.
+                        await self._safe_update_assistant_message(message_id, final_content)
+
                         # Emit done phase
                         current_phase = "done"
                         event_id = f"{session_id}:{event_counter}"
@@ -1021,9 +1023,6 @@ class ChatOrchestrator:
                             message_id=message_id,
                             event_id=event_id,
                         )
-
-                        # Update assistant message content
-                        await self._safe_update_assistant_message(message_id, final_content)
 
                     else:
                         # Emit error phase

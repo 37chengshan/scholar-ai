@@ -11,10 +11,7 @@ export enum StreamEventType {
   CANCEL = 'cancel',
   ERROR = 'error',
   DONE = 'done',
-  HEARTBEAT = 'heartbeat',
-  THINKING_STATUS = 'thinking_status',
-  STEP_PROGRESS = 'step_progress',
-  THOUGHT = 'thought'
+  HEARTBEAT = 'heartbeat'
 }
 
 export interface StreamEventEnvelope<T = unknown> {

@@ -14,6 +14,7 @@ from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.import_job import ImportJob
+from app.models.upload_history import UploadHistory
 from app.models.upload_session import UploadSession
 from app.schemas.upload_session import CreateUploadSessionRequest
 from app.services.import_job_service import ImportJobService
@@ -311,6 +312,36 @@ class UploadSessionService:
         target_job.next_action = None
         target_job.completed_at = now
         target_job.updated_at = now
+
+        if target_job.paper_id:
+            history_result = await db.execute(
+                select(UploadHistory)
+                .where(
+                    and_(
+                        UploadHistory.user_id == target_job.user_id,
+                        UploadHistory.paper_id == target_job.paper_id,
+                    )
+                )
+                .order_by(desc(UploadHistory.created_at))
+                .limit(1)
+            )
+            history = history_result.scalars().first()
+            if history:
+                history.status = "COMPLETED"
+                history.error_message = None
+                history.updated_at = now
+            else:
+                db.add(
+                    UploadHistory(
+                        user_id=target_job.user_id,
+                        paper_id=target_job.paper_id,
+                        filename=payload.filename,
+                        status="COMPLETED",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+
         await db.commit()
 
     def _ensure_writable(self, session: UploadSession, part_number: int) -> None:

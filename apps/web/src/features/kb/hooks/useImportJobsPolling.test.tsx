@@ -32,4 +32,67 @@ describe('useImportJobsPolling', () => {
     expect(onTick).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
+
+  it('pauses when tab is hidden and resumes when visible', () => {
+    vi.useFakeTimers();
+    const onTick = vi.fn();
+
+    const visibilityState = { value: 'visible' as 'visible' | 'hidden' };
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibilityState.value,
+    });
+
+    renderHook(() => useImportJobsPolling({ enabled: true, intervalMs: 1000, pauseWhenHidden: true, onTick }));
+
+    expect(onTick).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      visibilityState.value = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(onTick).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      visibilityState.value = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(onTick).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(onTick).toHaveBeenCalledTimes(4);
+    vi.useRealTimers();
+  });
+
+  it('stops interval ticks after enabled is turned off', () => {
+    vi.useFakeTimers();
+    const onTick = vi.fn();
+
+    const { rerender } = renderHook(
+      ({ enabled }) => useImportJobsPolling({ enabled, intervalMs: 1000, pauseWhenHidden: false, onTick }),
+      { initialProps: { enabled: true } }
+    );
+
+    expect(onTick).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(onTick).toHaveBeenCalledTimes(3);
+
+    rerender({ enabled: false });
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(onTick).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
 });

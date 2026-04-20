@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { toast } from 'sonner';
 import { streamMessage as streamChatMessage } from '@/services/chatApi';
-import { SSEService, SSEEvent, SSEEventEnvelope } from '@/services/sseService';
+import { SSEService, SSEEventEnvelope } from '@/services/sseService';
 import type { ChatSession } from '@/app/hooks/useSessions';
 import type { ChatStreamState, TaskType } from '@/app/hooks/useChatStream';
 import type {
@@ -186,22 +186,17 @@ export function useChatSend({
         },
         streamService: sseServiceRef.current,
         handlers: {
-          onMessage: (event: SSEEvent | SSEEventEnvelope) => {
-            const legacyEvent = event as SSEEvent;
-            const envelopeEvent = event as SSEEventEnvelope;
-
-            const eventType = legacyEvent.type || envelopeEvent.event || '';
-            const eventMessageId =
-              legacyEvent.message_id || envelopeEvent.message_id || '';
-            const eventData =
-              legacyEvent.content || legacyEvent.data || envelopeEvent.data;
+          onEnvelope: (event: SSEEventEnvelope) => {
+            const eventType = event.event || '';
+            const eventMessageId = event.message_id || '';
+            const eventData = (event.data ?? {}) as Record<string, unknown>;
 
             if (eventType === 'session_start' && eventMessageId) {
               streamApi.setCurrentMessageId(eventMessageId);
               currentMessageIdRef.current = eventMessageId;
 
-              const nextSessionId = eventData?.session_id || '';
-              const taskType = (eventData?.task_type || 'general') as TaskType;
+              const nextSessionId = (eventData.session_id as string) || '';
+              const taskType = ((eventData.task_type as TaskType) || 'general') as TaskType;
               streamApi.startRun(nextSessionId, taskType, eventMessageId);
               bindPlaceholderToMessageId(eventMessageId, placeholderMessageId);
               return;
@@ -223,9 +218,7 @@ export function useChatSend({
               message_id: eventMessageId,
               event_type: eventType,
               data: eventData,
-              timestamp: legacyEvent.timestamp
-                ? new Date(legacyEvent.timestamp).getTime()
-                : Date.now(),
+              timestamp: Date.now(),
             });
             syncStreamingMessage(currentMessageIdRef.current || eventMessageId);
           },

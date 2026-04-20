@@ -35,7 +35,6 @@ import { ConfirmDialog } from "@/app/components/ConfirmDialog";
 import { AgentUIState } from "@/app/components/AgentStateSidebar";
 import {
   SSEService,
-  SSEEvent,
   SSEEventEnvelope,
 } from "@/services/sseService";
 import { API_BASE_URL } from "@/config/api";
@@ -565,21 +564,17 @@ export function ChatWorkspaceV2() {
 
       // The confirm endpoint returns an SSE stream with resumed agent output
       sseServiceRef.current.connect(url, {
-        onMessage: (event: SSEEvent | SSEEventEnvelope) => {
-          const legacyEvent = event as SSEEvent;
-          const envelopeEvent = event as SSEEventEnvelope;
-          const eventType = legacyEvent.type || envelopeEvent.event || '';
-          const eventMessageId = legacyEvent.message_id || envelopeEvent.message_id || '';
-          const eventData = legacyEvent.content || legacyEvent.data || envelopeEvent.data;
+        onEnvelope: (event: SSEEventEnvelope) => {
+          const eventType = event.event || '';
+          const eventMessageId = event.message_id || '';
+          const eventData = event.data;
 
           // Feed events back into useChatStream
           handleSSEEvent({
             message_id: eventMessageId,
             event_type: eventType,
             data: eventData,
-            timestamp: legacyEvent.timestamp
-              ? new Date(legacyEvent.timestamp).getTime()
-              : Date.now(),
+            timestamp: Date.now(),
           });
 
           syncStreamingMessage(currentMessageIdRef.current || eventMessageId);
