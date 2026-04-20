@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import redis_db
 from app.database import AsyncSessionLocal
 from app.models.orm_session import Session
-from app.models.session import SessionCreate, SessionUpdate, SessionResponse
+from app.schemas.session import SessionCreate, SessionUpdate, SessionResponse
 from app.services.message_service import message_service
 from app.utils.logger import logger
 

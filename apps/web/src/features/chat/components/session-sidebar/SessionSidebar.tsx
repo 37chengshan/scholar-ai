@@ -1,6 +1,40 @@
-import { Plus, Search, Loader2, MessageSquare, Trash2 } from 'lucide-react';
+import { Plus, Search, Loader2, MessageSquare, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useState } from 'react';
 import type { ChatSession } from '@/app/hooks/useSessions';
+
+// ---- Time grouping helpers ----
+type TimeGroup = 'today' | 'yesterday' | 'thisWeek' | 'earlier';
+
+function getTimeGroup(dateStr: string): TimeGroup {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  if (diffDays < 1) return 'today';
+  if (diffDays < 2) return 'yesterday';
+  if (diffDays < 7) return 'thisWeek';
+  return 'earlier';
+}
+
+function groupSessions(sessions: ChatSession[]): { group: TimeGroup; items: ChatSession[] }[] {
+  const groups: Record<TimeGroup, ChatSession[]> = {
+    today: [], yesterday: [], thisWeek: [], earlier: [],
+  };
+  for (const s of sessions) {
+    const key = getTimeGroup(s.updatedAt || s.createdAt || new Date().toISOString());
+    groups[key].push(s);
+  }
+  const order: TimeGroup[] = ['today', 'yesterday', 'thisWeek', 'earlier'];
+  return order.filter(g => groups[g].length > 0).map(g => ({ group: g, items: groups[g] }));
+}
+
+const GROUP_LABELS_ZH: Record<TimeGroup, string> = {
+  today: '今天', yesterday: '昨天', thisWeek: '本周', earlier: '更早',
+};
+const GROUP_LABELS_EN: Record<TimeGroup, string> = {
+  today: 'Today', yesterday: 'Yesterday', thisWeek: 'This Week', earlier: 'Earlier',
+};
 
 interface SessionSidebarCopy {
   terminal: string;
@@ -18,6 +52,7 @@ interface SessionSidebarProps {
   loading: boolean;
   labels: SessionSidebarCopy;
   searchValue: string;
+  isZh?: boolean;
   onSearchChange: (value: string) => void;
   onCreateSession: () => void;
   onSwitchSession: (sessionId: string) => void;
@@ -30,30 +65,82 @@ export function SessionSidebar({
   loading,
   labels,
   searchValue,
+  isZh = true,
   onSearchChange,
   onCreateSession,
   onSwitchSession,
   onDeleteSession,
 }: SessionSidebarProps) {
+  const [collapsed, setCollapsed] = useState(false);
+  const groupLabels = isZh ? GROUP_LABELS_ZH : GROUP_LABELS_EN;
+  const grouped = groupSessions(sessions);
+
+  // Collapsed sidebar: icon-only rail
+  if (collapsed) {
+    return (
+      <div className="w-12 border-r border-zinc-200/80 flex flex-col h-full bg-zinc-50/50 items-center py-3 gap-2">
+        <button
+          onClick={() => setCollapsed(false)}
+          className="w-8 h-8 flex items-center justify-center hover:bg-zinc-100 transition-colors rounded-lg text-zinc-400 hover:text-zinc-600"
+          title={isZh ? '展开侧边栏' : 'Expand sidebar'}
+        >
+          <PanelLeftOpen className="w-4 h-4" />
+        </button>
+        <button
+          onClick={onCreateSession}
+          data-testid="session-create-button"
+          className="w-8 h-8 hover:bg-primary/10 hover:text-primary transition-colors flex items-center justify-center rounded-lg text-zinc-400"
+          title={isZh ? '新建对话' : 'New chat'}
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+        <div className="w-5 h-px bg-zinc-200 my-1" />
+        {sessions.slice(0, 8).map((s) => (
+          <button
+            key={s.id}
+            onClick={() => onSwitchSession(s.id)}
+            title={s.title}
+            className={clsx(
+              'w-8 h-8 flex items-center justify-center transition-colors rounded-lg',
+              currentSessionId === s.id
+                ? 'bg-primary/10 text-primary'
+                : 'text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600'
+            )}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="w-[252px] border-r border-zinc-200 flex flex-col h-full bg-zinc-50/70">
-      <div className="px-4 py-3 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/90">
-        <div>
-          <h2 className="font-serif text-base font-bold tracking-tight">{labels.terminal}</h2>
-          <p className="text-[10px] tracking-[0.14em] uppercase text-zinc-500">{labels.sessions}</p>
+    <div className="w-[260px] border-r border-zinc-200/80 flex flex-col h-full bg-zinc-50/50 transition-all duration-200">
+      {/* Header */}
+      <div className="px-3 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCollapsed(true)}
+            className="p-1.5 hover:bg-zinc-100 transition-colors rounded-lg text-zinc-400 hover:text-zinc-600"
+            title={isZh ? '收起侧边栏' : 'Collapse sidebar'}
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
         </div>
         <button
           onClick={onCreateSession}
           data-testid="session-create-button"
-          className="w-8 h-8 border border-zinc-300 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
+          className="w-8 h-8 hover:bg-primary/10 hover:text-primary transition-colors flex items-center justify-center rounded-lg text-zinc-500"
+          title={isZh ? '新建对话' : 'New chat'}
         >
           <Plus className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="px-3 py-2 border-b border-zinc-200">
+      {/* Search */}
+      <div className="px-3 pb-2">
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-0 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
             type="text"
             placeholder={labels.search}
@@ -61,59 +148,61 @@ export function SessionSidebar({
             onChange={(event) => onSearchChange(event.target.value)}
             aria-label={labels.search}
             data-testid="session-search-input"
-            className="w-full bg-transparent border-b border-zinc-200 pl-6 pr-1 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="w-full bg-zinc-100/80 rounded-lg pl-8 pr-3 py-2 text-xs placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:bg-white transition-all"
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2 px-2">
-        <div className="text-[10px] font-bold tracking-[0.14em] uppercase text-zinc-500 mb-2 px-2">
-          {labels.history}
-        </div>
-
+      {/* Session list */}
+      <div className="flex-1 overflow-y-auto px-2 py-1">
         {loading && sessions.length === 0 ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
           </div>
         ) : sessions.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-sm" data-testid="session-empty-state">
+          <div className="text-center py-10 px-4 text-zinc-400 text-xs" data-testid="session-empty-state">
+            <MessageSquare className="w-6 h-6 mx-auto mb-2 opacity-40" />
             {searchValue.trim() ? labels.noSearchResults : labels.newChat}
           </div>
         ) : (
-          <div className="space-y-1">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => onSwitchSession(session.id)}
-                data-testid="session-item"
-                className={clsx(
-                  'w-full text-left px-3 py-2.5 transition-colors group flex items-start gap-2 cursor-pointer border-b border-zinc-100',
-                  currentSessionId === session.id
-                    ? 'bg-zinc-100/80 border-l-2 border-l-primary'
-                    : 'hover:bg-zinc-100/50 border-l-2 border-l-transparent'
-                )}
-              >
-                <MessageSquare className="w-4 h-4 mt-0.5 text-zinc-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
+          <div>
+            {grouped.map(({ group, items }) => (
+              <div key={group} className="mb-1">
+                <div className="px-2 py-2 text-[10px] font-semibold tracking-[0.12em] uppercase text-zinc-400">
+                  {groupLabels[group]}
+                </div>
+                {items.map((session) => (
                   <div
+                    key={session.id}
+                    onClick={() => onSwitchSession(session.id)}
+                    data-testid="session-item"
                     className={clsx(
-                      'text-sm font-medium truncate',
-                      currentSessionId === session.id ? 'text-primary' : 'text-foreground'
+                      'w-full text-left px-3 py-2.5 transition-all group flex items-start gap-2.5 cursor-pointer rounded-lg mb-0.5',
+                      currentSessionId === session.id
+                        ? 'bg-primary/8 text-foreground'
+                        : 'hover:bg-zinc-100/80 text-zinc-600'
                     )}
                   >
-                    {session.title}
+                    <div className="flex-1 min-w-0">
+                      <div className={clsx(
+                        'text-[13px] font-medium truncate leading-snug',
+                        currentSessionId === session.id ? 'text-foreground' : 'text-zinc-700'
+                      )}>
+                        {session.title}
+                      </div>
+                      <div className="text-[11px] text-zinc-400 mt-0.5 truncate">
+                        {session.messageCount} {labels.messageSuffix}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(event) => onDeleteSession(session.id, event)}
+                      data-testid={`session-delete-${session.id}`}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 transition-all flex-shrink-0 rounded-md mt-0.5"
+                    >
+                      <Trash2 className="w-3 h-3 text-zinc-400 hover:text-destructive" />
+                    </button>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {session.messageCount} {labels.messageSuffix}
-                  </div>
-                </div>
-                <button
-                  onClick={(event) => onDeleteSession(session.id, event)}
-                  data-testid={`session-delete-${session.id}`}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 transition-opacity flex-shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
-                </button>
+                ))}
               </div>
             ))}
           </div>

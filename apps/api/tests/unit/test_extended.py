@@ -362,14 +362,14 @@ class TestSessionModels:
 
     def test_session_create_model(self):
         """Test SessionCreate model."""
-        from app.models.session import SessionCreate
+        from app.schemas.session import SessionCreate
 
         session = SessionCreate(title="Test Session")
         assert session.title == "Test Session"
 
     def test_session_update_model(self):
         """Test SessionUpdate model."""
-        from app.models.session import SessionUpdate
+        from app.schemas.session import SessionUpdate
 
         update = SessionUpdate(title="Updated Session")
         assert update.title == "Updated Session"

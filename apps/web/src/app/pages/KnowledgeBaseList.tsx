@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive, Loader2 } from "lucide-react";
+import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive, Loader2, MoreHorizontal, ArrowRight, Download, Pencil, Trash2 } from "lucide-react";
 import { KnowledgeBaseCard } from "../components/KnowledgeBaseCard";
 import { CreateKnowledgeBaseDialog } from "../components/CreateKnowledgeBaseDialog";
 import { ImportDialog } from "../components/ImportDialog";
@@ -35,7 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { MoreHorizontal, ArrowRight, Download, Pencil, Trash2, Network } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -475,20 +474,15 @@ function KnowledgeBaseListContent() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleEnter(kb.id)}>
                             <ArrowRight className="mr-2 h-4 w-4" />
-                            进入
+                            进入知识库
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleImport(kb.id, kb.name)}>
                             <Download className="mr-2 h-4 w-4" />
-                            导入
+                            导入论文
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEdit(kb.id, kb.name)}>
                             <Pencil className="mr-2 h-4 w-4" />
-                            编辑
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem>
-                            <Network className="mr-2 h-4 w-4" />
-                            构建图谱
+                            编辑信息
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
@@ -496,7 +490,7 @@ function KnowledgeBaseListContent() {
                             onClick={() => handleDelete(kb.id, kb.name)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            删除
+                            删除知识库
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

@@ -9,7 +9,7 @@ from unittest.mock import Mock, MagicMock, patch, call
 from pymilvus import CollectionSchema, FieldSchema, DataType
 
 from app.core.milvus_service import MilvusService, get_milvus_service
-from app.core.config import settings
+from app.config import settings
 
 
 @pytest.fixture

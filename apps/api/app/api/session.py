@@ -14,7 +14,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from app.models.session import (
+from app.schemas.session import (
     SessionCreate,
     SessionUpdate,
 )

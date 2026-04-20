@@ -35,6 +35,7 @@ class SemanticCache:
         self,
         threshold: float = 0.95,
         ttl: int = 86400,
+        max_entries: int = 1000,
         embedding_service: Optional[Any] = None,
     ):
         """Initialize SemanticCache.
@@ -42,12 +43,45 @@ class SemanticCache:
         Args:
             threshold: Minimum similarity threshold for cache hit (default: 0.95)
             ttl: Cache entry TTL in seconds (default: 86400 for 24 hours)
+            max_entries: Maximum number of cache entries before eviction
             embedding_service: Optional embedding service instance (defaults to Qwen3VL)
         """
         self.threshold = threshold
         self.ttl = ttl
+        self.max_entries = max_entries
         self.embedding_service = embedding_service or get_qwen3vl_service()
         self.prefix = "rag:semantic_cache"
+
+    async def _enforce_cache_limit(self) -> None:
+        """Evict oldest entries when cache size exceeds limit."""
+        pattern = f"{self.prefix}:*"
+        entries: List[tuple[str, float]] = []
+        try:
+            async for key in redis_db.client.scan_iter(match=pattern):
+                cached_data = await redis_db.get(key)
+                if not cached_data:
+                    continue
+                try:
+                    cached = json.loads(cached_data)
+                    entries.append((key, float(cached.get("timestamp", 0.0))))
+                except Exception:
+                    entries.append((key, 0.0))
+
+            if len(entries) <= self.max_entries:
+                return
+
+            entries.sort(key=lambda item: item[1])
+            overflow = len(entries) - self.max_entries
+            for key, _ in entries[:overflow]:
+                await redis_db.delete(key)
+
+            logger.info(
+                "Semantic cache eviction completed",
+                removed=overflow,
+                max_entries=self.max_entries,
+            )
+        except Exception as e:
+            logger.warning(f"Semantic cache eviction failed: {e}")
 
     def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
         """Calculate cosine similarity between two vectors.
@@ -203,6 +237,7 @@ class SemanticCache:
 
         try:
             await redis_db.set(cache_key, json.dumps(cache_data), expire=self.ttl)
+            await self._enforce_cache_limit()
             logger.info(
                 f"Cached semantic response for query '{query[:50]}...' "
                 f"(key: {cache_key}, TTL: {self.ttl}s)"

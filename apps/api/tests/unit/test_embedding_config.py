@@ -4,7 +4,7 @@ Verifies configuration settings from Plan 18-01.
 """
 
 import pytest
-from app.core.config import settings
+from app.config import settings
 
 
 class TestEmbeddingConfiguration:

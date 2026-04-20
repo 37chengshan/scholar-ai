@@ -163,15 +163,9 @@ class DoclingParser:
 
         # Keep legacy public attributes for compatibility with existing tests.
         self.pipeline_options = self._create_pipeline_options(do_ocr=self.config.do_ocr)
-        self.converter = self._create_converter(self.pipeline_options)
-
-        # PR7 route: born-digital defaults to native parser, then fallback to OCR if needed.
-        self.native_converter = self._create_converter(
-            self._create_pipeline_options(do_ocr=False)
-        )
-        self.ocr_converter = self._create_converter(
-            self._create_pipeline_options(do_ocr=True)
-        )
+        self._converter: Optional[DocumentConverter] = None
+        self._native_converter: Optional[DocumentConverter] = None
+        self._ocr_converter: Optional[DocumentConverter] = None
 
         logger.info(
             "DoclingParser initialized",
@@ -201,6 +195,31 @@ class DoclingParser:
                 )
             }
         )
+
+    @property
+    def converter(self) -> DocumentConverter:
+        """Default converter, lazily initialized."""
+        if self._converter is None:
+            self._converter = self._create_converter(self.pipeline_options)
+        return self._converter
+
+    @property
+    def native_converter(self) -> DocumentConverter:
+        """Native (non-OCR) converter, lazily initialized."""
+        if self._native_converter is None:
+            self._native_converter = self._create_converter(
+                self._create_pipeline_options(do_ocr=False)
+            )
+        return self._native_converter
+
+    @property
+    def ocr_converter(self) -> DocumentConverter:
+        """OCR converter, lazily initialized."""
+        if self._ocr_converter is None:
+            self._ocr_converter = self._create_converter(
+                self._create_pipeline_options(do_ocr=True)
+            )
+        return self._ocr_converter
 
     def _should_retry_with_ocr(self, markdown: str, page_count: int) -> bool:
         """Decide whether to retry parse with OCR based on text density.

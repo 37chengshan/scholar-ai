@@ -99,6 +99,14 @@
 - 未认证返回 401，已认证但无权限返回 403。
 - 不在响应中泄露密钥、令牌或内部鉴权策略细节。
 
+认证限流规范：
+
+- `POST /api/v1/auth/register`、`POST /api/v1/auth/login`、`POST /api/v1/auth/forgot-password` 必须应用按客户端 IP 的速率限制。
+- 速率限制由后端配置项控制，至少包含 `RATE_LIMIT_ENABLED` 与 `RATE_LIMIT_DEFAULT_PER_HOUR`；具体阈值可在路由层按端点覆盖。
+- 当限流服务可用时，超限请求返回 429 Too Many Requests。
+- 当 Redis 不可用或限流校验发生运行时错误时，认证端点必须 fail-closed，返回 503 Service Unavailable，不得降级为本地内存桶或静默放行。
+- 认证黑名单与会话校验同样依赖 Redis 可用性；Redis 不可用时，认证相关路径不得假定请求可继续成功。
+
 字段命名规则：
 
 - 后端内部（ORM/DTO/schema）：snake_case

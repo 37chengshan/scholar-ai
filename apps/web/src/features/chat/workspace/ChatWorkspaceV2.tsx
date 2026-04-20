@@ -643,15 +643,12 @@ export function ChatWorkspaceV2() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] w-full flex font-sans bg-background text-foreground overflow-hidden">
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        className="flex-shrink-0"
-      >
+      <div className="flex-shrink-0">
         <SessionSidebar
           sessions={filteredSessions}
           currentSessionId={currentSession?.id ?? null}
           loading={loading}
+          isZh={isZh}
           labels={{
             terminal: t.terminal,
             sessions: t.sessions,
@@ -667,7 +664,7 @@ export function ChatWorkspaceV2() {
           onSwitchSession={handleSwitchSession}
           onDeleteSession={handleDeleteSession}
         />
-      </motion.div>
+      </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-h-0 bg-background min-w-0">
@@ -697,11 +694,15 @@ export function ChatWorkspaceV2() {
             thinking: t.thinking,
             stop: t.stop,
           }}
+          isZh={isZh}
           messagesEndRef={messagesEndRef}
           scrollContainerRef={messageListRef}
           onCitationClick={handleCitationClick}
           onStop={handleStop}
           formatTime={formatTime}
+          onSuggest={(text) => {
+            setInput(text);
+          }}
         />
 
         <ComposerInput
@@ -709,7 +710,8 @@ export function ChatWorkspaceV2() {
           isZh={isZh}
           mode={mode}
           input={input}
-          disabled={scopeLoading || streamState.streamStatus === 'streaming' || sending}
+          disabled={scopeLoading || sending}
+          streaming={streamState.streamStatus === 'streaming'}
           placeholder={t.placeholder}
           labels={{
             mode: isZh ? '模式' : 'Mode',
@@ -720,6 +722,7 @@ export function ChatWorkspaceV2() {
           onInputChange={setInput}
           onKeyDown={handleKeyDown}
           onSend={handleSend}
+          onStop={handleStop}
         />
       </div>
 

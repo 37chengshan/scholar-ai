@@ -13,6 +13,7 @@ All endpoints use RFC 7807 Problem Details for error responses.
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -28,11 +29,67 @@ from app.services.auth_service import (
     refresh_access_token,
     logout_user,
 )
+from app.core.database import redis_db
 from app.utils.problem_detail import ProblemDetail, ErrorTypes
 from app.utils.logger import logger
 
 
 router = APIRouter(tags=["Authentication"])
+
+
+async def _enforce_rate_limit(
+    request: Request,
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    """Enforce auth endpoint rate limiting.
+
+    Uses Redis when available and falls back to in-memory buckets.
+    """
+    client_ip = request.client.host if request.client and request.client.host else "unknown"
+    identifier = f"{bucket}:{client_ip}"
+    now = int(time.time())
+    redis_key = f"ratelimit:auth:{identifier}:{now // window_seconds}"
+    instance = str(request.url.path)
+
+    redis_client = redis_db.client
+    if not redis_client:
+        raise _create_error_response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_type=ErrorTypes.SERVICE_UNAVAILABLE,
+            title="Service Unavailable",
+            detail="Rate limiting service is temporarily unavailable.",
+            instance=instance,
+        )
+
+    try:
+        current = await redis_client.incr(redis_key)
+        if current == 1:
+            await redis_client.expire(redis_key, window_seconds)
+    except Exception as exc:
+        logger.error(
+            "Auth rate limit redis operation failed (fail-closed)",
+            bucket=bucket,
+            redis_key=redis_key,
+            error=str(exc),
+        )
+        raise _create_error_response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_type=ErrorTypes.SERVICE_UNAVAILABLE,
+            title="Service Unavailable",
+            detail="Rate limiting service is temporarily unavailable.",
+            instance=instance,
+        )
+
+    if current > limit:
+        raise _create_error_response(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            error_type="/errors/rate-limit-exceeded",
+            title="Too Many Requests",
+            detail="Too many authentication requests, please retry later.",
+            instance=instance,
+        )
 
 
 # =============================================================================
@@ -187,6 +244,7 @@ async def register(
     """
     instance = str(request.url.path)
     request_id = str(uuid4())
+    await _enforce_rate_limit(request, bucket="register", limit=3, window_seconds=60)
 
     try:
         user = await register_user(
@@ -264,6 +322,7 @@ async def login(
     """
     instance = str(request.url.path)
     request_id = str(uuid4())
+    await _enforce_rate_limit(request, bucket="login", limit=5, window_seconds=60)
 
     # Authenticate user (form_data.username is the email in OAuth2)
     user = await authenticate_user(
@@ -502,6 +561,7 @@ async def forgot_password(
     Returns:
         Success message.
     """
+    await _enforce_rate_limit(request, bucket="forgot-password", limit=3, window_seconds=60)
     email = body.get("email")
 
     if not email:

@@ -27,14 +27,21 @@ describe('ComposerInput', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: '快速问答' }));
+    // Open mode dropdown (shows current mode label '自动')
+    await user.click(screen.getByRole('button', { name: /自动/ }));
+    // Select '快速问答' from the dropdown menu
+    await user.click(screen.getByRole('button', { name: /快速问答/ }));
     expect(onModeChange).toHaveBeenCalledWith('rag');
 
     await user.type(screen.getByPlaceholderText('输入...'), 'A');
     expect(onInputChange).toHaveBeenCalled();
 
-    const buttons = screen.getAllByRole('button');
-    await user.click(buttons[buttons.length - 1]);
+    // Send button is the button without accessible text (icon-only)
+    const sendButton = screen.getAllByRole('button').filter(
+      (btn) => !btn.textContent?.trim()
+    );
+    expect(sendButton).toHaveLength(1);
+    await user.click(sendButton[0]);
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 });

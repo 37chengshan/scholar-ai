@@ -43,7 +43,7 @@ export function Login() {
   // Redirect to dashboard if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      navigate("/dashboard", { replace: true });
+      navigate("/chat", { replace: true });
     }
   }, [isAuthenticated, authLoading, navigate]);
 
@@ -103,7 +103,7 @@ export function Login() {
 
     try {
       await login(email, password);
-      navigate("/dashboard");
+      navigate("/chat");
     } catch (err: any) {
       const errorData = err.response?.data;
       const errorMessage = errorData?.detail?.detail
@@ -124,7 +124,7 @@ export function Login() {
     try {
       await authApi.register(email, password, name);
       await login(email, password);
-      navigate("/dashboard");
+      navigate("/chat");
     } catch (err: any) {
       const errorData = err.response?.data;
       const errorMessage = errorData?.detail?.detail

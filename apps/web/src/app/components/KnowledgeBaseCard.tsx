@@ -1,4 +1,4 @@
-import { MoreHorizontal, Download, Pencil, Copy, Trash2, Network, Brain, FileText, Eye, TrendingUp, BookOpen, Layers } from "lucide-react";
+import { MoreHorizontal, Download, Pencil, Trash2, FileText, Eye, TrendingUp, BookOpen, Layers, Brain } from "lucide-react";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import {
@@ -111,17 +111,10 @@ export function KnowledgeBaseCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[160px] bg-white border border-zinc-300 shadow-none rounded-none">
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }} className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-zinc-50 hover:text-primary">
-                <Pencil className="h-4 w-4" /> 编辑
+                <Pencil className="h-4 w-4" /> 编辑信息
               </DropdownMenuItem>
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onImport(); }} className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-zinc-50 hover:text-primary">
                 <Download className="h-4 w-4" /> 导入论文
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); }} className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-zinc-50 hover:text-primary">
-                <Copy className="h-4 w-4" /> 复制
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="h-px bg-zinc-200" />
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); }} className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-zinc-50 hover:text-primary">
-                <Network className="h-4 w-4" /> 构建图谱
               </DropdownMenuItem>
               <DropdownMenuSeparator className="h-px bg-zinc-200" />
               <DropdownMenuItem
@@ -129,7 +122,7 @@ export function KnowledgeBaseCard({
                 onClick={(e) => { e.stopPropagation(); onDelete(); }}
                 className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-red-50 text-red-600"
               >
-                <Trash2 className="h-4 w-4" /> 删除
+                <Trash2 className="h-4 w-4" /> 删除知识库
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

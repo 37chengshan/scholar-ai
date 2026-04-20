@@ -21,7 +21,7 @@ from pathlib import Path
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.config import settings
+from app.config import settings
 from app.core.database import (
     postgres_db,
     neo4j_db,

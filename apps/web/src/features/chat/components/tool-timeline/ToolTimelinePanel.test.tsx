@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ToolTimelinePanel } from './ToolTimelinePanel';
 
 describe('ToolTimelinePanel', () => {
-  it('renders tool call rows', () => {
+  it('renders collapsed summary before expanding tool rows', () => {
     render(
       <ToolTimelinePanel
         visible={true}
@@ -19,6 +19,6 @@ describe('ToolTimelinePanel', () => {
       />
     );
 
-    expect(screen.getByText(/search/i)).toBeInTheDocument();
+    expect(screen.getByText(/调用 1 个工具中/i)).toBeInTheDocument();
   });
 });

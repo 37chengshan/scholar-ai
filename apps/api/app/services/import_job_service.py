@@ -33,6 +33,24 @@ from app.utils.logger import logger
 class ImportJobService:
     """ImportJob CRUD service with next_action guidance."""
 
+    VALID_TRANSITIONS = {
+        "created": {"queued", "cancelled"},
+        "queued": {"running", "cancelled", "failed"},
+        "running": {"awaiting_user_action", "completed", "failed", "cancelled"},
+        "awaiting_user_action": {"running", "cancelled", "failed"},
+        "completed": set(),
+        "failed": set(),
+        "cancelled": set(),
+    }
+
+    def _validate_status_transition(self, current: str, target: str) -> None:
+        """Validate status transition for ImportJob state machine."""
+        if current == target:
+            return
+        allowed = self.VALID_TRANSITIONS.get(current, set())
+        if target not in allowed:
+            raise ValueError(f"Invalid transition: {current} -> {target}")
+
     def _generate_job_id(self) -> str:
         """Generate job ID with imp_ prefix."""
         return f"imp_{uuid.uuid4().hex[:24]}"
@@ -186,6 +204,7 @@ class ImportJobService:
             Updated ImportJob
         """
         new_status = status or job.status
+        self._validate_status_transition(job.status, new_status)
         job.status = new_status
         job.stage = stage
         job.progress = progress
@@ -284,6 +303,7 @@ class ImportJobService:
             job.mime_type = mime_type
 
         # Update state
+        self._validate_status_transition(job.status, "queued")
         job.status = "queued"
         job.stage = "uploaded"
         job.progress = 10
@@ -323,6 +343,7 @@ class ImportJobService:
         Returns:
             Updated ImportJob with retry next_action
         """
+        self._validate_status_transition(job.status, "failed")
         job.status = "failed"
         job.stage = "failed"
         job.error_code = error_code
@@ -361,6 +382,7 @@ class ImportJobService:
         Returns:
             Updated ImportJob with dedupe decision next_action
         """
+        self._validate_status_transition(job.status, "awaiting_user_action")
         job.status = "awaiting_user_action"
         job.stage = "awaiting_dedupe_decision"
         job.dedupe_status = "match_found"
@@ -403,6 +425,7 @@ class ImportJobService:
         Returns:
             Updated ImportJob with completed state
         """
+        self._validate_status_transition(job.status, "completed")
         job.status = "completed"
         job.stage = "completed"
         job.progress = 100
@@ -437,6 +460,7 @@ class ImportJobService:
         Returns:
             Updated ImportJob with cancelled state
         """
+        self._validate_status_transition(job.status, "cancelled")
         job.status = "cancelled"
         job.stage = "cancelled"
         job.cancelled_at = datetime.now(timezone.utc)

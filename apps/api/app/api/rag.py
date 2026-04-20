@@ -22,7 +22,7 @@ from app.utils.cache import (
     set_cached_response,
 )
 from app.utils.session_manager import session_manager
-from app.models.session import SessionUpdate
+from app.schemas.session import SessionUpdate
 from app.core.agentic_retrieval import AgenticRetrievalOrchestrator
 from app.core.streaming import (
     stream_rag_response,
