@@ -248,6 +248,46 @@ ImportJob `nextAction` 补充：
 - 本地文件场景从 `upload_file` 切换为 `create_upload_session`。
 - `createSessionUrl` 指向 `/api/v1/import-jobs/{id}/upload-sessions`。
 
+导入任务流式事件契约补充：
+
+- `GET /api/v1/imports/import-jobs/{jobId}/stream` 事件集合固定为：
+  - `status_update`
+  - `stage_change`
+  - `progress`
+  - `completed`
+  - `error`
+- `status_update.data` 必须包含：
+  - `status`
+  - `stage`
+  - `progress`
+  - `nextAction`（可空）
+  - `error`（可空，结构为 `{ code, message }`）
+
+导入兜底上传契约补充：
+
+- `PUT /api/v1/import-jobs/{jobId}/file` 定位为 fallback/small-file-only，不作为本地主路径。
+- 该接口成功响应 `data.pathMode` 固定为 `fallback_small_file_only`，用于前后端链路标识。
+
+ImportJob `nextAction` 场景补充：
+
+- 本地上传主路径：
+  - `type = create_upload_session`
+  - `createSessionUrl = /api/v1/import-jobs/{id}/upload-sessions`
+- DOI/URL 无可下载 PDF 场景：
+  - `type = upload_local_pdf`
+  - `createSessionUrl = /api/v1/import-jobs/{id}/upload-sessions`
+  - 可携带 `triedSources[]` 与 `sourceErrors{}` 作为可观测上下文。
+
+RAG 查询响应契约补充：
+
+- `POST /api/v1/rag/query` 响应增加：
+  - `answerEvidenceConsistency`（`0..1`）
+  - `lowConfidenceReasons[]`
+- `lowConfidenceReasons` 枚举冻结为：
+  - `retrieval_weak`
+  - `evidence_insufficient`
+  - `evidence_conflict`
+
 ## Verification
 
 - 抽样检查新接口响应是否包含 success/data/meta。
