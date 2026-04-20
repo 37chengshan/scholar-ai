@@ -30,7 +30,7 @@ describe('useChatRun', () => {
     const { result } = renderHook(() => useChatRun());
 
     expect(result.current.activeRun.scope).toBe('full_kb');
-    expect(result.current.activeRun.currentPhase).toBe('waiting_confirmation');
+    expect(result.current.activeRun.currentPhase).toBe('waiting_for_user');
     expect(result.current.activeRun.mode).toBe('agent');
   });
 });
