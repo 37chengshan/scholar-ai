@@ -5,6 +5,12 @@ import { kbApi } from '@/services/kbApi';
 import { toast } from 'sonner';
 import { trackImportEvent, trackSearchEvent } from '@/lib/observability/telemetry';
 
+interface SearchImportNavigationState {
+  importJobId: string;
+  justImported: true;
+  paperId?: string;
+}
+
 export function useSearchImportFlow() {
   const navigate = useNavigate();
   const requestIdRef = useRef(0);
@@ -14,6 +20,10 @@ export function useSearchImportFlow() {
   const [knowledgeBases, setKnowledgeBases] = useState<any[]>([]);
   const [loadingKBs, setLoadingKBs] = useState(false);
   const [importingPaperId, setImportingPaperId] = useState<string | null>(null);
+
+  const navigateToKnowledgeBase = useCallback((kbId: string, state: SearchImportNavigationState) => {
+    navigate(`/knowledge-bases/${kbId}?tab=papers`, { state });
+  }, [navigate]);
 
   useEffect(() => {
     return () => {
@@ -64,11 +74,18 @@ export function useSearchImportFlow() {
       let payload: Record<string, unknown>;
 
       if (pendingImportPaper.source === 'arxiv' && pendingImportPaper.externalId) {
+        const arxivId = pendingImportPaper.externalId.replace('arXiv:', '');
         sourceType = 'arxiv';
-        payload = { arxivId: pendingImportPaper.externalId.replace('arXiv:', '') };
+        payload = {
+          arxivId,
+          input: arxivId,
+        };
       } else if (pendingImportPaper.pdfUrl) {
         sourceType = 'pdf_url';
-        payload = { url: pendingImportPaper.pdfUrl };
+        payload = {
+          input: pendingImportPaper.pdfUrl,
+          url: pendingImportPaper.pdfUrl,
+        };
       } else {
         toast.error('无法导入：缺少 PDF URL 或 arXiv ID');
         return;
@@ -86,7 +103,11 @@ export function useSearchImportFlow() {
       setPendingImportPaper(null);
 
       if (createResponse.data.paper?.paperId) {
-        navigate(`/read/${createResponse.data.paper.paperId}`);
+        navigateToKnowledgeBase(kbId, {
+          importJobId: jobId,
+          justImported: true,
+          paperId: createResponse.data.paper.paperId,
+        });
         return;
       }
 
@@ -104,7 +125,11 @@ export function useSearchImportFlow() {
             jobId,
             paperId: jobResponse.data.paper.paperId,
           });
-          navigate(`/read/${jobResponse.data.paper.paperId}`);
+          navigateToKnowledgeBase(kbId, {
+            importJobId: jobId,
+            justImported: true,
+            paperId: jobResponse.data.paper.paperId,
+          });
           return;
         }
         if (jobResponse.data.status === 'failed') {
@@ -123,7 +148,7 @@ export function useSearchImportFlow() {
         setImportingPaperId(null);
       }
     }
-  }, [navigate, pendingImportPaper]);
+  }, [navigateToKnowledgeBase, pendingImportPaper]);
 
   return {
     showKBSelectModal,

@@ -8,10 +8,14 @@ interface UploadQueueSummary {
   failed: number;
 }
 
+function isCancelledUploadError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('上传会话已取消');
+}
+
 export function useUploadWorkspace(knowledgeBaseId: string) {
   const [isUploading, setIsUploading] = useState(false);
   const { uploadFile } = useChunkUpload(knowledgeBaseId);
-  const { recoverSession } = useUploadRecovery();
+  const { recoverUploadItem } = useUploadRecovery();
 
   const items = useUploadWorkspaceStore((state) => state.items);
   const addFiles = useUploadWorkspaceStore((state) => state.addFiles);
@@ -20,7 +24,10 @@ export function useUploadWorkspace(knowledgeBaseId: string) {
   const clear = useUploadWorkspaceStore((state) => state.clear);
 
   const pendingCount = useMemo(
-    () => items.filter((item) => item.status === 'pending' || item.status === 'failed').length,
+    () =>
+      items.filter(
+        (item) => (item.status === 'pending' || item.status === 'failed') && item.file !== undefined
+      ).length,
     [items]
   );
 
@@ -38,18 +45,35 @@ export function useUploadWorkspace(knowledgeBaseId: string) {
           continue;
         }
 
+        if (!item.file) {
+          updateItem(item.id, (prev) => ({
+            ...prev,
+            status: 'needs_file_reselect',
+            error: '请重新选择原始文件后继续上传',
+          }));
+          failed += 1;
+          continue;
+        }
+
         updateItem(item.id, (prev) => ({ ...prev, status: 'preparing', error: undefined }));
 
         try {
-          const result = await uploadFile(item.file, (progress) => {
-            updateItem(item.id, (prev) => ({
-              ...prev,
-              status: progress.status,
-              progress: progress.progress,
-              importJobId: progress.importJobId,
-              uploadSessionId: progress.uploadSessionId,
-            }));
-          });
+          const result = await uploadFile(
+            item.file,
+            (progress) => {
+              updateItem(item.id, (prev) => ({
+                ...prev,
+                status: progress.status,
+                progress: progress.progress,
+                importJobId: progress.importJobId,
+                uploadSessionId: progress.uploadSessionId,
+              }));
+            },
+            {
+              existingImportJobId: item.importJobId,
+              existingUploadSessionId: item.uploadSessionId,
+            }
+          );
 
           updateItem(item.id, (prev) => ({
             ...prev,
@@ -63,7 +87,7 @@ export function useUploadWorkspace(knowledgeBaseId: string) {
           const message = error instanceof Error ? error.message : '上传失败';
           updateItem(item.id, (prev) => ({
             ...prev,
-            status: 'failed',
+            status: isCancelledUploadError(error) ? 'cancelled' : 'failed',
             error: message,
           }));
           failed += 1;
@@ -77,12 +101,18 @@ export function useUploadWorkspace(knowledgeBaseId: string) {
   };
 
   const recoverItem = async (itemId: string, sessionId: string) => {
-    const state = await recoverSession(sessionId);
+    const item = items.find((entry) => entry.id === itemId);
+    if (!item || item.uploadSessionId !== sessionId) {
+      return;
+    }
+
+    const recovery = await recoverUploadItem(item);
     updateItem(itemId, (prev) => ({
       ...prev,
-      status: state.status === 'completed' ? 'queued' : 'uploading',
-      progress: state.progress,
-      uploadSessionId: state.uploadSessionId,
+      status: recovery.nextStatus,
+      progress: recovery.progress,
+      uploadSessionId: recovery.session.uploadSessionId,
+      error: recovery.error,
     }));
   };
 

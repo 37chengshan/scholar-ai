@@ -31,6 +31,7 @@
 | DU-20260418-001 | PlanB-W0-W2 | ai-runtime | 9e0ebec | apps/api/app/config.py,apps/api/app/main.py | tests/unit/test_runtime_profile.py | docs/reports/2026-04-18_落实计划B_后端稳定性与RAG能力重构.md | done | medium | - | 2026-04-18 |
 | DU-20260418-002 | PlanB-W4-W6 | ai-runtime | 389b3b7 | apps/api/app/api/rag.py,apps/api/app/core/agentic_retrieval.py | tests/unit/test_rag_confidence.py,tests/unit/test_agentic_citations.py | docs/architecture/api-contract.md | done | high | - | 2026-04-18 |
 | DU-20260418-003 | PlanC-W1-W2 | ai-platform | in-progress | scripts/check-phase-tracking.sh,scripts/check-contract-gate.sh | tests/e2e/placeholder | docs/governance/phase-delivery-ledger.md | in-progress | medium | governance-kpi自动回填待上线 | 2026-04-18 |
+| DU-20260420-001 | KWC-W0 | product-engineering | planning-doc-20260420 | docs/plans/activ/knowledge-workflow-closure-phase-plan.md,docs/plans/PLAN_STATUS.md | - | docs/reports/2026-04-20_下一大迭代研究报告.md | in-progress | high | 子计划代码落地、验证证据与 PR 回填待补齐 | 2026-04-20 |
 
 ## Required Updates
 

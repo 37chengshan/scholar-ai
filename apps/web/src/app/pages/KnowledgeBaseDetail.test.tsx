@@ -12,6 +12,11 @@ vi.mock('react-router', async () => {
     ...actual,
     useNavigate: () => mockNavigate,
     useParams: () => ({ id: 'kb-1' }),
+    useLocation: () => ({
+      pathname: '/knowledge-bases/kb-1',
+      search: '',
+      state: null,
+    }),
     useSearchParams: () => [new URLSearchParams(), mockSetSearchParams],
     Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   };

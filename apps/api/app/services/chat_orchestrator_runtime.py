@@ -26,8 +26,6 @@ from app.models.chat import (
     ToolResultEventData,
 )
 from app.models.confirmation import ConfirmationState
-from app.services.message_service import message_service
-from app.utils.agent_init import initialize_agent_components
 from app.utils.logger import bind_run_context, clear_observability_context, logger
 
 
@@ -95,7 +93,7 @@ async def resume_with_confirmation_impl(
         status = "approved" if approved else "rejected"
         await orchestrator.update_confirmation_status(confirmation_id, status)
 
-        runner, _, _, _ = initialize_agent_components()
+        runner, _, _, _ = orchestrator._initialize_agent_components()
 
         logger.info(
             "Agent resuming after confirmation",
@@ -229,7 +227,7 @@ async def execute_with_streaming_impl(
         ),
     )
 
-    runner, _, _, _ = initialize_agent_components()
+    runner, _, _, _ = orchestrator._initialize_agent_components()
 
     event_queue: Queue[Tuple[str, dict]] = Queue()
     event_counter = 0
@@ -403,25 +401,15 @@ async def execute_with_streaming_impl(
                     event_id=event_id,
                 )
 
-                tool_payload = {
-                    "id": tool_id,
-                    "tool": tool_name,
-                    "success": success,
-                    "error": error_msg,
-                    "data": data_summary,
-                }
-
                 try:
-                    await message_service.save_message(
+                    await orchestrator._persist_tool_message(
                         session_id=session_id,
-                        role="tool",
-                        content=json.dumps(tool_payload, ensure_ascii=False),
-                        tool_name=tool_name if tool_name and tool_name != "unknown" else None,
-                        tool_params=(
-                            tool_registry.get(tool_id, {}).get("parameters")
-                            if tool_id in tool_registry
-                            else None
-                        ),
+                        tool_id=tool_id,
+                        tool_name=tool_name,
+                        success=success,
+                        error_msg=error_msg,
+                        data_summary=data_summary,
+                        tool_registry=tool_registry,
                     )
                 except Exception as e:
                     logger.warning(

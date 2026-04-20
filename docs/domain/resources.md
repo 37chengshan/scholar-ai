@@ -48,6 +48,7 @@ ChatSession/ChatMessage 读取契约约束：
 - 禁止把 `total` 语义降级为“当前页长度”。
 - Chat SSE 除 heartbeat 外必须携带 `message_id`，并且与历史消息回读中的 `ChatMessage.id` 可追踪关联。
 - Chat SSE 事件集合冻结为：`session_start`、`routing_decision`、`phase`、`reasoning`、`message`、`tool_call`、`tool_result`、`citation`、`confirmation_required`、`cancel`、`done`、`heartbeat`、`error`。
+- `tool_result` 产生的工具执行结果必须作为 `ChatMessage(role=tool)` 持久化到同一 `ChatSession`，不得只存在于瞬时 SSE 流中。
 
 认证与会话资源约束：
 
@@ -68,6 +69,7 @@ Chat 查询作用域资源约束：
 - Paper：uploaded -> parsing -> parsed -> indexed -> archived | failed
 - ImportJob：created -> queued -> running -> awaiting_user_action -> completed | failed | cancelled
 - UploadSession：created -> uploading -> completed | aborted | failed
+- `UploadSession.aborted` 为终态；前端允许将其投影为 `cancelled` 交互状态，但不得继续复用原 `uploadSessionId` 上传新分片。
 - Task：queued -> running -> succeeded | failed | canceled
 - ChatSession：active -> closed | archived
 - IndexArtifact：building -> ready | failed -> rebuilding

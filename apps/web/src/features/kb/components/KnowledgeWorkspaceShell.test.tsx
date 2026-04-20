@@ -11,6 +11,7 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
+    useLocation: () => ({ pathname: '/knowledge-bases/kb-1', search: '', state: null }),
     useParams: () => ({ id: 'kb-1' }),
     useSearchParams: () => [new URLSearchParams(), mockSetSearchParams],
     Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -35,6 +36,30 @@ vi.mock('@/utils/apiClient', () => ({
   default: {
     get: vi.fn(),
   },
+}));
+
+vi.mock('@/features/kb/components/KnowledgeImportPanel', () => ({
+  KnowledgeImportPanel: ({ onJobComplete }: { onJobComplete: () => void }) => (
+    <button type="button" onClick={onJobComplete}>
+      mock-job-complete
+    </button>
+  ),
+}));
+
+vi.mock('@/features/uploads/components/UploadWorkspace', () => ({
+  UploadWorkspace: ({ onQueueComplete }: { onQueueComplete?: () => void | Promise<void> }) => (
+    <button type="button" onClick={() => void onQueueComplete?.()}>
+      mock-upload-complete
+    </button>
+  ),
+}));
+
+vi.mock('@/app/components/ImportDialog', () => ({
+  ImportDialog: ({ onImportComplete }: { onImportComplete: () => void | Promise<void> }) => (
+    <button type="button" onClick={() => void onImportComplete()}>
+      mock-import-complete
+    </button>
+  ),
 }));
 
 import { kbApi } from '@/services/kbApi';
@@ -123,5 +148,134 @@ describe('KnowledgeWorkspaceShell', () => {
 
     await user.click(screen.getByRole('tab', { name: /Run 历史/i }));
     expect(screen.getByText('Run A')).toBeInTheDocument();
+  });
+
+  it('only refreshes import jobs when upload queue submission completes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(importApi.list).mockResolvedValueOnce({
+      success: true,
+      data: {
+        jobs: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      },
+    } as any);
+    vi.mocked(importApi.list).mockResolvedValueOnce({
+      success: true,
+      data: {
+        jobs: [
+          {
+            importJobId: 'job-1',
+            knowledgeBaseId: 'kb-1',
+            sourceType: 'pdf_url',
+            status: 'completed',
+            stage: 'completed',
+            progress: 100,
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+            completedAt: '2026-01-01T00:00:00Z',
+            cancelledAt: null,
+            source: {
+              rawInput: 'https://example.com/paper.pdf',
+              normalizedRef: 'https://example.com/paper.pdf',
+              externalIds: {},
+            },
+            preview: {
+              title: 'Imported Paper',
+              authors: ['A'],
+              year: 2024,
+              venue: 'NeurIPS',
+            },
+            dedupe: {
+              status: 'resolved',
+              matchedPaperId: null,
+              matchType: null,
+              decision: null,
+            },
+            file: {
+              storageKey: null,
+              sha256: null,
+              sizeBytes: null,
+            },
+            paper: {
+              paperId: 'paper-1',
+              title: 'Imported Paper',
+            },
+            task: null,
+            error: null,
+          },
+        ],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      },
+    } as any);
+    render(<KnowledgeWorkspaceShell />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Paper One')).toBeInTheDocument();
+    });
+
+    expect(vi.mocked(importApi.list)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(kbApi.listPapers)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(kbApi.get)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('tab', { name: /上传工作台/i }));
+    await user.click(screen.getByRole('button', { name: 'mock-upload-complete' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(importApi.list)).toHaveBeenCalledTimes(2);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(kbApi.listPapers).mock.calls.length).toBeGreaterThan(1);
+      expect(vi.mocked(kbApi.get).mock.calls.length).toBeGreaterThan(1);
+      expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
+  it('only refreshes import jobs when import dialog submission completes', async () => {
+    const user = userEvent.setup();
+    render(<KnowledgeWorkspaceShell />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Paper One')).toBeInTheDocument();
+    });
+
+    expect(vi.mocked(importApi.list)).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'mock-import-complete' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(importApi.list)).toHaveBeenCalledTimes(2);
+    });
+
+    expect(vi.mocked(kbApi.listPapers)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(kbApi.get)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(1);
+  });
+
+  it('only refreshes import jobs when import panel reports job completion', async () => {
+    const user = userEvent.setup();
+    render(<KnowledgeWorkspaceShell />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Paper One')).toBeInTheDocument();
+    });
+
+    expect(vi.mocked(importApi.list)).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('tab', { name: /导入状态/i }));
+    await user.click(screen.getByRole('button', { name: 'mock-job-complete' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(importApi.list)).toHaveBeenCalledTimes(2);
+    });
+
+    expect(vi.mocked(kbApi.listPapers)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(kbApi.get)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(1);
   });
 });

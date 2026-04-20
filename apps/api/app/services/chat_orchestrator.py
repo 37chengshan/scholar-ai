@@ -258,6 +258,48 @@ class ChatOrchestrator:
                 error=str(e),
             )
 
+    def _initialize_agent_components(self):
+        """Resolve agent runtime dependencies through orchestrator boundary.
+
+        Keeping initialization behind the orchestrator makes the runtime helper
+        testable without patching a second module-level import site.
+        """
+        return initialize_agent_components()
+
+    async def _persist_tool_message(
+        self,
+        session_id: str,
+        tool_id: str,
+        tool_name: str | None,
+        success: bool,
+        error_msg: str | None,
+        data_summary: Any,
+        tool_registry: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """Persist a tool result message without leaking runtime dependencies.
+
+        Tool message persistence is best-effort and must never break streaming.
+        """
+        tool_payload = {
+            "id": tool_id,
+            "tool": tool_name,
+            "success": success,
+            "error": error_msg,
+            "data": data_summary,
+        }
+
+        await message_service.save_message(
+            session_id=session_id,
+            role="tool",
+            content=json.dumps(tool_payload, ensure_ascii=False),
+            tool_name=tool_name if tool_name and tool_name != "unknown" else None,
+            tool_params=(
+                tool_registry.get(tool_id, {}).get("parameters")
+                if tool_id in tool_registry
+                else None
+            ),
+        )
+
     def _close_message_binding(self, message_id: str | None, final_phase: AgentPhase) -> None:
         """Close current message_id binding.
 
