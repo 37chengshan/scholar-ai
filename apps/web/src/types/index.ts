@@ -245,14 +245,23 @@ export interface QueryResult {
   intent?: string;
   metadata_filters?: Record<string, unknown>;
   sources: Array<{
-    paperId: string;
+    paperId?: string;
+    paper_id?: string;
     paperTitle?: string;
+    source_id?: string;
+    section_path?: string;
+    anchor_text?: string;
+    text_preview?: string;
     chunkId?: string;
     content: string;
+    page_num?: number;
     pageNumber?: number;
     score?: number;
   }>;
   confidence?: number;
+  confidence_explain?: Record<string, unknown>;
+  answerEvidenceConsistency?: number;
+  lowConfidenceReasons?: string[];
   conversation_id?: string;
   cached?: boolean;
   tokensUsed?: number;

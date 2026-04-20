@@ -75,6 +75,24 @@ Chat 查询作用域资源约束：
 - IndexArtifact：building -> ready | failed -> rebuilding
 - ImportBatch：created -> running -> completed | failed | cancelled | partial
 
+ImportJob 交互补充：
+
+- `nextAction` 为 ImportJob 对前端的交互指令投影字段。
+- 主路径本地上传场景：
+	- `nextAction.type = create_upload_session`
+	- `nextAction.createSessionUrl = /api/v1/import-jobs/{id}/upload-sessions`
+- DOI/URL 无 PDF 场景：
+	- `nextAction.type = upload_local_pdf`
+	- 可附带 `triedSources[]` 与 `sourceErrors{}` 供前端提示与诊断。
+- `PUT /api/v1/import-jobs/{jobId}/file` 为 fallback/small-file-only 路径，其响应 `pathMode = fallback_small_file_only`。
+
+RAG 查询结果资源补充：
+
+- RAGQueryResult 在 `confidence` 之外增加：
+	- `answerEvidenceConsistency`（`0..1`）
+	- `lowConfidenceReasons[]`
+- `lowConfidenceReasons` 枚举冻结：`retrieval_weak`、`evidence_insufficient`、`evidence_conflict`。
+
 Paper 交互资源补充：
 
 - PaperStar：用户与 Paper 的收藏关系资源，操作入口为 `/api/v1/papers/{paperId}/star`。

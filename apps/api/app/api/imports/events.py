@@ -125,6 +125,13 @@ async def stream_import_progress(
                         "status": job.status,
                         "stage": job.stage,
                         "progress": job.progress,
+                        "nextAction": job.next_action,
+                        "error": {
+                            "code": job.error_code,
+                            "message": job.error_message,
+                        }
+                        if job.error_code or job.error_message
+                        else None,
                     }
                     yield f"event: status_update\ndata: {json.dumps(status_data)}\n\n"
 

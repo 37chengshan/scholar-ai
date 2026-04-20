@@ -437,6 +437,11 @@ export function ChatWorkspaceV2() {
       })),
       citations: safeCitations(streamStateRef.current.citations).map((citation) => ({
         paper_id: citation.paper_id,
+        source_id: citation.source_id,
+        page_num: citation.page_num,
+        section_path: citation.section_path,
+        anchor_text: citation.anchor_text,
+        text_preview: citation.text_preview,
         title: citation.title,
         authors: citation.authors,
         year: citation.year,
@@ -627,7 +632,7 @@ export function ChatWorkspaceV2() {
         return;
       }
 
-      const page = citation.page || 1;
+      const page = citation.page_num || citation.page || 1;
       navigate(`/read/${citation.paper_id}?page=${page}`);
     },
     [navigate, isZh],

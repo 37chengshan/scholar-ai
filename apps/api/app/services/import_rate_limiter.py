@@ -85,6 +85,8 @@ class ImportRateLimiter:
 # Singleton rate limiters for import domain (NOT shared with search)
 _arxiv_import_limiter: Optional[ImportRateLimiter] = None
 _s2_import_limiter: Optional[ImportRateLimiter] = None
+_unpaywall_import_limiter: Optional[ImportRateLimiter] = None
+_openalex_import_limiter: Optional[ImportRateLimiter] = None
 
 
 def get_arxiv_import_limiter() -> ImportRateLimiter:
@@ -107,6 +109,22 @@ def get_s2_import_limiter() -> ImportRateLimiter:
     if _s2_import_limiter is None:
         _s2_import_limiter = ImportRateLimiter(min_interval=1.0)
     return _s2_import_limiter
+
+
+def get_unpaywall_import_limiter() -> ImportRateLimiter:
+    """Get or create Unpaywall import rate limiter (2rps conservative)."""
+    global _unpaywall_import_limiter
+    if _unpaywall_import_limiter is None:
+        _unpaywall_import_limiter = ImportRateLimiter(min_interval=0.5)
+    return _unpaywall_import_limiter
+
+
+def get_openalex_import_limiter() -> ImportRateLimiter:
+    """Get or create OpenAlex import rate limiter (2rps conservative)."""
+    global _openalex_import_limiter
+    if _openalex_import_limiter is None:
+        _openalex_import_limiter = ImportRateLimiter(min_interval=0.5)
+    return _openalex_import_limiter
 
 
 class ImportCache:
@@ -171,5 +189,7 @@ __all__ = [
     "ImportCache",
     "get_arxiv_import_limiter",
     "get_s2_import_limiter",
+    "get_unpaywall_import_limiter",
+    "get_openalex_import_limiter",
     "get_import_cache",
 ]

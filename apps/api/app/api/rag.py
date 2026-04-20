@@ -73,6 +73,9 @@ def normalize_source_contract(source: Dict) -> Dict:
         raise ValueError("Missing required retrieval field: source_id")
     normalized["source_id"] = source_id
 
+    paper_id = source.get("paper_id")
+    normalized["paper_id"] = paper_id or "unknown"
+
     section_path = source.get("section_path") or source.get("section")
     if section_path is None:
         raise ValueError("Missing required retrieval field: section_path")
@@ -99,11 +102,84 @@ def normalize_source_contract(source: Dict) -> Dict:
     return normalized
 
 
+def normalize_sources_with_tolerance(sources: List[Dict]) -> List[Dict]:
+    """Normalize sources with per-item tolerance.
+
+    Invalid items are skipped and logged. Only fail when all items are invalid.
+    """
+    normalized_sources: List[Dict] = []
+    invalid_count = 0
+
+    for source in sources:
+        try:
+            normalized_sources.append(normalize_source_contract(source))
+        except Exception as exc:
+            invalid_count += 1
+            logger.warning(
+                "rag_source_normalization_skipped",
+                error=str(exc),
+            )
+
+    if sources and not normalized_sources:
+        raise ValueError("All retrieval sources failed contract normalization")
+
+    if invalid_count > 0:
+        logger.info(
+            "rag_source_normalization_partial",
+            total=len(sources),
+            valid=len(normalized_sources),
+            invalid=invalid_count,
+        )
+
+    return normalized_sources
+
+
+def _compute_answer_evidence_consistency(answer: str, sources: List[Dict]) -> float:
+    """Estimate answer-evidence consistency by lexical overlap with anchor/preview text."""
+    answer_tokens = {token for token in (answer or "").lower().split() if len(token) >= 3}
+    if not answer_tokens or not sources:
+        return 0.0
+
+    evidence_tokens = set()
+    for source in sources[:5]:
+        anchor = str(source.get("anchor_text") or "")
+        preview = str(source.get("text_preview") or "")
+        for token in f"{anchor} {preview}".lower().split():
+            if len(token) >= 3:
+                evidence_tokens.add(token)
+
+    if not evidence_tokens:
+        return 0.0
+
+    overlap = len(answer_tokens & evidence_tokens)
+    return round(min(overlap / max(len(answer_tokens), 1), 1.0), 4)
+
+
+def _derive_low_confidence_reasons(
+    score_coverage: float,
+    answer_evidence_consistency: float,
+    evidence_diversity: float,
+) -> List[str]:
+    """Map confidence dimensions to product-facing low confidence reasons."""
+    reasons: List[str] = []
+
+    if score_coverage < 0.45:
+        reasons.append("retrieval_weak")
+
+    if answer_evidence_consistency < 0.35:
+        reasons.append("evidence_insufficient")
+
+    if evidence_diversity < 0.35 and answer_evidence_consistency < 0.55:
+        reasons.append("evidence_conflict")
+
+    return reasons
+
+
 def calculate_confidence(
     answer: str,
     sources: List[dict],
     with_explain: bool = False,
-) -> float | Tuple[float, Dict[str, object]]:
+) -> float | Tuple[float, Dict[str, object], float, List[str]]:
     """Calculate confidence from coverage, diversity, and support strength.
 
     Confidence dimensions:
@@ -112,6 +188,18 @@ def calculate_confidence(
     - answer support: source volume and answer substance
     """
     if not sources:
+        if with_explain:
+            return 0.0, {
+                "score_coverage": 0.0,
+                "evidence_diversity": 0.0,
+                "answer_support": 0.0,
+                "answerEvidenceConsistency": 0.0,
+                "weights": {
+                    "score_coverage": 0.55,
+                    "evidence_diversity": 0.25,
+                    "answer_support": 0.20,
+                },
+            }, 0.0, ["evidence_insufficient", "retrieval_weak"]
         return 0.0
 
     normalized_sources = [normalize_source_contract(source) for source in sources]
@@ -126,7 +214,7 @@ def calculate_confidence(
     diversity_keys = set()
     for source in top_sources:
         paper_id = source.get("paper_id") or "unknown"
-        section = source.get("section")
+        section = source.get("section_path")
         page_num = source.get("page_num")
         location = section or (f"page:{page_num}" if page_num is not None else "unknown")
         diversity_keys.add((paper_id, location))
@@ -144,6 +232,12 @@ def calculate_confidence(
         + 0.20 * answer_support
     )
     final_confidence = round(min(confidence, 1.0), 4)
+    answer_evidence_consistency = _compute_answer_evidence_consistency(answer, normalized_sources)
+    low_confidence_reasons = _derive_low_confidence_reasons(
+        score_coverage,
+        answer_evidence_consistency,
+        evidence_diversity,
+    )
 
     if not with_explain:
         return final_confidence
@@ -152,13 +246,14 @@ def calculate_confidence(
         "score_coverage": round(score_coverage, 4),
         "evidence_diversity": round(evidence_diversity, 4),
         "answer_support": round(answer_support, 4),
+        "answerEvidenceConsistency": answer_evidence_consistency,
         "weights": {
             "score_coverage": 0.55,
             "evidence_diversity": 0.25,
             "answer_support": 0.20,
         },
     }
-    return final_confidence, explain
+    return final_confidence, explain, answer_evidence_consistency, low_confidence_reasons
 
 
 # =============================================================================
@@ -184,6 +279,8 @@ class RAGQueryResponse(BaseModel):
     sources: List[dict] = Field(..., description="引用来源")
     confidence: float = Field(..., ge=0, le=1, description="置信度")
     confidence_explain: Optional[Dict] = Field(None, description="置信度解释信息")
+    answerEvidenceConsistency: float = Field(0.0, ge=0, le=1, description="答案与证据一致性")
+    lowConfidenceReasons: List[str] = Field(default_factory=list, description="低置信原因")
     conversation_id: Optional[str] = Field(None, description="对话会话ID")
     cached: bool = Field(False, description="是否来自缓存")
 
@@ -268,10 +365,7 @@ async def rag_query(
 
         if cached:
             logger.info(f"Returning cached response for query: {request.question[:50]}...")
-            cached_sources = [
-                normalize_source_contract(source)
-                for source in cached.get("sources", [])
-            ]
+            cached_sources = normalize_sources_with_tolerance(cached.get("sources", []))
             duration_ms = (time.perf_counter() - started) * 1000
             logger.info(
                 "run_completed",
@@ -287,6 +381,8 @@ async def rag_query(
                 sources=cached_sources,
                 confidence=cached.get("confidence", 0.0),
                 confidence_explain=cached.get("confidence_explain"),
+                answerEvidenceConsistency=cached.get("answerEvidenceConsistency", 0.0),
+                lowConfidenceReasons=cached.get("lowConfidenceReasons", []),
                 conversation_id=request.conversation_id,
                 cached=True
             )
@@ -306,10 +402,10 @@ async def rag_query(
 
         # Extract answer and sources from orchestrator result
         answer = result.get("answer", "")
-        sources = [normalize_source_contract(source) for source in result.get("sources", [])]
+        sources = normalize_sources_with_tolerance(result.get("sources", []))
         retrieve_duration_ms = (time.perf_counter() - retrieve_started) * 1000
 
-        confidence, confidence_explain = calculate_confidence(
+        confidence, confidence_explain, answer_evidence_consistency, low_confidence_reasons = calculate_confidence(
             answer,
             sources,
             with_explain=True,
@@ -325,6 +421,8 @@ async def rag_query(
             sources=sources,
             confidence=confidence,
             confidence_explain=confidence_explain,
+            answerEvidenceConsistency=answer_evidence_consistency,
+            lowConfidenceReasons=low_confidence_reasons,
             conversation_id=request.conversation_id,
             cached=False
         )
@@ -339,6 +437,8 @@ async def rag_query(
                 "sources": sources,
                 "confidence": confidence,
                 "confidence_explain": confidence_explain,
+                "answerEvidenceConsistency": answer_evidence_consistency,
+                "lowConfidenceReasons": low_confidence_reasons,
             },
             query_type=request.query_type,
             retrieval_version="v3",
@@ -443,10 +543,7 @@ async def rag_query_stream(
                 duration_ms=round((time.perf_counter() - started) * 1000, 2),
             )
             cached_answer = cached.get("answer", "")
-            cached_citations = [
-                normalize_source_contract(source)
-                for source in cached.get("sources", [])
-            ]
+            cached_citations = normalize_sources_with_tolerance(cached.get("sources", []))
 
             async def stream_cached():
                 # Stream answer as tokens

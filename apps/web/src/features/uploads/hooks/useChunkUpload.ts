@@ -4,6 +4,9 @@ import { useInstantUpload } from './useInstantUpload';
 
 const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024;
 const MAX_PART_UPLOAD_ATTEMPTS = 3;
+const PART_UPLOAD_CONCURRENCY = 3;
+const RETRY_BASE_DELAY_MS = 500;
+const RETRY_MAX_DELAY_MS = 4000;
 
 interface UploadFileOptions {
   existingImportJobId?: string;
@@ -69,20 +72,14 @@ export function useChunkUpload(knowledgeBaseId: string) {
 
     const partsToUpload = Array.from({ length: missingParts.length }, (_, index) => missingParts[index]);
 
-    for (const partNumber of partsToUpload) {
-      const chunkStart = (partNumber - 1) * chunkSize;
-      const chunkEnd = Math.min(chunkStart + chunkSize, file.size);
-      const chunk = file.slice(chunkStart, chunkEnd);
-
-      const partState = await uploadPartWithRetry(uploadSessionId, partNumber, chunk);
-
-      onProgress?.({
-        importJobId,
-        uploadSessionId,
-        progress: partState.progress,
-        status: 'uploading',
-      });
-    }
+    await uploadPartsWithConcurrency({
+      uploadSessionId,
+      chunkSize,
+      file,
+      partsToUpload,
+      importJobId,
+      onProgress,
+    });
 
     const completedState = await uploadSessionApi.completeSession(uploadSessionId);
     const queued = {
@@ -141,8 +138,6 @@ async function initializeUploadSession({
     };
   }
 
-  const sha256 = await computeSha256(file);
-
   const createJobResp = await importApi.create(knowledgeBaseId, {
     sourceType: 'local_file',
     payload: {
@@ -165,7 +160,6 @@ async function initializeUploadSession({
     filename: file.name,
     sizeBytes: file.size,
     chunkSize: DEFAULT_CHUNK_SIZE,
-    sha256,
     mimeType: file.type || 'application/pdf',
   });
 
@@ -203,15 +197,57 @@ async function uploadPartWithRetry(sessionId: string, partNumber: number, chunk:
       if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
         break;
       }
+
+      const delay = Math.min(RETRY_BASE_DELAY_MS * (2 ** (attempt - 1)), RETRY_MAX_DELAY_MS);
+      await sleep(delay);
     }
   }
 
   throw lastError instanceof Error ? lastError : new Error(`分片 ${partNumber} 上传失败`);
 }
 
-async function computeSha256(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  const hashBytes = Array.from(new Uint8Array(hashBuffer));
-  return hashBytes.map((b) => b.toString(16).padStart(2, '0')).join('');
+async function uploadPartsWithConcurrency({
+  uploadSessionId,
+  chunkSize,
+  file,
+  partsToUpload,
+  importJobId,
+  onProgress,
+}: {
+  uploadSessionId: string;
+  chunkSize: number;
+  file: File;
+  partsToUpload: number[];
+  importJobId: string;
+  onProgress?: (update: UploadProgressUpdate) => void;
+}) {
+  const queue = [...partsToUpload];
+  const workerCount = Math.max(1, Math.min(PART_UPLOAD_CONCURRENCY, queue.length));
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (queue.length > 0) {
+      const partNumber = queue.shift();
+      if (!partNumber) {
+        continue;
+      }
+
+      const chunkStart = (partNumber - 1) * chunkSize;
+      const chunkEnd = Math.min(chunkStart + chunkSize, file.size);
+      const chunk = file.slice(chunkStart, chunkEnd);
+
+      const partState = await uploadPartWithRetry(uploadSessionId, partNumber, chunk);
+      onProgress?.({
+        importJobId,
+        uploadSessionId,
+        progress: partState.progress,
+        status: 'uploading',
+      });
+    }
+  });
+
+  await Promise.all(workers);
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }

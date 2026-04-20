@@ -248,6 +248,25 @@ export interface BatchImportItemResponse {
   nextAction: Record<string, unknown> | null;
 }
 
+export interface ImportJobStreamEventMap {
+  status_update: { status: string; stage: string; progress?: number; nextAction?: Record<string, unknown> | null };
+  stage_change: { stage: string };
+  progress: { progress: number };
+  completed: { paperId?: string; importJobId?: string };
+  error: { code?: string; message?: string };
+  cancelled: { message?: string };
+}
+
+export interface ImportJobSubscriptionHandlers {
+  onStatusUpdate?: (payload: ImportJobStreamEventMap['status_update']) => void;
+  onStageChange?: (payload: ImportJobStreamEventMap['stage_change']) => void;
+  onProgress?: (payload: ImportJobStreamEventMap['progress']) => void;
+  onCompleted?: (payload: ImportJobStreamEventMap['completed']) => void;
+  onError?: (payload: ImportJobStreamEventMap['error']) => void;
+  onCancelled?: (payload: ImportJobStreamEventMap['cancelled']) => void;
+  onStreamError?: (event: Event) => void;
+}
+
 // === API Methods ===
 
 export const importApi = {
@@ -435,6 +454,59 @@ export const importApi = {
    */
   getStreamUrl: (jobId: string): string => {
     return `/api/v1/import-jobs/${jobId}/stream`;
+  },
+
+  /**
+   * Subscribe ImportJob SSE stream.
+   * Returns an unsubscribe function that safely closes EventSource.
+   */
+  subscribeImportJob: (
+    jobId: string,
+    handlers: ImportJobSubscriptionHandlers = {}
+  ): (() => void) => {
+    const streamUrl = importApi.getStreamUrl(jobId);
+    const eventSource = new EventSource(streamUrl);
+
+    const parsePayload = <T>(event: MessageEvent, fallback: T): T => {
+      try {
+        return JSON.parse(event.data) as T;
+      } catch {
+        return fallback;
+      }
+    };
+
+    eventSource.addEventListener('status_update', (event) => {
+      handlers.onStatusUpdate?.(parsePayload(event as MessageEvent, { status: 'unknown', stage: 'unknown' }));
+    });
+
+    eventSource.addEventListener('stage_change', (event) => {
+      handlers.onStageChange?.(parsePayload(event as MessageEvent, { stage: 'unknown' }));
+    });
+
+    eventSource.addEventListener('progress', (event) => {
+      handlers.onProgress?.(parsePayload(event as MessageEvent, { progress: 0 }));
+    });
+
+    eventSource.addEventListener('completed', (event) => {
+      handlers.onCompleted?.(parsePayload(event as MessageEvent, {}));
+    });
+
+    eventSource.addEventListener('error', (event) => {
+      const payload = parsePayload(event as MessageEvent, { message: 'stream error' });
+      handlers.onError?.(payload);
+    });
+
+    eventSource.addEventListener('cancelled', (event) => {
+      handlers.onCancelled?.(parsePayload(event as MessageEvent, { message: 'cancelled' }));
+    });
+
+    eventSource.onerror = (event) => {
+      handlers.onStreamError?.(event);
+    };
+
+    return () => {
+      eventSource.close();
+    };
   },
 };
 
