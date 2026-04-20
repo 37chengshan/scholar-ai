@@ -25,7 +25,11 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
-export function Settings() {
+/**
+ * Internal Settings component that uses Router hooks
+ * Extracted to ensure Router context is available
+ */
+function SettingsContent() {
   const [activeSection, setActiveSection] = useState("profile");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); // 登出确认对话框
   const { fontSize, setFontSize } = useSettingsStore();
@@ -449,4 +453,12 @@ export function Settings() {
       />
     </div>
   );
+}
+
+/**
+ * Outer Settings component wrapper
+ * This ensures the Router context is available when SettingsContent is rendered
+ */
+export function Settings() {
+  return <SettingsContent />;
 }

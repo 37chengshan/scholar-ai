@@ -15,6 +15,8 @@ Implementation per D-01, D-02, D-11, D-12 from CONTEXT.md.
 """
 
 import sys
+import os
+from importlib import import_module
 from typing import Dict, List, Optional, Union
 from pathlib import Path
 import torch
@@ -28,19 +30,141 @@ from app.utils.logger import logger
 qwen_scripts_path = Path(settings.QWEN3VL_EMBEDDING_MODEL_PATH) / "scripts"
 Qwen3VLEmbedder = None
 Qwen3VLForEmbedding = None
+_LAST_EMBEDDER_IMPORT_ERROR: Optional[Exception] = None
 
-if qwen_scripts_path.exists():
-    sys.path.insert(0, str(qwen_scripts_path.parent))
+
+def _import_embedder_from_module_path() -> bool:
+    """Try importing Qwen embedder from installed module path."""
+    global Qwen3VLEmbedder, Qwen3VLForEmbedding, _LAST_EMBEDDER_IMPORT_ERROR
     try:
-        from scripts.qwen3_vl_embedding import Qwen3VLEmbedder, Qwen3VLForEmbedding
-    except ImportError:
-        logger.warning("Qwen3-VL-Embedding scripts import failed")
-else:
-    # Fallback to importing from installed package
+        module = import_module("qwen3_vl_embedding")
+        Qwen3VLEmbedder = getattr(module, "Qwen3VLEmbedder")
+        Qwen3VLForEmbedding = getattr(module, "Qwen3VLForEmbedding")
+        return True
+    except Exception as e:
+        _LAST_EMBEDDER_IMPORT_ERROR = e
+        return False
+
+
+def _import_embedder_from_scripts(scripts_dir: Path) -> bool:
+    """Try importing Qwen embedder from model scripts directory."""
+    global Qwen3VLEmbedder, Qwen3VLForEmbedding, _LAST_EMBEDDER_IMPORT_ERROR
+    if not scripts_dir.exists():
+        return False
+
+    scripts_path = str(scripts_dir)
+    if scripts_path not in sys.path:
+        sys.path.insert(0, scripts_path)
+
     try:
-        from qwen3_vl_embedding import Qwen3VLEmbedder, Qwen3VLForEmbedding
-    except ImportError:
-        logger.warning("Qwen3-VL-Embedding not available - multimodal search will be disabled")
+        # In Qwen model snapshots, scripts/ is often a plain folder (no __init__.py),
+        # so import from scripts_dir directly instead of relying on package import.
+        module = import_module("qwen3_vl_embedding")
+        Qwen3VLEmbedder = getattr(module, "Qwen3VLEmbedder")
+        Qwen3VLForEmbedding = getattr(module, "Qwen3VLForEmbedding")
+        return True
+    except Exception as e:
+        _LAST_EMBEDDER_IMPORT_ERROR = e
+
+    # Compatibility path for environments where scripts/ is a proper package.
+    parent = str(scripts_dir.parent)
+    if parent not in sys.path:
+        sys.path.insert(0, parent)
+
+    try:
+        module = import_module("scripts.qwen3_vl_embedding")
+        Qwen3VLEmbedder = getattr(module, "Qwen3VLEmbedder")
+        Qwen3VLForEmbedding = getattr(module, "Qwen3VLForEmbedding")
+        return True
+    except Exception as e:
+        _LAST_EMBEDDER_IMPORT_ERROR = e
+        return False
+
+
+def _import_embedder_from_model_root(model_dir: Path) -> bool:
+    """Try importing qwen3_vl_embedding.py located at model root."""
+    global Qwen3VLEmbedder, Qwen3VLForEmbedding, _LAST_EMBEDDER_IMPORT_ERROR
+    if not (model_dir / "qwen3_vl_embedding.py").exists():
+        return False
+
+    root = str(model_dir)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+    try:
+        module = import_module("qwen3_vl_embedding")
+        Qwen3VLEmbedder = getattr(module, "Qwen3VLEmbedder")
+        Qwen3VLForEmbedding = getattr(module, "Qwen3VLForEmbedding")
+        return True
+    except Exception as e:
+        _LAST_EMBEDDER_IMPORT_ERROR = e
+        return False
+
+
+def _is_hf_offline() -> bool:
+    """Check whether HuggingFace network access is disabled."""
+    flag = os.getenv("HF_HUB_OFFLINE", settings.HF_HUB_OFFLINE)
+    return str(flag).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _try_bootstrap_embedder_scripts() -> bool:
+    """Download minimal script files required by Qwen embedder when missing."""
+    if _is_hf_offline():
+        logger.warning("HF offline mode enabled; skip bootstrap of Qwen embedding scripts")
+        return False
+
+    try:
+        from huggingface_hub import snapshot_download
+    except Exception as e:
+        logger.warning("huggingface_hub unavailable for script bootstrap", error=str(e))
+        return False
+
+    try:
+        local_dir = Path(settings.QWEN3VL_EMBEDDING_MODEL_PATH)
+        local_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_download(
+            repo_id="Qwen/Qwen3-VL-Embedding-2B",
+            local_dir=str(local_dir),
+            local_dir_use_symlinks=False,
+            allow_patterns=["scripts/*", "*.py", "*.json", "*.md"],
+        )
+        return _import_embedder_from_scripts(local_dir / "scripts")
+    except Exception as e:
+        logger.warning("Failed to bootstrap Qwen embedding scripts", error=str(e))
+        return False
+
+
+def _resolve_embedder_classes() -> bool:
+    """Resolve embedder classes from local scripts, installed module, or bootstrap."""
+    global _LAST_EMBEDDER_IMPORT_ERROR
+    _LAST_EMBEDDER_IMPORT_ERROR = None
+    if Qwen3VLEmbedder is not None:
+        return True
+
+    if _import_embedder_from_scripts(qwen_scripts_path):
+        return True
+
+    if _import_embedder_from_model_root(Path(settings.QWEN3VL_EMBEDDING_MODEL_PATH)):
+        return True
+
+    if _import_embedder_from_module_path():
+        return True
+
+    if _try_bootstrap_embedder_scripts():
+        return True
+
+    return False
+
+
+def _has_local_weights(model_path: Path) -> bool:
+    """Check if local model directory contains actual weight files."""
+    if not model_path.exists():
+        return False
+    if any(model_path.glob("*.safetensors")):
+        return True
+    if any(model_path.glob("*.bin")):
+        return True
+    return False
 
 
 class Qwen3VLMultimodalEmbedding:
@@ -100,10 +224,13 @@ class Qwen3VLMultimodalEmbedding:
             return
 
         # Check if Qwen3VLEmbedder is available
-        if Qwen3VLEmbedder is None:
-            logger.warning("Qwen3-VL-Embedding not available - skipping model load")
-            self._initialized = True  # Mark as initialized but embedder is None
-            return
+        if not _resolve_embedder_classes() or Qwen3VLEmbedder is None:
+            detail = f" Last import error: {_LAST_EMBEDDER_IMPORT_ERROR}" if _LAST_EMBEDDER_IMPORT_ERROR else ""
+            raise RuntimeError(
+                "Qwen3-VL-Embedding scripts are unavailable. "
+                "Ensure Qwen/Qwen3-VL-Embedding-2B/scripts exists or disable HF offline mode to auto-bootstrap."
+                + detail
+            )
 
         try:
             logger.info(
@@ -113,11 +240,11 @@ class Qwen3VLMultimodalEmbedding:
                 device=self.device,
             )
 
-            # Check if local model exists
+            # Check if local model exists with actual weight files
             local_path = Path(settings.QWEN3VL_EMBEDDING_MODEL_PATH)
-            if not local_path.exists():
+            if not _has_local_weights(local_path):
                 logger.warning(
-                    "Local model path not found, falling back to HuggingFace download",
+                    "Local Qwen3-VL embedding weights not found, falling back to HuggingFace download",
                     path=settings.QWEN3VL_EMBEDDING_MODEL_PATH,
                 )
                 model_path = "Qwen/Qwen3-VL-Embedding-2B"
@@ -125,8 +252,16 @@ class Qwen3VLMultimodalEmbedding:
                 model_path = str(local_path)
                 logger.info("Using local Qwen3-VL-Embedding model", path=model_path)
 
-            # Set torch dtype based on quantization
-            torch_dtype = torch.float16 if self.quantization == "fp16" else torch.float32
+            # FP16 on CPU is significantly slower and can appear hung under load.
+            # Force FP32 on CPU for predictable throughput during long document imports.
+            if self.device == "cpu":
+                if self.quantization == "fp16":
+                    logger.warning(
+                        "FP16 quantization requested on CPU; falling back to FP32 for stability/performance"
+                    )
+                torch_dtype = torch.float32
+            else:
+                torch_dtype = torch.float16 if self.quantization == "fp16" else torch.float32
 
             # Use Flash Attention 2 for better acceleration (CUDA only)
             # Flash Attention 2 is not supported on MPS/CPU
@@ -155,8 +290,15 @@ class Qwen3VLMultimodalEmbedding:
             )
 
         except Exception as e:
+            self._initialized = False
+            self.embedder = None
             logger.error("Failed to load Qwen3-VL-Embedding model", error=str(e), exc_info=True)
             raise
+
+    def _ensure_ready(self) -> None:
+        """Validate model runtime state before encoding."""
+        if not self._initialized or self.embedder is None:
+            raise RuntimeError("Qwen3-VL-Embedding model is not ready. Call load_model() successfully first.")
 
     def encode_image(
         self,
@@ -174,10 +316,7 @@ class Qwen3VLMultimodalEmbedding:
         """
         if not self._initialized:
             raise RuntimeError("Model not loaded. Call load_model() first.")
-
-        if self.embedder is None:
-            logger.warning("Qwen3-VL-Embedding not available - returning empty embedding")
-            return [] if isinstance(image, list) else []
+        self._ensure_ready()
 
         # Handle single vs batch input
         is_single = not isinstance(image, list)
@@ -226,6 +365,7 @@ class Qwen3VLMultimodalEmbedding:
         """
         if not self._initialized:
             raise RuntimeError("Model not loaded. Call load_model() first.")
+        self._ensure_ready()
 
         # Handle single vs batch input
         is_single = isinstance(text, str)
@@ -323,7 +463,7 @@ class Qwen3VLMultimodalEmbedding:
 
     def is_loaded(self) -> bool:
         """Check if model is loaded."""
-        return self._initialized
+        return self._initialized and self.embedder is not None
 
     def get_device(self) -> str:
         """Get the device being used."""

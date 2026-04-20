@@ -24,6 +24,7 @@ from app.core.database import redis_db
 from app.database import AsyncSessionLocal
 from app.models.orm_session import Session
 from app.models.session import SessionCreate, SessionUpdate, SessionResponse
+from app.services.message_service import message_service
 from app.utils.logger import logger
 
 # Redis cache TTL
@@ -214,7 +215,10 @@ class SessionManager:
 
                 user_id = session_obj.user_id
 
-                # Delete from PostgreSQL (cascades to messages via ORM relationship)
+                # Delete dependent chat messages first so PostgreSQL FK checks do not fail.
+                await message_service.delete_session_messages(session_id)
+
+                # Delete session from PostgreSQL.
                 await db.execute(
                     delete(Session).where(Session.id == session_id)
                 )

@@ -179,6 +179,57 @@ class TestStorageManager:
         assert "title = title" in sql, "Whitespace-only title should preserve existing"
 
     @pytest.mark.asyncio
+    async def test_store_paper_metadata_normalizes_oversized_title(self):
+        """Multiline oversized title should be normalized to first line and capped."""
+        mock_pool = MagicMock()
+        mock_conn = AsyncMock()
+
+        manager = StorageManager(mock_pool)
+
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="test-paper",
+            user_id="test-user",
+            storage_key="test-key",
+        )
+        very_long = "A" * 500
+        ctx.metadata = {"title": f"  Candidate title line  \n{very_long}"}
+        ctx.imrad = {}
+        ctx.parse_result = {"markdown": "# Test", "page_count": 10, "items": []}
+
+        await manager._store_paper_metadata(mock_conn, ctx)
+
+        call_args = mock_conn.execute.call_args[0]
+        normalized_title = call_args[4]  # $4 title param
+        assert normalized_title == "Candidate title line"
+        assert len(normalized_title) <= manager.MAX_INDEXED_TITLE_LEN
+
+    @pytest.mark.asyncio
+    async def test_store_paper_metadata_resolves_duplicate_title(self):
+        """Duplicate extracted titles should be suffixed to satisfy unique_user_title."""
+        mock_pool = MagicMock()
+        mock_conn = AsyncMock()
+        mock_conn.fetchval = AsyncMock(side_effect=["existing-paper-id", None])
+
+        manager = StorageManager(mock_pool)
+
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="test-paper",
+            user_id="test-user",
+            storage_key="test-key",
+        )
+        ctx.metadata = {"title": "Duplicate Title"}
+        ctx.imrad = {}
+        ctx.parse_result = {"markdown": "# Test", "page_count": 10, "items": []}
+
+        await manager._store_paper_metadata(mock_conn, ctx)
+
+        call_args = mock_conn.execute.call_args[0]
+        stored_title = call_args[4]
+        assert stored_title == "Duplicate Title (v2)"
+
+    @pytest.mark.asyncio
     async def test_store_notes_success(self):
         """Test reading notes generation and storage."""
         mock_pool = MagicMock()
@@ -241,6 +292,94 @@ class TestStorageManager:
             assert ctx.notes is None
 
     @pytest.mark.asyncio
+    async def test_store_notes_generates_for_fallback_parse(self):
+        """Fallback parse mode should still attempt notes generation."""
+        mock_pool = MagicMock()
+        mock_conn = AsyncMock()
+
+        manager = StorageManager(mock_pool)
+
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="test-paper",
+            user_id="test-user",
+            storage_key="test-key",
+        )
+        ctx.metadata = {"title": "Fallback Paper"}
+        ctx.imrad = {"introduction": {"content": "intro"}}
+        ctx.parse_result = {"metadata": {"parse_mode": "pypdf_fallback"}}
+
+        with patch.object(
+            manager,
+            "_generate_notes_with_retry",
+            new_callable=AsyncMock,
+            return_value="Fallback notes",
+        ) as mock_generate:
+            await manager._store_notes(mock_conn, ctx)
+            mock_generate.assert_called_once()
+            assert ctx.notes == "Fallback notes"
+
+    @pytest.mark.asyncio
+    async def test_store_paper_metadata_strips_null_bytes(self):
+        """Metadata/content strings containing NUL should be sanitized before DB write."""
+        mock_pool = MagicMock()
+        mock_conn = AsyncMock()
+
+        manager = StorageManager(mock_pool)
+
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="test-paper",
+            user_id="test-user",
+            storage_key="test-key",
+        )
+        ctx.metadata = {
+            "title": "Hello\x00World",
+            "authors": ["A\x00B"],
+            "abstract": "Abs\x00tract",
+            "doi": "10.1\x00/xyz",
+            "keywords": ["k\x001"],
+        }
+        ctx.imrad = {"introduction": {"content": "Intro\x00Text"}}
+        ctx.parse_result = {"markdown": "Body\x00Text", "page_count": 1, "items": []}
+
+        await manager._store_paper_metadata(mock_conn, ctx)
+
+        call_args = mock_conn.execute.call_args[0]
+        assert "\x00" not in call_args[1]  # content
+        assert "\x00" not in call_args[3]  # extracted title
+        assert "\x00" not in call_args[5]  # abstract
+        assert "\x00" not in call_args[6]  # doi
+
+    @pytest.mark.asyncio
+    async def test_store_notes_strips_null_bytes(self):
+        """Generated reading notes with NUL should be sanitized before persistence."""
+        mock_pool = MagicMock()
+        mock_conn = AsyncMock()
+
+        manager = StorageManager(mock_pool)
+
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="test-paper",
+            user_id="test-user",
+            storage_key="test-key",
+        )
+        ctx.metadata = {"title": "Test"}
+        ctx.imrad = {"introduction": {"content": "x"}}
+
+        with patch.object(
+            manager,
+            "_generate_notes_with_retry",
+            new_callable=AsyncMock,
+            return_value="Line1\x00Line2",
+        ):
+            await manager._store_notes(mock_conn, ctx)
+
+        call_args = mock_conn.execute.call_args[0]
+        assert "\x00" not in call_args[1]
+
+    @pytest.mark.asyncio
     async def test_store_vectors_with_images(self):
         """Test batch vector storage with images and tables."""
         mock_pool = MagicMock()
@@ -275,6 +414,40 @@ class TestStorageManager:
 
                 # Should include the image
                 assert len(ids) == 1
+
+    @pytest.mark.asyncio
+    async def test_store_vectors_raises_when_embedding_fails(self):
+        """Embedding failures should fail hard instead of silently using zero vectors."""
+        mock_pool = MagicMock()
+        manager = StorageManager(mock_pool)
+
+        ctx = PipelineContext(
+            task_id="test",
+            paper_id="test-paper",
+            user_id="test-user",
+            storage_key="test-key",
+        )
+        ctx.parse_result = {
+            "items": [{"text": "chunk text", "page_start": 1}],
+            "metadata": {},
+        }
+        ctx.imrad = {}
+        ctx.image_results = []
+        ctx.table_results = []
+
+        with patch.object(
+            manager.parser,
+            "chunk_by_semantic",
+            return_value=[{"text": "chunk text", "page_start": 1, "section": ""}],
+        ):
+            with patch.object(manager.qwen3vl_service, "is_loaded", return_value=True):
+                with patch.object(
+                    manager.qwen3vl_service,
+                    "encode_text",
+                    side_effect=RuntimeError("qwen failed"),
+                ):
+                    with pytest.raises(RuntimeError):
+                        await manager._store_vectors(ctx)
 
     @pytest.mark.asyncio
     async def test_store_graph_nodes_success(self):

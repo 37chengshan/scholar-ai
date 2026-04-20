@@ -9,7 +9,7 @@ import { Badge } from '../components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDashboard } from '@/app/hooks/useDashboard';
 import { DashboardSkeleton } from '../components/Skeleton';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as dashboardApi from '@/services/dashboardApi';
 
 export function Dashboard() {
@@ -82,6 +82,30 @@ async function fetchRecentPapers() {
 
   // Chart colors
   const PIE_COLORS = ['#d35400', '#e67e22', '#f39c12', '#f1c40f'];
+
+  const paperTrend = useMemo(() => {
+    const points = stats?.weeklyTrend || [];
+    if (points.length < 2) {
+      return null;
+    }
+
+    const latest = points[points.length - 1]?.papers ?? 0;
+    const previous = points[points.length - 2]?.papers ?? 0;
+    if (previous === 0) {
+      return latest > 0 ? 100 : 0;
+    }
+    return Math.round(((latest - previous) / previous) * 1000) / 10;
+  }, [stats?.weeklyTrend]);
+
+  const formatTrend = (value: number | null): string => {
+    if (value === null || !Number.isFinite(value)) {
+      return '—';
+    }
+    if (value > 0) {
+      return `+${value}%`;
+    }
+    return `${value}%`;
+  };
 
   // Helper function to format time ago
   function getTimeAgo(dateString: string, isZh: boolean): string {
@@ -180,9 +204,9 @@ async function fetchRecentPapers() {
             className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
           >
             {[
-              { label: t.totalPapers, value: stats?.paperCount || "—", desc: t.localIndex, icon: Database, trend: stats?.weeklyTrend ? `+${stats.weeklyTrend}%` : "—" },
+              { label: t.totalPapers, value: stats?.paperCount ?? "—", desc: t.localIndex, icon: Database, trend: formatTrend(paperTrend) },
               { label: t.entitiesExt, value: stats?.entityCount || "—", desc: t.kg, icon: GitCommit, trend: "+4.2%" },
-              { label: t.llmGens, value: stats?.llmTokens ? `${(stats.llmTokens / 1000).toFixed(1)}M` : "—", desc: t.tokensProc, icon: Activity, trend: "+24%" },
+              { label: t.llmGens, value: stats?.llmTokens ? `${(stats.llmTokens / 1000).toFixed(1)}K` : "—", desc: t.tokensProc, icon: Activity, trend: "+24%" },
               { label: t.deepReads, value: stats?.queryCount || "—", desc: t.analyzedDocs, icon: Eye, trend: "+8%" },
               { label: t.globalQueries, value: stats?.queryCount || "—", desc: t.extSearches, icon: Search, trend: "+1.5%" },
             ].map((kpi, i) => (

@@ -14,9 +14,13 @@ Usage:
 import os
 from typing import Dict
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+API_ROOT = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -51,7 +55,8 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Use absolute env file path so runtime cwd does not affect config loading.
+        env_file=(str(API_ROOT / ".env"), ".env"),
         case_sensitive=True,
         extra="ignore",
     )

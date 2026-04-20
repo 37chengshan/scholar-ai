@@ -79,7 +79,7 @@ export function NoteFolderTree({
       <div key={folder.id}>
         <div
           className={clsx(
-            'flex items-center gap-1 px-2 py-1.5 rounded cursor-pointer text-sm transition-colors',
+            'group flex items-center gap-1 px-2 py-1.5 rounded cursor-pointer text-sm transition-colors',
             isSelected && 'bg-muted/80 font-medium',
             !isSelected && 'hover:bg-muted/50'
           )}

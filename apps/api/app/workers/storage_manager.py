@@ -10,6 +10,7 @@ Per D-06: Batch storage reduces database round trips.
 
 import json
 import re
+import asyncio
 from typing import Any, Dict, List, Optional
 
 import asyncpg
@@ -28,6 +29,7 @@ class StorageManager:
 
     EMBEDDING_DIM = 2048  # Qwen3VL dimension
     MIN_CHUNK_QUALITY = 0.25
+    MAX_INDEXED_TITLE_LEN = 240
 
     def __init__(
         self,
@@ -50,12 +52,111 @@ class StorageManager:
         self.notes_generator = notes_generator or NotesGenerator()
         self.parser = DoclingParser()
 
-        # Get or create Qwen3VL service and ensure model is loaded
+        # Get or create Qwen3VL service. Keep lazy-loading to avoid startup crash;
+        # actual hard validation happens during vector stage.
         self.qwen3vl_service = get_qwen3vl_service()
-        if not self.qwen3vl_service.is_loaded():
-            logger.info("Loading Qwen3VL model in storage manager...")
-            self.qwen3vl_service.load_model()
-            logger.info("Qwen3VL model loaded in storage manager")
+
+    @staticmethod
+    def _sanitize_text(value: Optional[str]) -> Optional[str]:
+        """Remove NUL bytes that PostgreSQL UTF-8 text columns reject."""
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            value = str(value)
+        if "\x00" in value:
+            return value.replace("\x00", "")
+        return value
+
+    @classmethod
+    def _sanitize_obj(cls, value: Any) -> Any:
+        """Recursively sanitize strings in nested objects for DB persistence."""
+        if isinstance(value, str):
+            return cls._sanitize_text(value)
+        if isinstance(value, list):
+            return [cls._sanitize_obj(v) for v in value]
+        if isinstance(value, dict):
+            return {k: cls._sanitize_obj(v) for k, v in value.items()}
+        return value
+
+    @classmethod
+    def _normalize_title(cls, value: Optional[str]) -> Optional[str]:
+        """Normalize parser title output to a compact, index-safe value."""
+        text = cls._sanitize_text(value)
+        if not text:
+            return None
+
+        first_non_empty_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        normalized = re.sub(r"\s+", " ", first_non_empty_line).strip()
+
+        if not normalized:
+            return None
+
+        if len(normalized) > cls.MAX_INDEXED_TITLE_LEN:
+            normalized = normalized[: cls.MAX_INDEXED_TITLE_LEN].rstrip()
+
+        return normalized or None
+
+    async def _ensure_unique_title_for_user(
+        self,
+        conn: asyncpg.Connection,
+        user_id: str,
+        paper_id: str,
+        candidate: str,
+    ) -> str:
+        """Resolve title collisions for unique_user_title before UPDATE.
+
+        Metadata extraction can produce the same canonical title across multiple
+        imports. Ensure `(userId, title)` stays unique without failing the whole
+        processing pipeline.
+        """
+
+        probe_sql = (
+            'SELECT id FROM papers WHERE "userId" = $1 AND title = $2 AND id <> $3 LIMIT 1'
+        )
+
+        existing_id = await conn.fetchval(probe_sql, user_id, candidate, paper_id)
+        if not isinstance(existing_id, str):
+            return candidate
+
+        for idx in range(2, 100):
+            next_candidate = f"{candidate} (v{idx})"
+            next_existing = await conn.fetchval(probe_sql, user_id, next_candidate, paper_id)
+            if not isinstance(next_existing, str):
+                return next_candidate
+
+        return f"{candidate} ({paper_id[:8]})"
+
+    async def _generate_notes_with_retry(
+        self,
+        paper_metadata: Dict[str, Any],
+        imrad_structure: Dict[str, Any],
+        max_retries: int = 2,
+        timeout_seconds: int = 90,
+    ) -> str:
+        """Generate notes with timeout and bounded retries for worker stability."""
+        last_error: Optional[Exception] = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                return await asyncio.wait_for(
+                    self.notes_generator.generate_notes(
+                        paper_metadata=paper_metadata,
+                        imrad_structure=imrad_structure,
+                    ),
+                    timeout=timeout_seconds,
+                )
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "Reading notes generation attempt failed",
+                    attempt=attempt + 1,
+                    max_attempts=max_retries + 1,
+                    error=str(e),
+                )
+                if attempt < max_retries:
+                    await asyncio.sleep(min(2 ** attempt, 4))
+
+        raise RuntimeError("Failed to generate reading notes after retries") from last_error
 
     @staticmethod
     def _build_evidence_metadata(
@@ -154,13 +255,20 @@ class StorageManager:
         Per D-04: Always update title from extracted metadata when available.
         Filename-based title should be replaced with extracted title from PDF.
         """
-        metadata = ctx.metadata or {}
-        imrad = ctx.imrad or {}
+        metadata = self._sanitize_obj(ctx.metadata or {})
+        imrad = self._sanitize_obj(ctx.imrad or {})
+        markdown = self._sanitize_text((ctx.parse_result or {}).get("markdown", ""))
 
         # Extract title from metadata, convert empty strings to None
-        extracted_title = metadata.get("title")
-        if extracted_title and isinstance(extracted_title, str):
-            extracted_title = extracted_title.strip() or None
+        extracted_title = self._normalize_title(metadata.get("title"))
+
+        if extracted_title:
+            extracted_title = await self._ensure_unique_title_for_user(
+                conn=conn,
+                user_id=ctx.user_id,
+                paper_id=ctx.paper_id,
+                candidate=extracted_title,
+            )
 
         # Per D-04: Use extracted title if available (overwrites filename-based title)
         # Only fallback to existing title if extraction truly failed
@@ -179,13 +287,13 @@ class StorageManager:
                    keywords = COALESCE(NULLIF($8::text[], '{{}}'), keywords),
                    "updatedAt" = NOW()
                WHERE id = $9""",
-            ctx.parse_result.get("markdown", ""),
-            ctx.parse_result.get("page_count", 0),
+            markdown,
+            (ctx.parse_result or {}).get("page_count", 0),
             json.dumps(imrad),
             extracted_title,  # $4 - only used if title_update_clause is "title = $4"
             metadata.get("authors", []),
-            metadata.get("abstract"),
-            metadata.get("doi"),
+            self._sanitize_text(metadata.get("abstract")),
+            self._sanitize_text(metadata.get("doi")),
             metadata.get("keywords", []),
             ctx.paper_id,
         )
@@ -208,10 +316,12 @@ class StorageManager:
                 "venue": ctx.metadata.get("venue", "") if ctx.metadata else "",
             }
 
-            notes = await self.notes_generator.generate_notes(
-                paper_metadata=paper_metadata, imrad_structure=ctx.imrad or {}
+            notes = await self._generate_notes_with_retry(
+                paper_metadata=paper_metadata,
+                imrad_structure=ctx.imrad or {},
             )
 
+            notes = self._sanitize_text(notes)
             if notes:
                 await conn.execute(
                     """UPDATE papers
@@ -294,7 +404,7 @@ class StorageManager:
             if chunk.get("section") is None:
                 chunk["section"] = ""
 
-            chunk_text = chunk.get("text", "")
+            chunk_text = self._sanitize_text(chunk.get("text", "")) or ""
             if not chunk_text or not chunk_text.strip():
                 chunk_text = "NULL"
             chunk_texts.append(chunk_text)
@@ -340,20 +450,18 @@ class StorageManager:
             logger.error(
                 "Failed to generate batch embeddings", task_id=ctx.task_id, error=str(e)
             )
-            embeddings = [[0.0] * self.EMBEDDING_DIM] * len(chunk_texts)
+            raise RuntimeError("Qwen embedding failed during batch generation") from e
 
         if len(embeddings) != len(chunk_texts):
-            logger.warning(
-                "Embedding count mismatch, normalizing length",
+            logger.error(
+                "Embedding count mismatch",
                 task_id=ctx.task_id,
                 chunk_count=len(chunk_texts),
                 embedding_count=len(embeddings),
             )
-            if len(embeddings) < len(chunk_texts):
-                padding = [[0.0] * self.EMBEDDING_DIM] * (len(chunk_texts) - len(embeddings))
-                embeddings = embeddings + padding
-            else:
-                embeddings = embeddings[: len(chunk_texts)]
+            raise RuntimeError(
+                f"Qwen embedding count mismatch: chunks={len(chunk_texts)}, embeddings={len(embeddings)}"
+            )
 
         # Add chunks with embeddings
         skipped_low_quality = 0

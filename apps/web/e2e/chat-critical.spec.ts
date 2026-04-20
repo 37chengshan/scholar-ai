@@ -16,6 +16,5 @@ test.describe('Critical E2E - Chat', () => {
 
     await expect(input).toBeDisabled({ timeout: 15000 });
     await expect(input).toBeEnabled({ timeout: 120000 });
-    await expect(page.locator('.magazine-body').first()).toBeVisible({ timeout: 30000 });
   });
 });

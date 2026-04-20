@@ -62,10 +62,10 @@ function getStepIcon(type: ThinkingStepType) {
  */
 function getStepColor(type: ThinkingStepType): string {
   const colors: Record<ThinkingStepType, string> = {
-    thinking: 'text-purple-500',
-    analyze: 'text-blue-500',
-    plan: 'text-purple-500',
-    execute: 'text-[#d35400]',
+    thinking: 'text-primary',
+    analyze: 'text-primary/80',
+    plan: 'text-primary',
+    execute: 'text-primary',
     verify: 'text-green-500',
   };
   return colors[type];
@@ -141,13 +141,13 @@ export function ThinkingProcess({
   }, []);
 
   const t = {
-    collapsedHeader: isZh ? `💭 思考过程 (${steps.length}步)` : `💭 Thought process (${steps.length} steps)`,
+    collapsedHeader: isZh ? `思考过程 (${steps.length}步)` : `Thinking (${steps.length})`,
   };
 
   return (
     <div
       className={clsx(
-        'border-l-2 border-[#8b5cf6]/30 pl-4 py-2 my-2 bg-purple-50/50 rounded-r-lg',
+        'my-2 rounded-2xl border border-primary/15 bg-[#fffaf2] px-4 py-3 shadow-sm',
         className
       )}
     >
@@ -164,8 +164,11 @@ export function ThinkingProcess({
           >
             <button
               onClick={() => setIsCollapsed(false)}
-              className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer hover:text-foreground py-1 transition-colors"
+              className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground cursor-pointer hover:text-foreground py-1 transition-colors"
             >
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Brain className="w-3 h-3" />
+              </span>
               {t.collapsedHeader}
             </button>
           </motion.div>
@@ -178,7 +181,7 @@ export function ThinkingProcess({
             transition={{ duration: 0.2 }}
           >
             {/* Step list */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {steps.map((step, idx) => {
                 const Icon = getStepIcon(step.type);
                 return (
@@ -187,17 +190,17 @@ export function ThinkingProcess({
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.05, duration: 0.15 }}
-                    className="flex items-start gap-2"
+                    className="flex items-start gap-3"
                   >
-                    <div className={clsx('flex-shrink-0 mt-0.5', getStepColor(step.type))}>
-                      <Icon className="w-4 h-4" />
+                    <div className={clsx('mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/80 ring-1 ring-border/60', getStepColor(step.type))}>
+                      <Icon className="w-3.5 h-3.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-foreground whitespace-pre-wrap">
+                      <div className="text-[12px] leading-6 text-foreground whitespace-pre-wrap">
                         {step.content}
                       </div>
                       {step.timestamp && (
-                        <div className="text-xs text-muted-foreground/60 mt-0.5">
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/60 mt-0.5">
                           {formatRelativeTime(step.timestamp, isZh)}
                         </div>
                       )}

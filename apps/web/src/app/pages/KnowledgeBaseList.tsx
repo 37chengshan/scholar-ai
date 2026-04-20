@@ -38,7 +38,11 @@ import {
 import { MoreHorizontal, ArrowRight, Download, Pencil, Trash2, Network } from "lucide-react";
 import { toast } from "sonner";
 
-export function KnowledgeBaseList() {
+/**
+ * Internal KnowledgeBaseList component that uses Router hooks
+ * Extracted to ensure Router context is available
+ */
+function KnowledgeBaseListContent() {
   const navigate = useNavigate();
   
   // URL-synchronized state (persisted across refresh/navigation)
@@ -551,4 +555,12 @@ export function KnowledgeBaseList() {
       </div>
     </div>
   );
+}
+
+/**
+ * Outer KnowledgeBaseList component wrapper
+ * This ensures the Router context is available when KnowledgeBaseListContent is rendered
+ */
+export function KnowledgeBaseList() {
+  return <KnowledgeBaseListContent />;
 }

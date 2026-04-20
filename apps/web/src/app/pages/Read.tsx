@@ -34,6 +34,7 @@ import {
 } from "../components/ui/tooltip";
 import * as papersApi from "@/services/papersApi";
 import * as annotationsApi from "@/services/annotationsApi";
+import * as notesApi from "@/services/notesApi";
 import type { Annotation } from "@/services/annotationsApi";
 
 import { toast } from "sonner";
@@ -50,7 +51,14 @@ import {
   FileText,
 } from "lucide-react";
 
-export function Read() {
+/**
+ * Internal Read component that uses Router hooks
+ * Extracted to ensure Router context is available
+ */
+function ReadContent() {
+  const MIN_PANEL_WIDTH = 320;
+  const MAX_PANEL_WIDTH = 620;
+
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -67,6 +75,69 @@ export function Read() {
   const [rightTab, setRightTab] = useState("annotations");
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(360);
+  const [isResizingPanel, setIsResizingPanel] = useState(false);
+  const [selectedText, setSelectedText] = useState("");
+  const [selectionPosition, setSelectionPosition] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+  const [linkedNoteId, setLinkedNoteId] = useState<string | null>(null);
+  const [linkedNoteTitle, setLinkedNoteTitle] = useState<string>("");
+  const [linkedNoteContent, setLinkedNoteContent] = useState<any>({ type: "doc", content: [] });
+
+  const clampPage = useCallback(
+    (page: number) => {
+      const upper = totalPages || Number.MAX_SAFE_INTEGER;
+      return Math.max(1, Math.min(page, upper));
+    },
+    [totalPages],
+  );
+
+  const parseNoteJson = useCallback((raw: string | null | undefined) => {
+    if (!raw) {
+      return { type: "doc", content: [] };
+    }
+
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: raw }],
+          },
+        ],
+      };
+    }
+  }, []);
+
+  const initializeLinkedNote = useCallback(
+    async (paperId: string, paperTitle: string) => {
+      const noteTitle = `${paperTitle || (isZh ? "未命名论文" : "Untitled Paper")} · ${isZh ? "阅读笔记" : "Reading Notes"}`;
+      const existingNotes = await notesApi.getNotesByPaper(paperId);
+      const nonAiNote = existingNotes.find((note) => !note.tags.includes("__ai_note__"));
+
+      const targetNote =
+        nonAiNote ||
+        (await notesApi.createNote({
+          title: noteTitle,
+          content: JSON.stringify({ type: "doc", content: [] }),
+          tags: ["read-note"],
+          paperIds: [paperId],
+        }));
+
+      setLinkedNoteId(targetNote.id);
+      setLinkedNoteTitle(targetNote.title || noteTitle);
+      setLinkedNoteContent(parseNoteJson(targetNote.content));
+    },
+    [isZh, parseNoteJson],
+  );
 
   // Handle ?page= URL parameter for PDF reference jumps from notes
   useEffect(() => {
@@ -74,14 +145,14 @@ export function Read() {
     if (targetPage) {
       const page = parseInt(targetPage, 10);
       if (!isNaN(page) && page >= 1) {
-        setCurrentPage(page);
+        setCurrentPage(clampPage(page));
         // Clear the ?page= parameter after navigating to avoid re-triggering
         const newParams = new URLSearchParams(searchParams);
         newParams.delete("page");
         setSearchParams(newParams, { replace: true });
       }
     }
-  }, [searchParams, setSearchParams]);
+  }, [clampPage, searchParams, setSearchParams]);
 
   // Load paper data
   useEffect(() => {
@@ -103,6 +174,8 @@ export function Read() {
         // Load annotations
         const annotationData = await annotationsApi.list(id);
         setAnnotations(annotationData);
+
+        await initializeLinkedNote(id, data.title || "");
       } catch (error: any) {
         const errorMsg =
           error?.message || (isZh ? "加载论文失败" : "Failed to load paper");
@@ -114,18 +187,19 @@ export function Read() {
     }
 
     loadPaper();
-  }, [id, isZh]);
+  }, [id, isZh, initializeLinkedNote]);
 
   // Handle page change from PDF viewer
   const handlePageChange = useCallback(
     async (page: number) => {
-      setCurrentPage(page);
+      const nextPage = clampPage(page);
+      setCurrentPage(nextPage);
       if (!id) {
         return;
       }
       // Save reading progress
       try {
-        await papersApi.saveReadingProgress(id, page);
+        await papersApi.saveReadingProgress(id, nextPage);
       } catch (error: any) {
         // Don't block reading, just show a brief warning
         toast.warning(
@@ -133,29 +207,81 @@ export function Read() {
         );
       }
     },
-    [id, isZh],
+    [clampPage, id, isZh],
   );
 
   const handleAnnotationCreated = async () => {
     if (!id) return;
     const annotationData = await annotationsApi.list(id);
     setAnnotations(annotationData);
+    setSelectedText("");
+    setSelectionPosition(null);
   };
+
+  useEffect(() => {
+    if (!isResizingPanel) {
+      return;
+    }
+
+    const onMouseMove = (event: MouseEvent) => {
+      const nextWidth = window.innerWidth - event.clientX;
+      const clampedWidth = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, nextWidth));
+      setPanelWidth(clampedWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizingPanel(false);
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      document.body.style.userSelect = "";
+    };
+  }, [isResizingPanel]);
 
   // Handle total pages change from PDF viewer
   const handleNumPagesChange = useCallback((numPages: number) => {
     setTotalPages(numPages);
+    setCurrentPage((previous) => Math.min(previous, numPages));
   }, []);
 
-  const handleNotesSave = async (content: string) => {
-    if (!id) return;
-    try {
-      await papersApi.update(id, { readingNotes: content });
-      toast.success(isZh ? "笔记已自动保存" : "Note auto-saved");
-    } catch (error: any) {
-      toast.error(isZh ? "笔记保存失败" : "Failed to save notes");
+  const handleNotesSave = useCallback(
+    async (content: any) => {
+      if (!id || !linkedNoteId) return;
+      try {
+        await notesApi.updateNote(linkedNoteId, {
+          title:
+            linkedNoteTitle ||
+            (paper?.title ? `${paper.title} · ${isZh ? "阅读笔记" : "Reading Notes"}` : "Reading Notes"),
+          content: JSON.stringify(content),
+          paperIds: [id],
+        });
+      } catch (error: any) {
+        toast.error(isZh ? "笔记保存失败" : "Failed to save notes");
+      }
+    },
+    [id, isZh, linkedNoteId, linkedNoteTitle, paper?.title],
+  );
+
+  useEffect(() => {
+    if (!linkedNoteId) {
+      return;
     }
-  };
+
+    const timer = window.setTimeout(() => {
+      handleNotesSave(linkedNoteContent);
+    }, 800);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [handleNotesSave, linkedNoteContent, linkedNoteId]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -166,6 +292,16 @@ export function Read() {
       setIsFullscreen(false);
     }
   };
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, []);
 
   if (loading || !paper) {
     return (
@@ -217,7 +353,8 @@ export function Read() {
             variant="ghost"
             size="sm"
             className="h-7 w-7 p-0"
-            onClick={() => handlePageChange(currentPage + 1)}
+            onClick={() => handlePageChange(clampPage(currentPage + 1))}
+            disabled={totalPages !== null && currentPage >= totalPages}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -322,12 +459,13 @@ export function Read() {
           </div>
           <div className="flex-1 overflow-auto">
             <SectionTree
-              imrad={paper.imrad_json ?? paper.imradJson}
+              imrad={paper.imradJson}
               onPageSelect={(page) => {
-                setCurrentPage(page);
-                handlePageChange(page);
+                setCurrentPage(clampPage(page));
+                handlePageChange(clampPage(page));
               }}
               currentPage={currentPage}
+              isZh={isZh}
             />
           </div>
         </div>
@@ -340,6 +478,17 @@ export function Read() {
               currentPage={currentPage}
               onPageChange={handlePageChange}
               onNumPagesChange={handleNumPagesChange}
+              annotations={annotations}
+              activeAnnotationId={activeAnnotationId}
+              onTextSelection={(selection) => {
+                if (!selection) {
+                  setSelectedText("");
+                  setSelectionPosition(null);
+                  return;
+                }
+                setSelectedText(selection.text);
+                setSelectionPosition(selection.position);
+              }}
             />
           </div>
           {/* Thumbnail Strip at bottom */}
@@ -348,8 +497,9 @@ export function Read() {
               paperId={id!}
               currentPage={currentPage}
               onPageClick={(page) => {
-                setCurrentPage(page);
-                handlePageChange(page);
+                const nextPage = clampPage(page);
+                setCurrentPage(nextPage);
+                handlePageChange(nextPage);
               }}
               thumbnailWidth={60}
             />
@@ -358,7 +508,19 @@ export function Read() {
 
         {/* Right Panel: Collapsible Tabbed Panel */}
         {isPanelOpen && (
-          <div className="w-80 border-l bg-white flex flex-col shrink-0">
+          <>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={isZh ? "调整右侧面板宽度" : "Resize right panel"}
+              className="w-1 cursor-col-resize bg-border/50 transition-colors hover:bg-primary/50"
+              onMouseDown={() => setIsResizingPanel(true)}
+            />
+
+            <div
+              className="border-l bg-white flex flex-col shrink-0"
+              style={{ width: `${panelWidth}px` }}
+            >
             <Tabs
               value={rightTab}
               onValueChange={setRightTab}
@@ -385,6 +547,8 @@ export function Read() {
                     paperId={id!}
                     pageNumber={currentPage}
                     onAnnotationCreated={handleAnnotationCreated}
+                    selectedText={selectedText}
+                    selectionPosition={selectionPosition}
                   />
                   <div className="flex-1 overflow-auto p-3">
                     {annotations.length === 0 ? (
@@ -396,7 +560,13 @@ export function Read() {
                         {annotations.map((ann) => (
                           <div
                             key={ann.id}
-                            className="p-2 rounded border text-xs"
+                            className="cursor-pointer p-2 rounded border text-xs transition-colors hover:bg-muted/30"
+                            onClick={() => {
+                              setCurrentPage(clampPage(ann.pageNumber));
+                              handlePageChange(clampPage(ann.pageNumber));
+                              setActiveAnnotationId(ann.id);
+                              setRightTab("annotations");
+                            }}
                             style={{
                               borderLeftColor: ann.color,
                               borderLeftWidth: 3,
@@ -438,7 +608,7 @@ export function Read() {
                       variant="outline"
                       size="sm"
                       className="h-6 text-[10px] px-2"
-                      onClick={() => navigate("/notes")}
+                      onClick={() => navigate(`/notes?paperId=${id}${linkedNoteId ? `&noteId=${linkedNoteId}` : ""}`)}
                     >
                       <FileText className="w-3 h-3 mr-1" />
                       {isZh ? "在侧边栏编辑笔记" : "Edit in sidebar"}
@@ -446,30 +616,9 @@ export function Read() {
                   </div>
                   <div className="flex-1 overflow-hidden">
                     <NotesEditor
-                      content={(() => {
-                        try {
-                          return paper.readingNotes
-                            ? JSON.parse(paper.readingNotes)
-                            : { type: "doc", content: [] };
-                        } catch {
-                          return {
-                            type: "doc",
-                            content: [
-                              {
-                                type: "paragraph",
-                                content: [
-                                  {
-                                    type: "text",
-                                    text: paper.readingNotes || "",
-                                  },
-                                ],
-                              },
-                            ],
-                          };
-                        }
-                      })()}
+                      content={linkedNoteContent}
                       onChange={(json) => {
-                        handleNotesSave(JSON.stringify(json));
+                        setLinkedNoteContent(json);
                       }}
                       placeholder={
                         isZh
@@ -482,8 +631,17 @@ export function Read() {
               </TabsContent>
             </Tabs>
           </div>
+          </>
         )}
       </div>
     </div>
   );
+}
+
+/**
+ * Outer Read component wrapper
+ * This ensures the Router context is available when ReadContent is rendered
+ */
+export function Read() {
+  return <ReadContent />;
 }

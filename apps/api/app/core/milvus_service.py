@@ -11,6 +11,7 @@ Provides:
 
 import re
 import time
+import os
 from functools import wraps
 from typing import Any, Dict, List, Optional
 
@@ -18,6 +19,12 @@ from app.config import settings
 from app.utils.logger import logger
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 from pymilvus.exceptions import MilvusException
+
+
+def _is_missing_collection_error(error: Exception) -> bool:
+    """Return True when Milvus reports a missing collection."""
+    message = str(error).lower()
+    return "collection" in message and "not exist" in message
 
 
 def retry_with_backoff(max_retries: int = 5, base_delay: float = 1.0):
@@ -178,8 +185,34 @@ class MilvusService:
                 pool_size=self.pool_size,
             )
         except Exception as e:
-            logger.error("Failed to connect to Milvus", error=str(e))
-            raise
+            use_embedded_fallback = (
+                os.getenv("MILVUS_EMBEDDED_FALLBACK", "true").lower() == "true"
+            )
+            if not use_embedded_fallback:
+                logger.error("Failed to connect to Milvus", error=str(e))
+                raise
+
+            lite_db_path = os.getenv(
+                "MILVUS_LITE_DB_PATH",
+                os.path.join(os.getcwd(), "apps", "api", "artifacts", "milvus_lite.db"),
+            )
+            os.makedirs(os.path.dirname(lite_db_path), exist_ok=True)
+
+            try:
+                connections.connect(alias=self._alias, uri=lite_db_path)
+                self._connected = True
+                logger.warning(
+                    "Milvus server unavailable, switched to Milvus Lite",
+                    lite_db_path=lite_db_path,
+                    original_error=str(e),
+                )
+            except Exception as lite_error:
+                logger.error(
+                    "Failed to connect to Milvus and Milvus Lite",
+                    milvus_error=str(e),
+                    milvus_lite_error=str(lite_error),
+                )
+                raise
 
     def disconnect(self) -> None:
         """Close all connections."""
@@ -366,7 +399,30 @@ class MilvusService:
         """Get collection by name, ensuring connection is established."""
         if not self._connected:
             self.connect()
-        return Collection(name, using=self._alias)
+
+        # Milvus Lite fallback may start with an empty DB file.
+        # Ensure core content collection exists before returning it.
+        if (
+            name == settings.MILVUS_COLLECTION_CONTENTS_V2
+            and not self.has_collection(name)
+        ):
+            self.create_collection_v2()
+
+        try:
+            return Collection(name, using=self._alias)
+        except MilvusException as e:
+            if (
+                name == settings.MILVUS_COLLECTION_CONTENTS_V2
+                and _is_missing_collection_error(e)
+            ):
+                logger.warning(
+                    "Milvus collection constructor reported missing collection, recreating",
+                    collection=name,
+                    error=str(e),
+                )
+                self.create_collection_v2()
+                return Collection(name, using=self._alias)
+            raise
 
     def search_images(
         self, embedding: List[float], user_id: Optional[str] = None, top_k: int = 10
@@ -762,7 +818,6 @@ class MilvusService:
         Returns:
             List of inserted IDs (may be partial if some batches failed)
         """
-        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
         all_ids = []
 
         # Process in batches
@@ -775,6 +830,8 @@ class MilvusService:
             retries = 0
             while retries < max_retries:
                 try:
+                    collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+
                     # Prepare entities with quality scoring
                     entities = []
                     skipped_count = 0
@@ -830,6 +887,14 @@ class MilvusService:
                         page_nums=[e["page_num"] for e in entities],
                     )
 
+                    if not entities:
+                        logger.warning(
+                            "Skipping Milvus batch because all items were non-indexable",
+                            batch=f"{batch_num}/{total_batches}",
+                            skipped=skipped_count,
+                        )
+                        break
+
                     ids = collection.insert(entities)
                     all_ids.extend(ids.primary_keys)
 
@@ -841,6 +906,17 @@ class MilvusService:
                     break
 
                 except Exception as e:
+                    # Milvus Lite may start from an empty DB or reconnect after transport errors.
+                    # If the collection disappears, recreate it and retry this batch.
+                    if _is_missing_collection_error(e):
+                        logger.warning(
+                            "Milvus collection missing during insert, recreating",
+                            collection=settings.MILVUS_COLLECTION_CONTENTS_V2,
+                            error=str(e),
+                        )
+                        self.create_collection_v2()
+                        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+
                     retries += 1
                     delay = 2**retries  # 2s, 4s, 8s (exponential backoff per D-29)
 
@@ -866,6 +942,7 @@ class MilvusService:
 
         # Flush all inserted data
         if all_ids:
+            collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
             collection.flush()
 
         logger.info(

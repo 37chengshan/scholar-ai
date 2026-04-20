@@ -42,6 +42,10 @@ interface RawPaper {
   processingError?: string | null;
   reading_notes?: string | null;
   readingNotes?: string | null;
+  imrad_json?: unknown;
+  imradJson?: unknown;
+  knowledge_base_id?: string | null;
+  knowledgeBaseId?: string | null;
 }
 
 function normalizePaper(raw: RawPaper): PaperWithProgress {
@@ -68,6 +72,8 @@ function normalizePaper(raw: RawPaper): PaperWithProgress {
     processingError: raw.processingError ?? null,
     lastUpdated: raw.updatedAt ?? raw.updated_at ?? '',
     readingNotes: raw.readingNotes ?? raw.reading_notes ?? null,
+    imradJson: raw.imradJson ?? raw.imrad_json ?? null,
+    knowledgeBaseId: raw.knowledgeBaseId ?? raw.knowledge_base_id ?? null,
   } as PaperWithProgress & { readingNotes?: string | null };
 }
 
@@ -102,7 +108,9 @@ export async function list(params?: PapersQueryParams): Promise<PapersListRespon
       total: response.data.total || 0,
       page: response.data.page || 1,
       limit: response.data.limit || params?.limit || 20,
-      totalPages: response.data.totalPages || 0,
+      totalPages:
+        response.data.totalPages ||
+        Math.max(1, Math.ceil((response.data.total || 0) / (response.data.limit || params?.limit || 20))),
     },
   } as PapersListResponse;
 }
@@ -259,7 +267,7 @@ export async function downloadPdfBlob(id: string): Promise<Blob> {
     responseType: 'blob',
   });
 
-  return new Blob([response.data], { type: 'application/pdf' });
+  return response.data as Blob;
 }
 
 /** Save paper reading progress */

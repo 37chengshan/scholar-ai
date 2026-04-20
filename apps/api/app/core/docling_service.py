@@ -400,8 +400,101 @@ class DoclingParser:
             )
 
         except Exception as e:
+            # Root-cause fallback: when Docling model resolution fails (offline cache/mirror/network),
+            # degrade to local text extraction so import pipeline can still complete.
+            fallback_result = await self._parse_pdf_with_pypdf(path, primary_error=e)
+            if fallback_result is not None:
+                return fallback_result
+
             logger.error("PDF parsing failed", path=str(path), error=str(e))
             raise
+
+    async def _parse_pdf_with_pypdf(self, path: Path, primary_error: Exception) -> Optional[dict]:
+        """Fallback parser using local PyPDF extraction.
+
+        This keeps the ingestion path functional when Docling cannot initialize
+        due to model availability constraints in local/dev environments.
+        """
+
+        def _extract_with_pypdf() -> Dict[str, Any]:
+            from pypdf import PdfReader
+
+            reader = PdfReader(str(path))
+            page_count = len(reader.pages)
+
+            items: List[Dict[str, Any]] = []
+            markdown_parts: List[str] = []
+
+            for page_index, page in enumerate(reader.pages, start=1):
+                text = (page.extract_text() or "").strip()
+                if not text:
+                    continue
+
+                items.append(
+                    {
+                        "type": "text",
+                        "text": text,
+                        "page": page_index,
+                        "bbox": {},
+                    }
+                )
+                markdown_parts.append(f"## Page {page_index}\n\n{text}")
+
+            if not items:
+                raise RuntimeError("PyPDF fallback extracted no text from document")
+
+            return {
+                "items": items,
+                "markdown": "\n\n".join(markdown_parts),
+                "page_count": page_count,
+            }
+
+        try:
+            from app.config import settings
+
+            extracted = await asyncio.to_thread(_extract_with_pypdf)
+            self._enforce_page_limit(extracted["page_count"])
+
+            warning_text = str(primary_error)
+            if len(warning_text) > 512:
+                warning_text = warning_text[:512]
+
+            logger.warning(
+                "Docling parse fallback activated",
+                path=str(path),
+                page_count=extracted["page_count"],
+                items=len(extracted["items"]),
+                primary_error=warning_text,
+            )
+
+            return {
+                "markdown": extracted["markdown"],
+                "items": extracted["items"],
+                "page_count": extracted["page_count"],
+                "metadata": {
+                    "title": path.stem,
+                    "parse_mode": "pypdf_fallback",
+                    "ocr_used": False,
+                    "chunk_strategy": {
+                        "mode": "section_adaptive",
+                        "default_chunk_size": settings.CHUNK_SIZE,
+                        "default_chunk_overlap": settings.CHUNK_OVERLAP,
+                    },
+                    "ocr_retry_min_chars_per_page": self.config.ocr_retry_min_chars_per_page,
+                    "parse_warnings": [
+                        "docling_parse_failed_fallback_to_pypdf",
+                        warning_text,
+                    ],
+                },
+            }
+        except Exception as fallback_error:
+            logger.error(
+                "PyPDF fallback parsing failed",
+                path=str(path),
+                primary_error=str(primary_error),
+                fallback_error=str(fallback_error),
+            )
+            return None
 
     def chunk_by_paragraph(
         self,
