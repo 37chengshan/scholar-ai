@@ -1,5 +1,6 @@
-import { AlertCircle, Bot, Loader2, Square, User } from 'lucide-react';
+import { Bot, Copy, Loader2, Square, User, ArrowDown, Check } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useState, useCallback } from 'react';
 import type { ChatStreamState } from '@/app/hooks/useChatStream';
 import type { ThinkingStep } from '@/app/components/ThinkingProcess';
 import { renderContentWithCitations } from '@/app/components/CitationsPanel';
@@ -53,6 +54,25 @@ function getToolTimelineVisible(
     && (((messageToolTimeline?.length || 0) > 0) || ((streamToolTimeline?.length || 0) > 0));
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [text]);
+  return (
+    <button
+      onClick={handleCopy}
+      className="p-1 rounded hover:bg-zinc-100 transition-colors text-zinc-400 hover:text-zinc-600"
+      title="Copy"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
 export function MessageFeed({
   renderMessages,
   streamState,
@@ -68,12 +88,12 @@ export function MessageFeed({
   onSuggest,
 }: MessageFeedProps) {
   return (
-    <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-5">
+    <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
       {renderMessages.length === 0 ? (
         <ChatEmptyState isZh={isZh} onSuggest={onSuggest} />
       ) : (
-        <div className="mx-auto flex w-full flex-col gap-4">
-          {renderMessages.map((message) => {
+        <div className="mx-auto max-w-3xl w-full flex flex-col py-6 px-4 sm:px-6">
+          {renderMessages.map((message, index) => {
               const isStreaming = message.isStreaming;
               const isPlaceholder = message.isPlaceholder || message.id === currentMessageId;
               const isAssistant = message.role === 'assistant';
@@ -98,82 +118,68 @@ export function MessageFeed({
               const tokenCount = message.tokensUsed;
               const costValue = message.cost ?? 0;
 
-              return (
-                <div
-                  key={message.id}
-                  className={clsx(
-                    'flex items-start gap-3',
-                    isAssistant ? 'justify-start' : 'justify-end',
-                  )}
-                >
-                  {isAssistant && (
-                    <div className="mt-1 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/5 text-primary shadow-sm">
-                      <Bot className="h-4 w-4" />
-                    </div>
-                  )}
+              // Spacing: tighter for consecutive same-role messages
+              const prevMessage = index > 0 ? renderMessages[index - 1] : null;
+              const roleChanged = !prevMessage || prevMessage.role !== message.role;
 
+              if (isAssistant) {
+                // ─── AI Message: no bubble, left brand indicator ───
+                return (
                   <div
-                    className={clsx(
-                      'group flex max-w-[min(44rem,100%)] flex-col gap-1',
-                      isAssistant ? 'items-start' : 'items-end',
-                    )}
+                    key={message.id}
+                    className={clsx('group', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
                   >
-                    <ReasoningPanel
-                      visible={reasoningVisible && !isStreaming}
-                      steps={messageReasoningSteps.length > 0 ? messageReasoningSteps : thinkingSteps}
-                      durationSeconds={((streamState.endedAt || Date.now()) - (streamState.startedAt || Date.now())) / 1000}
-                    />
-
-                    <ToolTimelinePanel
-                      visible={toolTimelineVisible && !isStreaming}
-                      timeline={messageToolTimeline}
-                    />
-
-                    <div
-                      className={clsx(
-                        'w-full rounded-2xl border px-4 py-2.5 shadow-sm',
-                        isAssistant
-                          ? 'border-border/70 bg-card/95 text-foreground'
-                          : 'border-primary/10 bg-primary text-primary-foreground'
-                      )}
-                    >
-                      <div
-                        className={clsx(
-                          'flex items-center gap-2 text-[10px] uppercase tracking-[0.24em]',
-                          isAssistant ? 'text-muted-foreground' : 'text-primary-foreground/70',
-                        )}
-                      >
-                        {isAssistant ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
-                        <span>{isAssistant ? 'AI' : 'You'}</span>
-                        <span className="ml-auto font-mono tracking-[0.2em]">{formatTime(message.created_at)}</span>
+                    {/* Avatar + role label row - only on role change */}
+                    {roleChanged && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Bot className="h-3.5 w-3.5" />
+                        </div>
+                        <span className="text-xs font-semibold text-foreground/80">ScholarAI</span>
                       </div>
+                    )}
 
-                      <div
-                        className={clsx(
-                          'mt-1.5 text-sm leading-relaxed',
-                          isAssistant ? 'font-sans text-foreground/90' : 'font-sans font-medium',
-                        )}
-                      >
-                        {showStreamingMeta && (
-                          <div className="mb-2 flex min-h-7 items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                            {reasoningVisible && <span className="rounded-full border border-border/70 px-2 py-0.5">{labels.thinking}</span>}
-                            {toolTimelineVisible && <span className="rounded-full border border-border/70 px-2 py-0.5">Tools</span>}
-                          </div>
-                        )}
+                    <div className="pl-9">
+                      <ReasoningPanel
+                        visible={reasoningVisible && !isStreaming}
+                        steps={messageReasoningSteps.length > 0 ? messageReasoningSteps : thinkingSteps}
+                        durationSeconds={((streamState.endedAt || Date.now()) - (streamState.startedAt || Date.now())) / 1000}
+                      />
 
+                      <ToolTimelinePanel
+                        visible={toolTimelineVisible && !isStreaming}
+                        timeline={messageToolTimeline}
+                      />
+
+                      {showStreamingMeta && (
+                        <div className="mb-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                          {reasoningVisible && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2.5 py-0.5 bg-muted/30">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              {labels.thinking}
+                            </span>
+                          )}
+                          {toolTimelineVisible && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2.5 py-0.5 bg-muted/30">Tools</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Content - no bubble wrapper */}
+                      <div className="text-sm leading-relaxed text-foreground/90">
                         {messageCitations.length > 0 && message.displayContent ? (
-                          renderContentWithCitations(message.displayContent, (index) => {
-                            onCitationClick(messageCitations[index]);
+                          renderContentWithCitations(message.displayContent, (citationIndex) => {
+                            onCitationClick(messageCitations[citationIndex]);
                           })
                         ) : message.displayContent ? (
                           <div className="whitespace-pre-wrap">
                             {message.displayContent}
-                            {isStreaming && isAssistant && (
-                              <span className="ml-0.5 inline-block h-4 w-[1px] animate-pulse bg-current align-middle" aria-hidden="true" />
+                            {isStreaming && (
+                              <span className="ml-0.5 inline-block h-4 w-[2px] animate-[pulse_1s_ease-in-out_infinite] bg-primary/60 align-middle" aria-hidden="true" />
                             )}
                           </div>
                         ) : isStreaming ? (
-                          <div className={clsx('flex items-center gap-2 text-sm', isAssistant ? 'text-muted-foreground' : 'text-primary-foreground/80')}>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Loader2 className="w-4 h-4 animate-spin" />
                             {labels.thinking}
                           </div>
@@ -183,40 +189,54 @@ export function MessageFeed({
                       {isActiveStreamMessage && (
                         <button
                           onClick={onStop}
-                          className={clsx(
-                            'mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-colors',
-                            isAssistant
-                              ? 'border border-border/70 bg-background/80 text-foreground hover:bg-muted'
-                              : 'border border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20',
-                          )}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
                         >
                           <Square className="w-3 h-3" />
                           {labels.stop}
                         </button>
                       )}
+
+                      <CitationPanel
+                        visible={messageCitations.length > 0}
+                        citations={safeCitations(messageCitations)}
+                      />
+
+                      {/* Action bar: copy, token info */}
+                      {!isStreaming && message.displayContent && (
+                        <div className="flex items-center gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <CopyButton text={message.displayContent} />
+                          {tokenCount !== undefined && tokenCount > 0 && (
+                            <span
+                              className="text-[10px] text-zinc-400 font-mono"
+                              title={costValue > 0 ? `Token: ${tokenCount.toLocaleString()} · ¥${costValue.toFixed(4)}` : undefined}
+                            >
+                              {tokenCount.toLocaleString()} tokens
+                              {costValue > 0 && ` · ¥${costValue.toFixed(4)}`}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
-
-                    <CitationPanel
-                      visible={messageCitations.length > 0}
-                      citations={safeCitations(messageCitations)}
-                    />
-
-                    {tokenCount !== undefined && tokenCount > 0 && !isStreaming && (
-                      <div
-                        className="text-[10px] text-zinc-400 font-mono opacity-0 group-hover:opacity-100 transition-opacity"
-                        title={costValue > 0 ? `Token: ${tokenCount.toLocaleString()} · ¥${costValue.toFixed(4)}` : undefined}
-                      >
-                        {tokenCount.toLocaleString()} tokens
-                        {costValue > 0 && ` · ¥${costValue.toFixed(4)}`}
-                      </div>
-                    )}
                   </div>
+                );
+              }
 
-                  {!isAssistant && (
-                    <div className="mt-1 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border/70 bg-card text-foreground shadow-sm">
-                      <User className="w-4 h-4" />
+              // ─── User Message: compact pill bubble, right-aligned ───
+              return (
+                <div
+                  key={message.id}
+                  className={clsx('flex justify-end', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
+                >
+                  <div className="max-w-[75%]">
+                    <div className="rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-2.5 shadow-sm">
+                      <div className="text-sm leading-relaxed font-medium whitespace-pre-wrap">
+                        {message.displayContent}
+                      </div>
                     </div>
-                  )}
+                    <div className="text-right mt-0.5">
+                      <span className="text-[10px] text-zinc-400 font-mono">{formatTime(message.created_at)}</span>
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -226,7 +246,7 @@ export function MessageFeed({
       )}
 
       {streamState.error && (
-        <div className="max-w-2xl mx-auto mt-6">
+        <div className="max-w-2xl mx-auto mt-6 px-4">
           <UnifiedErrorState
             title="对话流中断"
             description={streamState.error.message}

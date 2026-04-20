@@ -45,7 +45,7 @@ describe('MessageFeed', () => {
       />
     );
 
-    expect(screen.getByText('开始新对话')).toBeInTheDocument();
+    expect(screen.getByText('开始一次学术对话')).toBeInTheDocument();
   });
 
   it('calls stop on streaming message', async () => {
@@ -184,8 +184,8 @@ describe('MessageFeed', () => {
 
     expect(screen.getByText('无 token 元数据')).toBeInTheDocument();
     expect(screen.getByText('有 token 元数据')).toBeInTheDocument();
-    expect(screen.getByText(/Token:\s*128/)).toBeInTheDocument();
-    expect(screen.queryByText(/Token:\s*999/)).not.toBeInTheDocument();
+    expect(screen.getByText(/128 tokens/)).toBeInTheDocument();
+    expect(screen.queryByText(/999 tokens/)).not.toBeInTheDocument();
   });
 
   it('shows compact streaming meta tags and defers tool panel details until stream ends', () => {
