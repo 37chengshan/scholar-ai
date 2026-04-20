@@ -1,25 +1,23 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
-import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, StickyNote, LogOut, Menu } from "lucide-react";
+import { BookOpen, Search, Settings, MessageSquare, LogOut, Menu } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "./landing/Logo";
 import { Sheet, SheetContent } from "./ui/sheet";
 import { useState } from "react";
+import { WorkflowShell } from "@/features/workflow/components/WorkflowShell";
+import { selectWorkflowSurfaceVisible } from "@/features/workflow/state/workflowSelectors";
 
 const navItemsEN = [
-  { to: "/chat", icon: MessageSquare, label: "Chat" },
+  { to: "/chat", icon: MessageSquare, label: "Workspace" },
   { to: "/knowledge-bases", icon: BookOpen, label: "Library" },
-  { to: "/notes", icon: StickyNote, label: "Notes" },
   { to: "/search", icon: Search, label: "Search" },
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
 ];
 
 const navItemsZH = [
-  { to: "/chat", icon: MessageSquare, label: "AI 对话" },
-  { to: "/knowledge-bases", icon: BookOpen, label: "知识库" },
-  { to: "/notes", icon: StickyNote, label: "笔记" },
+  { to: "/chat", icon: MessageSquare, label: "工作台" },
+  { to: "/knowledge-bases", icon: BookOpen, label: "资源库" },
   { to: "/search", icon: Search, label: "检索" },
-  { to: "/dashboard", icon: LayoutDashboard, label: "仪表盘" },
 ];
 
 export function Layout() {
@@ -31,6 +29,7 @@ export function Layout() {
   const navItems = isZh ? navItemsZH : navItemsEN;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isChatRoute = location.pathname.startsWith('/chat');
+  const showWorkflowShell = selectWorkflowSurfaceVisible(location.pathname);
 
   const handleLogout = async () => {
     await logout();
@@ -136,6 +135,7 @@ export function Layout() {
 
       {/* Main Content Area — No noise texture on Chat route */}
       <main className="flex-1 flex flex-col min-h-0 bg-background relative">
+        {showWorkflowShell ? <WorkflowShell /> : null}
         {!isChatRoute && (
           <svg className="absolute inset-0 w-full h-full opacity-[0.03] pointer-events-none z-10 mix-blend-multiply">
             <filter id="noiseFilter">
