@@ -482,3 +482,108 @@ async def confirm_action(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to process confirmation: {str(e)}"),
         )
+
+
+# ============================================================
+# POST /api/v1/chat/cancel — Cancel a running agent
+# ============================================================
+
+
+@router.post("/cancel")
+async def cancel_run(
+    request: Request,
+    user_id: str = CurrentUserId,
+) -> Dict[str, Any]:
+    """Cancel an active chat run.
+
+    Per 战役 B WP7: Cancel is a system-level capability.
+    """
+    body = await request.json()
+    session_id = body.get("session_id")
+    run_id = body.get("run_id")
+
+    if not session_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="session_id is required",
+        )
+
+    logger.info(
+        "Run cancel requested",
+        session_id=session_id,
+        run_id=run_id,
+        user_id=user_id,
+    )
+
+    # Disconnect active SSE for this session
+    sse_manager.disconnect(session_id)
+
+    return {
+        "status": "cancelled",
+        "session_id": session_id,
+        "run_id": run_id,
+    }
+
+
+# ============================================================
+# POST /api/v1/chat/retry — Retry a failed run
+# ============================================================
+
+
+@router.post("/retry")
+async def retry_run(
+    request: Request,
+    user_id: str = CurrentUserId,
+) -> StreamingResponse:
+    """Retry the last failed message in a session.
+
+    Per 战役 B WP7: Retry is a system-level capability.
+    Re-sends the last user message to create a new run.
+    """
+    body = await request.json()
+    session_id = body.get("session_id")
+
+    if not session_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="session_id is required",
+        )
+
+    # Get last user message from session
+    messages = await message_service.get_messages(
+        session_id=session_id,
+        limit=10,
+    )
+
+    last_user_msg = None
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            last_user_msg = msg
+            break
+
+    if not last_user_msg:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No user message found to retry",
+        )
+
+    # Re-create a stream request with the last user message
+    retry_request = ChatStreamRequest(
+        session_id=session_id,
+        message=last_user_msg["content"],
+        mode=body.get("mode", "auto"),
+        scope=body.get("scope"),
+    )
+
+    logger.info(
+        "Retrying last message",
+        session_id=session_id,
+        message_preview=last_user_msg["content"][:100],
+    )
+
+    # Delegate to the stream endpoint logic
+    return await chat_stream(
+        request=retry_request,
+        http_request=request,
+        user_id=user_id,
+    )

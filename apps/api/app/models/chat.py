@@ -105,6 +105,16 @@ class SSEEventType:
     ERROR = "error"
     HEARTBEAT = "heartbeat"
 
+    # Run protocol events (Agent-Native)
+    RUN_START = "run_start"
+    RUN_PHASE_CHANGE = "run_phase_change"
+    STEP_START = "step_start"
+    STEP_COMPLETE = "step_complete"
+    RUN_COMPLETE = "run_complete"
+    RECOVERY_AVAILABLE = "recovery_available"
+    EVIDENCE = "evidence"
+    ARTIFACT = "artifact"
+
 
 class SSEEventEnvelope(BaseModel):
     """SSE 事件信封结构 - 强制 message_id 绑定 (HARD RULE 0.2).
