@@ -13,7 +13,6 @@ import { useAuth } from "@/contexts/AuthContext";
 const DEFAULT_APP_ROUTE = "/chat";
 
 // Lazy load pages (Landing and Login/Register are critical, keep as regular imports)
-const Dashboard = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
 const KnowledgeBaseList = lazy(() => import("./pages/KnowledgeBaseList").then(m => ({ default: m.KnowledgeBaseList })));
 const KnowledgeBaseDetail = lazy(() => import("./pages/KnowledgeBaseDetail").then(m => ({ default: m.KnowledgeBaseDetail })));
 const Search = lazy(() => import("./pages/Search").then(m => ({ default: m.Search })));
@@ -80,8 +79,8 @@ export const router = createBrowserRouter([
         element: <Navigate to={DEFAULT_APP_ROUTE} replace />,
       },
       {
-        path: "dashboard",
-        element: <LazyRoute><ProtectedRoute><Dashboard /></ProtectedRoute></LazyRoute>,
+        path: "workspace",
+        element: <Navigate to="/chat" replace />,
       },
       {
         path: "knowledge-bases",
@@ -110,6 +109,10 @@ export const router = createBrowserRouter([
       {
         path: "notes",
         element: <LazyRoute><ProtectedRoute><Notes /></ProtectedRoute></LazyRoute>,
+      },
+      {
+        path: "dashboard",
+        element: <Navigate to="/knowledge-bases" replace />,
       },
     ],
   },
