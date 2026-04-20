@@ -80,7 +80,7 @@ class Settings(BaseSettings):
 
         Raises ValueError if dangerous defaults are used outside development.
         """
-        if self.ENVIRONMENT != "development":
+        if self.ENVIRONMENT not in {"development", "test"}:
             errors = []
 
             if self.JWT_SECRET == "test-secret-key-for-development-only":

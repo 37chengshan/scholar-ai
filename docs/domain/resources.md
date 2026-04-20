@@ -49,6 +49,12 @@ ChatSession/ChatMessage 读取契约约束：
 - Chat SSE 除 heartbeat 外必须携带 `message_id`，并且与历史消息回读中的 `ChatMessage.id` 可追踪关联。
 - Chat SSE 事件集合冻结为：`session_start`、`routing_decision`、`phase`、`reasoning`、`message`、`tool_call`、`tool_result`、`citation`、`confirmation_required`、`cancel`、`done`、`heartbeat`、`error`。
 
+认证与会话资源约束：
+
+- RefreshToken、认证黑名单与登录限流均依赖 Redis 可用性，不允许在 Redis 故障时静默降级为本地内存状态。
+- `POST /api/v1/auth/register`、`POST /api/v1/auth/login`、`POST /api/v1/auth/forgot-password` 在限流依赖异常时必须返回 `503`，而不是继续放行。
+- TokenUsageLog 作为审计型资源，允许记录 Chat 会话与推理链路的模型调用成本，但不得替代会话消息真源。
+
 Chat 查询作用域资源约束：
 
 - Chat stream 请求允许 `scope`：
