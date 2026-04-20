@@ -4,7 +4,7 @@ import pytest
 import os
 import torch
 from unittest.mock import patch, MagicMock, Mock
-from app.core.config import Settings, get_settings
+from app.config import Settings, get_settings
 from app.core.qwen3vl_service import Qwen3VLMultimodalEmbedding
 
 

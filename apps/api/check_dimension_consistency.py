@@ -7,7 +7,7 @@ import os
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.core.config import settings
+from app.config import settings
 from app.core.milvus_service import MilvusService
 
 

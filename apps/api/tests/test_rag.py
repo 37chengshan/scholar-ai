@@ -659,19 +659,19 @@ class TestRAGModelsPhase3:
     def test_rag_query_request_model_exists(self):
         """RAGQueryRequest model should exist."""
         pytest.importorskip("app.models.rag", reason="RAG models not implemented")
-        from app.models.rag import RAGQueryRequest
+        from app.schemas.rag import RAGQueryRequest
         assert RAGQueryRequest is not None
 
     def test_rag_response_model_exists(self):
         """RAGResponse model should exist."""
         pytest.importorskip("app.models.rag", reason="RAG models not implemented")
-        from app.models.rag import RAGResponse
+        from app.schemas.rag import RAGResponse
         assert RAGResponse is not None
 
     def test_citation_model_exists(self):
         """Citation model should exist."""
         pytest.importorskip("app.models.rag", reason="RAG models not implemented")
-        from app.models.rag import Citation
+        from app.schemas.rag import Citation
         assert Citation is not None
 
     def test_rag_service_exists(self):

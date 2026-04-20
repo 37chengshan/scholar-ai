@@ -435,20 +435,22 @@ async def refresh_access_token(
         if not user_id or not jti:
             raise ValueError("Invalid token payload")
 
-        # Check if token is blacklisted in Redis
         redis_client = redis_db.client
-        if redis_client:
-            blacklisted = await redis_client.exists(f"blacklist:{jti}")
-            if blacklisted:
-                logger.warning("Blacklisted refresh token used", jti=jti)
-                raise ValueError("Token has been revoked")
+        if not redis_client:
+            logger.error("Redis unavailable during token refresh (fail-closed)")
+            raise ValueError("Authentication service temporarily unavailable")
+
+        # Check if token is blacklisted in Redis
+        blacklisted = await redis_client.exists(f"blacklist:{jti}")
+        if blacklisted:
+            logger.warning("Blacklisted refresh token used", jti=jti)
+            raise ValueError("Token has been revoked")
 
         # Check if token exists in Redis (valid session)
-        if redis_client:
-            exists = await redis_client.exists(f"refresh:{user_id}:{jti}")
-            if not exists:
-                logger.warning("Refresh token not found in Redis", jti=jti)
-                raise ValueError("Token has been revoked or expired")
+        exists = await redis_client.exists(f"refresh:{user_id}:{jti}")
+        if not exists:
+            logger.warning("Refresh token not found in Redis", jti=jti)
+            raise ValueError("Token has been revoked or expired")
 
         # Get user from database
         session = await _get_session(db)

@@ -12,7 +12,6 @@ Provides CRUD operations for papers:
 Per D-04: Service layer for business logic separation.
 """
 
-import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -21,13 +20,13 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.models.annotation import Annotation
 from app.models.paper import Paper, PaperChunk
 from app.models.reading_progress import ReadingProgress
 from app.models.task import ProcessingTask
 from app.models.upload_history import UploadHistory
 from app.repositories.paper_repository import PaperRepository
+from app.services.storage_service import get_storage_service
 from app.utils.logger import logger
 from app.utils.problem_detail import ErrorTypes, ProblemDetail, create_error
 
@@ -630,12 +629,20 @@ class PaperService:
             raise ValueError("Paper not found")
 
         storage_key = paper.storage_key
-        if storage_key:
-            file_path = f"{settings.LOCAL_STORAGE_PATH}/{storage_key}"
-            if os.path.exists(file_path):
-                os.remove(file_path)
-
         await db.delete(paper)
+
+        if storage_key:
+            storage_service = get_storage_service()
+            try:
+                await storage_service.delete_file(storage_key)
+            except Exception as e:
+                # DB deletion takes precedence; file cleanup failure is logged for follow-up.
+                logger.warning(
+                    "Paper file cleanup failed after DB delete",
+                    paper_id=paper_id,
+                    storage_key=storage_key,
+                    error=str(e),
+                )
 
     @staticmethod
     async def batch_delete_for_api(
@@ -645,15 +652,27 @@ class PaperService:
         paper_ids: List[str],
     ) -> int:
         papers = await PaperRepository.list_user_papers_by_ids(db, user_id, paper_ids)
+        storage_keys_to_delete: List[str] = []
         deleted_count = 0
         for paper in papers:
             storage_key = paper.storage_key
             if storage_key:
-                file_path = f"{settings.LOCAL_STORAGE_PATH}/{storage_key}"
-                if os.path.exists(file_path):
-                    os.remove(file_path)
+                storage_keys_to_delete.append(storage_key)
             await db.delete(paper)
             deleted_count += 1
+
+        if storage_keys_to_delete:
+            storage_service = get_storage_service()
+            for storage_key in storage_keys_to_delete:
+                try:
+                    await storage_service.delete_file(storage_key)
+                except Exception as e:
+                    logger.warning(
+                        "Batch paper file cleanup failed after DB delete",
+                        storage_key=storage_key,
+                        error=str(e),
+                    )
+
         return deleted_count
 
     @staticmethod

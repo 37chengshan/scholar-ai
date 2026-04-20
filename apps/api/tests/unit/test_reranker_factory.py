@@ -40,7 +40,7 @@ class TestRerankerServiceFactory:
         RerankerServiceFactory._instances = {}
 
         # Need to reload settings to pick up env var
-        from app.core.config import get_settings
+        from app.config import get_settings
         get_settings.cache_clear()
 
         service = RerankerServiceFactory.create()
@@ -164,7 +164,7 @@ class TestRerankerServiceFactoryConfiguration:
         RerankerServiceFactory._instances = {}
 
         # Reload settings
-        from app.core.config import get_settings
+        from app.config import get_settings
         get_settings.cache_clear()
 
         service = RerankerServiceFactory.create()

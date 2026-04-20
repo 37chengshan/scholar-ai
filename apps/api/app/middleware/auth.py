@@ -145,7 +145,22 @@ async def get_current_user(
 
         # Check blacklist in Redis
         redis_client = redis_db.client
-        if redis_client and jti:
+        if not redis_client:
+            logger.error(
+                "Redis unavailable during auth verification (fail-closed)",
+                user_id=user_id,
+                path=instance,
+                request_id=request_id,
+            )
+            raise _create_auth_error(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                error_type=ErrorTypes.SERVICE_UNAVAILABLE,
+                title="Service Unavailable",
+                detail="Authentication service is temporarily unavailable.",
+                instance=instance,
+            )
+
+        if jti:
             is_blacklisted = await redis_client.exists(f"blacklist:{jti}")
             if is_blacklisted:
                 logger.warning(

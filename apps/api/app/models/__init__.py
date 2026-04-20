@@ -64,13 +64,13 @@ from app.models.knowledge_base_paper import KnowledgeBasePaper
 
 # Knowledge graph
 from app.models.knowledge_map import KnowledgeMap
-from app.models.note import (
+from app.schemas.note import (
     NoteBase,
     NoteListResponse,
     NoteResponse,
     NoteUpdate,
 )
-from app.models.note import (
+from app.schemas.note import (
     NoteCreate as NoteCreateSchema,
 )
 from app.models.notes_task import NotesTask
@@ -93,14 +93,14 @@ from app.models.project import Project
 
 # Query
 from app.models.query import Query
-from app.models.rag import Citation, RAGQueryRequest, RAGResponse
+from app.schemas.rag import Citation, RAGQueryRequest, RAGResponse
 
 # Reading progress
 from app.models.reading_progress import ReadingProgress
 
 # Retrieval schema (unified field names)
 from app.models.retrieval import CitationSource, RetrievedChunk, SearchConstraints
-from app.models.session import (
+from app.schemas.session import (
     SessionBase,
     SessionCreate,
     SessionListResponse,

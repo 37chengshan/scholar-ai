@@ -31,7 +31,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.session import Session
+    from app.models.orm_session import Session
 
 
 class ChatMessage(Base):

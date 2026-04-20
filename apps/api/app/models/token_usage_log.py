@@ -18,7 +18,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.user import User
-    from app.models.session import Session
+    from app.models.orm_session import Session
 
 
 class TokenUsageLog(Base):

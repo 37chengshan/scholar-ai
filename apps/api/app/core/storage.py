@@ -72,9 +72,13 @@ class ObjectStorage:
 
     def _get_local_path(self, storage_key: str) -> Path:
         """Get local file path for a storage key."""
-        # Prevent path traversal
-        safe_key = storage_key.replace("../", "").replace("./", "")
-        return self.local_storage_path / safe_key
+        base_path = self.local_storage_path.resolve()
+        target_path = (base_path / storage_key).resolve()
+        try:
+            target_path.relative_to(base_path)
+        except ValueError as exc:
+            raise ValueError(f"Path traversal attempt: {storage_key}") from exc
+        return target_path
 
     async def download_file(self, storage_key: str, local_path: str) -> None:
         """

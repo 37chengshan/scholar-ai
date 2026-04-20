@@ -76,11 +76,11 @@ class Settings(BaseSettings):
     REQUIRED_PYTHON_MINOR: int = 11
 
     def validate_production_settings(self) -> None:
-        """Validate settings for production environment.
+        """Validate settings for non-development environments.
 
-        Raises ValueError if dangerous defaults are used in production.
+        Raises ValueError if dangerous defaults are used outside development.
         """
-        if self.ENVIRONMENT == "production":
+        if self.ENVIRONMENT != "development":
             errors = []
 
             if self.JWT_SECRET == "test-secret-key-for-development-only":
@@ -103,9 +103,12 @@ class Settings(BaseSettings):
 
             if errors:
                 raise ValueError(
-                    "Production security validation failed:\n"
+                    "Environment security validation failed:\n"
                     + "\n".join(f"  - {e}" for e in errors)
                 )
+
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_DEFAULT_PER_HOUR: int = 200
 
     # =========================================================================
     # Database Configuration

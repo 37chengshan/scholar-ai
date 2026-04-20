@@ -120,49 +120,54 @@ class Neo4jService:
             paper_id: Paper UUID
             chunks: List of chunk dictionaries with id, text, section, page
         """
+        normalized_chunks: List[Dict[str, Any]] = []
+        for chunk in chunks:
+            chunk_id = chunk.get("id")
+            if not chunk_id:
+                continue
+            normalized_chunks.append(
+                {
+                    "id": chunk_id,
+                    "content": chunk.get("text", "")[:1000],
+                    "section": chunk.get("section"),
+                    "page": chunk.get("page_start"),
+                }
+            )
+
+        if not normalized_chunks:
+            return
+
         async with self.driver.session() as session:
-            chunk_count = 0
-            prev_chunk_id = None
+            await session.run(
+                """
+                MATCH (p:Paper {id: $paper_id})
+                UNWIND $chunks AS chunk
+                CREATE (c:Chunk {
+                    id: chunk.id,
+                    content: chunk.content,
+                    section: chunk.section,
+                    page: chunk.page,
+                    created_at: datetime()
+                })-[:BELONGS_TO]->(p)
+                """,
+                paper_id=paper_id,
+                chunks=normalized_chunks,
+            )
 
-            for chunk in chunks:
-                chunk_id = chunk.get("id")
-                if not chunk_id:
-                    continue
-
-                # Create chunk node with BELONGS_TO relationship
-                await session.run(
-                    """MATCH (p:Paper {id: $paper_id})
-                       CREATE (c:Chunk {
-                           id: $chunk_id,
-                           content: $content,
-                           section: $section,
-                           page: $page,
-                           created_at: datetime()
-                       })-[:BELONGS_TO]->(p)""",
-                    paper_id=paper_id,
-                    chunk_id=chunk_id,
-                    content=chunk.get("text", "")[:1000],  # Summary only
-                    section=chunk.get("section"),
-                    page=chunk.get("page_start"),
-                )
-
-                # Create NEXT_CHUNK relationship for ordering
-                if prev_chunk_id:
-                    await session.run(
-                        """MATCH (c1:Chunk {id: $prev_id})
-                           MATCH (c2:Chunk {id: $curr_id})
-                           MERGE (c1)-[:NEXT_CHUNK]->(c2)""",
-                        prev_id=prev_chunk_id,
-                        curr_id=chunk_id,
-                    )
-
-                prev_chunk_id = chunk_id
-                chunk_count += 1
+            await session.run(
+                """
+                UNWIND range(0, size($chunks) - 2) AS i
+                MATCH (c1:Chunk {id: $chunks[i].id})
+                MATCH (c2:Chunk {id: $chunks[i + 1].id})
+                MERGE (c1)-[:NEXT_CHUNK]->(c2)
+                """,
+                chunks=normalized_chunks,
+            )
 
             logger.info(
                 "Created chunk nodes in Neo4j",
                 paper_id=paper_id,
-                chunk_count=chunk_count,
+                chunk_count=len(normalized_chunks),
             )
 
     async def create_section_nodes(
