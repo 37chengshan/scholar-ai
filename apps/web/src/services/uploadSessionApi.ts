@@ -1,36 +1,13 @@
 import apiClient from '@/utils/apiClient';
+import type {
+  CreateUploadSessionRequestDto,
+  CreateUploadSessionResponseDto,
+  UploadSessionStateDto,
+} from '@scholar-ai/types';
 
-export interface CreateUploadSessionRequest {
-  filename: string;
-  sizeBytes: number;
-  chunkSize: number;
-  sha256?: string;
-  mimeType?: string;
-}
-
-export interface UploadSessionState {
-  uploadSessionId: string;
-  importJobId: string;
-  status: string;
-  chunkSize: number;
-  totalParts: number;
-  uploadedParts: number[];
-  missingParts: number[];
-  uploadedBytes: number;
-  sizeBytes: number;
-  progress: number;
-  expiresAt: string;
-  completedAt?: string | null;
-}
-
-export interface CreateUploadSessionResponse {
-  instantImport: boolean;
-  importJobId?: string;
-  paperId?: string;
-  matchedImportJobId?: string;
-  status?: string;
-  session?: UploadSessionState;
-}
+export type CreateUploadSessionRequest = CreateUploadSessionRequestDto;
+export type UploadSessionState = UploadSessionStateDto;
+export type CreateUploadSessionResponse = CreateUploadSessionResponseDto;
 
 export const uploadSessionApi = {
   createSession: async (

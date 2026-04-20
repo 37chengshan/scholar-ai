@@ -17,13 +17,32 @@ function renderStatusIcon(status: UploadQueueItemModel['status']) {
   if (status === 'completed' || status === 'queued') {
     return <CheckCircle2 className="h-4 w-4 text-green-600" />;
   }
+  if (status === 'cancelled') {
+    return <X className="h-4 w-4 text-muted-foreground" />;
+  }
   if (status === 'uploading' || status === 'preparing') {
     return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
   }
-  if (status === 'failed') {
+  if (status === 'failed' || status === 'needs_file_reselect') {
     return <AlertCircle className="h-4 w-4 text-destructive" />;
   }
   return <Clock className="h-4 w-4 text-muted-foreground" />;
+}
+
+function renderStatusText(item: UploadQueueItemModel): string {
+  if (item.status === 'queued') {
+    return '已入队，后台处理中';
+  }
+
+  if (item.status === 'needs_file_reselect') {
+    return '需要重新选择原始文件后继续上传';
+  }
+
+  if (item.status === 'cancelled') {
+    return '上传已取消';
+  }
+
+  return `进度 ${Math.round(item.progress)}%`;
 }
 
 export function UploadQueueItem({ item, onRemove, removable }: UploadQueueItemProps) {
@@ -36,7 +55,7 @@ export function UploadQueueItem({ item, onRemove, removable }: UploadQueueItemPr
           <span className="text-xs text-muted-foreground">{formatFileSize(item.sizeBytes)}</span>
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          {item.status === 'queued' ? '已入队，后台处理中' : `进度 ${Math.round(item.progress)}%`}
+          {renderStatusText(item)}
         </div>
         {item.error && <div className="mt-1 text-xs text-destructive">{item.error}</div>}
       </div>

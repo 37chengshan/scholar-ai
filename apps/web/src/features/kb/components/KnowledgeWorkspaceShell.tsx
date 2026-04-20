@@ -16,6 +16,7 @@ import { KnowledgeEvidencePanel } from '@/features/kb/components/KnowledgeEviden
 import { KnowledgeRunHistoryPanel } from '@/features/kb/components/KnowledgeRunHistoryPanel';
 import { KnowledgeQuickAskPanel } from '@/features/kb/components/KnowledgeQuickAskPanel';
 import { useKnowledgeRuns } from '@/features/kb/hooks/useKnowledgeRuns';
+import { useKnowledgeWorkflowRefresh } from '@/features/kb/hooks/useKnowledgeWorkflowRefresh';
 import { UploadWorkspace } from '@/features/uploads/components/UploadWorkspace';
 
 export function KnowledgeWorkspaceShell() {
@@ -23,6 +24,7 @@ export function KnowledgeWorkspaceShell() {
   const {
     activeTab,
     isImportDialogOpen,
+    importedPaperId,
     queries,
     search,
     setImportDialogOpen,
@@ -30,7 +32,6 @@ export function KnowledgeWorkspaceShell() {
     syncTab,
   } = useKnowledgeBaseWorkspace();
   const { runs, loadingRuns, reloadRuns } = useKnowledgeRuns();
-  const previousImportJobStatus = useRef<Record<string, string>>({});
 
   const { kbId, kb, papers, importJobs, loadingKB, papersLoading, loadImportJobs, loadPapers, loadKnowledgeBase } = queries;
 
@@ -48,29 +49,17 @@ export function KnowledgeWorkspaceShell() {
 
   const { handleImportCompleted } = useImportWorkflow({
     onImportComplete: async () => {
-      await refreshAll({ silent: true });
+      await refreshImportStatus({ refreshDerivedOnCompleted: true });
     },
   });
 
-  useEffect(() => {
-    const hasNewlyCompletedJob = importJobs.some((job) => {
-      const previousStatus = previousImportJobStatus.current[job.importJobId];
-      return job.status === 'completed' && previousStatus !== 'completed';
-    });
-
-    previousImportJobStatus.current = importJobs.reduce<Record<string, string>>(
-      (acc, job) => ({ ...acc, [job.importJobId]: job.status }),
-      {}
-    );
-
-    if (hasNewlyCompletedJob) {
-      void Promise.all([
-        loadPapers({ silent: true }),
-        loadKnowledgeBase({ silent: true }),
-        reloadRuns(),
-      ]);
-    }
-  }, [importJobs, loadKnowledgeBase, loadPapers, reloadRuns]);
+  const { refreshImportStatus } = useKnowledgeWorkflowRefresh({
+    importJobs,
+    loadImportJobs,
+    loadPapers,
+    loadKnowledgeBase,
+    reloadRuns,
+  });
 
   if (loadingKB) {
     return (
@@ -205,19 +194,19 @@ export function KnowledgeWorkspaceShell() {
           </TabsList>
 
           <TabsContent value="papers" className="mt-8 space-y-6 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <KnowledgePapersPanel papers={papers} loading={papersLoading} onImport={() => setImportDialogOpen(true)} />
+            <KnowledgePapersPanel
+              papers={papers}
+              loading={papersLoading}
+              highlightedPaperId={importedPaperId}
+              onImport={() => setImportDialogOpen(true)}
+            />
           </TabsContent>
 
           <TabsContent value="import-status" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
             <KnowledgeImportPanel
               importJobs={importJobs}
               onJobComplete={() => {
-                void Promise.all([
-                  loadImportJobs({ silent: true }),
-                  loadPapers({ silent: true }),
-                  loadKnowledgeBase({ silent: true }),
-                  reloadRuns(),
-                ]);
+                void refreshImportStatus({ refreshDerivedOnCompleted: true });
               }}
             />
           </TabsContent>
@@ -226,11 +215,7 @@ export function KnowledgeWorkspaceShell() {
             <UploadWorkspace
               knowledgeBaseId={kb.id}
               onQueueComplete={() => {
-                void Promise.all([
-                  loadImportJobs({ silent: true }),
-                  loadPapers({ silent: true }),
-                  loadKnowledgeBase({ silent: true }),
-                ]);
+                void refreshImportStatus({ refreshDerivedOnCompleted: true });
               }}
             />
           </TabsContent>

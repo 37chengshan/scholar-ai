@@ -174,21 +174,34 @@ class _RequestStub:
 @pytest.mark.asyncio
 async def test_chat_stream_to_session_messages_history_readback_contract():
     store = _MessageStore()
+    final_answer = "final answer"
+    assistant_id_holder: dict[str, str] = {}
+    tool_payload = '{"id":"tool-1","tool":"rag_search","success":true}'
 
     async def _mock_stream():
         assistant_id = await store.save_message("session-1", "assistant", "")
+        assistant_id_holder["id"] = assistant_id
         await store.save_message(
             "session-1",
             "tool",
-            '{"id":"tool-1","tool":"rag_search","success":true}',
+            tool_payload,
             tool_name="rag_search",
             tool_params={"query": "hello"},
         )
-        await store.update_message(assistant_id, "final answer")
+        await store.update_message(assistant_id, final_answer)
 
-        yield 'event: session_start\ndata: {"message_id":"m-2","session_id":"session-1","task_type":"general"}\n\n'
-        yield 'event: message\ndata: {"message_id":"m-2","delta":"final answer"}\n\n'
-        yield 'event: done\ndata: {"message_id":"m-2","finish_reason":"stop"}\n\n'
+        yield (
+            "event: session_start\n"
+            f'data: {{"message_id":"{assistant_id}","session_id":"session-1","task_type":"general"}}\n\n'
+        )
+        yield (
+            "event: message\n"
+            f'data: {{"message_id":"{assistant_id}","delta":"{final_answer}"}}\n\n'
+        )
+        yield (
+            "event: done\n"
+            f'data: {{"message_id":"{assistant_id}","finish_reason":"stop"}}\n\n'
+        )
 
     with patch("app.api.chat.message_service", store), \
          patch("app.api.chat.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id="session-1", user_id="user-1"))), \
@@ -205,9 +218,10 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
             chunks.append(chunk)
 
     stream_text = "".join(chunks)
+    assistant_id = assistant_id_holder["id"]
     assert "event: message" in stream_text
     assert "event: done" in stream_text
-    assert '"message_id": "m-2"' in stream_text
+    assert f'"message_id": "{assistant_id}"' in stream_text
 
     with patch("app.api.session.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id="session-1", user_id="user-1"))), \
          patch("app.services.message_service.message_service", store):
@@ -240,3 +254,14 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
     tool_msgs = [m for m in msg_response.data["messages"] if m["role"] == "tool"]
     assert tool_msgs
     assert tool_msgs[0]["tool_name"] == "rag_search"
+    assert tool_msgs[0]["tool_name"] != "unknown"
+    assert tool_msgs[0]["content"] == tool_payload
+
+    assistant_msgs = [m for m in msg_response.data["messages"] if m["role"] == "assistant"]
+    assert len(assistant_msgs) == 1
+    assert assistant_msgs[0]["id"] == assistant_id
+    assert assistant_msgs[0]["content"] == final_answer
+    assert not any(
+        message["role"] == "assistant" and not message["content"]
+        for message in msg_response.data["messages"]
+    )
