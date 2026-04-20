@@ -767,6 +767,21 @@ async def execute_with_streaming_impl(
                         event_id=event_id,
                     )
 
+                    event_id = f"{session_id}:{event_counter}"
+                    event_counter += 1
+                    yield await orchestrator.stream_sse_event_v2(
+                        SSEEventType.RUN_COMPLETE,
+                        RunCompleteEventData(
+                            run_id=run_id,
+                            status="failed",
+                            final_summary=None,
+                            tokens_used=tokens_used or 0,
+                            cost=cost or 0.0,
+                        ).model_dump(),
+                        message_id=message_id,
+                        event_id=event_id,
+                    )
+
                     # Emit recovery_available for failed runs
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
@@ -820,6 +835,21 @@ async def execute_with_streaming_impl(
                         code="agent_error",
                         message=event_data.get("error", "Unknown error"),
                         recoverable=True,
+                    ).model_dump(),
+                    message_id=message_id,
+                    event_id=event_id,
+                )
+
+                event_id = f"{session_id}:{event_counter}"
+                event_counter += 1
+                yield await orchestrator.stream_sse_event_v2(
+                    SSEEventType.RUN_COMPLETE,
+                    RunCompleteEventData(
+                        run_id=run_id,
+                        status="failed",
+                        final_summary=None,
+                        tokens_used=0,
+                        cost=0.0,
                     ).model_dump(),
                     message_id=message_id,
                     event_id=event_id,

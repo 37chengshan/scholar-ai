@@ -44,6 +44,16 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
+def get_logger(name: str | None = None, **bind_fields: Any):
+    """Backward-compatible logger factory.
+
+    Some modules still import ``get_logger`` from this utility.
+    Keep the API stable while migrating to direct ``structlog.get_logger`` usage.
+    """
+    target = structlog.get_logger(name) if name else structlog.get_logger()
+    return target.bind(**bind_fields) if bind_fields else target
+
+
 OBSERVABILITY_KEYS = (
     "request_id",
     "run_id",
