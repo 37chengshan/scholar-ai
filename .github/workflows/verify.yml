@@ -1,0 +1,191 @@
+name: Verify Gate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    name: Governance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run governance gates
+        run: |
+          set -euo pipefail
+          bash scripts/check-runtime-hygiene.sh tracked
+          bash scripts/check-doc-governance.sh
+          bash scripts/check-structure-boundaries.sh
+          bash scripts/check-code-boundaries.sh
+          bash scripts/check-contract-gate.sh
+          bash scripts/check-fallback-expiry.sh
+          bash scripts/check-e2e-gate.sh --mode manifest
+
+  web:
+    name: Web Verify
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Unit tests
+        run: npm run test:run
+
+  packages:
+    name: Shared Packages Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build @scholar-ai/types
+        working-directory: packages/types
+        run: |
+          npm install
+          npm run build
+
+      - name: Build @scholar-ai/sdk
+        working-directory: packages/sdk
+        run: |
+          npm install
+          npm run build
+
+  api:
+    name: API Verify
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: scholar_ai_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Wait for services
+        run: |
+          set -euo pipefail
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5432 -U test_user && break
+            sleep 2
+          done
+          for i in {1..30}; do
+            redis-cli -h localhost -p 6379 ping | grep -q PONG && break
+            sleep 2
+          done
+
+      - name: Bootstrap API env
+        run: bash scripts/verify/bootstrap-api-env.sh
+
+      - name: Prepare DB schema
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5432
+          TEST_DB_USER: test_user
+          TEST_DB_PASSWORD: test_password
+          TEST_DB_NAME: scholar_ai_test
+          OPENAI_API_KEY: sk-test
+          ANTHROPIC_API_KEY: sk-ant-test
+          ZHIPU_API_KEY: sk-zhipu-test
+        run: |
+          set -euo pipefail
+          PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test -c "SELECT 1;"
+          if ! .venv/bin/alembic upgrade heads; then
+            .venv/bin/python -c "import asyncio, app.models; from app.database import init_db; asyncio.run(init_db())"
+          fi
+
+      - name: API tests
+        working-directory: apps/api
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test-secret-key-for-ci
+          OPENAI_API_KEY: sk-test
+          ANTHROPIC_API_KEY: sk-ant-test
+          ZHIPU_API_KEY: sk-zhipu-test
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5432
+          TEST_DB_USER: test_user
+          TEST_DB_PASSWORD: test_password
+          TEST_DB_NAME: scholar_ai_test
+        run: |
+          .venv/bin/python -m pytest -q tests/unit/test_services.py --maxfail=1
+          .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1
+
+  verify-summary:
+    name: Verify Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [governance, web, packages, api]
+
+    steps:
+      - name: Print summary
+        run: |
+          echo "governance=${{ needs.governance.result }}"
+          echo "web=${{ needs.web.result }}"
+          echo "packages=${{ needs.packages.result }}"
+          echo "api=${{ needs.api.result }}"
+          if [[ "${{ needs.governance.result }}" != "success" || "${{ needs.web.result }}" != "success" || "${{ needs.packages.result }}" != "success" || "${{ needs.api.result }}" != "success" ]]; then
+            echo "verify gate failed"
+            exit 1
+          fi
+          echo "verify gate passed"

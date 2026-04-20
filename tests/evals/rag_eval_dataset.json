@@ -1,0 +1,43 @@
+{
+  "version": "vnext-plus1",
+  "generated_at": "2026-04-20",
+  "cases": [
+    {"case_id":"A-01","question":"论文提出的核心问题是什么？","paper_ids":["p1"],"query_type":"single","expected_behavior":"单文档事实提取","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"A"},
+    {"case_id":"A-02","question":"该方法的输入输出分别是什么？","paper_ids":["p1"],"query_type":"single","expected_behavior":"抽取输入输出定义","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"A"},
+    {"case_id":"A-03","question":"实验使用了哪个数据集？","paper_ids":["p2"],"query_type":"single","expected_behavior":"事实定位","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"A"},
+    {"case_id":"A-04","question":"论文的训练目标函数是什么？","paper_ids":["p2"],"query_type":"single","expected_behavior":"公式相关事实抽取","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"A"},
+    {"case_id":"A-05","question":"作者报告了哪些主要指标？","paper_ids":["p3"],"query_type":"single","expected_behavior":"指标枚举","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"A"},
+    {"case_id":"A-06","question":"该方法的推理复杂度是多少？","paper_ids":["p3"],"query_type":"single","expected_behavior":"复杂度事实回答","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"A"},
+    {"case_id":"A-07","question":"论文中消融实验包含哪些设置？","paper_ids":["p4"],"query_type":"single","expected_behavior":"消融设置列举","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"A"},
+    {"case_id":"A-08","question":"该工作在哪个任务上提升最明显？","paper_ids":["p4"],"query_type":"single","expected_behavior":"事实对比","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"A"},
+
+    {"case_id":"B-01","question":"请总结论文的三点主要贡献。","paper_ids":["p1"],"query_type":"single","expected_behavior":"贡献点摘要","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"B"},
+    {"case_id":"B-02","question":"请用 5 句话总结方法流程。","paper_ids":["p1"],"query_type":"single","expected_behavior":"流程摘要","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"B"},
+    {"case_id":"B-03","question":"请总结该论文的实验结论。","paper_ids":["p2"],"query_type":"single","expected_behavior":"结论摘要","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"B"},
+    {"case_id":"B-04","question":"请概括该工作的局限性。","paper_ids":["p2"],"query_type":"single","expected_behavior":"局限性摘要","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"B"},
+    {"case_id":"B-05","question":"请总结该方法相对 baseline 的优势。","paper_ids":["p3"],"query_type":"single","expected_behavior":"优势摘要","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"B"},
+    {"case_id":"B-06","question":"请总结作者对未来工作的建议。","paper_ids":["p4"],"query_type":"single","expected_behavior":"未来工作摘要","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"single-paper","notes":"B"},
+
+    {"case_id":"C-01","question":"比较两篇论文在数据效率上的差异。","paper_ids":["p1","p2"],"query_type":"cross_paper","expected_behavior":"跨文档比较","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"cross-paper","notes":"C"},
+    {"case_id":"C-02","question":"哪篇论文的推理开销更低，依据是什么？","paper_ids":["p1","p3"],"query_type":"cross_paper","expected_behavior":"跨文档比较并给依据","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"cross-paper","notes":"C"},
+    {"case_id":"C-03","question":"比较两篇工作的模型规模与性能权衡。","paper_ids":["p2","p3"],"query_type":"cross_paper","expected_behavior":"trade-off 比较","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"cross-paper","notes":"C"},
+    {"case_id":"C-04","question":"两篇论文对同一任务的结论是否一致？","paper_ids":["p2","p4"],"query_type":"cross_paper","expected_behavior":"结论一致性比较","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"cross-paper","notes":"C"},
+    {"case_id":"C-05","question":"比较方法 A 与方法 B 的鲁棒性结果。","paper_ids":["p1","p4"],"query_type":"cross_paper","expected_behavior":"鲁棒性比较","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"cross-paper","notes":"C"},
+    {"case_id":"C-06","question":"在低资源场景下哪篇论文更合适？","paper_ids":["p3","p4"],"query_type":"cross_paper","expected_behavior":"适用性比较","must_have_citation":true,"allow_low_confidence":false,"expected_evidence_scope":"cross-paper","notes":"C"},
+
+    {"case_id":"D-01","question":"论文是否声称在所有数据集都提升？","paper_ids":["p1","p2"],"query_type":"cross_paper","expected_behavior":"冲突证据识别","must_have_citation":true,"allow_low_confidence":true,"expected_evidence_scope":"cross-paper","notes":"D"},
+    {"case_id":"D-02","question":"同一指标在不同章节是否存在矛盾？","paper_ids":["p2"],"query_type":"single","expected_behavior":"冲突定位","must_have_citation":true,"allow_low_confidence":true,"expected_evidence_scope":"single-paper","notes":"D"},
+    {"case_id":"D-03","question":"方法复杂度描述是否前后一致？","paper_ids":["p3"],"query_type":"single","expected_behavior":"冲突识别","must_have_citation":true,"allow_low_confidence":true,"expected_evidence_scope":"single-paper","notes":"D"},
+    {"case_id":"D-04","question":"两篇论文对基线排名结论是否冲突？","paper_ids":["p1","p4"],"query_type":"cross_paper","expected_behavior":"跨文档冲突识别","must_have_citation":true,"allow_low_confidence":true,"expected_evidence_scope":"cross-paper","notes":"D"},
+
+    {"case_id":"E-01","question":"请给出论文作者未讨论的社会影响量化值。","paper_ids":["p1"],"query_type":"single","expected_behavior":"无法回答应保守","must_have_citation":false,"allow_low_confidence":true,"expected_evidence_scope":"single-paper","notes":"E"},
+    {"case_id":"E-02","question":"该论文是否证明了 P=NP？","paper_ids":["p2"],"query_type":"single","expected_behavior":"证据不足提示","must_have_citation":false,"allow_low_confidence":true,"expected_evidence_scope":"single-paper","notes":"E"},
+    {"case_id":"E-03","question":"请给出文中未出现的具体商业营收预测。","paper_ids":["p3"],"query_type":"single","expected_behavior":"拒绝编造","must_have_citation":false,"allow_low_confidence":true,"expected_evidence_scope":"single-paper","notes":"E"},
+    {"case_id":"E-04","question":"作者是否提供了完整源码和私有数据？","paper_ids":["p4"],"query_type":"single","expected_behavior":"未知时低置信","must_have_citation":false,"allow_low_confidence":true,"expected_evidence_scope":"single-paper","notes":"E"},
+
+    {"case_id":"F-01","question":"请综合所有证据给出绝对结论。","paper_ids":["p1","p2"],"query_type":"cross_paper","expected_behavior":"触发低置信提示","must_have_citation":true,"allow_low_confidence":true,"expected_evidence_scope":"cross-paper","notes":"F"},
+    {"case_id":"F-02","question":"证据很少时请直接给唯一答案。","paper_ids":["p3"],"query_type":"single","expected_behavior":"低置信并解释原因","must_have_citation":true,"allow_low_confidence":true,"expected_evidence_scope":"single-paper","notes":"F"},
+    {"case_id":"F-03","question":"请忽略冲突证据并给确定结论。","paper_ids":["p2","p4"],"query_type":"cross_paper","expected_behavior":"应保留冲突提示","must_have_citation":true,"allow_low_confidence":true,"expected_evidence_scope":"cross-paper","notes":"F"},
+    {"case_id":"F-04","question":"当检索证据弱时仍要高置信回答。","paper_ids":["p1"],"query_type":"single","expected_behavior":"应返回低置信原因","must_have_citation":true,"allow_low_confidence":true,"expected_evidence_scope":"single-paper","notes":"F"}
+  ]
+}

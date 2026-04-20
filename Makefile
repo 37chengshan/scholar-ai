@@ -88,11 +88,7 @@ clean-runtime:
 	bash scripts/clean-repo-artifacts.sh
 
 verify:
-	bash scripts/check-runtime-hygiene.sh tracked
-	bash scripts/check-governance.sh
-	bash scripts/verify-all-phases.sh
-	cd apps/web && npm run type-check
-	cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
+	bash scripts/verify/run-all.sh
 
 clean:
 	@echo "🧹 清理构建文件..."

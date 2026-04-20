@@ -5,6 +5,7 @@
   "description": "ScholarAI monorepo governance workspace",
   "packageManager": "pnpm@9.0.0",
   "scripts": {
+    "verify:all": "bash scripts/verify/run-all.sh",
     "check:code-boundaries": "bash scripts/check-code-boundaries.sh",
     "check:docs": "bash scripts/check-doc-governance.sh",
     "check:boundaries": "bash scripts/check-structure-boundaries.sh",
