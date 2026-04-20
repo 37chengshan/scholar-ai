@@ -238,39 +238,28 @@ export type AnySSEEventEnvelope =
   | ErrorEvent;
 
 /**
- * Legacy SSE Event structure (for backward compatibility)
- *
- * IMPORTANT: 'type' field comes from 'event:' line (authoritative), not from JSON.type
- * 'content' field contains the entire JSON payload from 'data:' line
+ * @deprecated Compatibility-only shape for UI components that still consume
+ * flattened event records. Transport handlers emit SSEEventEnvelope.
  */
 export interface SSEEvent {
-  /** Event type from 'event:' line - authoritative source */
   type: SSEEventType;
-  /** Entire JSON payload from 'data:' line */
-  content: any;
-  /** Optional timestamp from payload */
+  content?: any;
   timestamp?: string;
-  /** Tool name for tool_call/tool_result events */
   tool?: string;
-  /** Tool result for tool_result events */
   result?: any;
-  /** Event type string (same as type, for backward compatibility) */
   event?: string;
-  /** Raw data payload (same as content, for backward compatibility) */
   data?: any;
-  /** Message ID for event correlation (HARD RULE 0.2) */
   message_id?: string;
 }
 
 /**
  * SSE Event Handlers
  *
- * Supports both legacy SSEEvent and new SSEEventEnvelope format.
  * HARD RULE 0.2: message_id is required for event correlation.
  */
 export interface SSEHandlers {
-  /** Handler for all non-terminal events (supports both formats) */
-  onMessage: (event: SSEEvent | SSEEventEnvelope) => void;
+  /** Handler for all non-terminal events in canonical envelope format */
+  onEnvelope: (event: SSEEventEnvelope) => void;
   /** Handler for errors */
   onError: (error: Error) => void;
   /** Handler for stream completion */
@@ -298,22 +287,6 @@ export function parseToEnvelope<T>(eventType: SSEEventType, payload: T): SSEEven
     event: eventType,
     data: payload,
     message_id: messageId || '',
-  };
-}
-
-/**
- * Create legacy SSEEvent from envelope (backward compatibility)
- */
-export function envelopeToLegacy<T>(envelope: SSEEventEnvelope<T>): SSEEvent {
-  return {
-    type: envelope.event,
-    content: envelope.data,
-    timestamp: (envelope.data as any).timestamp,
-    tool: (envelope.data as any).tool,
-    result: (envelope.data as any).result || (envelope.data as any).data,
-    event: envelope.event,
-    data: envelope.data,
-    message_id: envelope.message_id,
   };
 }
 
@@ -365,8 +338,10 @@ export class SSEService {
     this.currentHandlers = handlers;
     this.currentBody = body || {};
     this.currentMessageId = null; // Reset message_id for new connection
+    this.lastEventId = null; // Fresh requests must not carry previous stream cursor
+    this.reconnectAttempts = 0;
 
-    this.startStreaming();
+    this.startStreaming(false);
   }
 
   /**
@@ -380,11 +355,10 @@ export class SSEService {
   /**
    * Start streaming using fetch API
    */
-  private async startStreaming(): Promise<void> {
+  private async startStreaming(isReconnect: boolean): Promise<void> {
     if (!this.currentHandlers) return;
 
     this.abortController = new AbortController();
-    this.reconnectAttempts = 0;
 
     try {
       const headers: Record<string, string> = {
@@ -392,7 +366,7 @@ export class SSEService {
         'Accept': 'text/event-stream',
       };
 
-      if (this.lastEventId) {
+      if (isReconnect && this.lastEventId) {
         headers['Last-Event-ID'] = this.lastEventId;
       }
 
@@ -407,6 +381,9 @@ export class SSEService {
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+
+      // Connection is healthy again; future failures start a new reconnect chain.
+      this.reconnectAttempts = 0;
 
       this.startHeartbeatMonitor();
       await this.processStream(response);
@@ -505,11 +482,30 @@ export class SSEService {
     if (!this.currentHandlers) return;
 
     try {
-      // Parse JSON payload from data: line
-      const payload = JSON.parse(dataStr);
+      // Parse JSON payload from data: line.
+      // Backend may send either:
+      // 1) Flat payload: { delta, ..., message_id }
+      // 2) Wrapped payload: { event, data: { ... }, message_id }
+      const rawPayload = JSON.parse(dataStr);
+
+      const isWrappedPayload =
+        typeof rawPayload === 'object' &&
+        rawPayload !== null &&
+        !Array.isArray(rawPayload) &&
+        'event' in rawPayload &&
+        'data' in rawPayload;
+
+      const payload = isWrappedPayload ? (rawPayload as any).data : rawPayload;
 
       // Extract message_id (HARD RULE 0.2)
-      const messageId = payload.message_id || '';
+      const messageId =
+        (typeof rawPayload === 'object' && rawPayload !== null
+          ? (rawPayload as any).message_id
+          : undefined) ||
+        (typeof payload === 'object' && payload !== null
+          ? (payload as any).message_id
+          : undefined) ||
+        '';
       if (!messageId && eventType !== 'heartbeat') {
         this.currentHandlers.onError(new Error(`[SSE] Event missing message_id: ${eventType}`));
         this.disconnect();
@@ -528,38 +524,26 @@ export class SSEService {
         message_id: messageId,
       };
 
-      // Also create legacy SSEEvent for backward compatibility
-      const event: SSEEvent = {
-        type: eventType as SSEEventType,  // From event: line (authoritative)
-        content: payload,                 // Entire JSON payload
-        timestamp: payload.timestamp,
-        tool: payload.tool,
-        result: payload.result || payload.data,
-        event: eventType,
-        data: payload,
-        message_id: messageId,
-      };
-
       // Handle special event types
       if (eventType === 'done') {
         this.isDisconnecting = true;
         const doneData: DoneEventData = {
-          finish_reason: payload.finish_reason || 'stop',
-          tokens_used: payload.tokens_used || 0,
-          cost: payload.cost || 0,
-          total_time_ms: payload.total_time_ms || 0,
+          finish_reason: (payload as any)?.finish_reason || 'stop',
+          tokens_used: (payload as any)?.tokens_used || 0,
+          cost: (payload as any)?.cost || 0,
+          total_time_ms: (payload as any)?.total_time_ms || 0,
         };
         this.currentHandlers.onDone({
           ...doneData,
-          iterations: payload.iterations || 0,
-          citations: payload.citations,
+          iterations: (payload as any)?.iterations || 0,
+          citations: (payload as any)?.citations,
         });
         this.disconnect();
       } else if (eventType === 'error') {
         const errorData: ErrorEventData = {
-          code: payload.code || 'UNKNOWN',
-          message: payload.error || payload.message || 'Stream error',
-          recoverable: payload.recoverable ?? false,
+          code: (payload as any)?.code || 'UNKNOWN',
+          message: (payload as any)?.error || (payload as any)?.message || 'Stream error',
+          recoverable: (payload as any)?.recoverable ?? false,
         };
         this.currentHandlers.onError(new Error(errorData.message));
         this.disconnect();
@@ -573,8 +557,8 @@ export class SSEService {
       } else if (eventType === 'heartbeat') {
         // Keepalive - SSE comment format, ignored
       } else {
-        // Emit both envelope and legacy format (consumers can choose)
-        this.currentHandlers.onMessage(event);
+        // Emit canonical envelope only.
+        this.currentHandlers.onEnvelope(envelope);
       }
     } catch (err) {
       console.error('[SSE] Failed to parse event:', err, dataStr);
@@ -590,9 +574,10 @@ export class SSEService {
     if (this.reconnectAttempts < this.config.maxReconnects) {
       const delay = this.config.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts);
 
+      this.reconnectAttempts++;
+
       setTimeout(() => {
-        this.reconnectAttempts++;
-        this.startStreaming();
+        this.startStreaming(true);
       }, delay);
     } else {
       console.error('[SSE] Max reconnection attempts reached');

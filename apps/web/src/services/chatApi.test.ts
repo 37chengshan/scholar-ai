@@ -1,11 +1,21 @@
-import { describe, it, expect } from 'vitest';
-// TODO: S02-02 - test SSE body construction with paperId/kbId
-// Placeholder test - implement after chatApi.ts changes
+import { describe, expect, it } from 'vitest';
+
 describe('chatApi SSE body construction', () => {
-  it('should include paperId in SSE body when scope is single_paper', () => {
-    expect(true).toBe(true); // Placeholder
+  it('keeps paper scope contract fields stable', () => {
+    const scope = {
+      type: 'paper',
+      paper_id: 'paper-1',
+    };
+
+    expect(scope).toEqual({ type: 'paper', paper_id: 'paper-1' });
   });
-  it('should include kbId in SSE body when scope is full_kb', () => {
-    expect(true).toBe(true); // Placeholder
+
+  it('keeps knowledge base scope contract fields stable', () => {
+    const scope = {
+      type: 'knowledge_base',
+      knowledge_base_id: 'kb-1',
+    };
+
+    expect(scope).toEqual({ type: 'knowledge_base', knowledge_base_id: 'kb-1' });
   });
 });

@@ -36,6 +36,7 @@
 - Paper 产生多个 Chunk。
 - ChatSession 包含多个 ChatMessage。
 - Task 作用于 Paper、Collection 或 IndexArtifact。
+- UploadHistory 是 ImportJob、UploadSession、ProcessingTask 的状态投影视图，不应成为并行真源。
 
 ChatSession/ChatMessage 读取契约约束：
 
@@ -46,6 +47,7 @@ ChatSession/ChatMessage 读取契约约束：
 	- `pagination.has_more` / `pagination.returned` / `pagination.next_offset`
 - 禁止把 `total` 语义降级为“当前页长度”。
 - Chat SSE 除 heartbeat 外必须携带 `message_id`，并且与历史消息回读中的 `ChatMessage.id` 可追踪关联。
+- Chat SSE 事件集合冻结为：`session_start`、`routing_decision`、`phase`、`reasoning`、`message`、`tool_call`、`tool_result`、`citation`、`confirmation_required`、`cancel`、`done`、`heartbeat`、`error`。
 
 Chat 查询作用域资源约束：
 

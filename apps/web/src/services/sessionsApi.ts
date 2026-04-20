@@ -4,6 +4,7 @@ import {
   createChatSessionsApi,
 } from '@scholar-ai/sdk';
 import { sdkHttpClient } from './sdkHttpClient';
+import { extractSessionMessages } from './sessionResponse';
 
 export interface SessionRecord {
   id: string;
@@ -42,7 +43,7 @@ export async function getSessionMessages(sessionId: string, limit = 100): Promis
     limit,
     order: 'desc',
   });
-  return response.data.messages as SessionMessageRecord[];
+  return extractSessionMessages<SessionMessageRecord>(response as any) as SessionMessageRecord[];
 }
 
 export async function createSession(title = '新对话'): Promise<SessionRecord> {

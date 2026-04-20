@@ -11,6 +11,7 @@ Per D-09: LLM API rate limit 120/min.
 """
 
 import os
+import platform
 
 from celery import Celery
 
@@ -59,11 +60,17 @@ celery_app = Celery(
 )
 
 # Configuration per D-09 and D-10
+default_worker_pool = os.environ.get("CELERY_WORKER_POOL")
+if not default_worker_pool:
+    default_worker_pool = "solo" if platform.system() == "Darwin" else "prefork"
+
 celery_app.conf.update(
     # Execution limits (per D-03) - Reduced concurrency to prevent crashes
+    worker_pool=default_worker_pool,
     worker_concurrency=1,  # Single worker to avoid memory issues
     worker_max_concurrency=1,  # Max 1 worker
     worker_min_concurrency=1,  # Min 1 worker
+    worker_max_tasks_per_child=1,
     task_soft_time_limit=600,  # 10 min soft limit
     task_time_limit=900,  # 15 min hard limit
     # Memory limits

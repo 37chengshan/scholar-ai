@@ -13,7 +13,6 @@ State machine flow (per gpt意见.md):
   -> embedding -> indexing -> finalizing -> completed
 """
 
-import asyncio
 import hashlib
 import os
 import uuid
@@ -23,10 +22,12 @@ from typing import Optional
 from sqlalchemy import select, update
 
 from app.core.celery_config import celery_app
+from app.core.worker_async import run_async_in_worker_loop
 from app.database import AsyncSessionLocal
 from app.models.import_job import ImportJob
 from app.models.paper import Paper
 from app.models.task import ProcessingTask
+from app.models.upload_history import UploadHistory
 from app.services.import_job_service import ImportJobService
 from app.services.import_dedupe_service import ImportDedupeService
 from app.services.source_adapters import (
@@ -36,17 +37,6 @@ from app.services.source_adapters import (
     PdfUrlAdapter,
 )
 from app.utils.logger import logger
-
-_worker_loop: Optional[asyncio.AbstractEventLoop] = None
-
-
-def _run_async_in_worker_loop(coro):
-    global _worker_loop
-    if _worker_loop is None or _worker_loop.is_closed():
-        _worker_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(_worker_loop)
-    return _worker_loop.run_until_complete(coro)
-
 
 def get_adapter(source_type: str):
     """Get source adapter by type."""
@@ -342,24 +332,54 @@ def process_import_job(self, job_id: str):
                     job, stage="triggering_processing", progress=50, db=db
                 )
 
-                # Create ProcessingTask (NOT mark completed yet!)
-                processing_task_id = str(uuid.uuid4())
-                task = ProcessingTask(
-                    id=processing_task_id,
-                    paper_id=paper_id,
-                    status="pending",
-                    storage_key=job.storage_key or "",
+                # Reuse existing ProcessingTask for this paper when present.
+                # Retries can revisit this stage and must not violate unique paper_id.
+                existing_task_result = await db.execute(
+                    select(ProcessingTask).where(ProcessingTask.paper_id == paper_id)
                 )
-                db.add(task)
-                job.processing_task_id = processing_task_id
-                await db.commit()
+                existing_task = existing_task_result.scalar_one_or_none()
+
+                if existing_task:
+                    processing_task_id = existing_task.id
+                    if existing_task.status == "completed":
+                        job.processing_task_id = processing_task_id
+                        await service.update_status(
+                            job,
+                            status="completed",
+                            stage="completed",
+                            progress=100,
+                            db=db,
+                        )
+                        logger.info(
+                            f"ImportJob {job_id} completed via existing ProcessingTask {processing_task_id}",
+                            paper_id=paper_id,
+                        )
+                        return
+
+                    existing_task.status = "pending"
+                    existing_task.error_message = None
+                    existing_task.completed_at = None
+                    existing_task.storage_key = job.storage_key or existing_task.storage_key
+                    job.processing_task_id = processing_task_id
+                    await db.commit()
+                else:
+                    processing_task_id = str(uuid.uuid4())
+                    task = ProcessingTask(
+                        id=processing_task_id,
+                        paper_id=paper_id,
+                        status="pending",
+                        storage_key=job.storage_key or "",
+                    )
+                    db.add(task)
+                    job.processing_task_id = processing_task_id
+                    await db.commit()
 
                 # Trigger existing PDF worker (via Celery)
                 from app.tasks.pdf_tasks import process_single_pdf_task
                 process_single_pdf_task.delay(paper_id, processing_task_id)
 
                 logger.info(
-                    f"ProcessingTask {processing_task_id} created for ImportJob {job_id}",
+                    f"ProcessingTask {processing_task_id} prepared for ImportJob {job_id}",
                     paper_id=paper_id,
                 )
                 # Return immediately to avoid blocking single-concurrency Celery workers.
@@ -367,6 +387,10 @@ def process_import_job(self, job_id: str):
 
             except Exception as e:
                 logger.exception(f"ImportJob {job_id} failed: {e}")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
                 await service.set_error(
                     job,
                     error_code="IMPORT_FAILED",
@@ -375,7 +399,7 @@ def process_import_job(self, job_id: str):
                 )
 
     # Run async function in sync Celery task
-    _run_async_in_worker_loop(_process())
+    run_async_in_worker_loop(_process())
 
 
 @celery_app.task(
@@ -433,7 +457,7 @@ def on_processing_task_complete(self, processing_task_id: str, paper_id: str):
                     paper_id=paper_id,
                 )
 
-    _run_async_in_worker_loop(_callback())
+    run_async_in_worker_loop(_callback())
 
 
 # =============================================================================
@@ -498,10 +522,15 @@ async def create_paper_from_job(job: ImportJob, db) -> str:
     """Create Paper entity from ImportJob data."""
     paper_id = str(uuid.uuid4())
 
+    base_title = (job.resolved_title or job.source_ref_raw or "Untitled").strip()
+    if not base_title:
+        base_title = "Untitled"
+    safe_title = await _ensure_unique_paper_title(db, job.user_id, base_title)
+
     paper = Paper(
         id=paper_id,
         user_id=job.user_id,
-        title=job.resolved_title or job.source_ref_raw,
+        title=safe_title,
         authors=job.resolved_authors or [],
         year=job.resolved_year,
         abstract=job.resolved_abstract,
@@ -522,8 +551,71 @@ async def create_paper_from_job(job: ImportJob, db) -> str:
     db.add(paper)
     await db.commit()
 
+    history_result = await db.execute(
+        select(UploadHistory).where(
+            UploadHistory.user_id == job.user_id,
+            UploadHistory.paper_id == paper_id,
+        )
+    )
+    history = history_result.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    filename = job.filename or job.source_ref_raw or "untitled.pdf"
+
+    if history:
+        history.filename = filename
+        history.status = "PROCESSING"
+        history.error_message = None
+        history.updated_at = now
+    else:
+        db.add(
+            UploadHistory(
+                user_id=job.user_id,
+                paper_id=paper_id,
+                filename=filename,
+                status="PROCESSING",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+    await db.commit()
+
     logger.info(f"Paper {paper_id} created from ImportJob {job.id}")
     return paper_id
+
+
+async def _ensure_unique_paper_title(db, user_id: str, base_title: str) -> str:
+    """Ensure title uniqueness under unique_user_title constraint.
+
+    For import_as_new_version / force_new_paper, the same filename/title can
+    legitimately appear again. Generate a deterministic suffix when needed.
+    """
+
+    candidate = base_title.strip() or "Untitled"
+
+    existing = await db.execute(
+        select(Paper.id).where(
+            Paper.user_id == user_id,
+            Paper.title == candidate,
+        )
+    )
+    if existing.scalar_one_or_none() is None:
+        return candidate
+
+    for idx in range(2, 100):
+        suffix = f" (v{idx})"
+        next_candidate = f"{candidate}{suffix}"
+        exists = await db.execute(
+            select(Paper.id).where(
+                Paper.user_id == user_id,
+                Paper.title == next_candidate,
+            )
+        )
+        if exists.scalar_one_or_none() is None:
+            return next_candidate
+
+    # Last resort fallback to a unique short token.
+    return f"{candidate} ({str(uuid.uuid4())[:8]})"
 
 
 async def attach_paper_to_kb(job: ImportJob, paper_id: str, db):

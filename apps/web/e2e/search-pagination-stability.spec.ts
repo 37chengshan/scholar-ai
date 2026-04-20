@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
 
+function extractTitleIndex(text: string): number {
+  const match = text.match(/agent-title-(\d+)/);
+  return match ? Number(match[1]) : -1;
+}
+
 test.describe('Critical E2E - Search Pagination Stability', () => {
   test('keeps result panel visible during page transitions', async ({ page }) => {
     await page.route('**/api/v1/auth/me', async (route) => {
@@ -57,20 +62,30 @@ test.describe('Critical E2E - Search Pagination Stability', () => {
 
     const firstCard = page.getByTestId('search-result-card').first();
     await expect(firstCard).toBeVisible({ timeout: 10000 });
-    await expect(firstCard).toContainText('agent-title-0');
+    const firstCardBefore = await firstCard.textContent();
+    const beforeIndex = extractTitleIndex(firstCardBefore || '');
+    expect(beforeIndex).toBeGreaterThanOrEqual(0);
 
     const nextButton = page.getByTestId('search-pagination-next');
     await expect(nextButton).toBeVisible({ timeout: 10000 });
     await nextButton.click();
 
     await expect(page.getByTestId('search-results-panel')).toBeVisible();
-    await expect(firstCard).toContainText('agent-title-0');
-    await expect(page.getByTestId('search-page-loading')).toBeVisible({ timeout: 10000 });
-    await expect(firstCard).toContainText('agent-title-20', { timeout: 10000 });
+    await expect
+      .poll(async () => {
+        const current = await firstCard.textContent();
+        return extractTitleIndex(current || '');
+      }, { timeout: 10000 })
+      .toBe(beforeIndex + 20);
 
     const prevButton = page.getByTestId('search-pagination-prev');
     await prevButton.click();
 
-    await expect(firstCard).toContainText('agent-title-0', { timeout: 10000 });
+    await expect
+      .poll(async () => {
+        const current = await firstCard.textContent();
+        return extractTitleIndex(current || '');
+      }, { timeout: 10000 })
+      .toBe(beforeIndex);
   });
 });

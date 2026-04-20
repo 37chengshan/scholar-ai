@@ -16,8 +16,8 @@ from app.services.chat_orchestrator import chat_orchestrator
 
 
 class _RequestStub:
-    def __init__(self):
-        self.headers = {}
+    def __init__(self, headers=None):
+        self.headers = headers or {}
 
 
 @pytest.mark.asyncio
@@ -50,6 +50,39 @@ async def test_chat_api_stream_only_persists_user_message():
     call_kwargs = mock_save_message.await_args.kwargs
     assert call_kwargs["role"] == "user"
     assert call_kwargs["content"] == "hi"
+
+
+@pytest.mark.asyncio
+async def test_chat_api_reconnect_is_replay_only_without_rerun():
+    from app.api import chat as chat_api
+
+    async def _mock_replay(_session_id, _last_event_id):
+        yield 'id: evt-2\nevent: message\ndata: {"delta":"cached"}\n\n'
+
+    mock_save_message = AsyncMock()
+    mock_execute = AsyncMock()
+    mock_route = AsyncMock()
+
+    with patch.object(chat_api.session_manager, "get_session", AsyncMock(return_value=type("S", (), {"id": "session-1"})())), \
+         patch.object(chat_api.sse_manager, "handle_reconnect", new=_mock_replay), \
+         patch.object(chat_api.message_service, "save_message", mock_save_message), \
+         patch.object(chat_api.chat_orchestrator, "execute_with_streaming", mock_execute), \
+         patch.object(chat_api.complexity_router, "route_async", mock_route):
+
+        response = await chat_api.chat_stream(
+            request=ChatStreamRequest(session_id="session-1", message="hi"),
+            http_request=_RequestStub(headers={"last-event-id": "evt-1"}),
+            user_id="user-1",
+        )
+
+        replay_payload = ""
+        async for chunk in response.body_iterator:
+            replay_payload += chunk
+
+    assert "event: message" in replay_payload
+    mock_save_message.assert_not_awaited()
+    mock_execute.assert_not_called()
+    mock_route.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -208,3 +241,34 @@ async def test_orchestrator_assistant_update_failure_is_non_blocking():
             events.append(event)
 
     assert any("event: done" in event for event in events)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_updates_assistant_before_done_for_early_disconnect():
+    class _RunnerStub:
+        def __init__(self):
+            self.event_callback = None
+
+        async def execute(self, **kwargs):
+            return {"success": True, "answer": "ok", "total_time_ms": 10}
+
+    runner = _RunnerStub()
+    mock_save_message = AsyncMock(return_value="assistant-msg-id")
+    mock_update_message = AsyncMock(return_value=True)
+
+    with patch("app.services.chat_orchestrator.initialize_agent_components", return_value=(runner, None, None, None)), \
+         patch("app.services.chat_orchestrator.message_service.save_message", mock_save_message), \
+         patch("app.services.chat_orchestrator.message_service.update_message", mock_update_message):
+        async for event in chat_orchestrator.execute_with_streaming(
+            user_input="hello",
+            session_id="session-1",
+            user_id="user-1",
+        ):
+            if "event: done" in event:
+                # Simulate client disconnecting right after done event.
+                break
+
+    mock_update_message.assert_awaited_once_with(
+        message_id="assistant-msg-id",
+        content="ok",
+    )

@@ -78,7 +78,7 @@ class SSEEventType:
     新增事件类型：
     - session_start: 会话开始
     - phase: 阶段切换
-    - reasoning: 思考内容流（替代 thought）
+    - reasoning: 思考内容流
     - message: 正文内容流
     - tool_call: 工具调用开始
     - tool_result: 工具调用结果
@@ -104,9 +104,6 @@ class SSEEventType:
     DONE = "done"
     ERROR = "error"
     HEARTBEAT = "heartbeat"
-
-    # Legacy aliases (for backward compatibility)
-    THOUGHT = "thought"  # Alias for reasoning
 
 
 class SSEEventEnvelope(BaseModel):
@@ -134,7 +131,7 @@ class SSEEvent(BaseModel):
 
     event: str = Field(
         ...,
-        description="Event type (thought, tool_call, tool_result, message, etc.)",
+        description="Event type (reasoning, tool_call, tool_result, message, etc.)",
     )
     data: Dict[str, Any] = Field(
         ...,
@@ -244,14 +241,3 @@ class ConfirmationRequiredEventData(BaseModel):
     message: str = Field(..., description="Confirmation message for user")
     tool_name: str = Field(..., description="Tool requiring confirmation")
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Tool parameters")
-
-
-# ============================================================
-# Legacy Event Data Structures (for backward compatibility)
-# ============================================================
-
-class ThoughtEventData(BaseModel):
-    """Data for 'thought' SSE event (legacy - use ReasoningEventData)."""
-
-    type: str = Field(default="thinking", description="Thought type")
-    content: str = Field(..., description="Thought content")

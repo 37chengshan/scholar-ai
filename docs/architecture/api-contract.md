@@ -107,7 +107,8 @@
 
 SSE 事件规范：
 
-- 事件类型：thought、tool_call、tool_result、confirmation_required、message、error、done
+- 事件类型（冻结集合）：session_start、routing_decision、phase、reasoning、message、tool_call、tool_result、citation、confirmation_required、cancel、done、heartbeat、error
+- 标准 envelope 字段固定为：`event`、`data`、`message_id`。
 - 每个事件必须包含可解析 JSON 载荷。
 - 长连接必须有 heartbeat 或等价保活策略。
 - done 为唯一完成事件，不得与错误事件混用。
@@ -209,6 +210,7 @@ Plan C 契约治理约束：
 
 - 契约表面改动（apps/api/app/api, apps/api/app/models, apps/web/src/services, packages/types, packages/sdk）必须同步更新本文件与 `docs/domain/resources.md`。
 - 任何 fallback 契约兼容必须在 `docs/governance/fallback-register.yaml` 登记到期时间与删除计划。
+- UploadHistory 是 ImportJob/UploadSession/ProcessingTask 的投影视图，不作为并行真源。
 
 ## Required Updates
 

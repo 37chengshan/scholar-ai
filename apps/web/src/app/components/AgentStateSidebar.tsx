@@ -13,6 +13,7 @@
  */
 
 import { motion } from 'motion/react';
+import type { ReactNode } from 'react';
 import {
   Circle,
   Loader2,
@@ -222,6 +223,31 @@ function formatCost(cost: number, isZh: boolean): string {
   return `$${cost.toFixed(2)}`;
 }
 
+interface SidebarSectionProps {
+  icon: typeof Zap;
+  title: string;
+  badge?: number;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}
+
+function SidebarSection({ icon: Icon, title, badge, children, defaultOpen }: SidebarSectionProps) {
+  return (
+    <details className="border-b border-border/50" {...(defaultOpen ? { open: true } : {})}>
+      <summary className="list-none cursor-pointer px-4 py-3 flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase text-muted-foreground hover:text-foreground transition-colors">
+        <Icon className="w-3 h-3" />
+        <span>{title}</span>
+        {badge !== undefined && (
+          <span className="ml-auto text-xs font-normal text-primary">{badge}</span>
+        )}
+      </summary>
+      <div className="px-4 pb-3">
+        {children}
+      </div>
+    </details>
+  );
+}
+
 /**
  * Convert ChatMessage or ChatStreamState to unified display data
  *
@@ -378,6 +404,32 @@ export function AgentStateSidebar({
   const { language } = useLanguage();
   const isZh = language === 'zh';
 
+  const t = {
+    agentState: isZh ? 'Agent 状态' : 'Agent State',
+    stop: isZh ? '停止' : 'Stop',
+    seconds: isZh ? '秒' : 's',
+    // Sub-block labels
+    taskOverview: isZh ? '任务概览' : 'Task Overview',
+    executionTimeline: isZh ? '执行时间线' : 'Execution Timeline',
+    sourcesEvidence: isZh ? '来源与证据' : 'Sources & Evidence',
+    taskBreakdown: isZh ? '任务拆解' : 'Task Breakdown',
+    sessionMetrics: isZh ? '会话指标' : 'Session Metrics',
+    // Status labels
+    thinking: isZh ? '正在思考中...' : 'Thinking...',
+    mayTakeTime: isZh ? '这可能需要几秒钟' : 'This may take a few seconds',
+    historicalMessage: isZh ? '历史消息' : 'Historical Message',
+    startConversation: isZh ? '开始对话以查看执行步骤' : 'Start a conversation to see execution steps',
+    noReasoningContent: isZh ? '无推理内容' : 'No reasoning content',
+    noCitations: isZh ? '无引用来源' : 'No citations',
+    noTools: isZh ? '无工具调用' : 'No tool calls',
+    // Metrics labels
+    tokensUsed: isZh ? 'Tokens 使用' : 'Tokens Used',
+    estimatedCost: isZh ? '预估成本' : 'Estimated Cost',
+    executionTime: isZh ? '执行时长' : 'Execution Time',
+    toolsCalled: isZh ? '工具调用' : 'Tools Called',
+    citationsCount: isZh ? '引用数量' : 'Citations',
+  };
+
   // Apply data source priority
   const displayInfo = toDisplayData(selectedMessage, currentRunningState);
 
@@ -391,12 +443,12 @@ export function AgentStateSidebar({
         )}
       >
         {/* Header */}
-        <div className="px-4 py-3.5 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10">
-          <h3 className="font-serif text-sm font-bold tracking-tight flex items-center gap-2">
-            <Activity className="w-4 h-4 text-primary" />
-            {isZh ? 'Agent 状态' : 'Agent State'}
-          </h3>
-        </div>
+      <div className="px-4 py-3.5 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10">
+        <h3 className="font-serif text-sm font-bold tracking-tight flex items-center gap-2">
+          <Activity className="w-4 h-4 text-primary" />
+          {isZh ? 'Agent 状态' : 'Agent State'}
+        </h3>
+      </div>
 
         {/* Empty state */}
         <div className="flex-1 flex items-center justify-center p-4">
@@ -429,32 +481,6 @@ export function AgentStateSidebar({
   const isRunning = uiState === 'RUNNING';
   const taskInfo = getTaskTypeInfo(taskType, isZh);
   const TaskIcon = taskInfo.icon;
-
-  const t = {
-    agentState: isZh ? 'Agent 状态' : 'Agent State',
-    stop: isZh ? '停止' : 'Stop',
-    seconds: isZh ? '秒' : 's',
-    // Sub-block labels
-    taskOverview: isZh ? '任务概览' : 'Task Overview',
-    executionTimeline: isZh ? '执行时间线' : 'Execution Timeline',
-    sourcesEvidence: isZh ? '来源与证据' : 'Sources & Evidence',
-    taskBreakdown: isZh ? '任务拆解' : 'Task Breakdown',
-    sessionMetrics: isZh ? '会话指标' : 'Session Metrics',
-    // Status labels
-    thinking: isZh ? '正在思考中...' : 'Thinking...',
-    mayTakeTime: isZh ? '这可能需要几秒钟' : 'This may take a few seconds',
-    historicalMessage: isZh ? '历史消息' : 'Historical Message',
-    startConversation: isZh ? '开始对话以查看执行步骤' : 'Start a conversation to see execution steps',
-    noReasoningContent: isZh ? '无推理内容' : 'No reasoning content',
-    noCitations: isZh ? '无引用来源' : 'No citations',
-    noTools: isZh ? '无工具调用' : 'No tool calls',
-    // Metrics labels
-    tokensUsed: isZh ? 'Tokens 使用' : 'Tokens Used',
-    estimatedCost: isZh ? '预估成本' : 'Estimated Cost',
-    executionTime: isZh ? '执行时长' : 'Execution Time',
-    toolsCalled: isZh ? '工具调用' : 'Tools Called',
-    citationsCount: isZh ? '引用数量' : 'Citations',
-  };
 
   return (
     <div

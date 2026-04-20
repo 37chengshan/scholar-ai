@@ -14,12 +14,19 @@ import { useState } from 'react';
 import * as annotationsApi from '@/services/annotationsApi';
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
+import { toast } from 'sonner';
 
 interface AnnotationToolbarProps {
   paperId: string;
   pageNumber: number;
   onAnnotationCreated?: () => void;
   selectedText?: string;
+  selectionPosition?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
 }
 
 // Color definitions with Chinese names per UI-SPEC
@@ -30,24 +37,36 @@ const HIGHLIGHT_COLORS = [
   { hex: '#4CAF50', zhName: '绿色', enName: 'Green' },
 ];
 
-export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated, selectedText }: AnnotationToolbarProps) {
+export function AnnotationToolbar({
+  paperId,
+  pageNumber,
+  onAnnotationCreated,
+  selectedText,
+  selectionPosition,
+}: AnnotationToolbarProps) {
   const [color, setColor] = useState('#FFEB3B');
   const [isCreating, setIsCreating] = useState(false);
   const { language } = useLanguage();
   const isZh = language === 'zh';
 
   const handleHighlight = async () => {
+    if (!selectionPosition) {
+      return;
+    }
+
     setIsCreating(true);
     try {
       await annotationsApi.create({
         paperId,
         type: 'highlight',
         pageNumber,
-        position: { x: 0, y: 0, width: 100, height: 20 },
+        position: selectionPosition,
         color,
         content: selectedText || '',
       });
       onAnnotationCreated?.();
+    } catch (error) {
+      toast.error(isZh ? '添加高亮失败，请重试' : 'Failed to add highlight');
     } finally {
       setIsCreating(false);
     }
@@ -76,7 +95,7 @@ export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated, se
       ))}
       <button
         onClick={handleHighlight}
-        disabled={isCreating}
+        disabled={isCreating || !selectionPosition}
         className={clsx(
           "px-3 py-1.5 bg-primary text-primary-foreground rounded-sm",
           "text-[10px] font-bold uppercase tracking-widest",
@@ -88,6 +107,12 @@ export function AnnotationToolbar({ paperId, pageNumber, onAnnotationCreated, se
           ? (isZh ? '添加中...' : 'Adding...') 
           : (isZh ? '添加高亮' : 'Add Highlight')}
       </button>
+
+      {!selectionPosition && (
+        <span className="text-[10px] text-muted-foreground">
+          {isZh ? '先在 PDF 中选中一段文本' : 'Select text in the PDF first'}
+        </span>
+      )}
     </div>
   );
 }

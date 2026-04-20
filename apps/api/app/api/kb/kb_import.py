@@ -15,7 +15,7 @@ Endpoints:
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, List
 
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
@@ -29,9 +29,10 @@ from app.models.paper import Paper
 from app.models.task import ProcessingTask
 from app.models.upload_history import UploadHistory
 from app.deps import CurrentUserId
+from app.services.import_job_service import ImportJobService
 from app.utils.problem_detail import Errors
 from app.utils.logger import logger
-from app.tasks.pdf_tasks import process_single_pdf_task
+from app.workers.import_worker import process_import_job
 
 
 router = APIRouter()
@@ -61,6 +62,110 @@ class KBImportArxiv(BaseModel):
     arxivId: str
 
 
+async def _get_kb_or_404(kb_id: str, user_id: str, db: AsyncSession) -> KnowledgeBase:
+    kb_result = await db.execute(
+        select(KnowledgeBase).where(
+            KnowledgeBase.id == kb_id,
+            KnowledgeBase.user_id == user_id,
+        )
+    )
+    kb = kb_result.scalar_one_or_none()
+    if not kb:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=Errors.not_found("Knowledge base not found"),
+        )
+    return kb
+
+
+async def _read_and_validate_pdf(file: UploadFile) -> Tuple[bytes, str]:
+    if not file:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Errors.validation("No file uploaded. Use form field name 'file'"),
+        )
+
+    filename = file.filename or "untitled.pdf"
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Errors.validation("Only PDF files are accepted"),
+        )
+
+    content = await file.read()
+    max_size = 50 * 1024 * 1024
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=Errors.validation("File size exceeds 50MB limit"),
+        )
+
+    if not content.startswith(b"%PDF-"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Errors.validation("File is not a valid PDF"),
+        )
+
+    return content, filename
+
+
+def _build_storage_key(user_id: str, import_job_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    return f"uploads/{user_id}/{now.strftime('%Y/%m/%d')}/{import_job_id}.pdf"
+
+
+async def _save_pdf(storage_key: str, content: bytes) -> None:
+    local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+    file_path = os.path.join(local_storage_path, storage_key)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    async with aiofiles.open(file_path, "wb") as output_file:
+        await output_file.write(content)
+
+
+async def _create_local_file_import_job(
+    *,
+    kb_id: str,
+    user_id: str,
+    filename: str,
+    content: bytes,
+    db: AsyncSession,
+) -> Dict[str, Any]:
+    service = ImportJobService()
+    job = await service.create_job(
+        user_id=user_id,
+        kb_id=kb_id,
+        source_type="local_file",
+        source_ref_raw=filename,
+        options={},
+        db=db,
+    )
+
+    storage_key = _build_storage_key(user_id, job.id)
+    await _save_pdf(storage_key, content)
+
+    import hashlib
+
+    await service.set_file_info(
+        job=job,
+        storage_key=storage_key,
+        sha256=hashlib.sha256(content).hexdigest(),
+        size_bytes=len(content),
+        filename=filename,
+        mime_type="application/pdf",
+        db=db,
+    )
+
+    process_import_job.delay(job.id)
+
+    return {
+        "importJobId": job.id,
+        "status": "queued",
+        "stage": "uploaded",
+        "progress": 10,
+    }
+
+
 # =============================================================================
 # KB Import Endpoints
 # =============================================================================
@@ -75,149 +180,40 @@ async def upload_pdf_to_kb(
 ):
     """Upload a PDF to a knowledge base.
 
-    Per D-08: Paper inherits KB config (embeddingModel, parseEngine, etc.).
-    No config fields in request - KB config is used for processing.
+    Legacy compatibility endpoint.
+    Internally unified to ImportJob-first flow.
     """
     try:
-        kb_result = await db.execute(
-            select(KnowledgeBase).where(
-                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
-            )
-        )
-        kb = kb_result.scalar_one_or_none()
-
-        if not kb:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Errors.not_found("Knowledge base not found"),
-            )
-
-        if not file:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=Errors.validation(
-                    "No file uploaded. Use form field name 'file'"
-                ),
-            )
-
-        filename = file.filename or "untitled.pdf"
-        if not filename.lower().endswith(".pdf"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=Errors.validation("Only PDF files are accepted"),
-            )
-
-        content = await file.read()
-        file_size = len(content)
-        max_size = 50 * 1024 * 1024
-
-        if file_size > max_size:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=Errors.validation("File size exceeds 50MB limit"),
-            )
-
-        if not content.startswith(b"%PDF-"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=Errors.validation("File is not a valid PDF"),
-            )
-
-        title = filename.replace(".pdf", "").replace(".PDF", "")
-        existing_query = select(Paper).where(
-            Paper.user_id == user_id,
-            Paper.title == title,
-        )
-        existing_result = await db.execute(existing_query)
-        existing = existing_result.scalar_one_or_none()
-
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=Errors.conflict(
-                    f'A paper with title "{title}" already exists in your library.'
-                ),
-            )
-
-        storage_key = (
-            f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid.uuid4()}.pdf"
-        )
-        local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
-        file_path = os.path.join(local_storage_path, storage_key)
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-        async with aiofiles.open(file_path, "wb") as output_file:
-            await output_file.write(content)
-
-        paper_id = str(uuid.uuid4())
-        task_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
-
-        paper = Paper(
-            id=paper_id,
-            title=title,
-            authors=[],
-            status="processing",
+        await _get_kb_or_404(kb_id, user_id, db)
+        content, filename = await _read_and_validate_pdf(file)
+        result = await _create_local_file_import_job(
+            kb_id=kb_id,
             user_id=user_id,
-            storage_key=storage_key,
-            file_size=file_size,
-            keywords=[],
-            knowledge_base_id=kb_id,
-            upload_status="processing",
-            upload_progress=0,
-            uploaded_at=now,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(paper)
-
-        task = ProcessingTask(
-            id=task_id,
-            paper_id=paper_id,
-            status="pending",
-            storage_key=storage_key,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(task)
-
-        upload_history = UploadHistory(
-            id=str(uuid.uuid4()),
-            user_id=user_id,
-            paper_id=paper_id,
             filename=filename,
-            status="PROCESSING",
-            created_at=now,
-            updated_at=now,
+            content=content,
+            db=db,
         )
-        db.add(upload_history)
-
-        kb.paper_count += 1
-        kb.updated_at = now
-
-        # Commit to ensure Paper/Task records are persisted before Celery task runs
-        await db.commit()
-
-        # Trigger Celery worker to process the PDF asynchronously
-        process_single_pdf_task.delay(paper_id)
 
         logger.info(
-            "Paper uploaded directly to knowledge base, Celery task triggered",
+            "Legacy KB upload routed to ImportJob pipeline",
             user_id=user_id,
             kb_id=kb_id,
-            paper_id=paper_id,
+            import_job_id=result["importJobId"],
             filename=filename,
-            file_size=file_size,
+            file_size=len(content),
         )
 
         return KBResponse(
             success=True,
             data={
                 "kbId": kb_id,
-                "paperId": paper_id,
-                "taskId": task_id,
-                "status": "processing",
-                "message": "File uploaded successfully. Processing started.",
+                "importJobId": result["importJobId"],
+                "paperId": None,
+                "taskId": result["importJobId"],
+                "status": result["status"],
+                "stage": result["stage"],
+                "progress": result["progress"],
+                "message": "File uploaded successfully. Import job queued.",
             },
         )
     except HTTPException:
@@ -239,16 +235,47 @@ async def import_from_url(
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
-    """Import paper from URL/DOI.
+    """Import paper from URL/DOI via ImportJob pipeline."""
+    try:
+        await _get_kb_or_404(kb_id, user_id, db)
+        if not request.url or not request.url.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("url is required"),
+            )
 
-    Per D-08: Paper inherits KB config. Request contains only url field.
-    Processing uses KB's stored embedding_model, parse_engine, etc.
-    """
-    # Stub - will fetch KB and use kb config for processing
-    return KBResponse(
-        success=True,
-        data={"message": "Import URL endpoint - to be implemented", "url": request.url},
-    )
+        service = ImportJobService()
+        job = await service.create_job(
+            user_id=user_id,
+            kb_id=kb_id,
+            source_type="pdf_url",
+            source_ref_raw=request.url.strip(),
+            options={},
+            db=db,
+        )
+        process_import_job.delay(job.id)
+
+        return KBResponse(
+            success=True,
+            data={
+                "kbId": kb_id,
+                "importJobId": job.id,
+                "paperId": None,
+                "taskId": job.id,
+                "status": job.status,
+                "stage": job.stage,
+                "progress": job.progress,
+                "message": "Import job queued.",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to import from URL", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to import from URL: {str(e)}"),
+        )
 
 
 @router.post("/{kb_id}/import-arxiv", response_model=KBResponse)
@@ -258,36 +285,118 @@ async def import_from_arxiv(
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
-    """Import paper from arXiv.
+    """Import paper from arXiv via ImportJob pipeline."""
+    try:
+        await _get_kb_or_404(kb_id, user_id, db)
+        if not request.arxivId or not request.arxivId.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Errors.validation("arxivId is required"),
+            )
 
-    Per D-08: Paper inherits KB config. Request contains only arxivId field.
-    Processing uses KB's stored embedding_model, parse_engine, etc.
-    """
-    # Stub - will fetch KB and use kb config for processing
-    return KBResponse(
-        success=True,
-        data={
-            "message": "Import arXiv endpoint - to be implemented",
-            "arxivId": request.arxivId,
-        },
-    )
+        service = ImportJobService()
+        job = await service.create_job(
+            user_id=user_id,
+            kb_id=kb_id,
+            source_type="arxiv",
+            source_ref_raw=request.arxivId.strip(),
+            options={},
+            db=db,
+        )
+        process_import_job.delay(job.id)
+
+        return KBResponse(
+            success=True,
+            data={
+                "kbId": kb_id,
+                "importJobId": job.id,
+                "paperId": None,
+                "taskId": job.id,
+                "status": job.status,
+                "stage": job.stage,
+                "progress": job.progress,
+                "message": "Import job queued.",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to import from arXiv", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to import from arXiv: {str(e)}"),
+        )
 
 
 @router.post("/{kb_id}/batch-upload", response_model=KBResponse)
 async def batch_upload_to_kb(
     kb_id: str,
+    files: List[UploadFile] = File(...),
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
     """Batch upload PDFs to a knowledge base.
 
-    Per D-08: All papers inherit KB config. No config fields in request.
+    Legacy compatibility endpoint.
+    Internally routes each file to ImportJob-first pipeline.
     """
-    # Stub - will fetch KB and use kb config for all paper processing
-    return KBResponse(
-        success=True,
-        data={"message": "Batch upload endpoint - to be implemented", "kbId": kb_id},
-    )
+    try:
+        await _get_kb_or_404(kb_id, user_id, db)
+
+        accepted: List[Dict[str, Any]] = []
+        rejected: List[Dict[str, Any]] = []
+
+        for file in files:
+            try:
+                content, filename = await _read_and_validate_pdf(file)
+                result = await _create_local_file_import_job(
+                    kb_id=kb_id,
+                    user_id=user_id,
+                    filename=filename,
+                    content=content,
+                    db=db,
+                )
+                accepted.append(
+                    {
+                        "importJobId": result["importJobId"],
+                        "filename": filename,
+                        "status": result["status"],
+                    }
+                )
+            except HTTPException as e:
+                rejected.append(
+                    {
+                        "filename": file.filename or "untitled.pdf",
+                        "reason": str(e.detail),
+                    }
+                )
+            except Exception as e:
+                rejected.append(
+                    {
+                        "filename": file.filename or "untitled.pdf",
+                        "reason": str(e),
+                    }
+                )
+
+        return KBResponse(
+            success=True,
+            data={
+                "kbId": kb_id,
+                "totalItems": len(files),
+                "acceptedCount": len(accepted),
+                "rejectedCount": len(rejected),
+                "accepted": accepted,
+                "rejected": rejected,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to batch upload to KB", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to batch upload to KB: {str(e)}"),
+        )
 
 
 @router.get("/{kb_id}/upload-history", response_model=KBResponse)

@@ -56,8 +56,11 @@ export function useSessions(): UseSessionsReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Use ref for timestamp to prevent race condition (doesn't trigger re-render or callback recreation)
-  const lastLocalMessageTime = useRef<number>(0);
+  // Use ref for session-scoped optimistic update guard.
+  const lastLocalMessageRef = useRef<{ sessionId: string | null; at: number }>({
+    sessionId: null,
+    at: 0,
+  });
   // Grace period: 3 seconds to prevent API overwriting local message
   const LOCAL_MESSAGE_GRACE_PERIOD = 3000;
 
@@ -84,10 +87,11 @@ export function useSessions(): UseSessionsReturn {
   }, []);
 
   const loadSessionMessages = useCallback(async (sessionId: string) => {
-    // Skip reload if we recently added a local message (race condition prevention)
-    const timeSinceLastLocalMessage = Date.now() - lastLocalMessageTime.current;
-    if (timeSinceLastLocalMessage < LOCAL_MESSAGE_GRACE_PERIOD) {
-      console.log('[useSessions] Skipping loadSessionMessages - local message added', timeSinceLastLocalMessage, 'ms ago');
+    // Skip reload only for the same session where optimistic local message was just added.
+    const timeSinceLastLocalMessage = Date.now() - lastLocalMessageRef.current.at;
+    const sameSessionOptimisticUpdate = lastLocalMessageRef.current.sessionId === sessionId;
+    if (sameSessionOptimisticUpdate && timeSinceLastLocalMessage < LOCAL_MESSAGE_GRACE_PERIOD) {
+      console.log('[useSessions] Skipping loadSessionMessages - optimistic message in same session', sessionId, timeSinceLastLocalMessage, 'ms ago');
       return;
     }
     try {
@@ -97,7 +101,7 @@ export function useSessions(): UseSessionsReturn {
     } catch (err) {
       setMessages([]); // No messages yet, that's OK
     }
-  }, []); // No dependency on lastLocalMessageTime - it's a ref
+  }, []); // No dependency on lastLocalMessageRef - it's a ref
 
   const createSession = useCallback(async (title?: string): Promise<ChatSession | null> => {
     setError(null);
@@ -138,9 +142,22 @@ export function useSessions(): UseSessionsReturn {
 
   const addMessage = useCallback((message: ChatMessage) => {
     // Record timestamp to prevent loadSessionMessages from overwriting
-    lastLocalMessageTime.current = Date.now();
-    console.log('[useSessions] Adding local message, timestamp set to', lastLocalMessageTime.current);
-    setMessages(prev => [...prev, message]);
+    lastLocalMessageRef.current = {
+      sessionId: message.session_id,
+      at: Date.now(),
+    };
+    console.log('[useSessions] Adding local message, optimistic guard set to', lastLocalMessageRef.current);
+    setMessages((prev) => {
+      const existingIndex = prev.findIndex((item) => item.id === message.id);
+
+      if (existingIndex === -1) {
+        return [...prev, message];
+      }
+
+      const next = [...prev];
+      next[existingIndex] = message;
+      return next;
+    });
   }, []);
 
   const clearMessages = useCallback(() => {

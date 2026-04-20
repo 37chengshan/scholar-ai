@@ -1,7 +1,13 @@
-import { useMemo } from 'react';
-import { useChatStream } from '@/app/hooks/useChatStream';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  useChatStream,
+  type TaskType,
+  type UseChatStreamOptions,
+} from '@/app/hooks/useChatStream';
 
-export function useChatStreaming() {
+export function useChatStreaming(options: UseChatStreamOptions = {}) {
+  const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
+
   const {
     state,
     dispatch,
@@ -13,28 +19,47 @@ export function useChatStreaming() {
     getBufferedContent,
     confirmation,
     resetConfirmation,
-  } = useChatStream();
+  } = useChatStream(options);
+
+  const startRun = useCallback((sessionId: string, taskType: TaskType, messageId: string) => {
+    setCurrentMessageId(messageId);
+    startStream(sessionId, taskType, messageId);
+  }, [startStream]);
+
+  const stopRun = useCallback((reason = 'User stopped') => {
+    cancelStream(reason);
+    setCurrentMessageId(null);
+  }, [cancelStream]);
+
+  const resetRun = useCallback(() => {
+    reset();
+    setCurrentMessageId(null);
+  }, [reset]);
 
   return useMemo(() => ({
-    state,
+    streamState: state,
     dispatch,
-    startStream,
+    startRun,
+    stopRun,
+    resetRun,
     handleSSEEvent,
-    cancelStream,
-    reset,
     forceFlush,
     getBufferedContent,
+    currentMessageId,
+    setCurrentMessageId,
     confirmation,
     resetConfirmation,
   }), [
     state,
     dispatch,
-    startStream,
+    startRun,
+    stopRun,
+    resetRun,
     handleSSEEvent,
-    cancelStream,
-    reset,
     forceFlush,
     getBufferedContent,
+    currentMessageId,
+    setCurrentMessageId,
     confirmation,
     resetConfirmation,
   ]);

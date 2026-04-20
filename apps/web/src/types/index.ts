@@ -96,6 +96,8 @@ export interface Paper {
   processingError?: string | null;
   processingStartedAt?: string | null;
   processingCompletedAt?: string | null;
+  imradJson?: unknown;
+  knowledgeBaseId?: string | null;
 }
 
 /**

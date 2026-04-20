@@ -31,6 +31,7 @@ class MessageService:
         content: str,
         tool_name: Optional[str] = None,
         tool_params: Optional[Dict] = None,
+        count_towards_stats: bool = True,
     ) -> str:
         """Save chat message to PostgreSQL and update session stats.
 
@@ -40,6 +41,7 @@ class MessageService:
             content: Message content
             tool_name: Tool name if role=tool
             tool_params: Tool parameters if role=tool
+            count_towards_stats: Whether to increment session.message_count
 
         Returns:
             Message UUID
@@ -63,11 +65,12 @@ class MessageService:
                 db.add(message)
 
                 is_tool_call = role == "tool"
+                message_count_delta = 1 if count_towards_stats else 0
                 await db.execute(
                     update(Session)
                     .where(Session.id == session_id)
                     .values(
-                        message_count=Session.message_count + 1,
+                        message_count=Session.message_count + message_count_delta,
                         tool_call_count=Session.tool_call_count
                         + (1 if is_tool_call else 0),
                         last_activity_at=created_at,
@@ -189,21 +192,61 @@ class MessageService:
         """
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
+        async def _update_session_activity(
+            session: AsyncSession,
+            session_id: str,
+            old_role: str,
+            old_content: Optional[str],
+        ) -> None:
+            is_placeholder_finalized = (
+                old_role == "assistant"
+                and (old_content or "") == ""
+                and content != ""
+            )
+
+            values = {"last_activity_at": now}
+            if is_placeholder_finalized:
+                values["message_count"] = Session.message_count + 1
+
+            await session.execute(
+                update(Session)
+                .where(Session.id == session_id)
+                .values(**values)
+            )
+
         if db:
+            row = await db.execute(
+                select(
+                    ChatMessage.session_id,
+                    ChatMessage.role,
+                    ChatMessage.content,
+                ).where(ChatMessage.id == message_id)
+            )
+            message_meta = row.first()
             result = await db.execute(
                 update(ChatMessage)
                 .where(ChatMessage.id == message_id)
                 .values(content=content)
             )
+            if (result.rowcount or 0) > 0 and message_meta:
+                await _update_session_activity(
+                    db,
+                    message_meta[0],
+                    message_meta[1],
+                    message_meta[2],
+                )
             return (result.rowcount or 0) > 0
 
         async with AsyncSessionLocal() as session:
             try:
-                # Keep session activity in sync with final assistant output.
-                session_result = await session.execute(
-                    select(ChatMessage.session_id).where(ChatMessage.id == message_id)
+                message_result = await session.execute(
+                    select(
+                        ChatMessage.session_id,
+                        ChatMessage.role,
+                        ChatMessage.content,
+                    ).where(ChatMessage.id == message_id)
                 )
-                session_id = session_result.scalar_one_or_none()
+                message_meta = message_result.first()
 
                 result = await session.execute(
                     update(ChatMessage)
@@ -211,11 +254,12 @@ class MessageService:
                     .values(content=content)
                 )
 
-                if (result.rowcount or 0) > 0 and session_id:
-                    await session.execute(
-                        update(Session)
-                        .where(Session.id == session_id)
-                        .values(last_activity_at=now)
+                if (result.rowcount or 0) > 0 and message_meta:
+                    await _update_session_activity(
+                        session,
+                        message_meta[0],
+                        message_meta[1],
+                        message_meta[2],
                     )
 
                 await session.commit()

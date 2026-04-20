@@ -12,24 +12,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, desc
 
 from app.core.celery_config import celery_app
+from app.core.worker_async import run_async_in_worker_loop
 from app.workers.pdf_worker import PDFProcessor
 from app.utils.logger import logger
 from app.database import AsyncSessionLocal
 from app.models import Paper, ProcessingTask, PaperBatch
 from app.models.import_job import ImportJob
-
-_worker_loop: Optional[asyncio.AbstractEventLoop] = None
-
-
-def _run_async_in_worker_loop(coro):
-    global _worker_loop
-    if _worker_loop is None or _worker_loop.is_closed():
-        _worker_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(_worker_loop)
-    return _worker_loop.run_until_complete(coro)
+from app.models.upload_history import UploadHistory
 
 
 # Current concurrency level (will be adjusted by memory monitor)
@@ -118,6 +110,35 @@ async def _sync_import_job_terminal(
         job.error_code = "PROCESSING_FAILED"
         job.error_message = error_message or "Processing failed"
         job.next_action = {"type": "retry", "message": job.error_message}
+
+    if job.paper_id:
+        history_result = await db.execute(
+            select(UploadHistory)
+            .where(
+                UploadHistory.user_id == job.user_id,
+                UploadHistory.paper_id == job.paper_id,
+            )
+            .order_by(desc(UploadHistory.created_at))
+            .limit(1)
+        )
+        history = history_result.scalars().first()
+        if history:
+            history.status = "COMPLETED" if terminal_status == "completed" else "FAILED"
+            history.error_message = None if terminal_status == "completed" else (error_message or history.error_message)
+            history.updated_at = now
+        else:
+            db.add(
+                UploadHistory(
+                    user_id=job.user_id,
+                    paper_id=job.paper_id,
+                    filename=job.filename or job.source_ref_raw or "untitled.pdf",
+                    status="COMPLETED" if terminal_status == "completed" else "FAILED",
+                    error_message=None if terminal_status == "completed" else error_message,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
     job.updated_at = now
     await db.commit()
 
@@ -192,7 +213,7 @@ def process_pdf_batch_task(self, batch_id: str):
             logger.info(f"Batch {batch_id} complete: {completed} success, {failed} failed")
 
     # Run async function in sync Celery task
-    _run_async_in_worker_loop(_process_batch())
+    run_async_in_worker_loop(_process_batch())
 
 
 async def process_single_pdf_async(
@@ -359,7 +380,7 @@ async def process_single_pdf_async(
 )
 def process_single_pdf_task(self, paper_id: str, processing_task_id: Optional[str] = None):
     """Standalone task to process single PDF (used for retry)."""
-    _run_async_in_worker_loop(process_single_pdf_async(paper_id, self, processing_task_id))
+    run_async_in_worker_loop(process_single_pdf_async(paper_id, self, processing_task_id))
 
 
 @celery_app.task
@@ -383,4 +404,4 @@ def retry_batch_failed_papers_task(batch_id: str):
             for paper_id in failed_papers:
                 process_single_pdf_task.delay(paper_id)
 
-    _run_async_in_worker_loop(_retry_failed())
+    run_async_in_worker_loop(_retry_failed())

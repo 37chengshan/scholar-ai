@@ -19,7 +19,11 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional
 
 from app.workers.pipeline_context import PipelineContext
-from app.core.imrad_extractor import extract_imrad_enhanced, extract_metadata
+from app.core.imrad_extractor import (
+    extract_imrad_enhanced,
+    extract_imrad_structure,
+    extract_metadata,
+)
 from app.core.qwen3vl_service import get_qwen3vl_service
 from app.core.image_extractor import ImageExtractor
 from app.core.table_extractor import TableExtractor
@@ -295,16 +299,44 @@ class ExtractionPipeline:
         """
         items = ctx.parse_result["items"]
         markdown = ctx.parse_result.get("markdown", "")
+        parse_mode = (ctx.parse_result.get("metadata") or {}).get("parse_mode")
+
+        # When parser already degraded to local PyPDF fallback, prefer deterministic
+        # rule-based IMRaD extraction to avoid unstable LLM-assisted branch.
+        if parse_mode == "pypdf_fallback":
+            result = await loop.run_in_executor(
+                self.executor,
+                lambda: extract_imrad_structure(items),
+            )
+            logger.warning(
+                "Using rule-based IMRaD extraction for fallback parse",
+                task_id=ctx.task_id,
+                parse_mode=parse_mode,
+            )
+            return result
 
         # Run in thread pool (CPU-bound)
-        result = await loop.run_in_executor(
-            self.executor,
-            lambda: asyncio.run(extract_imrad_enhanced(
-                items=items,
-                markdown=markdown,
-                paper_metadata=extract_metadata(items)
-            ))
-        )
+        try:
+            result = await loop.run_in_executor(
+                self.executor,
+                lambda: asyncio.run(
+                    extract_imrad_enhanced(
+                        items=items,
+                        markdown=markdown,
+                        paper_metadata=extract_metadata(items),
+                    )
+                ),
+            )
+        except Exception as error:
+            logger.warning(
+                "Enhanced IMRaD extraction failed, fallback to rule-based",
+                task_id=ctx.task_id,
+                error=str(error),
+            )
+            result = await loop.run_in_executor(
+                self.executor,
+                lambda: extract_imrad_structure(items),
+            )
 
         logger.debug("IMRaD extraction complete", task_id=ctx.task_id)
         return result

@@ -116,8 +116,16 @@ apiClient.interceptors.response.use(
       metadata?: { isRefreshRequest?: boolean };
     };
 
+    const isExpectedAuthCheck401 =
+      error.response?.status === 401 &&
+      (
+        originalRequest?.url?.includes('/auth/me') ||
+        originalRequest?.url?.includes('/auth/login') ||
+        originalRequest?.url?.includes('/auth/register')
+      );
+
     // Log errors in development
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV && !isExpectedAuthCheck401) {
       console.error('[API Response Error]', {
         url: originalRequest?.url,
         status: error.response?.status,

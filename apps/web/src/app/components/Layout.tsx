@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { BookOpen, Search, Settings, MessageSquare, LayoutDashboard, StickyNote, LogOut, Menu } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,9 +26,11 @@ export function Layout() {
   const { language } = useLanguage();
   const { logout, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const isZh = language === "zh";
   const navItems = isZh ? navItemsZH : navItemsEN;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isChatRoute = location.pathname.startsWith('/chat');
 
   const handleLogout = async () => {
     await logout();
@@ -140,7 +142,7 @@ export function Layout() {
           </filter>
           <rect width="100%" height="100%" filter="url(#noiseFilter)" />
         </svg>
-        <div className="flex-1 overflow-y-auto z-10">
+        <div className={isChatRoute ? 'flex-1 overflow-hidden z-10' : 'flex-1 overflow-y-auto z-10'}>
           <Outlet />
         </div>
       </main>

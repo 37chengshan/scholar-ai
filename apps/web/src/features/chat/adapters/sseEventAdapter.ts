@@ -9,13 +9,15 @@ export type CanonicalSSEEventType =
   | 'tool_result'
   | 'citation'
   | 'confirmation_required'
+  | 'cancel'
   | 'done'
   | 'heartbeat'
   | 'error';
 
 export interface RawSSEEventEnvelope {
   message_id: string;
-  event_type: string;
+  event_type?: string;
+  event?: string;
   data: unknown;
   sequence?: number;
   timestamp?: number;
@@ -39,9 +41,19 @@ function ensureObjectData(data: unknown): Record<string, unknown> {
 export function normalizeSSEEventEnvelope(
   envelope: RawSSEEventEnvelope
 ): CanonicalSSEEventEnvelope | null {
-  const data = ensureObjectData(envelope.data);
+  const normalizedEventType = envelope.event_type ?? envelope.event;
+  if (!normalizedEventType) {
+    return null;
+  }
 
-  switch (envelope.event_type) {
+  const data = ensureObjectData(envelope.data);
+  const maybeWrappedData =
+    typeof data.event === 'string' &&
+    Object.prototype.hasOwnProperty.call(data, 'data')
+      ? ensureObjectData(data.data)
+      : data;
+
+  switch (normalizedEventType) {
     case 'session_start':
     case 'routing_decision':
     case 'phase':
@@ -51,13 +63,16 @@ export function normalizeSSEEventEnvelope(
     case 'tool_result':
     case 'citation':
     case 'confirmation_required':
+    case 'cancel':
     case 'done':
     case 'heartbeat':
     case 'error':
       return {
-        ...envelope,
-        data,
-        event_type: envelope.event_type,
+        message_id: envelope.message_id,
+        data: maybeWrappedData,
+        event_type: normalizedEventType,
+        sequence: envelope.sequence,
+        timestamp: envelope.timestamp,
       };
 
     default:

@@ -11,6 +11,8 @@
 
 import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ScrollArea } from './ui/scroll-area';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -48,8 +50,10 @@ export function AISummaryPanel({ paperId, summary }: AISummaryPanelProps) {
             </span>
           </div>
         ) : (
-          <div className="text-[15px] leading-loose whitespace-pre-wrap prose max-w-prose mx-auto magazine-body">
-            {displaySummary}
+          <div className="prose prose-sm max-w-none text-[15px] leading-relaxed prose-headings:font-serif prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-li:my-1 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em]">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {displaySummary}
+            </ReactMarkdown>
           </div>
         )}
       </div>

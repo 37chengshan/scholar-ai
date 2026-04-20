@@ -110,15 +110,15 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
   // Status colors
   const statusColors: Record<ToolCall['status'], string> = {
     pending: 'text-muted-foreground',
-    running: 'text-[#d35400]',
+    running: 'text-primary',
     success: 'text-green-600',
     error: 'text-destructive',
   };
 
   // Badge variants
   const badgeClasses: Record<ToolCall['status'], string> = {
-    pending: 'bg-zinc-100 text-zinc-500 border border-zinc-200',
-    running: 'bg-primary/10 text-primary border border-primary/30',
+    pending: 'bg-white/80 text-zinc-500 border border-border/70',
+    running: 'bg-primary/10 text-primary border border-primary/20',
     success: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
     error: 'bg-red-50 text-red-600 border border-red-200',
   };
@@ -142,27 +142,27 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
   return (
     <div
       className={clsx(
-        'border-l-2 border-zinc-200 bg-transparent overflow-hidden',
+        'overflow-hidden rounded-2xl border border-border/70 bg-[#fffdf9] shadow-sm',
         className
       )}
     >
       {/* Compact row */}
       <div
-        className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-zinc-50 transition-colors"
+        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-primary/5 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {/* Icon */}
         <div className={clsx('flex-shrink-0', statusColors[toolCall.status])}>
           {toolCall.status === 'running' ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <Loader2 className="w-4.5 h-4.5 animate-spin" />
           ) : (
-            <IconComponent className="w-5 h-5" />
+            <IconComponent className="w-4.5 h-4.5" />
           )}
         </div>
 
         {/* Name + status */}
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium truncate">{displayName}</div>
+          <div className="text-sm font-medium truncate text-foreground">{displayName}</div>
         </div>
 
         {/* Status badge */}
@@ -172,7 +172,7 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
         </Badge>
 
         {/* Duration */}
-        <div className="text-xs text-muted-foreground font-mono min-w-[50px] text-right">
+        <div className="text-[11px] text-muted-foreground font-mono min-w-[52px] text-right">
           {duration}
         </div>
 
@@ -195,11 +195,11 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="px-3 pb-3 space-y-3">
+            <div className="px-3 pb-3 pt-1 space-y-3">
               {/* Parameters */}
               <div>
-                <div className="text-xs font-semibold mb-1 text-muted-foreground">{t.parameters}</div>
-                <pre className="bg-zinc-50 p-2 border border-zinc-200 rounded-none text-xs font-mono overflow-x-auto max-h-40">
+                <div className="text-[10px] font-semibold mb-1 uppercase tracking-[0.18em] text-muted-foreground">{t.parameters}</div>
+                <pre className="bg-white/80 p-2 border border-border/70 rounded-xl text-xs font-mono overflow-x-auto max-h-40">
                   {JSON.stringify(toolCall.parameters, null, 2)}
                 </pre>
               </div>
@@ -207,13 +207,13 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
               {/* Result */}
               {hasResult && (
                 <div>
-                  <div className="text-xs font-semibold mb-1 text-muted-foreground">{t.result}</div>
+                  <div className="text-[10px] font-semibold mb-1 uppercase tracking-[0.18em] text-muted-foreground">{t.result}</div>
                   {typeof toolCall.result === 'string' ? (
-                    <div className="text-sm text-foreground whitespace-pre-wrap border-l-2 border-zinc-200 pl-2">
+                    <div className="text-sm text-foreground whitespace-pre-wrap border-l-2 border-primary/20 pl-2 leading-6">
                       {toolCall.result}
                     </div>
                   ) : typeof toolCall.result === 'object' ? (
-                    <pre className="bg-zinc-50 p-2 border border-zinc-200 rounded-none text-xs font-mono overflow-x-auto max-h-40">
+                    <pre className="bg-white/80 p-2 border border-border/70 rounded-xl text-xs font-mono overflow-x-auto max-h-40">
                       {JSON.stringify(toolCall.result, null, 2)}
                     </pre>
                   ) : null}

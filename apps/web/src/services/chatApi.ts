@@ -12,9 +12,7 @@
 
 import {
   sseService,
-  SSEEvent,
   SSEHandlers,
-  DoneEventData,
   SSEService,
 } from './sseService';
 import type { Session, Message } from '@/types';
@@ -25,6 +23,7 @@ import {
   buildChatStreamBody,
 } from '@scholar-ai/sdk';
 import { sdkHttpClient } from './sdkHttpClient';
+import { extractSessionMessages } from './sessionResponse';
 
 const chatApiClient = createChatApi(sdkHttpClient);
 const chatSessionsApiClient = createChatSessionsApi(sdkHttpClient);
@@ -72,7 +71,7 @@ export async function getMessages(sessionId: string): Promise<Message[]> {
   const response = await chatSessionsApiClient.getMessages(sessionId, {
     order: 'desc',
   });
-  return response.data.messages as unknown as Message[];
+  return extractSessionMessages<Message>(response as any) as Message[];
 }
 
 /**

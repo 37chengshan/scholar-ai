@@ -2,12 +2,13 @@ import { useMemo } from 'react';
 import type { AgentRun, RunScope, RunStatus } from '@/features/chat/types/run';
 import { useShallow } from 'zustand/react/shallow';
 import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore';
+import type { WorkspaceScope } from '@/features/chat/state/chatWorkspaceStore';
 
-function deriveScope(scope: { paperId: string | null; kbId: string | null }): RunScope {
-  if (scope.paperId) {
+function deriveScope(scope: WorkspaceScope): RunScope {
+  if (scope.type === 'single_paper') {
     return 'single_paper';
   }
-  if (scope.kbId) {
+  if (scope.type === 'full_kb') {
     return 'full_kb';
   }
   return 'general';
