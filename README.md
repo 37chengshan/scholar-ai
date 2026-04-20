@@ -83,6 +83,14 @@ cd apps/web && npm install && npm run dev
 常用命令：
 
 ```bash
+# 完整验证（默认包含 integration）
+bash scripts/verify/run-all.sh
+make verify
+npm run verify:all
+
+# 快速本地验证（显式跳过 integration）
+VERIFY_QUICK=1 bash scripts/verify/run-all.sh
+
 bash scripts/check-runtime-hygiene.sh tracked
 bash scripts/check-doc-governance.sh
 bash scripts/check-structure-boundaries.sh

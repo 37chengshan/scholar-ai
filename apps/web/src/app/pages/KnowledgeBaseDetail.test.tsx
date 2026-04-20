@@ -36,15 +36,17 @@ vi.mock('@/services/importApi', () => ({
   },
 }));
 
-vi.mock('@/utils/apiClient', () => ({
-  default: {
-    get: vi.fn(),
-  },
+vi.mock('@/features/kb/hooks/useKnowledgeRuns', () => ({
+  useKnowledgeRuns: () => ({
+    runs: [{ id: 'session-1', title: 'Run A', updatedAt: '2026-04-12T00:00:00Z' }],
+    loadingRuns: false,
+    runsError: null,
+    refreshRuns: vi.fn(),
+  }),
 }));
 
 import { kbApi } from '@/services/kbApi';
 import { importApi } from '@/services/importApi';
-import apiClient from '@/utils/apiClient';
 
 const mockKb = {
   id: 'kb-1',
@@ -97,9 +99,6 @@ describe('KnowledgeBaseDetail', () => {
       data: {
         jobs: [],
       },
-    } as any);
-    vi.mocked(apiClient.get).mockResolvedValue({
-      data: [{ id: 'session-1', title: 'Run A', updatedAt: '2026-04-12T00:00:00Z' }],
     } as any);
     vi.mocked(kbApi.search).mockResolvedValue({ results: [], total: 0 } as any);
   });
