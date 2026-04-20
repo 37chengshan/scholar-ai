@@ -199,6 +199,7 @@ Session messages 契约（冻结）：
   - `total` 是该会话消息全量总数，不是当前页长度。
   - `returned` 是本次返回条数。
   - `next_offset` 基于 `offset + returned` 计算。
+  - Agent 运行期间产生的 `tool_result` 必须持久化为会话历史中的 `tool` 角色消息，保证 SSE 回放与历史回读一致。
 Paper 资源契约补充：
 
 - `GET /api/v1/papers`：返回 `data.items[]` 与 `meta.limit/offset/total`。
@@ -234,6 +235,7 @@ Plan C 契约治理约束：
   - 响应：`instantImport` 或 `session`（含 `uploadSessionId`、`missingParts`、`progress`）
 - `GET /api/v1/upload-sessions/{sessionId}`
   - 用途：拉取会话状态与缺失分片列表，用于断点恢复。
+  - 约束：当 `status=aborted` 时，该会话视为终态，不允许继续作为 resumable session 恢复上传。
 - `PUT /api/v1/upload-sessions/{sessionId}/parts/{partNumber}`
   - 用途：上传单个分片（`application/octet-stream`）。
 - `POST /api/v1/upload-sessions/{sessionId}/complete`
