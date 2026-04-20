@@ -63,9 +63,25 @@ async def _enforce_rate_limit(
             instance=instance,
         )
 
-    current = await redis_client.incr(redis_key)
-    if current == 1:
-        await redis_client.expire(redis_key, window_seconds)
+    try:
+        current = await redis_client.incr(redis_key)
+        if current == 1:
+            await redis_client.expire(redis_key, window_seconds)
+    except Exception as exc:
+        logger.error(
+            "Auth rate limit redis operation failed (fail-closed)",
+            bucket=bucket,
+            redis_key=redis_key,
+            error=str(exc),
+        )
+        raise _create_error_response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error_type=ErrorTypes.SERVICE_UNAVAILABLE,
+            title="Service Unavailable",
+            detail="Rate limiting service is temporarily unavailable.",
+            instance=instance,
+        )
+
     if current > limit:
         raise _create_error_response(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
