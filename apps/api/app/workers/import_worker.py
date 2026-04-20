@@ -14,6 +14,7 @@ State machine flow (per gpt意见.md):
 """
 
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -137,6 +138,7 @@ def process_import_job(self, job_id: str):
             try:
                 logger.info(
                     f"Processing ImportJob {job_id}",
+                    job_id=job_id,
                     source_type=job.source_type,
                     status=job.status,
                     stage=job.stage,
@@ -195,15 +197,35 @@ def process_import_job(self, job_id: str):
                     # Stage: downloading_pdf (for external sources)
                     if job.source_type != "local_file":
                         if not metadata or not metadata.pdf_available:
+                            tried_sources = []
+                            source_errors = {}
+                            if job.external_ids:
+                                tried_sources_raw = job.external_ids.get("doi_tried_sources")
+                                source_errors_raw = job.external_ids.get("doi_source_errors")
+                                if tried_sources_raw:
+                                    try:
+                                        import json
+                                        tried_sources = json.loads(tried_sources_raw)
+                                    except Exception:
+                                        tried_sources = []
+                                if source_errors_raw:
+                                    try:
+                                        import json
+                                        source_errors = json.loads(source_errors_raw)
+                                    except Exception:
+                                        source_errors = {}
+
                             job.status = "awaiting_user_action"
                             job.stage = "awaiting_user_action"
                             job.progress = 20
                             job.error_code = "NO_PDF"
                             job.error_message = "PDF not available, please upload manually"
                             job.next_action = {
-                                "type": "create_upload_session",
+                                "type": "upload_local_pdf",
                                 "createSessionUrl": f"/api/v1/import-jobs/{job.id}/upload-sessions",
                                 "message": "PDF not available, please upload manually",
+                                "triedSources": tried_sources,
+                                "sourceErrors": source_errors,
                             }
                             job.updated_at = datetime.now(timezone.utc)
                             await db.commit()
@@ -345,12 +367,34 @@ def process_import_job(self, job_id: str):
                         )
                         return
 
-                    existing_task.status = "pending"
-                    existing_task.error_message = None
-                    existing_task.completed_at = None
-                    existing_task.storage_key = job.storage_key or existing_task.storage_key
-                    job.processing_task_id = processing_task_id
-                    await db.commit()
+                    if existing_task.status in {"pending", "running", "parsing", "chunking", "embedding", "indexing", "finalizing"}:
+                        job.processing_task_id = processing_task_id
+                        await db.commit()
+                        logger.info(
+                            "Reusing in-flight ProcessingTask without requeue",
+                            job_id=job_id,
+                            processing_task_id=processing_task_id,
+                            task_status=existing_task.status,
+                        )
+                        return
+
+                    if existing_task.status in {"failed", "cancelled", "error"}:
+                        existing_task.status = "pending"
+                        existing_task.error_message = None
+                        existing_task.completed_at = None
+                        existing_task.storage_key = job.storage_key or existing_task.storage_key
+                        job.processing_task_id = processing_task_id
+                        await db.commit()
+                    else:
+                        job.processing_task_id = processing_task_id
+                        await db.commit()
+                        logger.info(
+                            "Reusing existing ProcessingTask in unknown non-terminal state",
+                            job_id=job_id,
+                            processing_task_id=processing_task_id,
+                            task_status=existing_task.status,
+                        )
+                        return
                 else:
                     processing_task_id = str(uuid.uuid4())
                     task = ProcessingTask(
@@ -369,6 +413,10 @@ def process_import_job(self, job_id: str):
 
                 logger.info(
                     f"ProcessingTask {processing_task_id} prepared for ImportJob {job_id}",
+                    job_id=job_id,
+                    stage=job.stage,
+                    source_type=job.source_type,
+                    processing_task_id=processing_task_id,
                     paper_id=paper_id,
                 )
                 # Return immediately to avoid blocking single-concurrency Celery workers.
@@ -376,6 +424,15 @@ def process_import_job(self, job_id: str):
 
             except Exception as e:
                 logger.exception(f"ImportJob {job_id} failed: {e}")
+                logger.error(
+                    "ImportJob failed with stage context",
+                    job_id=job_id,
+                    stage=getattr(job, "stage", None),
+                    source_type=getattr(job, "source_type", None),
+                    processing_task_id=getattr(job, "processing_task_id", None),
+                    error_code="IMPORT_FAILED",
+                    error_message=str(e),
+                )
                 try:
                     await db.rollback()
                 except Exception:

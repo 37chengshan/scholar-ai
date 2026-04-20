@@ -61,6 +61,11 @@ export interface ToolTimelineItem {
  */
 export interface CitationItem {
   paper_id: string;
+  source_id?: string;
+  page_num?: number;
+  section_path?: string;
+  anchor_text?: string;
+  text_preview?: string;
   title: string;
   authors: string[];
   year: number;
@@ -544,7 +549,20 @@ export function useChatStream(
       // HARD RULE 0.2: message_id validation (skip for session_start which initializes it)
       const eventType = normalizedEnvelope.event_type;
       const hasMessageBinding = Boolean(envelope.message_id);
-      if (eventType !== 'session_start' && hasMessageBinding && envelope.message_id !== messageIdRef.current) {
+      if (eventType !== 'session_start' && !hasMessageBinding) {
+        trackStreamEvent({
+          event: 'stale_event_ignored',
+          expectedMessageId: messageIdRef.current,
+          receivedMessageId: '',
+          eventType,
+        });
+        console.warn(
+          `[useChatStream] SSE event missing message_id for type ${eventType}. Ignoring.`
+        );
+        return;
+      }
+
+      if (eventType !== 'session_start' && envelope.message_id !== messageIdRef.current) {
         trackStreamEvent({
           event: 'stale_event_ignored',
           expectedMessageId: messageIdRef.current,
@@ -637,8 +655,33 @@ export function useChatStream(
           break;
 
         case 'citation':
-          const citationData = data as unknown as CitationItem;
-          if (citationData && citationData.paper_id) {
+          const rawCitation = data as Record<string, unknown>;
+          const citationData: CitationItem = {
+            paper_id: String(rawCitation.paper_id || ''),
+            source_id: rawCitation.source_id ? String(rawCitation.source_id) : undefined,
+            page_num: typeof rawCitation.page_num === 'number'
+              ? rawCitation.page_num
+              : (typeof rawCitation.page === 'number' ? rawCitation.page : undefined),
+            section_path: rawCitation.section_path ? String(rawCitation.section_path) : undefined,
+            anchor_text: rawCitation.anchor_text ? String(rawCitation.anchor_text) : undefined,
+            text_preview: rawCitation.text_preview
+              ? String(rawCitation.text_preview)
+              : (rawCitation.snippet ? String(rawCitation.snippet) : undefined),
+            title: String(rawCitation.title || rawCitation.paper_title || 'Unknown'),
+            authors: Array.isArray(rawCitation.authors)
+              ? (rawCitation.authors as string[])
+              : [],
+            year: typeof rawCitation.year === 'number' ? rawCitation.year : 0,
+            snippet: String(rawCitation.snippet || rawCitation.text_preview || ''),
+            page: typeof rawCitation.page === 'number'
+              ? rawCitation.page
+              : (typeof rawCitation.page_num === 'number' ? rawCitation.page_num : undefined),
+            score: typeof rawCitation.score === 'number' ? rawCitation.score : 0,
+            content_type: (rawCitation.content_type as CitationItem['content_type']) || 'text',
+            chunk_id: rawCitation.chunk_id ? String(rawCitation.chunk_id) : undefined,
+          };
+
+          if (citationData.paper_id) {
             bufferedDispatch({ type: 'CITATION', citation: citationData });
           }
           break;

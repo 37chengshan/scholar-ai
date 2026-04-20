@@ -18,11 +18,11 @@ export function CitationPanel({ visible, citations }: CitationPanelProps) {
         title: citation.title,
         authors: citation.authors || [],
         year: citation.year || 0,
-        page: citation.page || 0,
-        snippet: citation.snippet || '',
+        page: citation.page_num || citation.page || 1,
+        snippet: citation.text_preview || citation.snippet || '',
         score: citation.score || 0,
         content_type: citation.content_type || 'text',
-        chunk_id: citation.chunk_id,
+        chunk_id: citation.source_id || citation.chunk_id,
       }))}
     />
   );

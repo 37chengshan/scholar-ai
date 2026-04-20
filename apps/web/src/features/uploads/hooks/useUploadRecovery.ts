@@ -4,6 +4,7 @@ import type { UploadQueueItem } from '@/features/uploads/state/uploadWorkspaceSt
 export interface UploadRecoveryResult {
   session: UploadSessionState;
   nextStatus: UploadQueueItem['status'];
+  recoveryState: 'pending' | 'queued' | 'completed' | 'aborted' | 'needs_file_reselect';
   progress: number;
   error?: string;
 }
@@ -26,6 +27,7 @@ export function useUploadRecovery() {
       return {
         session,
         nextStatus: 'cancelled',
+        recoveryState: 'aborted',
         progress: session.progress,
         error: '该上传任务已取消，请重新添加文件以创建新的导入任务',
       };
@@ -35,6 +37,7 @@ export function useUploadRecovery() {
       return {
         session,
         nextStatus: 'queued',
+        recoveryState: 'completed',
         progress: session.progress,
       };
     }
@@ -43,6 +46,7 @@ export function useUploadRecovery() {
       return {
         session,
         nextStatus: 'needs_file_reselect',
+        recoveryState: 'needs_file_reselect',
         progress: session.progress,
         error: '请重新选择原始文件后继续上传',
       };
@@ -53,6 +57,7 @@ export function useUploadRecovery() {
       return {
         session: completedSession,
         nextStatus: 'queued',
+        recoveryState: 'queued',
         progress: completedSession.progress,
       };
     }
@@ -60,6 +65,7 @@ export function useUploadRecovery() {
     return {
       session,
       nextStatus: 'pending',
+      recoveryState: 'pending',
       progress: session.progress,
     };
   };

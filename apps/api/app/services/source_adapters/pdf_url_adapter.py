@@ -45,6 +45,10 @@ class PdfUrlAdapter(BaseSourceAdapter):
         self.download_timeout = 300.0
         self.max_size_bytes = 50 * 1024 * 1024  # 50MB
 
+    def _is_pdf_like_content_type(self, content_type: str) -> bool:
+        lowered = (content_type or "").lower()
+        return "pdf" in lowered or "application/octet-stream" in lowered
+
     async def resolve(self, input: str) -> SourceResolution:
         """Validate HTTPS URL and check headers.
 
@@ -64,14 +68,21 @@ class PdfUrlAdapter(BaseSourceAdapter):
                 error_message="Only HTTPS URLs are accepted for security",
             )
 
-        # HEAD request for validation
+        # HEAD request for validation (fallback to GET probe when HEAD is not reliable)
         try:
             async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
                 response = await client.head(input, follow_redirects=True)
 
+                if response.status_code >= 400:
+                    raise httpx.HTTPStatusError(
+                        f"HEAD returned status {response.status_code}",
+                        request=response.request,
+                        response=response,
+                    )
+
                 # Check Content-Type
                 content_type = response.headers.get("content-type", "")
-                if "pdf" not in content_type.lower():
+                if not self._is_pdf_like_content_type(content_type):
                     return SourceResolution(
                         resolved=False,
                         source_type="pdf_url",
@@ -109,9 +120,64 @@ class PdfUrlAdapter(BaseSourceAdapter):
                 )
 
         except httpx.HTTPStatusError as e:
-            logger.error(
-                "PDF URL HEAD request failed",
+            logger.warning(
+                "PDF URL HEAD failed, fallback to GET probe",
                 url=input[:100],
+                status_code=e.response.status_code,
+                error=str(e),
+            )
+            return await self._resolve_with_get_probe(input)
+        except Exception as e:
+            logger.warning(
+                "PDF URL HEAD validation failed, fallback to GET probe",
+                url=input[:100],
+                error=str(e),
+            )
+            return await self._resolve_with_get_probe(input)
+
+    async def _resolve_with_get_probe(self, input_url: str) -> SourceResolution:
+        """Fallback probe when HEAD is not supported or unreliable."""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+                async with client.stream("GET", input_url, headers={"Range": "bytes=0-2047"}) as response:
+                    response.raise_for_status()
+
+                    content_type = response.headers.get("content-type", "")
+
+                    sampled = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        sampled.extend(chunk)
+                        if len(sampled) >= 2048:
+                            break
+                    content = bytes(sampled)
+
+                    if not self._is_pdf_like_content_type(content_type) and not content.startswith(b"%PDF-"):
+                        return SourceResolution(
+                            resolved=False,
+                            source_type="pdf_url",
+                            error_code="INVALID_CONTENT_TYPE",
+                            error_message=f"GET probe is not PDF: {content_type}",
+                        )
+
+                    content_length = response.headers.get("content-length")
+                    if content_length and int(content_length) > self.max_size_bytes:
+                        return SourceResolution(
+                            resolved=False,
+                            source_type="pdf_url",
+                            error_code="FILE_TOO_LARGE",
+                            error_message=f"File exceeds 50MB limit: {content_length} bytes",
+                        )
+
+                    return SourceResolution(
+                        resolved=True,
+                        source_type="pdf_url",
+                        canonical_id=input_url,
+                        canonical_pdf_url=str(response.url),
+                    )
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "PDF URL GET probe failed",
+                url=input_url[:100],
                 status_code=e.response.status_code,
                 error=str(e),
             )
@@ -123,8 +189,8 @@ class PdfUrlAdapter(BaseSourceAdapter):
             )
         except Exception as e:
             logger.error(
-                "PDF URL validation failed",
-                url=input[:100],
+                "PDF URL GET probe validation failed",
+                url=input_url[:100],
                 error=str(e),
             )
             return SourceResolution(
@@ -172,18 +238,30 @@ class PdfUrlAdapter(BaseSourceAdapter):
             async with httpx.AsyncClient(
                 timeout=self.download_timeout, follow_redirects=True
             ) as client:
-                response = await client.get(pdf_url)
-                response.raise_for_status()
+                async with client.stream("GET", pdf_url) as response:
+                    response.raise_for_status()
 
-                content = response.content
+                    content_type = response.headers.get("content-type", "")
+                    if not self._is_pdf_like_content_type(content_type):
+                        raise Exception(f"Content-Type is not PDF: {content_type}")
+
+                    content_length = response.headers.get("content-length")
+                    if content_length and int(content_length) > self.max_size_bytes:
+                        raise Exception(f"Downloaded file exceeds 50MB limit: {content_length} bytes")
+
+                    chunks = []
+                    total_size = 0
+                    async for chunk in response.aiter_bytes():
+                        total_size += len(chunk)
+                        if total_size > self.max_size_bytes:
+                            raise Exception(f"Downloaded file exceeds 50MB limit: {total_size} bytes")
+                        chunks.append(chunk)
+
+                content = b"".join(chunks)
 
                 # Validate magic bytes
                 if not content.startswith(b"%PDF-"):
                     raise Exception("Downloaded file is not a valid PDF")
-
-                # Validate size
-                if len(content) > self.max_size_bytes:
-                    raise Exception(f"Downloaded file exceeds 50MB limit: {len(content)} bytes")
 
             # Write to storage
             full_path = os.path.join(storage_path, storage_key)

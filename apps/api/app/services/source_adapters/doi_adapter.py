@@ -10,8 +10,11 @@ Input formats supported:
 - https://doi.org/10.1038/nature12373
 """
 
+import json
+import os
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, List
+from urllib.parse import quote
 
 import httpx
 
@@ -22,7 +25,11 @@ from app.services.source_adapters.base_adapter import (
     SourceResolution,
     MetadataPreview,
 )
-from app.services.import_rate_limiter import get_s2_import_limiter, get_import_cache
+from app.services.import_rate_limiter import (
+    get_s2_import_limiter,
+    get_unpaywall_import_limiter,
+    get_openalex_import_limiter,
+)
 from app.utils.logger import logger
 
 
@@ -43,6 +50,105 @@ class DoiAdapter(BaseSourceAdapter):
     def __init__(self):
         self.crossref_service = CrossRefService()
         self.s2_service = SemanticScholarService()
+        self.unpaywall_email = os.getenv("UNPAYWALL_EMAIL", "scholar-ai@example.com")
+        self.max_size_bytes = 50 * 1024 * 1024
+
+    def _is_https(self, url: Optional[str]) -> bool:
+        return bool(url and url.lower().startswith("https://"))
+
+    def _normalize_candidate_url(self, url: Optional[str]) -> Optional[str]:
+        if not url:
+            return None
+        cleaned = url.strip()
+        if not self._is_https(cleaned):
+            return None
+        return cleaned
+
+    def _is_pdf_like_content_type(self, content_type: str) -> bool:
+        lowered = (content_type or "").lower()
+        return "pdf" in lowered or "application/octet-stream" in lowered
+
+    async def _discover_pdf_sources(
+        self,
+        doi: str,
+    ) -> Tuple[List[Tuple[str, str]], List[str], Dict[str, str]]:
+        """Discover PDF candidates from S2 -> Unpaywall -> OpenAlex."""
+        candidates: List[Tuple[str, str]] = []
+        tried_sources: List[str] = []
+        source_errors: Dict[str, str] = {}
+        seen_urls = set()
+
+        def append_candidate(source_name: str, maybe_url: Optional[str]):
+            normalized = self._normalize_candidate_url(maybe_url)
+            if not normalized:
+                return
+            if normalized in seen_urls:
+                return
+            seen_urls.add(normalized)
+            candidates.append((source_name, normalized))
+
+        # 1) Semantic Scholar openAccessPdf
+        tried_sources.append("semantic_scholar")
+        s2_limiter = get_s2_import_limiter()
+        await s2_limiter.acquire()
+        try:
+            result = await self.s2_service.search_papers(
+                query=f"DOI:{doi}",
+                limit=1,
+                redis_client=None,
+            )
+            papers = result.get("data", [])
+            if papers:
+                open_access = (papers[0] or {}).get("openAccessPdf", {}) or {}
+                append_candidate("semantic_scholar", open_access.get("url"))
+            s2_limiter.record_success()
+        except Exception as e:
+            s2_limiter.record_failure()
+            source_errors["semantic_scholar"] = str(e)
+
+        # 2) Unpaywall
+        tried_sources.append("unpaywall")
+        unpaywall_limiter = get_unpaywall_import_limiter()
+        await unpaywall_limiter.acquire()
+        try:
+            unpaywall_url = f"https://api.unpaywall.org/v2/{quote(doi, safe='')}"
+            params = {"email": self.unpaywall_email}
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(unpaywall_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                best_location = data.get("best_oa_location") or {}
+                append_candidate("unpaywall", best_location.get("url_for_pdf"))
+                append_candidate("unpaywall", best_location.get("url"))
+            unpaywall_limiter.record_success()
+        except Exception as e:
+            unpaywall_limiter.record_failure()
+            source_errors["unpaywall"] = str(e)
+
+        # 3) OpenAlex
+        tried_sources.append("openalex")
+        openalex_limiter = get_openalex_import_limiter()
+        await openalex_limiter.acquire()
+        try:
+            openalex_id = quote(f"https://doi.org/{doi}", safe="")
+            openalex_url = f"https://api.openalex.org/works/{openalex_id}"
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(openalex_url)
+                response.raise_for_status()
+                data = response.json()
+                open_access = data.get("open_access") or {}
+                append_candidate("openalex", open_access.get("oa_url"))
+
+                locations = data.get("locations") or []
+                for location in locations[:5]:
+                    append_candidate("openalex", (location or {}).get("pdf_url"))
+                    append_candidate("openalex", (location or {}).get("landing_page_url"))
+            openalex_limiter.record_success()
+        except Exception as e:
+            openalex_limiter.record_failure()
+            source_errors["openalex"] = str(e)
+
+        return candidates, tried_sources, source_errors
 
     def _normalize_doi(self, input: str) -> Optional[str]:
         """Normalize DOI from various input formats.
@@ -135,47 +241,34 @@ class DoiAdapter(BaseSourceAdapter):
             abstract = None
             venue = None
 
-        # Check S2 for PDF availability
-        pdf_available = False
-        pdf_source = None
+        candidates, tried_sources, source_errors = await self._discover_pdf_sources(doi)
+        pdf_available = len(candidates) > 0
+        pdf_source = candidates[0][0] if candidates else None
 
-        # Apply import rate limiter for S2
-        limiter = get_s2_import_limiter()
-        await limiter.acquire()
-
-        try:
-            # Search S2 by DOI
-            result = await self.s2_service.search_papers(
-                query=f"DOI:{doi}",
-                limit=1,
-                redis_client=None,  # Use import cache instead
-            )
-
-            papers = result.get("data", [])
-            if papers:
-                paper = papers[0]
-                open_access = paper.get("openAccessPdf", {}) or {}
-                pdf_url = open_access.get("url") if open_access else None
-
-                if pdf_url:
-                    pdf_available = True
-                    pdf_source = "semantic_scholar"
-
-                # Use S2 metadata if CrossRef failed
-                if not title:
-                    title = paper.get("title", "")
-                if not year:
-                    year = paper.get("year")
-                if not authors:
-                    authors = [
-                        a.get("name") for a in paper.get("authors", []) if a.get("name")
-                    ]
-
-            limiter.record_success()
-
-        except Exception as e:
-            limiter.record_failure()
-            logger.warning("S2 DOI lookup failed", doi=doi, error=str(e))
+        # Best effort: fill metadata from S2 if CrossRef failed.
+        if not title or not year or not authors:
+            try:
+                s2_limiter = get_s2_import_limiter()
+                await s2_limiter.acquire()
+                result = await self.s2_service.search_papers(
+                    query=f"DOI:{doi}",
+                    limit=1,
+                    redis_client=None,
+                )
+                papers = result.get("data", [])
+                if papers:
+                    paper = papers[0]
+                    if not title:
+                        title = paper.get("title", "")
+                    if not year:
+                        year = paper.get("year")
+                    if not authors:
+                        authors = [
+                            a.get("name") for a in paper.get("authors", []) if a.get("name")
+                        ]
+                s2_limiter.record_success()
+            except Exception as e:
+                source_errors.setdefault("semantic_scholar_metadata", str(e))
 
         return MetadataPreview(
             title=title,
@@ -185,7 +278,11 @@ class DoiAdapter(BaseSourceAdapter):
             venue=venue,
             pdf_available=pdf_available,
             pdf_source=pdf_source,
-            external_ids={"doi": doi},
+            external_ids={
+                "doi": doi,
+                "doi_tried_sources": json.dumps(tried_sources, ensure_ascii=True),
+                "doi_source_errors": json.dumps(source_errors, ensure_ascii=True),
+            },
         )
 
     async def acquire_pdf(
@@ -199,76 +296,56 @@ class DoiAdapter(BaseSourceAdapter):
             raise Exception("Source not resolved")
 
         doi = resolution.canonical_id
+        candidates, tried_sources, source_errors = await self._discover_pdf_sources(doi)
 
-        # Check S2 for openAccessPdf URL
-        limiter = get_s2_import_limiter()
-        await limiter.acquire()
+        if not candidates:
+            detail = {
+                "tried_sources": tried_sources,
+                "source_errors": source_errors,
+            }
+            raise Exception(f"DOI_NO_PDF: No downloadable PDF source found ({json.dumps(detail, ensure_ascii=True)})")
 
-        try:
-            result = await self.s2_service.search_papers(
-                query=f"DOI:{doi}",
-                limit=1,
-                redis_client=None,
-            )
+        last_error: Optional[str] = None
+        for source_name, pdf_url in candidates:
+            try:
+                async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+                    response = await client.get(pdf_url)
+                    response.raise_for_status()
 
-            papers = result.get("data", [])
-            if not papers:
-                raise Exception("DOI_NO_PDF: Paper not found in Semantic Scholar")
+                    content_type = response.headers.get("content-type", "")
+                    if not self._is_pdf_like_content_type(content_type):
+                        raise Exception(f"INVALID_CONTENT_TYPE:{content_type}")
 
-            paper = papers[0]
-            open_access = paper.get("openAccessPdf", {}) or {}
-            pdf_url = open_access.get("url")
+                    content = response.content
+                    if len(content) > self.max_size_bytes:
+                        raise Exception(f"FILE_TOO_LARGE:{len(content)}")
 
-            if not pdf_url:
-                raise Exception("DOI_NO_PDF: No open access PDF available")
+                    if not content.startswith(b"%PDF-"):
+                        raise Exception("INVALID_MAGIC_BYTES")
 
-            limiter.record_success()
+                full_path = os.path.join(storage_path, storage_key)
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                with open(full_path, "wb") as f:
+                    f.write(content)
 
-        except Exception as e:
-            if "DOI_NO_PDF" in str(e):
-                raise
-            limiter.record_failure()
-            raise Exception(f"DOI_NO_PDF: S2 lookup failed - {str(e)}")
+                logger.info(
+                    "DOI PDF downloaded",
+                    doi=doi,
+                    source=source_name,
+                    storage_key=storage_key,
+                    size_bytes=len(content),
+                )
+                return storage_key
+            except Exception as e:
+                source_errors[source_name] = str(e)
+                last_error = str(e)
 
-        # Apply rate limiter for download
-        await limiter.acquire()
-
-        # Download PDF
-        import os
-
-        try:
-            async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
-                response = await client.get(pdf_url)
-                response.raise_for_status()
-
-                content = response.content
-
-                # Validate magic bytes
-                if not content.startswith(b"%PDF-"):
-                    raise Exception("Downloaded file is not a valid PDF")
-
-                limiter.record_success()
-
-            # Write to storage
-            full_path = os.path.join(storage_path, storage_key)
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-
-            with open(full_path, "wb") as f:
-                f.write(content)
-
-            logger.info(
-                "DOI PDF downloaded via S2",
-                doi=doi,
-                storage_key=storage_key,
-                size_bytes=len(content),
-            )
-
-            return storage_key
-
-        except Exception as e:
-            limiter.record_failure()
-            logger.error("DOI PDF download failed", doi=doi, error=str(e))
-            raise
+        detail = {
+            "tried_sources": tried_sources,
+            "source_errors": source_errors,
+        }
+        logger.error("DOI PDF download failed", doi=doi, error=last_error, detail=detail)
+        raise Exception(f"DOI_NO_PDF: all sources failed ({json.dumps(detail, ensure_ascii=True)})")
 
 
 __all__ = ["DoiAdapter"]

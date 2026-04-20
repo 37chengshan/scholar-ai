@@ -1,6 +1,8 @@
 """Unit tests for confidence calculation with strict retrieval contract."""
 
 import os
+import json
+from pathlib import Path
 
 # Minimal env guards for importing app modules in unit tests.
 os.environ.setdefault("ZHIPU_API_KEY", "test-api-key")
@@ -109,9 +111,70 @@ def test_confidence_explain_contains_expected_dimensions():
         {"paper_id": "p2", "section": "method", "score": 0.78, "page_num": 2, "text_preview": "b", "source_id": "s2", "section_path": "method", "content_subtype": "paragraph", "anchor_text": "b"},
     ]
 
-    score, explain = calculate_confidence(answer, sources, with_explain=True)
+    score, explain, answer_consistency, low_reasons = calculate_confidence(
+        answer, sources, with_explain=True
+    )
     assert 0.0 < score <= 1.0
     assert "score_coverage" in explain
     assert "evidence_diversity" in explain
     assert "answer_support" in explain
+    assert "answerEvidenceConsistency" in explain
     assert "weights" in explain
+    assert 0.0 <= answer_consistency <= 1.0
+    assert isinstance(low_reasons, list)
+
+
+def test_confidence_low_reason_retrieval_weak():
+    answer = "short answer"
+    weak_sources = [
+        {
+            "paper_id": "p1",
+            "score": 0.1,
+            "page_num": 1,
+            "text_preview": "random context",
+            "source_id": "s1",
+            "section_path": "intro",
+            "content_subtype": "paragraph",
+            "anchor_text": "random context",
+        }
+    ]
+
+    _score, _explain, _consistency, reasons = calculate_confidence(
+        answer, weak_sources, with_explain=True
+    )
+    assert "retrieval_weak" in reasons
+
+
+def test_vnext_freeze_eval_fixture_has_20_items_and_required_fields():
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "rag"
+        / "vnext_freeze_eval_set.json"
+    )
+    assert fixture_path.exists()
+
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert isinstance(payload, list)
+    assert len(payload) == 20
+
+    required_item_keys = {
+        "id",
+        "query",
+        "paper_ids",
+        "expected_citation_fields",
+        "expected_low_confidence_reason",
+        "notes",
+    }
+    required_citation_fields = {
+        "paper_id",
+        "source_id",
+        "page_num",
+        "section_path",
+        "anchor_text",
+        "text_preview",
+    }
+
+    for item in payload:
+        assert required_item_keys.issubset(item.keys())
+        assert required_citation_fields.issubset(set(item["expected_citation_fields"]))

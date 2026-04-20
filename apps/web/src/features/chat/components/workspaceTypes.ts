@@ -8,6 +8,11 @@ export interface ToolTimelineItem extends StreamToolTimelineItem {}
 
 export interface CitationItem {
   paper_id: string;
+  source_id?: string;
+  page_num?: number;
+  section_path?: string;
+  anchor_text?: string;
+  text_preview?: string;
   title: string;
   authors?: string[];
   year?: number;

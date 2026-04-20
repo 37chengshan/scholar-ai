@@ -151,7 +151,13 @@ async def upload_file_to_job(
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload PDF to ImportJob. Per gpt意见.md: Binary stream, not multipart.
+    """Upload PDF to ImportJob (fallback/small-file only).
+
+    This endpoint is retained for backward compatibility and emergency fallback.
+    Primary path for local imports is upload session:
+    - POST /import-jobs/{job_id}/upload-sessions
+    - PUT /upload-sessions/{session_id}/parts/{part_number}
+    - POST /upload-sessions/{session_id}/complete
 
     Validates:
     - Job exists and belongs to user
@@ -253,6 +259,7 @@ async def upload_file_to_job(
                 "status": "queued",
                 "stage": "uploaded",
                 "progress": 10,
+                "pathMode": "fallback_small_file_only",
                 "file": {
                     "storageKey": storage_key,
                     "sha256": sha256,
