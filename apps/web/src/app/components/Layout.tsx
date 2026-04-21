@@ -43,8 +43,7 @@ export function Layout() {
 
   return (
     <div className="h-screen bg-background text-foreground font-sans flex flex-col antialiased overflow-hidden">
-      {/* Top Navbar: Ultra-compact, high-density header */}
-      <header className="h-14 flex-shrink-0 border-b border-border/50 bg-background/90 backdrop-blur-md z-40 flex items-center justify-between px-4 lg:px-6 relative shadow-sm">
+      <header className="h-14 flex-shrink-0 border-b border-border/70 bg-paper-2/95 backdrop-blur-md z-40 flex items-center justify-between px-4 lg:px-6 relative shadow-sm">
         {/* Left Side: Logo & Main Navigation */}
         <div className="flex items-center gap-6 lg:gap-8 h-full">
           {/* Logo Area */}
@@ -60,15 +59,15 @@ export function Layout() {
           </button>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1 lg:gap-2 pl-6 lg:pl-8 border-l border-border/50 h-8">
+          <nav className="hidden md:flex items-center gap-1 lg:gap-2 pl-6 lg:pl-8 border-l border-border/60 h-8">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-full flex items-center gap-2 transition-all duration-300 group ${
+                  `px-3 py-1.5 rounded-sm flex items-center gap-2 transition-all duration-200 group ${
                     isActive
-                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                      ? "bg-primary text-primary-foreground shadow-sm"
                       : "hover:bg-muted text-foreground/70 hover:text-primary"
                   }`
                 }
@@ -76,7 +75,7 @@ export function Layout() {
                 {({ isActive }) => (
                   <>
                     <item.icon className={`w-3.5 h-3.5 ${isActive ? "text-primary-foreground" : "text-primary/70 group-hover:text-primary"}`} />
-                    <span className="text-[9px] lg:text-[10px] font-bold tracking-[0.2em] uppercase">{item.label}</span>
+                    <span className="text-[10px] lg:text-[11px] font-semibold tracking-wide">{item.label}</span>
                   </>
                 )}
               </NavLink>
@@ -91,8 +90,8 @@ export function Layout() {
             className={({ isActive }) =>
               `p-1.5 rounded-full transition-all duration-300 group border border-transparent ${
                 isActive
-                  ? "bg-muted text-primary border-border/50"
-                  : "text-foreground/60 hover:bg-muted hover:text-primary hover:border-border/50"
+                      ? "bg-muted text-primary border-border/60"
+                      : "text-foreground/60 hover:bg-muted hover:text-primary hover:border-border/60"
               }`
             }
           >
@@ -101,15 +100,16 @@ export function Layout() {
 
 <div className="w-px h-6 bg-border/50 hidden lg:block" />
 
-           <div 
+           <button
              onClick={() => navigate('/settings')}
-             className="flex items-center gap-3 cursor-pointer group"
+             className="flex items-center gap-3 group rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
+             aria-label={isZh ? '打开个人设置' : 'Open profile settings'}
            >
 <div className="hidden lg:flex flex-col text-right justify-center">
-               <span className="text-[8px] font-bold tracking-[0.3em] uppercase text-primary leading-none mb-0.5">
+               <span className="text-[9px] font-semibold tracking-widest text-primary leading-none mb-0.5">
                  {isZh ? "在线" : "Active"}
                </span>
-               <span className="text-[11px] font-serif font-bold text-foreground leading-none">
+               <span className="text-[12px] font-serif font-semibold text-foreground leading-none">
                  {user?.name || "用户"}
                </span>
              </div>
@@ -120,7 +120,7 @@ export function Layout() {
                  className="w-full h-full rounded-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
                />
              </div>
-          </div>
+          </button>
 
           {/* Logout Button */}
           <button
@@ -152,9 +152,9 @@ export function Layout() {
       {/* Mobile Navigation Sheet */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <SheetContent side="left" className="w-[320px] p-0">
-          <div className="flex flex-col h-full bg-[#fdfaf6]">
+          <div className="flex flex-col h-full bg-paper-2">
             {/* Header */}
-            <div className="p-4 border-b border-[#f4ece1] flex justify-between items-center">
+            <div className="p-4 border-b border-border/60 flex justify-between items-center">
               <Logo />
               <button
                 onClick={() => setMobileMenuOpen(false)}
@@ -172,9 +172,9 @@ export function Layout() {
                   to={item.to}
                   onClick={() => setMobileMenuOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-6 py-3 text-sm font-semibold transition-colors ${
+                      `flex items-center gap-3 px-6 py-3 text-sm font-semibold transition-colors ${
                       isActive
-                        ? 'bg-[#d35400] text-white'
+                          ? 'bg-primary text-primary-foreground'
                         : 'text-foreground hover:bg-muted'
                     }`
                   }
@@ -186,14 +186,15 @@ export function Layout() {
             </nav>
 
 {/* User Profile */}
-             <div className="p-4 border-t border-[#f4ece1]">
-               <div
+             <div className="p-4 border-t border-border/60">
+               <button
                  onClick={() => {
                    handleNavClick('/settings');
                  }}
-                 className="flex items-center gap-3 cursor-pointer hover:bg-muted p-2 rounded-sm"
+                 className="flex w-full items-center gap-3 hover:bg-muted p-2 rounded-sm text-left"
+                 aria-label={isZh ? '查看个人设置' : 'View profile settings'}
                >
-                 <div className="w-8 h-8 rounded-full overflow-hidden border border-[#d35400]/20">
+                 <div className="w-8 h-8 rounded-full overflow-hidden border border-primary/20">
                    <img
                      src={user?.avatar || "/default-avatar.png"}
                      alt={user?.name || "User"}
@@ -208,7 +209,7 @@ export function Layout() {
                      {isZh ? "查看个人设置" : "View Settings"}
                    </div>
                  </div>
-               </div>
+               </button>
              </div>
           </div>
         </SheetContent>
