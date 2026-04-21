@@ -23,7 +23,7 @@ Usage:
         return result.scalars().all()
 """
 
-from typing import AsyncGenerator, Iterable
+from typing import AsyncGenerator, Iterable, Sequence
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.schema import Table
 
 from app.config import settings
 from app.utils.logger import logger
@@ -137,6 +138,7 @@ async def init_db() -> None:
 
     In production, use Alembic migrations instead.
     """
+    _load_model_metadata()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables created")
@@ -201,6 +203,50 @@ def _load_model_metadata() -> None:
     import app.models  # noqa: F401
 
 
+def _resolve_table_creation_order(table_names: Iterable[str]) -> tuple[str, ...]:
+    """Resolve requested table names plus FK dependencies in stable order."""
+    requested = {name for name in table_names if name}
+    if not requested:
+        return tuple()
+
+    table_by_name = {table.name: table for table in Base.metadata.sorted_tables}
+    required_names: set[str] = set()
+    pending = list(requested)
+
+    while pending:
+        table_name = pending.pop()
+        if table_name in required_names:
+            continue
+
+        table = table_by_name.get(table_name)
+        if table is None:
+            logger.warning(
+                "Requested non-production bootstrap table missing from metadata",
+                table_name=table_name,
+            )
+            continue
+
+        required_names.add(table_name)
+        for foreign_key in table.foreign_keys:
+            pending.append(foreign_key.column.table.name)
+
+    return tuple(
+        table.name for table in Base.metadata.sorted_tables if table.name in required_names
+    )
+
+
+def _create_tables_in_order(sync_conn, table_names: Sequence[str]) -> None:
+    """Create tables one-by-one in dependency order with checkfirst enabled."""
+    table_by_name: dict[str, Table] = {
+        table.name: table for table in Base.metadata.sorted_tables
+    }
+    for table_name in table_names:
+        table = table_by_name.get(table_name)
+        if table is None:
+            continue
+        table.create(sync_conn, checkfirst=True)
+
+
 async def ensure_non_production_tables(table_names: Iterable[str]) -> None:
     """Create missing SQLAlchemy tables for local/non-production use.
 
@@ -212,15 +258,23 @@ async def ensure_non_production_tables(table_names: Iterable[str]) -> None:
 
     requested_names = tuple(table_names)
     _load_model_metadata()
+    ordered_table_names = _resolve_table_creation_order(requested_names)
+
+    if not ordered_table_names:
+        logger.info(
+            "Skipped non-production SQLAlchemy bootstrap; no tables resolved",
+            requested_names=list(requested_names),
+        )
+        return
 
     async with engine.begin() as conn:
         await conn.run_sync(
-            lambda sync_conn: Base.metadata.create_all(sync_conn)
+            lambda sync_conn: _create_tables_in_order(sync_conn, ordered_table_names)
         )
 
     logger.info(
         "Ensured non-production SQLAlchemy tables",
-        table_names=[table.name for table in Base.metadata.sorted_tables],
+        table_names=list(ordered_table_names),
         requested_names=list(requested_names),
     )
 
