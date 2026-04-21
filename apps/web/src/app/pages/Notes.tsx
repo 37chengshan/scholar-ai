@@ -8,9 +8,9 @@
  * - Read page and Notes page are linked via query params (paperId/noteId)
  */
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useNotes, useCreateNote, useUpdateNote, useDeleteNote } from '@/hooks/useNotes';
 import type { Note } from '@/services/notesApi';
 import { NotesEditor } from '@/app/components/NotesEditor';
@@ -53,14 +53,19 @@ import { toast } from 'sonner';
 import { clsx } from 'clsx';
 import { kbApi } from '@/services/kbApi';
 import * as papersApi from '@/services/papersApi';
+import {
+  createEmptyEditorDocument,
+  filterUserEditableNotes,
+  type ReadingSummaryProjection,
+} from '@/features/notes/ownership';
 
 const MANUAL_FOLDERS_STORAGE_KEY = 'notes-manual-folders-v1';
 const FOLDER_TAG_PREFIX = 'folder:';
-const AI_NOTE_TAG = '__ai_note__';
 const PAPER_TAG_PREFIX = 'paper:';
 const PAPER_TITLE_TAG_PREFIX = 'paper-title:';
 
 type FolderSource = 'kb' | 'manual';
+type FolderSelectionSource = 'auto' | 'manual';
 
 interface NotesFolder extends NoteFolder {
   source: FolderSource;
@@ -118,14 +123,6 @@ function extractPreview(content: unknown, maxLength = 80): string {
   return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength)}...` : cleaned;
 }
 
-function buildContentSignature(input: string): string {
-  let hash = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
-  }
-  return hash.toString(16);
-}
-
 function highlightText(text: string, query: string): ReactNode {
   if (!query.trim()) return text;
   const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
@@ -160,17 +157,12 @@ function upsertFolderTag(tags: string[], folderId: string): string[] {
   return [...withoutFolder, `${FOLDER_TAG_PREFIX}${folderId}`];
 }
 
-function isAiNote(note: Note): boolean {
-  return note.tags.includes(AI_NOTE_TAG);
-}
-
 function getDisplayTags(tags: string[]): string[] {
   return tags.filter(
     (tag) =>
       !tag.startsWith(FOLDER_TAG_PREFIX) &&
       !tag.startsWith(PAPER_TAG_PREFIX) &&
-      !tag.startsWith(PAPER_TITLE_TAG_PREFIX) &&
-      tag !== AI_NOTE_TAG,
+      !tag.startsWith(PAPER_TITLE_TAG_PREFIX),
   );
 }
 
@@ -185,13 +177,6 @@ function getPaperTitleTag(tags: string[]): string | null {
 function getPaperIdTag(tags: string[]): string | null {
   const paperTag = tags.find((tag) => tag.startsWith(PAPER_TAG_PREFIX));
   return paperTag ? paperTag.slice(PAPER_TAG_PREFIX.length) : null;
-}
-
-function arraysEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  return [...a].sort().join('|') === [...b].sort().join('|');
 }
 
 /**
@@ -209,11 +194,13 @@ function NotesContent() {
   const deleteNote = useDeleteNote();
 
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [selectedSummaryPaperId, setSelectedSummaryPaperId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string>('all');
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState<any>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [folderSelectionSource, setFolderSelectionSource] = useState<FolderSelectionSource | null>(null);
 
   const [kbFolders, setKbFolders] = useState<NotesFolder[]>([]);
   const [manualFolders, setManualFolders] = useState<NotesFolder[]>([]);
@@ -221,11 +208,11 @@ function NotesContent() {
   const [paperTitleMap, setPaperTitleMap] = useState<Map<string, string>>(new Map());
 
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const aiSyncSignatureRef = useRef<string>('');
+  const userNotes = useMemo(() => filterUserEditableNotes(notes), [notes]);
 
   const selectedNote = useMemo(
-    () => notes.find((n) => n.id === selectedNoteId) || null,
-    [notes, selectedNoteId],
+    () => userNotes.find((note) => note.id === selectedNoteId) || null,
+    [selectedNoteId, userNotes],
   );
 
   useEffect(() => {
@@ -314,84 +301,44 @@ function NotesContent() {
     loadCatalog();
   }, []);
 
-  const aiSyncSignature = useMemo(
-    () =>
-      paperCatalog
-        .filter((paper) => paper.readingNotes && paper.readingNotes.trim().length > 0)
-        .map((paper) => `${paper.id}:${buildContentSignature(paper.readingNotes || '')}`)
-        .join('|'),
-    [paperCatalog],
-  );
+  const derivedSummaries = useMemo<ReadingSummaryProjection[]>(() => {
+    let summaries = paperCatalog
+      .filter((paper) => paper.readingNotes && paper.readingNotes.trim().length > 0)
+      .map((paper) => ({
+        paperId: paper.id,
+        title: paper.title,
+        readingNotes: paper.readingNotes || '',
+        folderId: paper.folderId,
+      }));
 
-  useEffect(() => {
-    async function syncAiNotes() {
-      if (!aiSyncSignature) {
-        return;
-      }
-      if (aiSyncSignatureRef.current === aiSyncSignature) {
-        return;
-      }
-
-      for (const paper of paperCatalog) {
-        if (!paper.readingNotes || !paper.readingNotes.trim()) {
-          continue;
-        }
-
-        const existingAiNote = notes.find(
-          (note) => isAiNote(note) && (note.paperIds.includes(paper.id) || getPaperIdTag(note.tags) === paper.id),
-        );
-
-        const folderId = paper.folderId || 'manual:unassigned';
-        const systemTags = [
-          AI_NOTE_TAG,
-          `${PAPER_TAG_PREFIX}${paper.id}`,
-          `${PAPER_TITLE_TAG_PREFIX}${encodeURIComponent(paper.title)}`,
-        ];
-
-        if (!existingAiNote) {
-          await createNote.mutateAsync({
-            title: `AI笔记 · ${paper.title}`,
-            content: paper.readingNotes,
-            tags: upsertFolderTag(systemTags, folderId),
-            paperIds: [paper.id],
-          });
-          continue;
-        }
-
-        const mergedTags = upsertFolderTag(
-          Array.from(new Set([...existingAiNote.tags, ...systemTags])),
-          folderId,
-        );
-
-        const needsUpdate =
-          existingAiNote.content !== paper.readingNotes ||
-          !arraysEqual(existingAiNote.paperIds, [paper.id]) ||
-          !arraysEqual(existingAiNote.tags, mergedTags);
-
-        if (needsUpdate) {
-          await updateNote.mutateAsync({
-            id: existingAiNote.id,
-            payload: {
-              title: `AI笔记 · ${paper.title}`,
-              content: paper.readingNotes,
-              tags: mergedTags,
-              paperIds: [paper.id],
-            },
-          });
-        }
-      }
-
-      aiSyncSignatureRef.current = aiSyncSignature;
+    if (paperIdFilter) {
+      summaries = summaries.filter((summary) => summary.paperId === paperIdFilter);
     }
 
-    syncAiNotes().catch(() => {
-      toast.error('同步 AI 笔记失败');
-    });
-  }, [aiSyncSignature, createNote, notes, paperCatalog, updateNote]);
+    if (selectedFolderId !== null) {
+      summaries = summaries.filter((summary) => summary.folderId === selectedFolderId);
+    }
+
+    if (searchQuery.trim()) {
+      const normalizedQuery = searchQuery.trim().toLowerCase();
+      summaries = summaries.filter(
+        (summary) =>
+          summary.title.toLowerCase().includes(normalizedQuery) ||
+          summary.readingNotes.toLowerCase().includes(normalizedQuery),
+      );
+    }
+
+    return summaries;
+  }, [paperCatalog, paperIdFilter, searchQuery, selectedFolderId]);
+
+  const selectedSummary = useMemo(
+    () => derivedSummaries.find((summary) => summary.paperId === selectedSummaryPaperId) || null,
+    [derivedSummaries, selectedSummaryPaperId],
+  );
 
   const folderCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    notes.forEach((note) => {
+    userNotes.forEach((note) => {
       const folderId = getFolderIdFromTags(note.tags);
       if (!folderId) {
         return;
@@ -399,7 +346,7 @@ function NotesContent() {
       counts.set(folderId, (counts.get(folderId) || 0) + 1);
     });
     return counts;
-  }, [notes]);
+  }, [userNotes]);
 
   const folders = useMemo<NotesFolder[]>(() => {
     const merged = [...kbFolders, ...manualFolders];
@@ -410,29 +357,59 @@ function NotesContent() {
   }, [folderCounts, kbFolders, manualFolders]);
 
   useEffect(() => {
-    if (selectedFolderId !== null) {
+    if (!paperIdFilter || notesLoading || catalogLoading || folderSelectionSource === 'manual') {
       return;
     }
-    if (paperIdFilter) {
-      const matchingPaper = paperCatalog.find((item) => item.id === paperIdFilter);
-      if (matchingPaper?.folderId) {
-        setSelectedFolderId(matchingPaper.folderId);
+
+    const relatedNotes = userNotes.filter(
+      (note) => note.paperIds.includes(paperIdFilter) || getPaperIdTag(note.tags) === paperIdFilter,
+    );
+    const relatedFolderIds = relatedNotes
+      .map((note) => getFolderIdFromTags(note.tags))
+      .filter((folderId): folderId is string => Boolean(folderId));
+    const hasFolderlessRelatedNote = relatedNotes.some((note) => getFolderIdFromTags(note.tags) === null);
+    const uniqueRelatedFolderIds = Array.from(new Set(relatedFolderIds));
+
+    if (relatedNotes.length > 0) {
+      if (!hasFolderlessRelatedNote && uniqueRelatedFolderIds.length === 1) {
+        const nextFolderId = uniqueRelatedFolderIds[0];
+        if (selectedFolderId !== nextFolderId || folderSelectionSource !== 'auto') {
+          setSelectedFolderId(nextFolderId);
+          setFolderSelectionSource('auto');
+        }
         return;
       }
+
+      if (selectedFolderId !== null || folderSelectionSource !== null) {
+        setSelectedFolderId(null);
+        setFolderSelectionSource(null);
+      }
+      return;
     }
-    if (kbFolders.length > 0) {
-      setSelectedFolderId(kbFolders[0].id);
+
+    const matchingSummary = paperCatalog.find((item) => item.id === paperIdFilter);
+    if (matchingSummary?.folderId) {
+      if (selectedFolderId !== matchingSummary.folderId || folderSelectionSource !== 'auto') {
+        setSelectedFolderId(matchingSummary.folderId);
+        setFolderSelectionSource('auto');
+      }
+      return;
     }
-  }, [kbFolders, paperCatalog, paperIdFilter, selectedFolderId]);
+
+    if (selectedFolderId !== null || folderSelectionSource !== null) {
+      setSelectedFolderId(null);
+      setFolderSelectionSource(null);
+    }
+  }, [catalogLoading, folderSelectionSource, notesLoading, paperCatalog, paperIdFilter, selectedFolderId, userNotes]);
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
-    notes.forEach((note) => getDisplayTags(note.tags).forEach((tag) => tagSet.add(tag)));
+    userNotes.forEach((note) => getDisplayTags(note.tags).forEach((tag) => tagSet.add(tag)));
     return Array.from(tagSet).sort();
-  }, [notes]);
+  }, [userNotes]);
 
   const filteredNotes = useMemo(() => {
-    let result = notes;
+    let result = userNotes;
 
     if (paperIdFilter) {
       result = result.filter(
@@ -458,12 +435,12 @@ function NotesContent() {
     }
 
     return result;
-  }, [notes, searchQuery, tagFilter, selectedFolderId, paperIdFilter]);
+  }, [paperIdFilter, searchQuery, selectedFolderId, tagFilter, userNotes]);
 
   const handleSave = useCallback(
     async (content: any) => {
       if (!selectedNoteId) return;
-      const note = notes.find((n) => n.id === selectedNoteId);
+      const note = userNotes.find((n) => n.id === selectedNoteId);
       if (!note) return;
 
       const folderId = getFolderIdFromTags(note.tags) || selectedFolderId;
@@ -479,7 +456,7 @@ function NotesContent() {
         },
       });
     },
-    [selectedFolderId, selectedNoteId, notes, updateNote],
+    [selectedFolderId, selectedNoteId, updateNote, userNotes],
   );
 
   const { status: saveStatus, lastSaved } = useAutoSave({
@@ -489,12 +466,17 @@ function NotesContent() {
     noteId: selectedNoteId || undefined,
   });
 
-  const handleSelectNote = useCallback((note: Note) => {
+  const handleSelectNote = useCallback((note: Note, selectionSource: FolderSelectionSource | null = 'manual') => {
+    setSelectedSummaryPaperId(null);
     setSelectedNoteId(note.id);
 
     const folderId = getFolderIdFromTags(note.tags);
     if (folderId) {
       setSelectedFolderId(folderId);
+      setFolderSelectionSource(selectionSource);
+    } else {
+      setSelectedFolderId(null);
+      setFolderSelectionSource(null);
     }
 
     try {
@@ -507,32 +489,71 @@ function NotesContent() {
     }
   }, []);
 
+  const handleSelectSummary = useCallback(
+    (summary: ReadingSummaryProjection, selectionSource: FolderSelectionSource | null = 'manual') => {
+    setSelectedNoteId(null);
+    setSelectedSummaryPaperId(summary.paperId);
+    setEditorContent(null);
+
+    if (summary.folderId) {
+      setSelectedFolderId(summary.folderId);
+      setFolderSelectionSource(selectionSource);
+    } else {
+      setSelectedFolderId(null);
+      setFolderSelectionSource(null);
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('noteId');
+    nextParams.set('paperId', summary.paperId);
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   useEffect(() => {
-    if (notes.length === 0) {
+    if (userNotes.length === 0 && derivedSummaries.length === 0) {
       return;
     }
 
-    if (selectedNoteId && notes.some((note) => note.id === selectedNoteId)) {
+    if (selectedNoteId && userNotes.some((note) => note.id === selectedNoteId)) {
+      return;
+    }
+
+    if (selectedSummaryPaperId && derivedSummaries.some((summary) => summary.paperId === selectedSummaryPaperId)) {
       return;
     }
 
     if (noteIdQuery) {
-      const target = notes.find((note) => note.id === noteIdQuery);
+      const target = userNotes.find((note) => note.id === noteIdQuery);
       if (target) {
-        handleSelectNote(target);
+        handleSelectNote(target, 'auto');
         return;
       }
     }
 
     if (paperIdFilter) {
-      const related = notes.find(
+      const related = userNotes.find(
         (note) => note.paperIds.includes(paperIdFilter) || getPaperIdTag(note.tags) === paperIdFilter,
       );
       if (related) {
-        handleSelectNote(related);
+        handleSelectNote(related, 'auto');
+        return;
+      }
+
+      const summary = derivedSummaries.find((item) => item.paperId === paperIdFilter);
+      if (summary) {
+        handleSelectSummary(summary, 'auto');
       }
     }
-  }, [handleSelectNote, noteIdQuery, notes, paperIdFilter, selectedNoteId]);
+  }, [
+    derivedSummaries,
+    handleSelectNote,
+    handleSelectSummary,
+    noteIdQuery,
+    paperIdFilter,
+    selectedNoteId,
+    selectedSummaryPaperId,
+    userNotes,
+  ]);
 
   const handleCreateNote = useCallback(async () => {
     if (!selectedFolderId) {
@@ -548,13 +569,13 @@ function NotesContent() {
 
       const newNote = await createNote.mutateAsync({
         title: '未命名笔记',
-        content: JSON.stringify({ type: 'doc', content: [] }),
+        content: JSON.stringify(createEmptyEditorDocument()),
         tags: payloadTags,
         paperIds: paperIdFilter ? [paperIdFilter] : [],
       });
       toast.success('笔记已创建');
       handleSelectNote(newNote);
-      setEditorContent({ type: 'doc', content: [] });
+      setEditorContent(createEmptyEditorDocument());
 
       const nextParams = new URLSearchParams(searchParams);
       nextParams.set('noteId', newNote.id);
@@ -589,7 +610,13 @@ function NotesContent() {
     };
     setManualFolders((prev) => [...prev, newFolder]);
     setSelectedFolderId(newFolder.id);
+    setFolderSelectionSource('manual');
     toast.success(`文件夹「${name}」已创建`);
+  }, []);
+
+  const handleSelectFolder = useCallback((folderId: string | null) => {
+    setSelectedFolderId(folderId);
+    setFolderSelectionSource('manual');
   }, []);
 
   const handleEditorChange = useCallback((json: any) => {
@@ -708,7 +735,7 @@ function NotesContent() {
             <NoteFolderTree
               folders={folders}
               selectedFolderId={selectedFolderId}
-              onSelectFolder={setSelectedFolderId}
+              onSelectFolder={handleSelectFolder}
               onCreateFolder={handleCreateFolder}
             />
           </div>
@@ -721,11 +748,42 @@ function NotesContent() {
               </div>
             )}
 
-            {!notesLoading && !catalogLoading && filteredNotes.length === 0 && (
+            {!notesLoading && !catalogLoading && filteredNotes.length === 0 && derivedSummaries.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <FileText className="w-10 h-10 mb-3 opacity-40" />
                 <p className="text-xs font-medium">暂无笔记</p>
                 <p className="text-[10px] mt-1">先选择文件夹，再创建您的第一篇笔记</p>
+              </div>
+            )}
+
+            {!notesLoading && derivedSummaries.length > 0 && (
+              <div className="border-b border-border/50 bg-amber-50/40">
+                <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800">
+                  系统摘要
+                </div>
+                {derivedSummaries.map((summary) => (
+                  <button
+                    key={summary.paperId}
+                    type="button"
+                    className={clsx(
+                      'w-full px-3 py-3 text-left transition-colors hover:bg-amber-100/60',
+                      selectedSummaryPaperId === summary.paperId && 'bg-amber-100 border-l-2 border-l-amber-500',
+                    )}
+                    onClick={() => handleSelectSummary(summary)}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-amber-950 line-clamp-1">{summary.title}</p>
+                        <p className="mt-1 text-[11px] text-amber-900/80 line-clamp-2">
+                          {highlightText(extractPreview(summary.readingNotes) || '系统摘要', searchQuery)}
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[9px]">
+                        摘要
+                      </Badge>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
 
@@ -752,12 +810,6 @@ function NotesContent() {
                           {highlightText(note.title || '未命名笔记', searchQuery)}
                         </h4>
                         <div className="flex items-center gap-1">
-                          {isAiNote(note) && (
-                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">
-                              <Sparkles className="w-2.5 h-2.5 mr-0.5" />
-                              AI
-                            </Badge>
-                          )}
                           <button
                             className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                             onClick={(e) => {
@@ -811,12 +863,6 @@ function NotesContent() {
                         <span>关联 {selectedNote.paperIds.length} 篇论文</span>
                       </div>
                     )}
-                    {isAiNote(selectedNote) && (
-                      <Badge variant="secondary" className="text-[10px] h-4">
-                        <Sparkles className="w-2.5 h-2.5 mr-0.5" />
-                        AI 自动笔记
-                      </Badge>
-                    )}
                   </div>
                 </div>
                 <SaveIndicator />
@@ -830,11 +876,40 @@ function NotesContent() {
                 />
               </div>
             </>
+          ) : selectedSummary ? (
+            <>
+              <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
+                <div>
+                  <h3 className="font-medium text-sm">{selectedSummary.title}</h3>
+                  <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                    <Badge variant="secondary" className="text-[10px] h-4">
+                      <Sparkles className="w-2.5 h-2.5 mr-0.5" />
+                      系统生成摘要
+                    </Badge>
+                    <span>来自 paper.reading_notes 的派生展示</span>
+                  </div>
+                </div>
+                <Button asChild variant="outline" size="sm">
+                  <Link to={`/read/${selectedSummary.paperId}`}>打开论文</Link>
+                </Button>
+              </div>
+
+              <div className="flex-1 overflow-auto px-6 py-5">
+                <div className="mx-auto max-w-3xl rounded-2xl border border-amber-200 bg-white/90 p-6 shadow-sm">
+                  <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                    系统摘要只读视图
+                  </p>
+                  <div className="whitespace-pre-wrap text-sm leading-7 text-zinc-800">
+                    {selectedSummary.readingNotes}
+                  </div>
+                </div>
+              </div>
+            </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
               <FileText className="w-16 h-16 mb-4 opacity-30" />
               <h3 className="text-lg font-semibold mb-1">选择或创建一个笔记开始编辑</h3>
-              <p className="text-sm mb-4">请先在左侧选择文件夹，再点击「新建」创建笔记</p>
+              <p className="text-sm mb-4">请先在左侧选择文件夹、系统摘要，或点击「新建」创建笔记</p>
               <Button variant="outline" onClick={handleCreateNote}>
                 <Plus className="w-4 h-4 mr-1" />
                 新建笔记

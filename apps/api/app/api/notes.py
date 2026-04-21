@@ -23,12 +23,17 @@ from app.database import get_db
 from app.models.orm_note import Note
 from app.models.paper import Paper
 from app.core.notes_generator import NotesGenerator
+from app.services.reading_notes_service import (
+    build_generated_notes_payload,
+    persist_generated_reading_notes,
+)
 from app.utils.logger import logger
 from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 
 router = APIRouter()
 notes_generator = NotesGenerator()
+SYSTEM_AI_NOTE_TAG = "__ai_note__"
 
 
 # =============================================================================
@@ -93,6 +98,16 @@ def _format_note_response(note: Note) -> dict:
     }
 
 
+def _sanitize_note_tags(tags: Optional[List[str]]) -> List[str]:
+    """Strip system-only tags from user-editable note payloads."""
+    return [tag for tag in (tags or []) if tag != SYSTEM_AI_NOTE_TAG]
+
+
+def _is_system_ai_note(tags: Optional[List[str]]) -> bool:
+    """Detect legacy AI note records that should be hidden from note CRUD boundaries."""
+    return SYSTEM_AI_NOTE_TAG in (tags or [])
+
+
 class GenerateNotesRequest(BaseModel):
     """Request to generate notes for a paper."""
 
@@ -139,7 +154,7 @@ async def create_note(
             user_id=user_id,
             title=request.title,
             content=request.content,
-            tags=request.tags,
+            tags=_sanitize_note_tags(request.tags),
             paper_ids=request.paperIds,
         )
 
@@ -176,7 +191,10 @@ async def list_notes(
     """
     try:
         # Build query
-        query = select(Note).where(Note.user_id == user_id)
+        query = select(Note).where(
+            Note.user_id == user_id,
+            ~Note.tags.contains([SYSTEM_AI_NOTE_TAG]),
+        )
 
         # Filter by paperId (notes where paper_ids contains the paperId)
         if paperId:
@@ -231,7 +249,7 @@ async def get_note(
         )
         note = result.scalar_one_or_none()
 
-        if not note:
+        if not note or _is_system_ai_note(note.tags):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Note not found"),
@@ -264,7 +282,7 @@ async def update_note(
         )
         note = result.scalar_one_or_none()
 
-        if not note:
+        if not note or _is_system_ai_note(note.tags):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Note not found"),
@@ -276,7 +294,7 @@ async def update_note(
         if request.content is not None:
             note.content = request.content
         if request.tags is not None:
-            note.tags = request.tags
+            note.tags = _sanitize_note_tags(request.tags)
         if request.paperIds is not None:
             note.paper_ids = request.paperIds
 
@@ -309,7 +327,7 @@ async def delete_note(
         )
         note = result.scalar_one_or_none()
 
-        if not note:
+        if not note or _is_system_ai_note(note.tags):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=Errors.not_found("Note not found"),
@@ -338,7 +356,11 @@ async def get_notes_by_paper(
     try:
         query = (
             select(Note)
-            .where(Note.user_id == user_id, Note.paper_ids.contains([paper_id]))
+            .where(
+                Note.user_id == user_id,
+                Note.paper_ids.contains([paper_id]),
+                ~Note.tags.contains([SYSTEM_AI_NOTE_TAG]),
+            )
             .order_by(desc(Note.created_at))
         )
 
@@ -416,16 +438,19 @@ async def generate_notes(
         )
 
         # Update paper with new notes using SQLAlchemy
-        new_version = (paper.notes_version or 0) + 1
-        paper.reading_notes = notes
-        paper.notes_version = new_version
+        new_version = persist_generated_reading_notes(paper, notes)
         await db.flush()
         await db.refresh(paper)
 
         logger.info("Notes generated", paper_id=request.paper_id, version=new_version)
 
         return GeneratedNotesResponse(
-            paper_id=request.paper_id, notes=notes, version=new_version
+            success=True,
+            data=build_generated_notes_payload(
+                paper_id=request.paper_id,
+                notes=notes,
+                version=new_version,
+            ),
         )
 
     except HTTPException:
@@ -485,9 +510,7 @@ async def regenerate_notes(
         )
 
         # Update paper with new notes using SQLAlchemy
-        new_version = (paper.notes_version or 0) + 1
-        paper.reading_notes = notes
-        paper.notes_version = new_version
+        new_version = persist_generated_reading_notes(paper, notes)
         await db.flush()
         await db.refresh(paper)
 
@@ -500,11 +523,11 @@ async def regenerate_notes(
 
         return GeneratedNotesResponse(
             success=True,
-            data={
-                "paperId": request.paper_id,
-                "notes": notes,
-                "version": new_version,
-            },
+            data=build_generated_notes_payload(
+                paper_id=request.paper_id,
+                notes=notes,
+                version=new_version,
+            ),
         )
 
     except HTTPException:

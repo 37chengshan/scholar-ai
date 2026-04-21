@@ -59,6 +59,18 @@ SSE/异步链路：
 - 除 heartbeat 外，所有业务 SSE 事件必须携带 `message_id`。
 - 长任务必须可观测，至少提供 queued/running/succeeded/failed 状态。
 
+当前主执行链路：
+
+- Chat 前端主入口固定为 `apps/web/src/features/chat/workspace/ChatWorkspaceV2.tsx`。
+- Chat 页负责统一 runtime 执行；Search、Read、Notes 只负责输入准备、结果展示与深链跳转，不再各自维护并行执行内核。
+
+Notes/Read ownership：
+
+- `paper.reading_notes` 是系统生成阅读摘要，由 notes API 与 notes worker 统一写入。
+- `Note` 是用户可编辑笔记实体，由 `/api/v1/notes` 维护。
+- Notes 页面可以展示系统摘要，但该展示是 derived projection，不再把系统摘要同步复制成 `Note` 实体。
+- Read 页面自动创建或加载的 `reading note` 只指向用户笔记。
+
 外部依赖与运行时组件：
 
 - Docker Compose 作为本地依赖编排入口。

@@ -3,6 +3,7 @@
 Per Review Fix #9: 验证 FOR UPDATE SKIP LOCKED 抢占机制。
 """
 
+import asyncio
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from app.workers.notes_worker import NotesWorker
@@ -67,8 +68,8 @@ class TestNotesWorkerClaim:
         assert task is None
 
     @pytest.mark.asyncio
-    async def test_complete_task_updates_paper_is_notes_ready(self):
-        """验证完成时更新 Paper.isNotesReady。"""
+    async def test_complete_task_updates_paper_generated_notes_state(self):
+        """验证完成时更新 generated reading notes 状态。"""
         worker = NotesWorker()
 
         mock_conn = AsyncMock()
@@ -86,10 +87,12 @@ class TestNotesWorkerClaim:
         # 验证 execute 被调用两次（Paper 更新 + NotesTask 更新）
         assert mock_conn.execute.call_count == 2
 
-        # 验证第一个调用包含 isNotesReady = TRUE
+        # 验证第一个调用包含 generated reading notes 状态更新
         first_call_args = mock_conn.execute.call_args_list[0][0]
         sql = first_call_args[0]
-        assert '"isNotesReady"' in sql or 'isNotesReady' in sql
+        assert 'NULLIF(BTRIM($1), \'\') IS NULL' in sql
+        assert 'notesfailed = FALSE' in sql
+        assert 'COALESCE(notes_version, 0) + 1' in sql
 
     @pytest.mark.asyncio
     async def test_fail_task_increments_attempts(self):
@@ -299,3 +302,26 @@ class TestNotesWorkerShutdown:
         worker.db_pool = None
 
         await worker.shutdown()  # Should not raise
+
+
+class TestNotesWorkerRunLoop:
+    """测试 NotesWorker 运行循环分支。"""
+
+    @pytest.mark.asyncio
+    async def test_run_loop_treats_empty_string_notes_as_success(self):
+        """验证空字符串摘要走成功写入路径，而不是失败路径。"""
+        worker = NotesWorker()
+        task = {"id": "task-123", "paper_id": "paper-456"}
+
+        worker.init_db = AsyncMock()
+        worker.claim_task = AsyncMock(side_effect=[task, None])
+        worker.generate_notes = AsyncMock(return_value="")
+        worker.complete_task = AsyncMock()
+        worker.fail_task = AsyncMock()
+
+        with patch("app.workers.notes_worker.asyncio.sleep", AsyncMock(side_effect=asyncio.CancelledError)):
+            with pytest.raises(asyncio.CancelledError):
+                await worker.run_loop()
+
+        worker.complete_task.assert_called_once_with("task-123", "paper-456", "")
+        worker.fail_task.assert_not_called()

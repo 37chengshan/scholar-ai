@@ -36,6 +36,11 @@ import * as papersApi from "@/services/papersApi";
 import * as annotationsApi from "@/services/annotationsApi";
 import * as notesApi from "@/services/notesApi";
 import type { Annotation } from "@/services/annotationsApi";
+import {
+  buildReadingNoteTitle,
+  createEmptyEditorDocument,
+  getPrimaryUserNoteForPaper,
+} from '@/features/notes/ownership';
 
 import { toast } from "sonner";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -87,7 +92,7 @@ function ReadContent() {
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [linkedNoteId, setLinkedNoteId] = useState<string | null>(null);
   const [linkedNoteTitle, setLinkedNoteTitle] = useState<string>("");
-  const [linkedNoteContent, setLinkedNoteContent] = useState<any>({ type: "doc", content: [] });
+  const [linkedNoteContent, setLinkedNoteContent] = useState<any>(createEmptyEditorDocument());
 
   const clampPage = useCallback(
     (page: number) => {
@@ -119,15 +124,15 @@ function ReadContent() {
 
   const initializeLinkedNote = useCallback(
     async (paperId: string, paperTitle: string) => {
-      const noteTitle = `${paperTitle || (isZh ? "未命名论文" : "Untitled Paper")} · ${isZh ? "阅读笔记" : "Reading Notes"}`;
+      const noteTitle = buildReadingNoteTitle(paperTitle, isZh);
       const existingNotes = await notesApi.getNotesByPaper(paperId);
-      const nonAiNote = existingNotes.find((note) => !note.tags.includes("__ai_note__"));
+      const userNote = getPrimaryUserNoteForPaper(existingNotes, paperId);
 
       const targetNote =
-        nonAiNote ||
+        userNote ||
         (await notesApi.createNote({
           title: noteTitle,
-          content: JSON.stringify({ type: "doc", content: [] }),
+          content: JSON.stringify(createEmptyEditorDocument()),
           tags: ["read-note"],
           paperIds: [paperId],
         }));
@@ -258,7 +263,7 @@ function ReadContent() {
         await notesApi.updateNote(linkedNoteId, {
           title:
             linkedNoteTitle ||
-            (paper?.title ? `${paper.title} · ${isZh ? "阅读笔记" : "Reading Notes"}` : "Reading Notes"),
+            buildReadingNoteTitle(paper?.title, isZh),
           content: JSON.stringify(content),
           paperIds: [id],
         });
