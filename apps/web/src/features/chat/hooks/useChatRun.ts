@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { AgentRun, RunScope, RunStatus } from '@/features/chat/types/run';
+import type { AgentRun, RunScope, RunStatus, RunPhase } from '@/features/chat/types/run';
 import { useShallow } from 'zustand/react/shallow';
 import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore';
 import type { WorkspaceScope } from '@/features/chat/state/chatWorkspaceStore';
@@ -14,18 +14,18 @@ function deriveScope(scope: WorkspaceScope): RunScope {
   return 'general';
 }
 
-function derivePhase(status: RunStatus): string {
+function derivePhase(status: RunStatus): RunPhase {
   if (status === 'running') {
     return 'executing';
   }
   if (status === 'waiting_confirmation') {
-    return 'waiting_confirmation';
+    return 'waiting_for_user';
   }
   if (status === 'completed') {
-    return 'done';
+    return 'completed';
   }
   if (status === 'failed') {
-    return 'error';
+    return 'failed';
   }
   if (status === 'cancelled') {
     return 'cancelled';
@@ -54,6 +54,8 @@ export function useChatRun(): { activeRun: AgentRun } {
     }))
   );
 
+  const phase = derivePhase(activeRunStatus);
+
   const activeRun = useMemo<AgentRun>(() => ({
     runId: selectedRunId,
     sessionId: selectedSessionId,
@@ -61,15 +63,23 @@ export function useChatRun(): { activeRun: AgentRun } {
     scope: deriveScope(scope),
     mode,
     status: activeRunStatus,
-    currentPhase: derivePhase(activeRunStatus),
+    phase,
+    currentPhase: phase,
+    objective: '',
+    steps: [],
+    toolEvents: [],
     timeline: [],
     pendingActions,
+    confirmation: null,
     artifacts: [],
+    evidence: [],
     outcome: {},
+    recoverable: false,
   }), [
     activeRunStatus,
     mode,
     pendingActions,
+    phase,
     scope,
     selectedMessageId,
     selectedRunId,

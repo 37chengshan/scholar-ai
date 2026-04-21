@@ -22,6 +22,12 @@
 - Paper：论文与元数据
 - ImportJob：导入任务与状态机
 - UploadSession：分片上传会话与断点恢复状态
+- Run：单次 Agent 执行实例（与 session/message 绑定）
+- RunStep：Run 内部有序步骤（planning/executing/verifying 细粒度状态）
+- ToolEvent：步骤内工具调用事件（call/result/error）
+- ConfirmationRequest：高风险操作确认请求
+- RunArtifact：执行产物（citation/note/summary/tool_output/result）
+- RunEvidence：证据片段与答案一致性绑定
 - Collection：文献集合与组织单元
 - Chunk：文本切片与向量化单元
 - ChatSession：会话上下文
@@ -69,6 +75,8 @@ Chat 查询作用域资源约束：
 - Paper：uploaded -> parsing -> parsed -> indexed -> archived | failed
 - ImportJob：created -> queued -> running -> awaiting_user_action -> completed | failed | cancelled
 - UploadSession：created -> uploading -> completed | aborted | failed
+- Run：idle -> planning -> executing -> waiting_for_user | verifying -> completed | failed | cancelled
+- RunStep：pending -> running -> completed | failed | skipped | waiting
 - `UploadSession.aborted` 为终态；前端允许将其投影为 `cancelled` 交互状态，但不得继续复用原 `uploadSessionId` 上传新分片。
 - Task：queued -> running -> succeeded | failed | canceled
 - ChatSession：active -> closed | archived
@@ -93,6 +101,26 @@ RAG 查询结果资源补充：
 	- `lowConfidenceReasons[]`
 - `lowConfidenceReasons` 枚举冻结：`retrieval_weak`、`evidence_insufficient`、`evidence_conflict`。
 
+Agent Run 资源契约补充（PR37）：
+
+- `RunPhase` 冻结枚举：`idle`、`planning`、`executing`、`waiting_for_user`、`verifying`、`completed`、`failed`、`cancelled`。
+- `StepType` 冻结枚举：`analyze`、`retrieve`、`read`、`tool_call`、`synthesize`、`verify`、`confirm`。
+- `StepStatus` 冻结枚举：`pending`、`running`、`completed`、`failed`、`skipped`、`waiting`。
+- `ToolEvent.event_type` 冻结枚举：`call`、`result`、`error`。
+- `confirmation_required` 是 Run 一级字段；当值为 `true` 时，必须同步返回 `confirmation` 结构。
+- `final_summary` 允许携带 `answerEvidenceConsistency` 与 `lowConfidenceReasons[]`。
+
+Run 控制接口资源补充（PR37）：
+
+- `POST /api/v1/chat/cancel`：
+	- 请求：`session_id`（必填），`run_id`（可选）。
+	- 响应：`status=cancelled`，并返回 `session_id`、`run_id`。
+	- 语义：取消当前会话活跃运行，并断开会话 SSE。
+- `POST /api/v1/chat/retry`：
+	- 请求：`session_id`（必填），可选 `mode` 与 `scope`。
+	- 语义：重放会话最后一条用户消息，并复用 `chat/stream` 返回。
+	- 无可重放用户消息时返回 `404`。
+
 Paper 交互资源补充：
 
 - PaperStar：用户与 Paper 的收藏关系资源，操作入口为 `/api/v1/papers/{paperId}/star`。
@@ -104,6 +132,14 @@ Paper 交互资源补充：
 - paper.uploaded
 - paper.parsed
 - paper.indexed
+- run.started
+- run.phase_changed
+- run.confirmation_required
+- run.step_started
+- run.step_completed
+- run.cancelled
+- run.completed
+- run.recovery_available
 - task.started
 - task.finished
 - task.failed

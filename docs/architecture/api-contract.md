@@ -200,6 +200,33 @@ Session messages 契约（冻结）：
   - `returned` 是本次返回条数。
   - `next_offset` 基于 `offset + returned` 计算。
   - Agent 运行期间产生的 `tool_result` 必须持久化为会话历史中的 `tool` 角色消息，保证 SSE 回放与历史回读一致。
+
+Agent Run 协议补充（PR37）：
+
+- `RunPhase` 冻结枚举：`idle`、`planning`、`executing`、`waiting_for_user`、`verifying`、`completed`、`failed`、`cancelled`。
+- `StepType` 冻结枚举：`analyze`、`retrieve`、`read`、`tool_call`、`synthesize`、`verify`、`confirm`。
+- `StepStatus` 冻结枚举：`pending`、`running`、`completed`、`failed`、`skipped`、`waiting`。
+- `ToolEvent.event_type` 冻结枚举：`call`、`result`、`error`。
+- `confirmation_required` 是 Run 一级字段；当值为 `true` 时，必须同步返回 `confirmation` 结构。
+- `final_summary` 允许携带 `answerEvidenceConsistency` 与 `lowConfidenceReasons[]`，用于结果可信度呈现。
+- `run_complete` 是 Run 协议的终态收口事件；成功必须返回 `status=completed`，失败/异常必须返回 `status=failed`，取消必须返回 `status=cancelled`。
+- `recovery_available` 只能作为终态补充动作提示，不能替代 `run_complete`。
+
+Run 恢复与控制接口（PR37）：
+
+- `POST /api/v1/chat/cancel`
+  - 请求：`session_id`（必填），`run_id`（可选）
+  - 成功响应：`{ "status": "cancelled", "session_id": "...", "run_id": "..." }`
+  - 语义：取消当前会话活跃运行，并主动断开该会话 SSE 连接。
+- `POST /api/v1/chat/retry`
+  - 请求：`session_id`（必填），可选 `mode` 与 `scope`
+  - 语义：重放该会话最后一条 `user` 消息，并复用 `chat/stream` 流式返回。
+  - 错误：无可重放用户消息时返回 `404`。
+
+Run timeline 前端契约补充（PR37）：
+
+- timeline item `type` 扩展为：`phase | tool | step | confirmation | done | error | recovery`。
+- timeline item 可携带 `status` 字段，前端用于执行态展示与恢复动作分流。
 Paper 资源契约补充：
 
 - `GET /api/v1/papers`：返回 `data.items[]` 与 `meta.limit/offset/total`。

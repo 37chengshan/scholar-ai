@@ -108,6 +108,7 @@ cookies.txt
 backend.pid
 frontend.pid
 runtime/
+!apps/web/src/features/chat/runtime/
 artifacts/
 apps/api/artifacts/benchmarks/
 backend-python/docling-models/

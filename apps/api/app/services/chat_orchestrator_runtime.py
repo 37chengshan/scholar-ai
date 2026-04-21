@@ -12,6 +12,7 @@ import redis.asyncio as redis
 from app.config import settings
 from app.core.observability.context import set_run_context
 from app.core.observability.events import build_event
+from app.core.run_manager import RunManager
 from app.models.chat import (
     AgentPhase,
     ConfirmationRequiredEventData,
@@ -26,6 +27,17 @@ from app.models.chat import (
     ToolResultEventData,
 )
 from app.models.confirmation import ConfirmationState
+from app.models.run import (
+    FinalSummary,
+    RecoveryActionData,
+    RunCompleteEventData,
+    RunPhase,
+    RunPhaseChangeEventData,
+    RunStartEventData,
+    StepCompleteEventData,
+    StepStartEventData,
+    StepType,
+)
 from app.utils.logger import bind_run_context, clear_observability_context, logger
 
 
@@ -204,7 +216,7 @@ async def execute_with_streaming_impl(
     scope: Optional[Dict[str, Any]] = None,
     task_type: str = "general",
 ) -> AsyncIterator[str]:
-    """Execute agent and stream SSE events."""
+    """Execute agent and stream SSE events with Run protocol."""
     run_id = str(uuid.uuid4())
     set_run_context(run_id=run_id, session_id=session_id)
 
@@ -213,6 +225,19 @@ async def execute_with_streaming_impl(
         user_id=user_id,
     )
     bind_run_context(run_id=run_id, session_id=session_id, message_id=message_id)
+
+    # Initialize RunManager for structured lifecycle tracking
+    scope_type = (scope or {}).get("type", "general")
+    run_mgr = RunManager(
+        session_id=session_id,
+        message_id=message_id,
+        objective=user_input,
+        scope=scope_type,
+        mode=mode,
+    )
+    # Override run_id to keep consistency
+    run_mgr._run = run_mgr._run.model_copy(update={"run_id": run_id})
+
     logger.info(
         "run_started",
         **build_event(
@@ -223,7 +248,7 @@ async def execute_with_streaming_impl(
             message_id=message_id,
             task_type=task_type,
             mode=mode,
-            scope_type=(scope or {}).get("type"),
+            scope_type=scope_type,
         ),
     )
 
@@ -235,7 +260,9 @@ async def execute_with_streaming_impl(
     content_seq = 0
     accumulated_content = ""
     tool_registry: Dict[str, Dict[str, Any]] = {}
+    current_step_id: Optional[str] = None
 
+    # --- Emit session_start (legacy compat) ---
     event_id = f"{session_id}:{event_counter}"
     event_counter += 1
     yield await orchestrator.stream_sse_event_v2(
@@ -249,7 +276,37 @@ async def execute_with_streaming_impl(
         event_id=event_id,
     )
 
+    # --- Emit run_start (new protocol) ---
+    run_mgr.start()
+    event_id = f"{session_id}:{event_counter}"
+    event_counter += 1
+    yield await orchestrator.stream_sse_event_v2(
+        SSEEventType.RUN_START,
+        RunStartEventData(
+            run_id=run_id,
+            session_id=session_id,
+            message_id=message_id,
+            scope=scope_type,
+            mode=mode,
+            objective=user_input,
+        ).model_dump(),
+        message_id=message_id,
+        event_id=event_id,
+    )
+
+    # --- Initial phase ---
     current_phase: AgentPhase = "analyzing"
+    run_mgr.begin_execution()
+
+    # Create initial analyze step
+    analyze_step = run_mgr.add_step(
+        step_type=StepType.ANALYZE,
+        title="分析问题",
+        description="理解用户问题并规划执行策略",
+    )
+    run_mgr.start_step(analyze_step.step_id)
+    current_step_id = analyze_step.step_id
+
     event_id = f"{session_id}:{event_counter}"
     event_counter += 1
     yield await orchestrator.stream_sse_event_v2(
@@ -257,6 +314,22 @@ async def execute_with_streaming_impl(
         PhaseEventData(
             phase="analyzing",
             label=orchestrator._get_phase_label("analyzing"),
+        ).model_dump(),
+        message_id=message_id,
+        event_id=event_id,
+    )
+
+    # Emit step_start
+    event_id = f"{session_id}:{event_counter}"
+    event_counter += 1
+    yield await orchestrator.stream_sse_event_v2(
+        SSEEventType.STEP_START,
+        StepStartEventData(
+            run_id=run_id,
+            step_id=analyze_step.step_id,
+            step_type="analyze",
+            title="分析问题",
+            order=1,
         ).model_dump(),
         message_id=message_id,
         event_id=event_id,
@@ -293,7 +366,58 @@ async def execute_with_streaming_impl(
             )
 
             if new_phase != current_phase and new_phase not in ("idle", "done", "error", "cancelled"):
+                # Track step transitions via RunManager
+                prev_phase = current_phase
                 current_phase = new_phase
+
+                # Complete previous step and start new one
+                if current_step_id:
+                    run_mgr.complete_step(current_step_id)
+                    event_id = f"{session_id}:{event_counter}"
+                    event_counter += 1
+                    yield await orchestrator.stream_sse_event_v2(
+                        SSEEventType.STEP_COMPLETE,
+                        StepCompleteEventData(
+                            run_id=run_id,
+                            step_id=current_step_id,
+                            status="completed",
+                        ).model_dump(),
+                        message_id=message_id,
+                        event_id=event_id,
+                    )
+
+                # Map phase to step type
+                step_type_map = {
+                    "analyzing": StepType.ANALYZE,
+                    "retrieving": StepType.RETRIEVE,
+                    "reading": StepType.READ,
+                    "tool_calling": StepType.TOOL_CALL,
+                    "synthesizing": StepType.SYNTHESIZE,
+                    "verifying": StepType.VERIFY,
+                }
+                step_type = step_type_map.get(new_phase, StepType.TOOL_CALL)
+                new_step = run_mgr.add_step(
+                    step_type=step_type,
+                    title=orchestrator._get_phase_label(new_phase),
+                )
+                run_mgr.start_step(new_step.step_id)
+                current_step_id = new_step.step_id
+
+                # Emit run_phase_change
+                event_id = f"{session_id}:{event_counter}"
+                event_counter += 1
+                yield await orchestrator.stream_sse_event_v2(
+                    SSEEventType.RUN_PHASE_CHANGE,
+                    RunPhaseChangeEventData(
+                        run_id=run_id,
+                        phase=new_phase,
+                        previous_phase=prev_phase,
+                        label=orchestrator._get_phase_label(new_phase),
+                    ).model_dump(),
+                    message_id=message_id,
+                    event_id=event_id,
+                )
+
                 event_id = f"{session_id}:{event_counter}"
                 event_counter += 1
                 yield await orchestrator.stream_sse_event_v2(
@@ -301,6 +425,22 @@ async def execute_with_streaming_impl(
                     PhaseEventData(
                         phase=new_phase,
                         label=orchestrator._get_phase_label(new_phase),
+                    ).model_dump(),
+                    message_id=message_id,
+                    event_id=event_id,
+                )
+
+                # Emit step_start
+                event_id = f"{session_id}:{event_counter}"
+                event_counter += 1
+                yield await orchestrator.stream_sse_event_v2(
+                    SSEEventType.STEP_START,
+                    StepStartEventData(
+                        run_id=run_id,
+                        step_id=new_step.step_id,
+                        step_type=step_type.value,
+                        title=orchestrator._get_phase_label(new_phase),
+                        order=new_step.order,
                     ).model_dump(),
                     message_id=message_id,
                     event_id=event_id,
@@ -361,6 +501,22 @@ async def execute_with_streaming_impl(
                     "parameters": tool_params,
                 }
 
+                # Track in RunManager
+                step_for_tool = current_step_id or (
+                    run_mgr.add_step(
+                        step_type=StepType.TOOL_CALL,
+                        title=orchestrator._get_tool_label(tool_name),
+                    ).step_id
+                )
+                tool_event = run_mgr.record_tool_call(
+                    step_id=step_for_tool,
+                    tool_name=tool_name,
+                    label=orchestrator._get_tool_label(tool_name),
+                    args=tool_params,
+                )
+                # Map tool_id to event_id for later result matching
+                tool_registry[tool_id]["event_id"] = tool_event.event_id
+
                 event_id = f"{session_id}:{event_counter}"
                 event_counter += 1
                 yield await orchestrator.stream_sse_event_v2(
@@ -385,6 +541,28 @@ async def execute_with_streaming_impl(
                 error_msg = event_data.get("error")
                 data_summary = event_data.get("data")
                 summary = orchestrator._build_tool_result_summary(tool_name, success, data_summary)
+
+                # Record tool result in RunManager
+                tool_event_id = tool_registry.get(tool_id, {}).get("event_id")
+                if tool_event_id:
+                    run_mgr.record_tool_result(
+                        event_id=tool_event_id,
+                        result={"data": data_summary, "error": error_msg},
+                        summary=summary,
+                        success=success,
+                    )
+
+                # Collect evidence from retrieval results
+                if success and data_summary and tool_name in ("rag_search", "search_papers"):
+                    papers = data_summary if isinstance(data_summary, list) else []
+                    for paper in papers[:5]:
+                        if isinstance(paper, dict) and paper.get("paper_id"):
+                            run_mgr.add_evidence(
+                                source_id=paper["paper_id"],
+                                title=paper.get("title", ""),
+                                text_preview=paper.get("snippet", ""),
+                                relevance=paper.get("score"),
+                            )
 
                 event_id = f"{session_id}:{event_counter}"
                 event_counter += 1
@@ -431,6 +609,16 @@ async def execute_with_streaming_impl(
                         parameters=result.get("tool_parameters", {}),
                     )
 
+                    # RunManager: request confirmation
+                    run_mgr.request_confirmation(
+                        step_id=current_step_id or "",
+                        reason=result.get("message", "Agent requires confirmation"),
+                        tool_name=result.get("tool_name", "unknown"),
+                        risk_level="high",
+                        proposed_action=f"Execute {result.get('tool_name', 'unknown')}",
+                        payload=result.get("tool_parameters", {}),
+                    )
+
                     current_phase = "tool_calling"
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
@@ -461,7 +649,25 @@ async def execute_with_streaming_impl(
                         message_id=message_id,
                         event_id=event_id,
                     )
+
+                    # Emit recovery_available
+                    event_id = f"{session_id}:{event_counter}"
+                    event_counter += 1
+                    yield await orchestrator.stream_sse_event_v2(
+                        SSEEventType.RECOVERY_AVAILABLE,
+                        RecoveryActionData(
+                            run_id=run_id,
+                            available_actions=["confirm", "reject", "cancel"],
+                            context={"confirmation_id": confirmation_state.confirmation_id},
+                        ).model_dump(),
+                        message_id=message_id,
+                        event_id=event_id,
+                    )
                     break
+
+                # Complete current step
+                if current_step_id:
+                    run_mgr.complete_step(current_step_id)
 
                 if result.get("success"):
                     final_content = result.get("answer", accumulated_content)
@@ -480,6 +686,16 @@ async def execute_with_streaming_impl(
 
                     await orchestrator._safe_update_assistant_message(message_id, final_content)
 
+                    # Build structured final summary
+                    tokens_used = result.get("tokens_used", 0)
+                    cost = result.get("cost", 0.0)
+                    final_summary = run_mgr.build_final_summary(
+                        answer=final_content,
+                        tokens_used=tokens_used or 0,
+                        cost=cost or 0.0,
+                    )
+                    run_mgr.complete(summary=final_summary)
+
                     current_phase = "done"
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
@@ -493,21 +709,39 @@ async def execute_with_streaming_impl(
                         event_id=event_id,
                     )
 
+                    # Emit run_complete with summary
+                    event_id = f"{session_id}:{event_counter}"
+                    event_counter += 1
+                    yield await orchestrator.stream_sse_event_v2(
+                        SSEEventType.RUN_COMPLETE,
+                        RunCompleteEventData(
+                            run_id=run_id,
+                            status="completed",
+                            final_summary=final_summary.model_dump(mode="json"),
+                            tokens_used=tokens_used or 0,
+                            cost=cost or 0.0,
+                        ).model_dump(),
+                        message_id=message_id,
+                        event_id=event_id,
+                    )
+
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
                     yield await orchestrator.stream_sse_event_v2(
                         SSEEventType.DONE,
                         DoneEventData(
                             finish_reason="stop",
-                            tokens_used=result.get("tokens_used"),
-                            cost=result.get("cost"),
+                            tokens_used=tokens_used,
+                            cost=cost,
                             total_time_ms=result.get("total_time_ms"),
                         ).model_dump(),
                         message_id=message_id,
                         event_id=event_id,
                     )
                 else:
+                    run_mgr.fail(error=result.get("error", "Unknown error"))
                     current_phase = "error"
+
                     event_id = f"{session_id}:{event_counter}"
                     event_counter += 1
                     yield await orchestrator.stream_sse_event_v2(
@@ -527,7 +761,36 @@ async def execute_with_streaming_impl(
                         ErrorEventData(
                             code="execution_failed",
                             message=result.get("error", "Unknown error"),
-                            recoverable=False,
+                            recoverable=True,
+                        ).model_dump(),
+                        message_id=message_id,
+                        event_id=event_id,
+                    )
+
+                    event_id = f"{session_id}:{event_counter}"
+                    event_counter += 1
+                    yield await orchestrator.stream_sse_event_v2(
+                        SSEEventType.RUN_COMPLETE,
+                        RunCompleteEventData(
+                            run_id=run_id,
+                            status="failed",
+                            final_summary=None,
+                            tokens_used=tokens_used or 0,
+                            cost=cost or 0.0,
+                        ).model_dump(),
+                        message_id=message_id,
+                        event_id=event_id,
+                    )
+
+                    # Emit recovery_available for failed runs
+                    event_id = f"{session_id}:{event_counter}"
+                    event_counter += 1
+                    yield await orchestrator.stream_sse_event_v2(
+                        SSEEventType.RECOVERY_AVAILABLE,
+                        RecoveryActionData(
+                            run_id=run_id,
+                            available_actions=["retry", "cancel"],
+                            context={"error": result.get("error", "Unknown error")},
                         ).model_dump(),
                         message_id=message_id,
                         event_id=event_id,
@@ -550,6 +813,7 @@ async def execute_with_streaming_impl(
                 break
 
             elif event_type == "agent_error":
+                run_mgr.fail(error=event_data.get("error", "Unknown error"))
                 current_phase = "error"
                 event_id = f"{session_id}:{event_counter}"
                 event_counter += 1
@@ -571,6 +835,21 @@ async def execute_with_streaming_impl(
                         code="agent_error",
                         message=event_data.get("error", "Unknown error"),
                         recoverable=True,
+                    ).model_dump(),
+                    message_id=message_id,
+                    event_id=event_id,
+                )
+
+                event_id = f"{session_id}:{event_counter}"
+                event_counter += 1
+                yield await orchestrator.stream_sse_event_v2(
+                    SSEEventType.RUN_COMPLETE,
+                    RunCompleteEventData(
+                        run_id=run_id,
+                        status="failed",
+                        final_summary=None,
+                        tokens_used=0,
+                        cost=0.0,
                     ).model_dump(),
                     message_id=message_id,
                     event_id=event_id,

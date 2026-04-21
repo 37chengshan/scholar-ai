@@ -12,7 +12,16 @@ export type CanonicalSSEEventType =
   | 'cancel'
   | 'done'
   | 'heartbeat'
-  | 'error';
+  | 'error'
+  // Run protocol events
+  | 'run_start'
+  | 'run_phase_change'
+  | 'step_start'
+  | 'step_complete'
+  | 'run_complete'
+  | 'recovery_available'
+  | 'evidence'
+  | 'artifact';
 
 export interface RawSSEEventEnvelope {
   message_id: string;
@@ -67,6 +76,15 @@ export function normalizeSSEEventEnvelope(
     case 'done':
     case 'heartbeat':
     case 'error':
+    // Run protocol events
+    case 'run_start':
+    case 'run_phase_change':
+    case 'step_start':
+    case 'step_complete':
+    case 'run_complete':
+    case 'recovery_available':
+    case 'evidence':
+    case 'artifact':
       return {
         message_id: envelope.message_id,
         data: maybeWrappedData,
