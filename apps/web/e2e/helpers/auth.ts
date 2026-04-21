@@ -36,5 +36,11 @@ export async function registerAndLogin(page: Page, request: APIRequestContext): 
   await page.fill('input[type="password"]', user.password);
   await page.click('button[type="submit"]');
 
+  // Wait for the authenticated workspace to fully mount before returning.
+  // Some specs immediately trigger a hard navigation after login, and this
+  // extra guard avoids racing the auth/session bootstrap.
+  await page.waitForURL(/\/chat/, { timeout: 20000 });
+  await page.getByTestId('chat-workspace-root').waitFor({ timeout: 20000 });
+
   return user;
 }
