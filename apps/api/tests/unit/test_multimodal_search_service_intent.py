@@ -8,7 +8,7 @@ Per Plan 03-04: Gap closure for UAT Test 2 - intent field naming bug.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from app.core.multimodal_search_service import MultimodalSearchService
 
 
@@ -17,11 +17,11 @@ class TestIntentFieldVerification:
 
     @pytest.fixture
     def mock_services(self):
-        """Mock Qwen3VL, Milvus, and ReRanker services."""
+        """Mock embedding, Milvus, and reranker services."""
         with (
             patch(
-                "app.core.multimodal_search_service.get_qwen3vl_service"
-            ) as mock_qwen,
+                "app.core.multimodal_search_service.get_embedding_service"
+            ) as mock_embedding,
             patch(
                 "app.core.multimodal_search_service.get_milvus_service"
             ) as mock_milvus,
@@ -29,20 +29,22 @@ class TestIntentFieldVerification:
                 "app.core.multimodal_search_service.get_reranker_service"
             ) as mock_reranker,
         ):
-            mock_qwen_instance = MagicMock()
-            mock_qwen_instance.encode_text.return_value = [0.1] * 2048
-            mock_qwen.return_value = mock_qwen_instance
+            mock_embedding_instance = MagicMock()
+            mock_embedding_instance.is_loaded.return_value = True
+            mock_embedding_instance.encode_text.return_value = [0.1] * 2048
+            mock_embedding.return_value = mock_embedding_instance
 
             mock_milvus_instance = MagicMock()
             mock_milvus_instance.search_contents_v2.return_value = []
             mock_milvus.return_value = mock_milvus_instance
 
             mock_reranker_instance = MagicMock()
+            mock_reranker_instance.is_loaded.return_value = True
             mock_reranker_instance.rerank.return_value = []
             mock_reranker.return_value = mock_reranker_instance
 
             yield {
-                "qwen": mock_qwen_instance,
+                "embedding": mock_embedding_instance,
                 "milvus": mock_milvus_instance,
                 "reranker": mock_reranker_instance,
             }
@@ -146,8 +148,8 @@ class TestIntentFieldStructure:
         """Mock services for structure tests."""
         with (
             patch(
-                "app.core.multimodal_search_service.get_qwen3vl_service"
-            ) as mock_qwen,
+                "app.core.multimodal_search_service.get_embedding_service"
+            ) as mock_embedding,
             patch(
                 "app.core.multimodal_search_service.get_milvus_service"
             ) as mock_milvus,
@@ -155,15 +157,17 @@ class TestIntentFieldStructure:
                 "app.core.multimodal_search_service.get_reranker_service"
             ) as mock_reranker,
         ):
-            mock_qwen_instance = MagicMock()
-            mock_qwen_instance.encode_text.return_value = [0.1] * 2048
-            mock_qwen.return_value = mock_qwen_instance
+            mock_embedding_instance = MagicMock()
+            mock_embedding_instance.is_loaded.return_value = True
+            mock_embedding_instance.encode_text.return_value = [0.1] * 2048
+            mock_embedding.return_value = mock_embedding_instance
 
             mock_milvus_instance = MagicMock()
             mock_milvus_instance.search_contents_v2.return_value = []
             mock_milvus.return_value = mock_milvus_instance
 
             mock_reranker_instance = MagicMock()
+            mock_reranker_instance.is_loaded.return_value = True
             mock_reranker.return_value = mock_reranker_instance
 
             yield {}
@@ -224,3 +228,29 @@ class TestIntentFieldStructure:
             "code",
             "references",
         ]
+
+    def test_compile_to_constraints_maps_year_range(self, mock_services):
+        """Year range metadata should compile into structured retrieval constraints."""
+        service = MultimodalSearchService()
+
+        constraints = service.compile_to_constraints(
+            metadata_filters={"year_range": (2023, 2024)},
+            user_id="user-1",
+            paper_ids=["paper-1"],
+        )
+
+        assert constraints.year_from == 2023
+        assert constraints.year_to == 2024
+        assert constraints.paper_ids == ["paper-1"]
+
+    def test_compile_to_constraints_wraps_scalar_content_type(self, mock_services):
+        """Scalar content_type metadata should be normalized to the list contract."""
+        service = MultimodalSearchService()
+
+        constraints = service.compile_to_constraints(
+            metadata_filters={"content_type": "image"},
+            user_id="user-1",
+            paper_ids=["paper-1"],
+        )
+
+        assert constraints.content_types == ["image"]

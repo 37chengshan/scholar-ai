@@ -5,7 +5,7 @@ Tests verify:
 - Supports multimodal inputs (supports_multimodal=True)
 - Works with text-only inputs
 - Works with multimodal inputs (text + image)
-- Uses local model path ./Qwen3-VL-Reranker-2B
+- Uses configured local model path
 - FP16 quantization support
 - Returns structured results
 """
@@ -66,13 +66,13 @@ class TestQwen3VLRerankerService:
         assert "qwen" in info["name"].lower()
 
     def test_qwen3vl_reranker_local_model_path(self):
-        """Test that Qwen3VLRerankerService uses local model path."""
+        """Test that Qwen3VLRerankerService uses configured local model path."""
         from app.core.reranker.qwen3vl_reranker import Qwen3VLRerankerService
 
         service = Qwen3VLRerankerService()
 
-        # Should use local path ./Qwen3-VL-Reranker-2B
-        assert "Qwen3-VL-Reranker-2B" in service.MODEL_PATH
+        assert isinstance(service.MODEL_PATH, str)
+        assert service.MODEL_PATH
 
     def test_qwen3vl_reranker_quantization_config(self):
         """Test that Qwen3VLRerankerService has quantization config."""
