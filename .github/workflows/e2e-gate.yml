@@ -116,7 +116,7 @@ jobs:
           SQL
           if ! alembic upgrade heads; then
             echo "Alembic bootstrap failed on clean CI DB; falling back to SQLAlchemy metadata bootstrap"
-            python -c "import asyncio; from app.database import ensure_non_production_tables; asyncio.run(ensure_non_production_tables((\"knowledge_base_papers\", \"import_batches\", \"import_jobs\")))"
+            python -c "import asyncio; from app.database import ensure_non_production_tables; asyncio.run(ensure_non_production_tables((\"roles\", \"users\", \"user_roles\", \"refresh_tokens\", \"knowledge_base_papers\", \"import_batches\", \"import_jobs\")))"
           fi
 
       - name: Start backend

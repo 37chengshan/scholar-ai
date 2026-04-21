@@ -29,6 +29,38 @@ def test_resolve_table_creation_order_includes_dependencies_before_requested_tab
     assert ordered_names.index("import_batches") < ordered_names.index("import_jobs")
 
 
+def test_resolve_table_creation_order_includes_auth_dependencies_for_e2e_bootstrap():
+    ordered_names = _resolve_table_creation_order(
+        (
+            "roles",
+            "users",
+            "user_roles",
+            "refresh_tokens",
+            "knowledge_base_papers",
+            "import_batches",
+            "import_jobs",
+        )
+    )
+
+    for required_name in (
+        "roles",
+        "users",
+        "user_roles",
+        "refresh_tokens",
+        "knowledge_bases",
+        "papers",
+        "knowledge_base_papers",
+        "processing_tasks",
+        "import_batches",
+        "import_jobs",
+    ):
+        assert required_name in ordered_names
+
+    assert ordered_names.index("users") < ordered_names.index("user_roles")
+    assert ordered_names.index("roles") < ordered_names.index("user_roles")
+    assert ordered_names.index("users") < ordered_names.index("refresh_tokens")
+
+
 def test_create_tables_in_order_uses_checkfirst_for_each_table(monkeypatch):
     ordered_names = ("users", "knowledge_bases", "papers")
     created_tables: list[tuple[str, bool]] = []

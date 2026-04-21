@@ -12,7 +12,7 @@ Usage:
 """
 
 import os
-from typing import Dict
+from typing import Dict, Literal
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
@@ -170,6 +170,25 @@ class Settings(BaseSettings):
     MILVUS_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"
     MILVUS_POOL_SIZE: int = 10
     MILVUS_TIMEOUT: int = 10
+    MILVUS_INDEX_TYPE: str = "IVF_FLAT"
+    MILVUS_METRIC_TYPE: str = "COSINE"
+    MILVUS_NLIST: int = 1024
+    MILVUS_NPROBE: int = 32
+    MILVUS_BATCH_SIZE: int = 50
+    MILVUS_SEARCH_PROFILE: str = "default"
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""
+    QDRANT_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"
+    EMBEDDING_PROVIDER: str = "qwen3vl"
+    EMBEDDING_VARIANT: str = "2b"
+    RERANKER_PROVIDER: str = "qwen3vl"
+    RERANKER_VARIANT: str = "2b"
+    VECTOR_STORE_BACKEND: Literal["milvus", "qdrant"] = "milvus"
+    RETRIEVAL_BENCH_PROFILE: str = "dev"
+    RETRIEVAL_TRACE_ENABLED: bool = False
+    RETRIEVAL_TRACE_INCLUDE_RESULTS: bool = False
+    RETRIEVAL_VECTOR_WEIGHT: float = 0.75
+    RETRIEVAL_SPARSE_WEIGHT: float = 0.25
 
     # =========================================================================
     # JWT Authentication Configuration

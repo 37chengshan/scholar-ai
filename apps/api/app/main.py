@@ -172,7 +172,15 @@ async def lifespan(app: FastAPI):
 
     try:
         await ensure_non_production_tables(
-            ("knowledge_base_papers", "import_batches", "import_jobs")
+            (
+                "roles",
+                "users",
+                "user_roles",
+                "refresh_tokens",
+                "knowledge_base_papers",
+                "import_batches",
+                "import_jobs",
+            )
         )
     except Exception as e:
         logger.error(f"❌ Non-production schema bootstrap failed: {e}")
