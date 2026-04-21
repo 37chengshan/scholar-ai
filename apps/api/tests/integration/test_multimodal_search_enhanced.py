@@ -10,7 +10,7 @@ Per Plan 04-02 Task 3: 5 integration tests for enhanced service.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from app.core.multimodal_search_service import (
     MultimodalSearchService,
@@ -24,18 +24,19 @@ class TestEnhancedMultimodalSearchService:
     @pytest.fixture
     def mock_services(self):
         """Mock dependent services."""
-        with patch("app.core.multimodal_search_service.get_bge_m3_service") as mock_bge, \
+        with patch("app.core.multimodal_search_service.get_embedding_service") as mock_embedding, \
              patch("app.core.multimodal_search_service.get_milvus_service") as mock_milvus, \
              patch("app.core.multimodal_search_service.get_reranker_service") as mock_reranker:
 
-            # Setup BGE mock
-            bge_instance = MagicMock()
-            bge_instance.encode_text.return_value = [0.1] * 1024
-            mock_bge.return_value = bge_instance
+            # Setup embedding mock
+            embedding_instance = MagicMock()
+            embedding_instance.is_loaded.return_value = True
+            embedding_instance.encode_text.return_value = [0.1] * 2048
+            mock_embedding.return_value = embedding_instance
 
             # Setup Milvus mock
             milvus_instance = MagicMock()
-            milvus_instance.search_contents.return_value = [
+            milvus_instance.search_contents_v2.return_value = [
                 {
                     "id": f"test-{i}",
                     "paper_id": "paper-1",
@@ -50,15 +51,16 @@ class TestEnhancedMultimodalSearchService:
 
             # Setup ReRanker mock
             reranker_instance = MagicMock()
+            reranker_instance.is_loaded.return_value = True
             reranker_instance.rerank.return_value = [
-                ("content 0", 0.95),
-                ("content 1", 0.85),
-                ("content 2", 0.75),
+                {"document": "content 0", "score": 0.95, "rank": 0},
+                {"document": "content 1", "score": 0.85, "rank": 1},
+                {"document": "content 2", "score": 0.75, "rank": 2},
             ]
             mock_reranker.return_value = reranker_instance
 
             yield {
-                "bge": bge_instance,
+                "embedding": embedding_instance,
                 "milvus": milvus_instance,
                 "reranker": reranker_instance,
             }
@@ -79,7 +81,7 @@ class TestEnhancedMultimodalSearchService:
         )
 
         # Should detect "compare" intent from intent_rules
-        assert result["intent"] == "compare"
+        assert result["query_intent"] == "compare"
 
         # Should log detected intent (verify structure)
         assert "intent" in result
@@ -94,7 +96,7 @@ class TestEnhancedMultimodalSearchService:
         service = MultimodalSearchService()
 
         # Setup Milvus to return results from multiple papers
-        mock_services["milvus"].search_contents.return_value = [
+        mock_services["milvus"].search_contents_v2.return_value = [
             {
                 "id": "test-1",
                 "paper_id": "paper-1",
@@ -128,16 +130,11 @@ class TestEnhancedMultimodalSearchService:
         )
 
         # Should detect compare intent
-        assert result["intent"] == "compare"
-
-        # Results should be grouped by paper_id for compare intent
-        # Check if formatting is applied
-        if "grouped_by_paper" in result or isinstance(result["results"][0], dict) and "paper_id" in result["results"][0]:
-            # If grouped format, verify structure
-            assert True  # Formatting applied
-        else:
-            # If not grouped, at least verify intent detection works
-            assert isinstance(result["results"], list)
+        assert result["query_intent"] == "compare"
+        assert "grouped_by_paper" in result
+        assert [group["paper_id"] for group in result["grouped_by_paper"]] == ["paper-1", "paper-2"]
+        assert len(result["grouped_by_paper"][0]["results"]) == 2
+        assert len(result["grouped_by_paper"][1]["results"]) == 1
 
     @pytest.mark.asyncio
     async def test_summary_intent_returns_key_points(self, mock_services):
@@ -148,7 +145,7 @@ class TestEnhancedMultimodalSearchService:
         service = MultimodalSearchService()
 
         # Setup Milvus to return more results for summary
-        mock_services["milvus"].search_contents.return_value = [
+        mock_services["milvus"].search_contents_v2.return_value = [
             {
                 "id": f"test-{i}",
                 "paper_id": "paper-1",
@@ -167,17 +164,15 @@ class TestEnhancedMultimodalSearchService:
         )
 
         # Should detect summary intent
-        assert result["intent"] == "summary"
-
-        # Results should have key_points structure for summary intent
-        # Check if formatting is applied
-        if "key_points" in result:
-            # If formatted, verify key points structure
-            assert isinstance(result["key_points"], list)
-            assert len(result["key_points"]) <= 3  # Top 3 results
-        else:
-            # If not formatted, at least verify intent detection works
-            assert isinstance(result["results"], list)
+        assert result["query_intent"] == "summary"
+        assert "key_points" in result
+        assert "total_chunks" in result
+        assert result["total_chunks"] == 5
+        assert [item["text"] for item in result["key_points"]] == [
+            "Key point 0",
+            "Key point 1",
+            "Key point 2",
+        ]
 
     @pytest.mark.asyncio
     async def test_query_expansion_improves_search(self, mock_services):
@@ -200,7 +195,7 @@ class TestEnhancedMultimodalSearchService:
 
         # BGE service should receive expanded query
         # Verify encode_text was called with expanded query
-        mock_services["bge"].encode_text.assert_called()
+        mock_services["embedding"].encode_text.assert_called()
 
     @pytest.mark.asyncio
     async def test_metadata_filtering_filters_results(self, mock_services):
@@ -220,9 +215,11 @@ class TestEnhancedMultimodalSearchService:
         # Should extract metadata filters
         assert "metadata_filters" in result
 
-        # Should have year_range filter
-        if result["metadata_filters"]:
-            assert "year_range" in result["metadata_filters"] or result["metadata_filters"] == {}
+        # Should have year_range filter and compile it into downstream constraints.
+        assert result["metadata_filters"].get("year_range")
+        call_kwargs = mock_services["milvus"].search_contents_v2.call_args[1]
+        assert call_kwargs["constraints"].year_from is not None
+        assert call_kwargs["constraints"].year_to is not None
 
     @pytest.mark.asyncio
     async def test_intent_detection_before_search(self, mock_services):
@@ -234,7 +231,7 @@ class TestEnhancedMultimodalSearchService:
 
         # Track call order
         call_order = []
-        mock_services["bge"].encode_text.side_effect = lambda q: call_order.append("encode") or [0.1] * 1024
+        mock_services["embedding"].encode_text.side_effect = lambda q: call_order.append("encode") or [0.1] * 2048
 
         result = await service.search(
             query="YOLOv3和YOLOv4的区别",
@@ -243,8 +240,8 @@ class TestEnhancedMultimodalSearchService:
         )
 
         # Intent should be detected (from intent_rules)
-        assert result["intent"] == "compare"
+        assert result["query_intent"] == "compare"
 
         # Verify structure has intent field
         assert "intent" in result
-        assert result["intent"] in ["question", "compare", "summary", "evolution"]
+        assert result["query_intent"] in ["question", "compare", "summary", "evolution"]

@@ -8,7 +8,7 @@ Tests:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from app.core.multimodal_search_service import (
     MultimodalSearchService,
@@ -22,18 +22,19 @@ class TestMultimodalSearchService:
     @pytest.fixture
     def mock_services(self):
         """Mock dependent services."""
-        with patch("app.core.multimodal_search_service.get_bge_m3_service") as mock_bge, \
+        with patch("app.core.multimodal_search_service.get_embedding_service") as mock_embedding, \
              patch("app.core.multimodal_search_service.get_milvus_service") as mock_milvus, \
              patch("app.core.multimodal_search_service.get_reranker_service") as mock_reranker:
 
-            # Setup BGE mock
-            bge_instance = MagicMock()
-            bge_instance.encode_text.return_value = [0.1] * 1024
-            mock_bge.return_value = bge_instance
+            # Setup embedding mock
+            embedding_instance = MagicMock()
+            embedding_instance.is_loaded.return_value = True
+            embedding_instance.encode_text.return_value = [0.1] * 2048
+            mock_embedding.return_value = embedding_instance
 
             # Setup Milvus mock
             milvus_instance = MagicMock()
-            milvus_instance.search_contents.return_value = [
+            milvus_instance.search_contents_v2.return_value = [
                 {
                     "id": f"test-{i}",
                     "paper_id": "paper-1",
@@ -48,15 +49,16 @@ class TestMultimodalSearchService:
 
             # Setup ReRanker mock
             reranker_instance = MagicMock()
+            reranker_instance.is_loaded.return_value = True
             reranker_instance.rerank.return_value = [
-                ("content 0", 0.95),
-                ("content 1", 0.85),
-                ("content 2", 0.75),
+                {"document": "content 0", "score": 0.95, "rank": 0},
+                {"document": "content 1", "score": 0.85, "rank": 1},
+                {"document": "content 2", "score": 0.75, "rank": 2},
             ]
             mock_reranker.return_value = reranker_instance
 
             yield {
-                "bge": bge_instance,
+                "embedding": embedding_instance,
                 "milvus": milvus_instance,
                 "reranker": reranker_instance,
             }
@@ -128,7 +130,7 @@ class TestMultimodalSearchService:
         service = MultimodalSearchService()
 
         # Setup Milvus to return more than 10 results to trigger reranking
-        mock_services["milvus"].search_contents.return_value = [
+        mock_services["milvus"].search_contents_v2.return_value = [
             {
                 "id": f"test-{i}",
                 "paper_id": "paper-1",
@@ -152,20 +154,21 @@ class TestMultimodalSearchService:
         # Verify reranker was called
         mock_services["reranker"].rerank.assert_called()
 
-        # Verify results have reranker_score (only if reranking actually happened)
-        if len(result_with_reranker["results"]) > 10:
-            assert all(
-                "reranker_score" in r
-                for r in result_with_reranker["results"]
-            )
+        rerank_call_args = mock_services["reranker"].rerank.call_args[0]
+        assert rerank_call_args[0] == "test query"
+        assert rerank_call_args[1][0].startswith("title: ")
+        assert "text: content 0" in rerank_call_args[1][0]
+
+        # Verify reranker ordering affects the returned result order.
+        assert result_with_reranker["results"][0]["text"] == "content 0"
 
     @pytest.mark.asyncio
     async def test_paper_filtering(self, mock_services):
-        """Test that results are filtered by paper_ids."""
+        """Test that paper_ids are pushed down and returned results stay scoped."""
         service = MultimodalSearchService()
 
         # Setup Milvus to return results from multiple papers
-        mock_services["milvus"].search_contents.return_value = [
+        all_hits = [
             {
                 "id": "test-1",
                 "paper_id": "paper-1",
@@ -184,6 +187,14 @@ class TestMultimodalSearchService:
             },
         ]
 
+        def search_contents_v2_side_effect(*args, **kwargs):
+            constraints = kwargs["constraints"]
+            return [
+                hit for hit in all_hits if hit["paper_id"] in constraints.paper_ids
+            ]
+
+        mock_services["milvus"].search_contents_v2.side_effect = search_contents_v2_side_effect
+
         # Search only for paper-1
         result = await service.search(
             query="test query",
@@ -193,9 +204,10 @@ class TestMultimodalSearchService:
             use_reranker=False,
         )
 
-        # Verify only paper-1 results returned
-        for r in result["results"]:
-            assert r["paper_id"] == "paper-1"
+        # Verify paper_ids were pushed down to Milvus constraints.
+        call_kwargs = mock_services["milvus"].search_contents_v2.call_args[1]
+        assert call_kwargs["constraints"].paper_ids == ["paper-1"]
+        assert all(item["paper_id"] == "paper-1" for item in result["results"])
 
     @pytest.mark.asyncio
     async def test_content_type_filtering(self, mock_services):
@@ -213,8 +225,8 @@ class TestMultimodalSearchService:
         )
 
         # Verify Milvus called with image content_type
-        mock_services["milvus"].search_contents.assert_called()
-        call_kwargs = mock_services["milvus"].search_contents.call_args[1]
+        mock_services["milvus"].search_contents_v2.assert_called()
+        call_kwargs = mock_services["milvus"].search_contents_v2.call_args[1]
         assert call_kwargs["content_type"] == "image"
 
 
@@ -223,7 +235,7 @@ class TestMultimodalSearchServiceSingleton:
 
     def test_get_multimodal_search_service_singleton(self):
         """Test that get_multimodal_search_service returns singleton."""
-        with patch("app.core.multimodal_search_service.get_bge_m3_service"), \
+        with patch("app.core.multimodal_search_service.get_embedding_service"), \
              patch("app.core.multimodal_search_service.get_milvus_service"), \
              patch("app.core.multimodal_search_service.get_reranker_service"):
 

@@ -1,4 +1,4 @@
-"""Multimodal search service orchestrating Milvus + ReRanker.
+"""Multimodal search service orchestrating Milvus + configured providers.
 
 Provides:
 - MultimodalSearchService: Unified search across text, image, table modalities
@@ -12,10 +12,10 @@ Search flow:
 2. Detect modality intent (image/table/default) via modality_fusion
 3. Expand query with synonyms
 4. Extract metadata filters
-5. Encode expanded query with BGE-M3
+5. Encode expanded query with the configured embedding provider
 6. Search Milvus across modalities (text, image, table)
 7. Apply weighted RRF fusion
-8. Optionally rerank with BGE-Reranker-large
+8. Optionally rerank with the configured reranker provider
 
 Requirements:
 - RAG-03: Image search endpoint
@@ -26,9 +26,9 @@ Requirements:
 
 from typing import Any, Dict, List, Optional
 
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.embedding.factory import get_embedding_service
 from app.core.milvus_service import get_milvus_service
-from app.core.reranker_service import get_reranker_service
+from app.core.reranker.factory import get_reranker_service
 from app.core.modality_fusion import detect_intent as detect_modality_intent, weighted_rrf_fusion, WEIGHT_PRESETS
 from app.core.intent_rules import detect_intent as detect_query_intent
 from app.core.synonyms import expand_query
@@ -46,17 +46,28 @@ class MultimodalSearchService:
     intent-based weighting and optional reranking.
 
     Attributes:
-        qwen3vl_service: Qwen3VL multimodal embedding service (2048-dim)
+        embedding_service: Configured embedding service
         milvus: Milvus vector search service
-        reranker: BGE-Reranker-large service
+        reranker: Configured reranker service
     """
 
     def __init__(self):
         """Initialize MultimodalSearchService."""
-        self.qwen3vl_service = get_qwen3vl_service()
+        self.embedding_service = get_embedding_service()
         self.milvus = get_milvus_service()
         self.reranker = get_reranker_service()
         self.sparse_recall = get_sparse_recall_service()
+
+    @staticmethod
+    def _ensure_service_loaded(service: Any) -> None:
+        """Lazily load model-backed services when startup mode is lazy."""
+        is_loaded = getattr(service, "is_loaded", None)
+        if callable(is_loaded) and is_loaded():
+            return
+
+        load_model = getattr(service, "load_model", None)
+        if callable(load_model):
+            load_model()
 
     @staticmethod
     def _raw_score(hit: Dict[str, Any]) -> float:
@@ -164,13 +175,23 @@ class MultimodalSearchService:
         Returns:
             SearchConstraints for retrieval
         """
+        content_types = metadata_filters.get("content_types")
+        if content_types is None:
+            single_content_type = metadata_filters.get("content_type")
+            if isinstance(single_content_type, str) and single_content_type:
+                content_types = [single_content_type]
+            else:
+                content_types = []
+
         return SearchConstraints(
             user_id=user_id,
             paper_ids=paper_ids,
-            year_from=metadata_filters.get("year_from"),
-            year_to=metadata_filters.get("year_to"),
+            year_from=(metadata_filters.get("year_range") or (None, None))[0]
+            or metadata_filters.get("year_from"),
+            year_to=(metadata_filters.get("year_range") or (None, None))[1]
+            or metadata_filters.get("year_to"),
             section=metadata_filters.get("section"),
-            content_types=metadata_filters.get("content_types", []),
+            content_types=content_types,
             min_quality_score=metadata_filters.get("min_quality_score"),
         )
 
@@ -273,7 +294,8 @@ class MultimodalSearchService:
         )
 
         # Step 5: Encode planned queries for dense retrieval
-        query_embeddings = [self.qwen3vl_service.encode_text(q) for q in expanded_queries]
+        self._ensure_service_loaded(self.embedding_service)
+        query_embeddings = [self.embedding_service.encode_text(q) for q in expanded_queries]
 
         # Step 6: Search Milvus across modalities with constraints pushdown
         content_types = content_types or ["text", "image", "table"]
@@ -323,6 +345,7 @@ class MultimodalSearchService:
         # Step 6: Structured ReRanker (optional)
         if use_reranker and len(fused) > 10:
             try:
+                self._ensure_service_loaded(self.reranker)
                 # Build structured payload for reranking.
                 documents = [self._build_structured_reranker_document(r) for r in fused[:20]]
                 reranked = self.reranker.rerank(query, documents, top_k=top_k)
@@ -380,24 +403,45 @@ class MultimodalSearchService:
     def _apply_reranking(
         self,
         fused: List[Dict[str, Any]],
-        reranked: List[tuple],
+        reranked: List[Any],
     ) -> List[Dict[str, Any]]:
         """Reorder fused results by reranker scores.
 
         Args:
             fused: List of fused results with RRF scores
-            reranked: List of (document, score) tuples from reranker
+            reranked: List of structured reranker results or legacy tuples
 
         Returns:
             Reordered fused results with reranker scores
         """
-        # Create document -> score mapping
-        content_to_score = {doc: score for doc, score in reranked}
+        # Support both the legacy tuple format and the newer structured dict format.
+        content_to_score: Dict[str, float] = {}
+        for item in reranked:
+            if isinstance(item, dict):
+                document = item.get("document")
+                score = item.get("score", 0.0)
+            else:
+                try:
+                    document, score = item
+                except (TypeError, ValueError):
+                    continue
+
+            if not isinstance(document, str):
+                continue
+
+            try:
+                content_to_score[document] = float(score)
+            except (TypeError, ValueError):
+                content_to_score[document] = 0.0
 
         # Apply reranker scores to fused results
         for result in fused:
             content = self._build_structured_reranker_document(result)
-            result["reranker_score"] = content_to_score.get(content, 0.0)
+            plain_text = self._extract_hit_text(result)
+            result["reranker_score"] = content_to_score.get(
+                content,
+                content_to_score.get(plain_text, 0.0),
+            )
 
         # Sort by reranker score
         fused.sort(key=lambda x: x.get("reranker_score", 0.0), reverse=True)

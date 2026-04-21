@@ -24,13 +24,16 @@ class TestRerankerServiceFactory:
         # Clear cache
         RerankerServiceFactory._instances = {}
 
-        # Create with default config
-        service = RerankerServiceFactory.create()
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_MODEL = "bge-reranker"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
+
+            # Create with explicit default config
+            service = RerankerServiceFactory.create()
 
         # Should be BGERerankerService
         assert isinstance(service, BGERerankerService)
 
-    @patch.dict(os.environ, {"RERANKER_MODEL": "bge-reranker"})
     def test_factory_creates_bge_reranker_when_configured(self):
         """Test that Factory creates BGERerankerService when RERANKER_MODEL=bge-reranker."""
         from app.core.reranker.factory import RerankerServiceFactory
@@ -39,16 +42,15 @@ class TestRerankerServiceFactory:
         # Clear cache
         RerankerServiceFactory._instances = {}
 
-        # Need to reload settings to pick up env var
-        from app.config import get_settings
-        get_settings.cache_clear()
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_MODEL = "bge-reranker"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
 
-        service = RerankerServiceFactory.create()
+            service = RerankerServiceFactory.create()
 
         # Should be BGERerankerService
         assert isinstance(service, BGERerankerService)
 
-    @patch.dict(os.environ, {"RERANKER_MODEL": "qwen3-vl-reranker"}, clear=False)
     def test_factory_creates_qwen3vl_reranker_when_configured(self):
         """Test that Factory creates Qwen3VLRerankerService when RERANKER_MODEL=qwen3-vl-reranker."""
         from app.core.reranker.factory import RerankerServiceFactory
@@ -93,14 +95,17 @@ class TestRerankerServiceFactory:
         # Clear cache
         RerankerServiceFactory._instances = {}
 
-        # Create service twice
-        service1 = RerankerServiceFactory.create()
-        service2 = RerankerServiceFactory.create()
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_MODEL = "bge-reranker"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
+
+            # Create service twice
+            service1 = RerankerServiceFactory.create()
+            service2 = RerankerServiceFactory.create()
 
         # Should be same instance
         assert service1 is service2
 
-    @patch.dict(os.environ, {"RERANKER_MODEL": "bge-reranker", "RERANKER_QUANTIZATION": "fp16"})
     def test_factory_caches_per_configuration(self):
         """Test that Factory caches instances per configuration."""
         from app.core.reranker.factory import RerankerServiceFactory
@@ -108,14 +113,18 @@ class TestRerankerServiceFactory:
         # Clear cache
         RerankerServiceFactory._instances = {}
 
-        # Create service
-        service1 = RerankerServiceFactory.create()
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_MODEL = "bge-reranker"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
 
-        # Clear cache
-        RerankerServiceFactory._instances = {}
+            # Create service
+            service1 = RerankerServiceFactory.create()
 
-        # Create service again
-        service2 = RerankerServiceFactory.create()
+            # Clear cache
+            RerankerServiceFactory._instances = {}
+
+            # Create service again
+            service2 = RerankerServiceFactory.create()
 
         # Should be different instances (different cache keys)
         assert service1 is not service2
@@ -129,8 +138,12 @@ class TestRerankerServiceFactory:
         from app.core.reranker.factory import RerankerServiceFactory
         RerankerServiceFactory._instances = {}
 
-        # Get service
-        service = get_reranker_service()
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_MODEL = "bge-reranker"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
+
+            # Get service
+            service = get_reranker_service()
 
         # Should implement BaseRerankerService
         assert isinstance(service, BaseRerankerService)
@@ -143,9 +156,13 @@ class TestRerankerServiceFactory:
         from app.core.reranker.factory import RerankerServiceFactory
         RerankerServiceFactory._instances = {}
 
-        # Get service twice
-        service1 = get_reranker_service()
-        service2 = get_reranker_service()
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_MODEL = "bge-reranker"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
+
+            # Get service twice
+            service1 = get_reranker_service()
+            service2 = get_reranker_service()
 
         # Should be same instance
         assert service1 is service2
@@ -154,7 +171,6 @@ class TestRerankerServiceFactory:
 class TestRerankerServiceFactoryConfiguration:
     """Tests for configuration-driven model selection."""
 
-    @patch.dict(os.environ, {"RERANKER_MODEL": "bge-reranker"})
     def test_factory_uses_reranker_model_config(self):
         """Test that Factory uses RERANKER_MODEL configuration."""
         from app.core.reranker.factory import RerankerServiceFactory
@@ -163,16 +179,15 @@ class TestRerankerServiceFactoryConfiguration:
         # Clear cache
         RerankerServiceFactory._instances = {}
 
-        # Reload settings
-        from app.config import get_settings
-        get_settings.cache_clear()
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_MODEL = "bge-reranker"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
 
-        service = RerankerServiceFactory.create()
+            service = RerankerServiceFactory.create()
 
         # Should create BGERerankerService based on config
         assert isinstance(service, BGERerankerService)
 
-    @patch.dict(os.environ, {"RERANKER_MODEL": "qwen3-vl-reranker", "RERANKER_QUANTIZATION": "int8"}, clear=False)
     def test_factory_passes_quantization_to_qwen3vl(self):
         """Test that Factory passes quantization config to Qwen3VLRerankerService."""
         from app.core.reranker.factory import RerankerServiceFactory
