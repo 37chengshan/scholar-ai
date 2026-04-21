@@ -1,40 +1,34 @@
 import { useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router';
-import { mapArtifactToUiRenderable, mapImportJobToWorkflowCard, mapRunToWorkflowViewModel } from '@/features/workflow/adapters/workflowAdapters';
+import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore';
+import {
+  mapAgentRunArtifacts,
+  mapAgentRunTimeline,
+  mapAgentRunToWorkflowViewModel,
+  mapArtifactToUiRenderable,
+  mapChatScopeToWorkflowScope,
+  mapImportJobToWorkflowCard,
+  mapPendingActionsToWorkflowActions,
+  mapRunToWorkflowViewModel,
+} from '@/features/workflow/adapters/workflowAdapters';
 import { resolveNextActions, resolveRecoverableActions } from '@/features/workflow/resolvers/workflowResolvers';
 import { workflowActions } from '@/features/workflow/state/workflowActions';
 import type { WorkflowArtifact, WorkflowHydratedPayload, WorkflowRun, WorkflowScope } from '@/features/workflow/types';
 
 const SEARCH_IMPORT_STORAGE_KEY = 'search_import_active_job';
 
-function deriveScope(pathname: string, search: string): WorkflowScope {
+function deriveScope(pathname: string, search: string, chatScope: ReturnType<typeof useChatWorkspaceStore.getState>['scope']): WorkflowScope {
   const params = new URLSearchParams(search);
 
   if (pathname.startsWith('/chat')) {
-    const paperId = params.get('paperId');
-    const kbId = params.get('kbId');
-    if (paperId) {
-      return {
-        type: 'paper',
-        id: paperId,
-        title: 'Paper Scope',
-        subtitle: `Focused QA for paper ${paperId}`,
-      };
+    if (chatScope.type || chatScope.id) {
+      return mapChatScopeToWorkflowScope(chatScope);
     }
-    if (kbId) {
-      return {
-        type: 'knowledge-base',
-        id: kbId,
-        title: 'Library Scope',
-        subtitle: `Full KB reasoning for ${kbId}`,
-      };
-    }
-    return {
-      type: 'global',
-      id: null,
-      title: 'Global Workspace',
-      subtitle: 'Cross-library research workflow',
-    };
+
+    return mapChatScopeToWorkflowScope({
+      type: params.get('paperId') ? 'single_paper' : params.get('kbId') ? 'full_kb' : 'general',
+      id: params.get('paperId') || params.get('kbId'),
+    });
   }
 
   if (pathname === '/knowledge-bases' || pathname.startsWith('/knowledge-bases/')) {
@@ -74,7 +68,7 @@ function deriveScope(pathname: string, search: string): WorkflowScope {
   };
 }
 
-function deriveRun(pathname: string, state: unknown): WorkflowRun | null {
+function deriveRun(pathname: string, state: unknown, activeRun: ReturnType<typeof useChatWorkspaceStore.getState>['activeRun']): WorkflowRun | null {
   const locationState = (state || {}) as { importJobId?: string };
   if (locationState.importJobId) {
     return mapRunToWorkflowViewModel({
@@ -108,19 +102,17 @@ function deriveRun(pathname: string, state: unknown): WorkflowRun | null {
   }
 
   if (pathname.startsWith('/chat')) {
-    return mapRunToWorkflowViewModel({
-      id: 'chat-active-run',
-      source: 'chat',
-      status: 'running',
-      stage: 'reasoning',
-      nextAction: 'Review evidence and confirm output',
-    });
+    return mapAgentRunToWorkflowViewModel(activeRun);
   }
 
   return null;
 }
 
-function buildArtifacts(pathname: string, scope: WorkflowScope): WorkflowHydratedPayload['artifacts'] {
+function buildArtifacts(
+  pathname: string,
+  scope: WorkflowScope,
+  activeRun: ReturnType<typeof useChatWorkspaceStore.getState>['activeRun']
+): WorkflowHydratedPayload['artifacts'] {
   const artifacts: WorkflowArtifact[] = [];
 
   if (pathname.startsWith('/read/')) {
@@ -152,6 +144,10 @@ function buildArtifacts(pathname: string, scope: WorkflowScope): WorkflowHydrate
   }
 
   if (pathname.startsWith('/chat')) {
+    if (activeRun.runId) {
+      return mapAgentRunArtifacts(activeRun);
+    }
+
     artifacts.push(
       mapArtifactToUiRenderable({
         id: 'artifact-answer',
@@ -173,13 +169,29 @@ function buildArtifacts(pathname: string, scope: WorkflowScope): WorkflowHydrate
 
 export function useWorkflowHydration(): void {
   const location = useLocation();
+  const chatScope = useChatWorkspaceStore((state) => state.scope);
+  const activeRun = useChatWorkspaceStore((state) => state.activeRun);
 
   const payload = useMemo<WorkflowHydratedPayload>(() => {
-    const scope = deriveScope(location.pathname, location.search);
-    const currentRun = deriveRun(location.pathname, location.state);
-    const pendingActions = resolveNextActions(currentRun);
-    const recoverableTasks = resolveRecoverableActions(currentRun);
-    const artifacts = buildArtifacts(location.pathname, scope);
+    const scope = deriveScope(location.pathname, location.search, chatScope);
+    const currentRun = deriveRun(location.pathname, location.state, activeRun);
+    const pendingActions = location.pathname.startsWith('/chat')
+      ? mapPendingActionsToWorkflowActions(activeRun.pendingActions)
+      : resolveNextActions(currentRun);
+    const recoverableTasks = location.pathname.startsWith('/chat') && activeRun.recoverable
+      ? mapPendingActionsToWorkflowActions(activeRun.pendingActions.filter((action) => action.type === 'retry' || action.type === 'cancel' || action.type === 'resume'))
+      : resolveRecoverableActions(currentRun);
+    const artifacts = buildArtifacts(location.pathname, scope, activeRun);
+    const timeline = location.pathname.startsWith('/chat') && activeRun.runId
+      ? mapAgentRunTimeline(activeRun)
+      : [
+          {
+            id: `timeline-${location.pathname}`,
+            title: 'Scope Updated',
+            description: `Entered ${location.pathname}`,
+            at: new Date().toISOString(),
+          },
+        ];
 
     return {
       scope,
@@ -187,16 +199,9 @@ export function useWorkflowHydration(): void {
       pendingActions,
       recoverableTasks,
       artifacts,
-      timeline: [
-        {
-          id: `timeline-${location.pathname}`,
-          title: 'Scope Updated',
-          description: `Entered ${location.pathname}`,
-          at: new Date().toISOString(),
-        },
-      ],
+      timeline,
     };
-  }, [location.pathname, location.search, location.state]);
+  }, [activeRun, chatScope, location.pathname, location.search, location.state]);
 
   useEffect(() => {
     workflowActions.hydrate(payload);

@@ -108,6 +108,43 @@ describe('runReducer', () => {
     expect(state.pendingActions).toHaveLength(2);
   });
 
+  it('adds confirmation actions when confirmation is required', () => {
+    const state = runReducer(createInitialRun(), {
+      type: 'CONFIRMATION_REQUEST',
+      confirmation: {
+        confirmationId: 'confirm-1',
+        runId: 'r1',
+        stepId: 'step-1',
+        reason: 'Need approval',
+        riskLevel: 'high',
+        proposedAction: 'Delete temp files',
+        toolName: 'cleanup',
+        payload: {},
+      },
+    });
+
+    expect(state.phase).toBe('waiting_for_user');
+    expect(state.pendingActions.map((action) => action.type)).toEqual(['confirm', 'reject']);
+  });
+
+  it('clears recovery state when run completes', () => {
+    let state = runReducer(createInitialRun(), {
+      type: 'RECOVERY_AVAILABLE',
+      actions: ['retry', 'cancel'],
+      context: { error: 'test' },
+    });
+
+    state = runReducer(state, {
+      type: 'RUN_COMPLETE',
+      status: 'failed',
+      tokensUsed: 5,
+      cost: 0.001,
+    });
+
+    expect(state.recoverable).toBe(false);
+    expect(state.pendingActions).toEqual([]);
+  });
+
   it('handles EVIDENCE_ADD', () => {
     const state = runReducer(createInitialRun(), {
       type: 'EVIDENCE_ADD',
@@ -166,6 +203,21 @@ describe('mapSSEToRunAction', () => {
     });
     expect(action).toBeTruthy();
     expect(action!.type).toBe('EVIDENCE_ADD');
+  });
+
+  it('maps confirmation_required event', () => {
+    const action = mapSSEToRunAction('confirmation_required', {
+      confirmation_id: 'confirm-1',
+      run_id: 'r1',
+      step_id: 'step-1',
+      reason: 'Approve tool call',
+      tool_name: 'browser',
+      parameters: { url: 'https://example.com' },
+      risk_level: 'medium',
+    });
+
+    expect(action).toBeTruthy();
+    expect(action!.type).toBe('CONFIRMATION_REQUEST');
   });
 
   it('returns null for unknown events', () => {

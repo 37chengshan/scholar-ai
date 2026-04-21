@@ -26,8 +26,5 @@ export * from './usersApi';
 // Knowledge Base API
 export * from './kbApi';
 
-// Dashboard API
-export * from './dashboardApi';
-
 // System diagnostics API
 export * from './systemApi';

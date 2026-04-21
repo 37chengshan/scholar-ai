@@ -218,8 +218,13 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
       return {
         ...state,
         confirmation: action.confirmation,
+        pendingActions: [
+          { id: `pa-confirm-${Date.now()}`, type: 'confirm', tool: action.confirmation.toolName },
+          { id: `pa-reject-${Date.now()}`, type: 'reject', tool: action.confirmation.toolName },
+        ],
         status: 'waiting_confirmation',
         phase: 'waiting_for_user',
+        currentPhase: 'waiting_for_user',
         timeline: [...state.timeline, item],
       };
     }
@@ -239,6 +244,7 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
       return {
         ...state,
         recoverable: true,
+        confirmation: null,
         pendingActions,
         timeline: [...state.timeline, item],
       };
@@ -260,6 +266,9 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
         phase,
         currentPhase: phase,
         endedAt: now,
+        recoverable: false,
+        confirmation: null,
+        pendingActions: [],
         outcome: {
           ...state.outcome,
           finalSummary: action.finalSummary,
@@ -361,6 +370,22 @@ export function mapSSEToRunAction(
           content: data.content as string | undefined,
           url: data.url as string | undefined,
           payload: data.metadata as Record<string, unknown> | undefined,
+        },
+      };
+
+    case 'confirmation_required':
+      return {
+        type: 'CONFIRMATION_REQUEST',
+        confirmation: {
+          confirmationId: (data.confirmation_id as string) || '',
+          runId: (data.run_id as string) || '',
+          stepId: (data.step_id as string) || '',
+          reason: (data.reason as string) || (data.message as string) || 'Confirmation required',
+          riskLevel: (data.risk_level as ConfirmationRequest['riskLevel']) || 'medium',
+          proposedAction: (data.proposed_action as string) || '',
+          toolName: (data.tool_name as string) || 'unknown',
+          payload: (data.parameters as Record<string, unknown>) || {},
+          expiresAt: data.expires_at as string | undefined,
         },
       };
 
