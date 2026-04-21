@@ -5,10 +5,10 @@ Defines data contracts for the RAG pipeline:
 - CitationSource: Source reference for synthesis output
 - SearchConstraints: Filter constraints for metadata-aware search
 
-Field mapping from Milvus Raw Hit:
-- content_data -> text (unified field name)
-- score -> score (kept as-is, computed from 1-distance)
-- page_num -> page_num (unified, not 'page')
+Field mapping from raw vector hits:
+- text payload -> text
+- normalized relevance -> score
+- canonical page index -> page_num
 
 Per Phase 40 D-01 specification.
 """
@@ -22,12 +22,11 @@ class RetrievedChunk(BaseModel):
     """Unified chunk representation from Milvus search.
 
     Standard field names for RAG synthesis layer:
-    - text: Chunk content (mapped from content_data)
+    - text: Chunk content
     - score: Relevance score (0.0-1.0)
     - page_num: Page number in paper
 
-    This replaces the legacy field names (content, similarity, page) that
-    caused field mismatch between Milvus output and synthesis code.
+    This keeps downstream synthesis code on a single canonical retrieval schema.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -43,7 +42,7 @@ class RetrievedChunk(BaseModel):
     )
     text: str = Field(
         ...,
-        description="Chunk content text (unified field from content_data)",
+        description="Chunk content text",
     )
     score: float = Field(
         ...,
@@ -51,13 +50,18 @@ class RetrievedChunk(BaseModel):
         ge=0.0,
         le=1.0,
     )
+    backend: str = Field(
+        default="milvus",
+        description="Vector backend that produced this chunk",
+        pattern=r"^(milvus|qdrant)$",
+    )
     source_id: Optional[str] = Field(
         default=None,
         description="Stable source/chunk identifier",
     )
     page_num: Optional[int] = Field(
         default=None,
-        description="Page number in paper (unified field, not 'page')",
+        description="Page number in paper",
         ge=1,
     )
     section_path: Optional[str] = Field(
@@ -94,6 +98,14 @@ class RetrievedChunk(BaseModel):
     raw_data: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Raw data for multimodal content (image/table metadata)",
+    )
+    vector_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    sparse_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    hybrid_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    reranker_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    retrieval_trace_id: Optional[str] = Field(
+        default=None,
+        description="Trace identifier for retrieval debugging",
     )
 
 

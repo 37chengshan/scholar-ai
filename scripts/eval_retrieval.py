@@ -10,6 +10,7 @@ Measures:
 Usage:
     python scripts/eval_retrieval.py --golden tests/evals/golden_queries.json
     python scripts/eval_retrieval.py --paper-id test-paper-001 test-paper-002
+    python scripts/eval_retrieval.py --golden tests/evals/golden_queries.json --allow-mock
 """
 
 import json
@@ -109,7 +110,7 @@ async def evaluate_retrieval(
     golden_queries_path: str,
     user_id: str = "eval-user",
     paper_ids_filter: Optional[List[str]] = None,
-    mock_mode: bool = True
+    mock_mode: bool = False,
 ) -> Dict[str, Any]:
     """Run retrieval evaluation against golden queries.
 
@@ -169,7 +170,7 @@ async def evaluate_retrieval(
                         use_reranker=False,
                     )
 
-                    retrieved_ids = [r.get("id") or r.get("chunk_id") or r.get("content_id")
+                    retrieved_ids = [r.get("source_id") or r.get("id") or r.get("chunk_id") or r.get("content_id")
                                     for r in result.get("results", [])]
                     results = result.get("results", [])
                 except Exception as e:
@@ -393,21 +394,14 @@ def main():
         help="Output report file path"
     )
     parser.add_argument(
-        "--mock",
+        "--allow-mock",
         action="store_true",
-        default=True,
-        help="Use mock mode (no real service calls)"
-    )
-    parser.add_argument(
-        "--real",
-        action="store_true",
-        help="Use real mode (call actual services)"
+        help="Use mock mode only for dry runs"
     )
 
     args = parser.parse_args()
 
-    # Determine mode
-    mock_mode = not args.real
+    mock_mode = args.allow_mock
 
     print(f"Running retrieval evaluation in {mock_mode} mode...")
     print(f"Golden queries: {args.golden}")

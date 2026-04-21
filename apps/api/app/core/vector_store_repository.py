@@ -9,7 +9,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
+from app.config import settings
 from app.core.milvus_service import MilvusService, get_milvus_service
+from app.core.qdrant_service import QdrantService, get_qdrant_service
 from app.models.retrieval import RetrievedChunk, SearchConstraints
 
 
@@ -48,6 +50,7 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
             paper_title=hit.get("paper_title"),
             text=hit.get("text") or hit.get("content_data") or hit.get("content") or "",
             score=max(0.0, min(float(score), 1.0)),
+            backend=hit.get("backend", "milvus"),
             source_id=(str(hit.get("id")) if hit.get("id") is not None else None),
             page_num=hit.get("page_num") or hit.get("page"),
             section_path=hit.get("section_path"),
@@ -57,6 +60,11 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
             content_type=hit.get("content_type", "text"),
             quality_score=hit.get("quality_score"),
             raw_data=hit.get("raw_data"),
+            vector_score=hit.get("vector_score"),
+            sparse_score=hit.get("sparse_score"),
+            hybrid_score=hit.get("hybrid_score"),
+            reranker_score=hit.get("reranker_score"),
+            retrieval_trace_id=hit.get("retrieval_trace_id"),
         )
 
     def search(
@@ -78,6 +86,40 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
         return [self._normalize_hit(hit) for hit in hits]
 
 
+class QdrantVectorStoreRepository(VectorStoreRepository):
+    """Qdrant-backed repository for retrieval experiment parity."""
+
+    def __init__(self, qdrant_service: Optional[QdrantService] = None):
+        self.qdrant_service = qdrant_service or get_qdrant_service()
+
+    def search(
+        self,
+        *,
+        embedding: List[float],
+        user_id: str,
+        content_type: str,
+        top_k: int,
+        constraints: SearchConstraints,
+    ) -> List[RetrievedChunk]:
+        hits = self.qdrant_service.search(
+            embedding=embedding,
+            user_id=user_id,
+            content_type=content_type,
+            top_k=top_k,
+            constraints=constraints,
+        )
+        return [
+            MilvusVectorStoreRepository._normalize_hit(
+                {
+                    **(hit.get("payload") or {}),
+                    **hit,
+                    "backend": hit.get("backend") or "qdrant",
+                }
+            )
+            for hit in hits
+        ]
+
+
 _vector_store_repository: Optional[VectorStoreRepository] = None
 
 
@@ -85,5 +127,8 @@ def get_vector_store_repository() -> VectorStoreRepository:
     """Get or create the default vector store repository singleton."""
     global _vector_store_repository
     if _vector_store_repository is None:
-        _vector_store_repository = MilvusVectorStoreRepository()
+        if settings.VECTOR_STORE_BACKEND == "qdrant":
+            _vector_store_repository = QdrantVectorStoreRepository()
+        else:
+            _vector_store_repository = MilvusVectorStoreRepository()
     return _vector_store_repository

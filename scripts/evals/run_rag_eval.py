@@ -90,6 +90,7 @@ def main():
     parser.add_argument("--dataset", required=True, help="Path to rag_eval_dataset.json")
     parser.add_argument("--answers-file", help="Optional path to real answers JSON")
     parser.add_argument("--output", required=True, help="Output summary JSON path")
+    parser.add_argument("--allow-mock", action="store_true", help="Allow synthetic answers when no answers-file is provided")
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset)
@@ -101,6 +102,8 @@ def main():
     answers = None
     if args.answers_file:
         answers = load_answers(Path(args.answers_file))
+    elif not args.allow_mock:
+        raise ValueError("answers-file is required unless --allow-mock is explicitly provided")
 
     missing_answer_case_ids = []
     if answers is not None:
@@ -123,6 +126,7 @@ def main():
         evals.append(evaluate_case(case, result))
 
     summary = summarize(evals)
+    summary["used_mock_answers"] = answers is None
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

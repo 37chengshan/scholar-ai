@@ -138,6 +138,10 @@ async def multimodal_search(
                 "query": result.get("query", request.query),
                 "intent": result.get("intent", "default"),
                 "queryIntent": result.get("query_intent"),
+                "vectorBackend": result.get("vector_backend"),
+                "plannerQueries": result.get("planner_queries", []),
+                "metadataFilters": result.get("metadata_filters", {}),
+                "trace": result.get("trace"),
                 "weights": result.get("weights", {}),
                 "clusters": [
                     {

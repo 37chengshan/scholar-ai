@@ -138,6 +138,12 @@ Paper 交互资源补充：
 - SearchResult：搜索结果资源，支持论文与知识片段的统一搜索，包括请求取消与前端缓存策略。
 - ReadingSummaryProjection：前端基于 `paper.reading_notes` 派生出的只读系统摘要视图，不是独立持久化资源。
 
+SearchResult 资源补充：
+
+- `SearchResult.results[]` 可返回检索调试字段：`backend`、`vector_score`、`sparse_score`、`hybrid_score`、`reranker_score`、`retrieval_trace_id`。
+- `SearchResult.vector_backend` 为本次搜索使用的后端标识，冻结为 `milvus | qdrant`。
+- `SearchResult.trace` 为可选观测字段，仅在显式开启检索追踪时返回；它是运行时调试投影，不得作为持久化真源。
+
 关键生命周期事件：
 
 - paper.uploaded
