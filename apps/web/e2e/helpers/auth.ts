@@ -1,10 +1,20 @@
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, BrowserContext, Page } from '@playwright/test';
 
 type E2EUser = {
   email: string;
   password: string;
   name: string;
 };
+
+type AuthCookie = Awaited<ReturnType<BrowserContext['cookies']>>[number];
+
+type CachedAuthState = {
+  user: E2EUser;
+  cookies: AuthCookie[];
+};
+
+let cachedAuthStatePromise: Promise<CachedAuthState> | null = null;
+let cachedAuthState: CachedAuthState | null = null;
 
 function buildE2EUser(): E2EUser {
   const nonce = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -15,7 +25,7 @@ function buildE2EUser(): E2EUser {
   };
 }
 
-export async function registerAndLogin(page: Page, request: APIRequestContext): Promise<E2EUser> {
+async function createAuthState(page: Page, request: APIRequestContext): Promise<CachedAuthState> {
   const user = buildE2EUser();
 
   const registerResponse = await request.post('/api/v1/auth/register', {
@@ -35,6 +45,8 @@ export async function registerAndLogin(page: Page, request: APIRequestContext): 
   await page.fill('input[type="email"]', user.email);
   await page.fill('input[type="password"]', user.password);
   await page.click('button[type="submit"]');
+  await page.waitForURL(/\/chat/, { timeout: 20000 });
+  await page.getByTestId('chat-workspace-root').waitFor({ timeout: 20000 });
 
   // Wait for the authenticated workspace to fully mount before returning.
   // Some specs immediately trigger a hard navigation after login, and this

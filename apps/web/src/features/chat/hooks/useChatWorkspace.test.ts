@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseScopeFromQuery } from './useChatWorkspace';
+import { parseScopeFromQuery } from './chatScopeQuery';
 
 describe('parseScopeFromQuery', () => {
   it('marks query as error when paperId and kbId coexist', () => {

@@ -1,44 +1,8 @@
-import { useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router';
+import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore';
-import { useChatScope } from '@/features/chat/hooks/useChatScope';
-import type { WorkspaceScope } from '@/features/chat/state/chatWorkspaceStore';
-
-export function parseScopeFromQuery(searchParams: URLSearchParams): WorkspaceScope {
-  const paperId = searchParams.get('paperId');
-  const kbId = searchParams.get('kbId');
-
-  if (paperId && kbId) {
-    return {
-      type: 'error',
-      id: paperId,
-      errorMessage: 'paperId and kbId cannot coexist',
-    };
-  }
-
-  if (paperId) {
-    return {
-      type: 'single_paper',
-      id: paperId,
-    };
-  }
-
-  if (kbId) {
-    return {
-      type: 'full_kb',
-      id: kbId,
-    };
-  }
-
-  return {
-    type: null,
-    id: null,
-  };
-}
 
 export function useChatWorkspace() {
-  const [searchParams] = useSearchParams();
   const {
     activeRun,
     rightPanelOpen,
@@ -113,20 +77,12 @@ export function useChatWorkspace() {
     }))
   );
 
-  const scopeState = useChatScope();
-
-  const queryScope = useMemo(() => parseScopeFromQuery(searchParams), [searchParams]);
-
-  useEffect(() => {
-    setScope(queryScope);
-    if (queryScope.type === 'single_paper' || queryScope.type === 'full_kb') {
-      setMode('rag');
-      return;
-    }
-    if (queryScope.type === null || queryScope.type === 'general') {
-      setMode('auto');
-    }
-  }, [queryScope, setMode, setScope]);
+  const scopeState = useMemo(() => ({
+    paperId: scope.type === 'single_paper' ? scope.id : null,
+    kbId: scope.type === 'full_kb' ? scope.id : null,
+    scopeType: scope.type === 'error' ? null : scope.type,
+    hasScopeError: scope.type === 'error',
+  }), [scope.id, scope.type]);
 
   const openDeleteConfirm = (sessionId: string) => {
     setPendingDeleteSessionId(sessionId);
@@ -161,7 +117,6 @@ export function useChatWorkspace() {
     runArtifactsPanelOpen,
     setActiveRun,
     scope,
-    queryScope,
     scopeState,
     setScope,
     setRightPanelOpen,
