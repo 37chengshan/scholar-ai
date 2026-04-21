@@ -16,6 +16,7 @@ from app.core.multimodal_search_service import (
     MultimodalSearchService,
     get_multimodal_search_service,
 )
+from app.models.retrieval import RetrievedChunk
 
 
 class TestEnhancedMultimodalSearchService:
@@ -25,7 +26,7 @@ class TestEnhancedMultimodalSearchService:
     def mock_services(self):
         """Mock dependent services."""
         with patch("app.core.multimodal_search_service.get_embedding_service") as mock_embedding, \
-             patch("app.core.multimodal_search_service.get_milvus_service") as mock_milvus, \
+             patch("app.core.multimodal_search_service.get_vector_store_repository") as mock_vector_store, \
              patch("app.core.multimodal_search_service.get_reranker_service") as mock_reranker:
 
             # Setup embedding mock
@@ -34,20 +35,19 @@ class TestEnhancedMultimodalSearchService:
             embedding_instance.encode_text.return_value = [0.1] * 2048
             mock_embedding.return_value = embedding_instance
 
-            # Setup Milvus mock
-            milvus_instance = MagicMock()
-            milvus_instance.search_contents_v2.return_value = [
-                {
-                    "id": f"test-{i}",
-                    "paper_id": "paper-1",
-                    "page_num": i,
-                    "content_type": "text",
-                    "content_data": f"content {i}",
-                    "distance": 0.1,
-                }
+            # Setup vector store repository mock
+            vector_store_instance = MagicMock()
+            vector_store_instance.search.return_value = [
+                RetrievedChunk(
+                    paper_id="paper-1",
+                    text=f"content {i}",
+                    score=0.9 - (i * 0.01),
+                    page_num=i + 1,
+                    content_type="text",
+                )
                 for i in range(5)
             ]
-            mock_milvus.return_value = milvus_instance
+            mock_vector_store.return_value = vector_store_instance
 
             # Setup ReRanker mock
             reranker_instance = MagicMock()
@@ -61,7 +61,7 @@ class TestEnhancedMultimodalSearchService:
 
             yield {
                 "embedding": embedding_instance,
-                "milvus": milvus_instance,
+                "vector_store": vector_store_instance,
                 "reranker": reranker_instance,
             }
 
@@ -95,32 +95,29 @@ class TestEnhancedMultimodalSearchService:
         """
         service = MultimodalSearchService()
 
-        # Setup Milvus to return results from multiple papers
-        mock_services["milvus"].search_contents_v2.return_value = [
-            {
-                "id": "test-1",
-                "paper_id": "paper-1",
-                "page_num": 1,
-                "content_type": "text",
-                "content_data": "YOLOv3 performance",
-                "distance": 0.1,
-            },
-            {
-                "id": "test-2",
-                "paper_id": "paper-2",
-                "page_num": 2,
-                "content_type": "text",
-                "content_data": "YOLOv4 performance",
-                "distance": 0.2,
-            },
-            {
-                "id": "test-3",
-                "paper_id": "paper-1",
-                "page_num": 3,
-                "content_type": "text",
-                "content_data": "YOLOv3 architecture",
-                "distance": 0.15,
-            },
+        # Setup repository to return results from multiple papers
+        mock_services["vector_store"].search.return_value = [
+            RetrievedChunk(
+                paper_id="paper-1",
+                text="YOLOv3 performance",
+                score=0.9,
+                page_num=1,
+                content_type="text",
+            ),
+            RetrievedChunk(
+                paper_id="paper-2",
+                text="YOLOv4 performance",
+                score=0.85,
+                page_num=2,
+                content_type="text",
+            ),
+            RetrievedChunk(
+                paper_id="paper-1",
+                text="YOLOv3 architecture",
+                score=0.8,
+                page_num=3,
+                content_type="text",
+            ),
         ]
 
         result = await service.search(
@@ -144,16 +141,15 @@ class TestEnhancedMultimodalSearchService:
         """
         service = MultimodalSearchService()
 
-        # Setup Milvus to return more results for summary
-        mock_services["milvus"].search_contents_v2.return_value = [
-            {
-                "id": f"test-{i}",
-                "paper_id": "paper-1",
-                "page_num": i,
-                "content_type": "text",
-                "content_data": f"Key point {i}",
-                "distance": 0.1 + i * 0.01,
-            }
+        # Setup repository to return more results for summary
+        mock_services["vector_store"].search.return_value = [
+            RetrievedChunk(
+                paper_id="paper-1",
+                text=f"Key point {i}",
+                score=0.9 - (i * 0.01),
+                page_num=i + 1,
+                content_type="text",
+            )
             for i in range(5)
         ]
 
@@ -217,7 +213,7 @@ class TestEnhancedMultimodalSearchService:
 
         # Should have year_range filter and compile it into downstream constraints.
         assert result["metadata_filters"].get("year_range")
-        call_kwargs = mock_services["milvus"].search_contents_v2.call_args[1]
+        call_kwargs = mock_services["vector_store"].search.call_args[1]
         assert call_kwargs["constraints"].year_from is not None
         assert call_kwargs["constraints"].year_to is not None
 
