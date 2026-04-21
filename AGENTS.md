@@ -56,6 +56,7 @@
   - apps/api/app/models
   - docs/architecture/api-contract.md
 - 新功能必须落到既定目录，不允许再开第二套实现路径。
+- agent 创建 PR 时必须按 `.github/pull_request_template.md` 完整填写描述，并优先使用 `scripts/pr_create_with_template_check.sh`；未通过模板校验的 PR 不允许提交。
 
 ## Required Updates
 

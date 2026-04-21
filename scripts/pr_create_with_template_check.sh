@@ -5,7 +5,7 @@ usage(){
   cat <<'USAGE'
 Usage: pr_create_with_template_check.sh --title "TITLE" (--body "BODY" | --body-file FILE) [--repo OWNER/REPO] [--base BASE]
 
-This script validates the PR body contains the keyword '变更目的' before calling 'gh pr create'.
+This script validates the PR body against .github/pull_request_template.md before calling 'gh pr create'.
 
 Examples:
   pr_create_with_template_check.sh --title "chore: ..." --body-file ./pr_body.md --repo owner/repo --base main
@@ -19,6 +19,8 @@ body=""
 body_file=""
 repo=""
 base=""
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -58,15 +60,15 @@ if [[ -z "${body_content:-}" ]]; then
   usage
 fi
 
-# Require the template keyword
-if ! printf '%s' "$body_content" | grep -q "变更目的"; then
-  echo "ERROR: PR body does not contain required keyword '变更目的'." >&2
-  echo "Please include the repository PR template sections (e.g. '## 变更目的') and retry." >&2
-  echo "You can copy the template from .github/PULL_REQUEST_TEMPLATE.md and fill it." >&2
-  exit 3
+validate_script="$script_dir/check-pr-template-body.sh"
+if [[ ! -x "$validate_script" ]]; then
+  chmod +x "$validate_script"
 fi
 
+printf '%s\n' "$body_content" | "$validate_script"
+
 tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
 printf '%s\n' "$body_content" > "$tmpfile"
 
 cmd=(gh pr create --title "$title" --body-file "$tmpfile")
@@ -74,7 +76,9 @@ if [[ -n "$repo" ]]; then cmd+=(--repo "$repo"); fi
 if [[ -n "$base" ]]; then cmd+=(--base "$base"); fi
 
 echo "Creating PR with title: $title"
-"${cmd[@]}"
+(
+  cd "$repo_root"
+  "${cmd[@]}"
+)
 status=$?
-rm -f "$tmpfile"
 exit $status

@@ -3,6 +3,7 @@ name: Governance Baseline
 on:
   pull_request:
     branches: [main, develop]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches: [main, develop]
 
@@ -13,10 +14,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Run PR template body check
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash scripts/check-pr-template-body.sh
+
       - name: Verify governance scripts
         run: |
           set -euo pipefail
-          chmod +x scripts/check-governance.sh scripts/check-doc-governance.sh scripts/check-structure-boundaries.sh scripts/check-code-boundaries.sh scripts/check-runtime-hygiene.sh scripts/check-phase-tracking.sh scripts/check-branch-lifecycle.sh scripts/check-contract-gate.sh scripts/check-fallback-expiry.sh scripts/check-e2e-gate.sh
+          chmod +x scripts/check-governance.sh scripts/check-doc-governance.sh scripts/check-structure-boundaries.sh scripts/check-code-boundaries.sh scripts/check-runtime-hygiene.sh scripts/check-phase-tracking.sh scripts/check-branch-lifecycle.sh scripts/check-contract-gate.sh scripts/check-fallback-expiry.sh scripts/check-e2e-gate.sh scripts/check-pr-template-body.sh
           bash scripts/check-runtime-hygiene.sh tracked
           bash scripts/check-governance.sh
 
