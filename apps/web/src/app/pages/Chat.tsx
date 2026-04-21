@@ -1,5 +1,5 @@
-import { ChatWorkspace } from '@/features/chat/components/ChatWorkspace';
+import { ChatWorkspaceV2 } from '@/features/chat/workspace/ChatWorkspaceV2';
 
 export function Chat() {
-  return <ChatWorkspace />;
+  return <ChatWorkspaceV2 />;
 }

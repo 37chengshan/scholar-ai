@@ -233,6 +233,21 @@ Paper 资源契约补充：
 - `GET /api/v1/papers/{paperId}`：返回单资源结构，字段命名遵循边界转换规则。
 - `POST /api/v1/papers/{paperId}/star`：只允许返回统一 envelope，不允许裸布尔返回。
 - `POST /api/v1/papers/batch-delete`：批量删除必须返回可追踪结果（成功列表与失败列表）。
+- `paper.reading_notes`：只表示系统生成阅读摘要，不得作为用户可编辑 Note 实体的并行真源。
+- `paper.notes_version`、`paper.is_notes_ready`、`paper.notes_failed`：`POST /api/v1/notes/generate`、`POST /api/v1/notes/regenerate` 与 notes worker 必须使用一致的更新语义。
+
+Notes 资源契约补充：
+
+- `POST /api/v1/notes`：创建用户可编辑笔记；请求体字段为 `title`、`content`、`tags`、`paperIds`，响应为统一 `success + data` envelope，且服务端必须剥离系统 `__ai_note__` tag。
+- `GET /api/v1/notes` 与 `GET /api/v1/notes/paper/{paperId}`：返回的 `Note` 资源仅表示用户可编辑笔记。
+- `GET /api/v1/notes/{id}`、`PUT /api/v1/notes/{id}`、`DELETE /api/v1/notes/{id}`：历史 `__ai_note__` 记录必须视为不存在，不得通过 by-id CRUD 暴露系统摘要实体。
+- `GET /api/v1/notes`：列表响应必须返回 `data.notes[]`、`data.total`、`data.limit`、`data.offset`；`paperId` 与 `tag` 过滤仅作用于用户可编辑笔记。
+- `PUT /api/v1/notes/{id}`：仅允许更新用户笔记的 `title`、`content`、`tags`、`paperIds`，响应为统一 `success + data` envelope。
+- `DELETE /api/v1/notes/{id}`：仅允许删除用户笔记，对历史 `__ai_note__` 返回 not found 语义。
+- `POST /api/v1/notes/generate` 与 `POST /api/v1/notes/regenerate`：只允许写入 `paper.reading_notes`、`paper.notes_version`、`paper.is_notes_ready`、`paper.notes_failed`，不得创建或回写 `Note` 实体；响应统一为 `GeneratedNotesResponse` envelope。
+- `GET /api/v1/notes/{paperId}/export`：导出的是 `paper.reading_notes` 的 Markdown 视图，不得隐式创建用户 `Note`。
+- Notes 页面允许展示由 `paper.reading_notes` 派生的系统摘要，但该展示不得反向创建或更新 `Note` 资源。
+- Read 页面自动创建/加载的 `reading note` 仅绑定用户笔记，不得复用系统摘要记录。
 
 Search API 契约补充：
 
@@ -247,6 +262,11 @@ Plan C 契约治理约束：
 - 契约表面改动（apps/api/app/api, apps/api/app/models, apps/web/src/services, packages/types, packages/sdk）必须同步更新本文件与 `docs/domain/resources.md`。
 - 任何 fallback 契约兼容必须在 `docs/governance/fallback-register.yaml` 登记到期时间与删除计划。
 - UploadHistory 是 ImportJob/UploadSession/ProcessingTask 的投影视图，不作为并行真源。
+
+前端主链路补充：
+
+- Chat 页面主执行入口固定为 `apps/web/src/features/chat/workspace/ChatWorkspaceV2.tsx`。
+- 兼容容器可以保留，但不得再引入第二条生产级 Chat runtime 主链路。
 
 ## Required Updates
 

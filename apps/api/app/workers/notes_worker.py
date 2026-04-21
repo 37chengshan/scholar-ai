@@ -116,8 +116,12 @@ class NotesWorker:
             await conn.execute(
                 """UPDATE papers
                    SET reading_notes = $1,
-                       "isNotesReady" = TRUE,
-                       notes_version = notes_version + 1,
+                       isnotesready = CASE
+                           WHEN NULLIF(BTRIM($1), '') IS NULL THEN FALSE
+                           ELSE TRUE
+                       END,
+                       notesfailed = FALSE,
+                       notes_version = COALESCE(notes_version, 0) + 1,
                        "updatedAt" = NOW()
                    WHERE id = $2""",
                 notes,
@@ -219,7 +223,7 @@ class NotesWorker:
                     logger.info("Claimed notes task", task_id=task["id"], paper_id=task["paper_id"])
                     try:
                         notes = await self.generate_notes(task["paper_id"])
-                        if notes:
+                        if notes is not None:
                             await self.complete_task(task["id"], task["paper_id"], notes)
                             logger.info("Notes generated successfully", task_id=task["id"])
                         else:

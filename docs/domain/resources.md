@@ -20,6 +20,7 @@
 核心资源清单：
 
 - Paper：论文与元数据
+- Note：用户可编辑笔记实体
 - ImportJob：导入任务与状态机
 - UploadSession：分片上传会话与断点恢复状态
 - Run：单次 Agent 执行实例（与 session/message 绑定）
@@ -40,9 +41,18 @@
 
 - Paper 属于零个或多个 Collection。
 - Paper 产生多个 Chunk。
+- Paper 可派生一个系统生成阅读摘要（`reading_notes`），但该摘要不是 `Note` 资源。
+- Note 可关联零个或多个 Paper，表示用户显式沉淀的知识对象。
 - ChatSession 包含多个 ChatMessage。
 - Task 作用于 Paper、Collection 或 IndexArtifact。
 - UploadHistory 是 ImportJob、UploadSession、ProcessingTask 的状态投影视图，不应成为并行真源。
+
+Paper/Note ownership 约束：
+
+- `paper.reading_notes`：系统生成阅读摘要真源。
+- `Note`：用户可编辑笔记真源。
+- Notes 页面中由 `paper.reading_notes` 呈现的系统摘要属于派生视图，不得反向写入 `notes` 表。
+- Read 页面自动创建的 `reading note` 属于 `Note`，只服务用户编辑链路。
 
 ChatSession/ChatMessage 读取契约约束：
 
@@ -126,6 +136,7 @@ Paper 交互资源补充：
 - PaperStar：用户与 Paper 的收藏关系资源，操作入口为 `/api/v1/papers/{paperId}/star`。
 - PaperBatchOperation：批量操作结果资源，至少包含 `successItems` 与 `failedItems`。
 - SearchResult：搜索结果资源，支持论文与知识片段的统一搜索，包括请求取消与前端缓存策略。
+- ReadingSummaryProjection：前端基于 `paper.reading_notes` 派生出的只读系统摘要视图，不是独立持久化资源。
 
 关键生命周期事件：
 
