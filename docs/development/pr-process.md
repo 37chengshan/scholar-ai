@@ -15,6 +15,7 @@
 - API 契约：docs/architecture/api-contract.md
 - 测试策略：docs/development/testing-strategy.md
 - PR 模板：.github/pull_request_template.md
+- PR 模板校验：docs/development/pr-template-enforcement.md
 - Phase 台账：docs/governance/phase-delivery-ledger.md
 - 分支生命周期：docs/governance/branch-lifecycle-policy.md
 - Fallback 台账：docs/governance/fallback-register.yaml
@@ -49,6 +50,9 @@ PR 描述模板要求：
 - Phase ID 与 Deliverable Unit
 - 未覆盖项与风险等级
 - fallback 引入与退役计划（如适用）
+- agent 或本地脚本创建 PR 时必须通过 `scripts/pr_create_with_template_check.sh`
+- CI 在 pull_request 事件下强制运行 `scripts/check-pr-template-body.sh`
+- 空模板、未勾选实际验证项、未明确文档同步选项的 PR 必须阻断
 
 Review checklist：
 

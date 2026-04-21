@@ -24,7 +24,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { useLanguage } from "@/app/contexts/LanguageContext";
 import { useSessions } from "@/app/hooks/useSessions";
@@ -33,15 +33,12 @@ import { ThinkingStep } from "@/app/components/ThinkingProcess";
 import { ConfirmationDialog } from "@/app/components/ConfirmationDialog";
 import { ConfirmDialog } from "@/app/components/ConfirmDialog";
 import { AgentUIState } from "@/app/components/AgentStateSidebar";
+import type { ScopeType } from "@/app/components/ScopeBanner";
 import {
   SSEService,
-  SSEEventEnvelope,
 } from "@/services/sseService";
-import { API_BASE_URL } from "@/config/api";
 import { toast } from "sonner";
-import { ScopeBanner, ScopeType } from "@/app/components/ScopeBanner";
-import * as papersApi from '@/services/papersApi';
-import { kbApi } from '@/services/kbApi';
+import { ScopeBanner } from '@/app/components/ScopeBanner';
 import { SessionSidebar } from '@/features/chat/components/session-sidebar/SessionSidebar';
 import { MessageFeed } from '@/features/chat/components/message-feed/MessageFeed';
 import { ComposerInput } from '@/features/chat/components/composer-input/ComposerInput';
@@ -53,10 +50,12 @@ import { useChatWorkspace } from '@/features/chat/hooks/useChatWorkspace';
 import { useChatMessagesViewModel } from '@/features/chat/hooks/useChatMessagesViewModel';
 import { useChatStreaming } from '@/features/chat/hooks/useChatStreaming';
 import { useChatSend } from '@/features/chat/hooks/useChatSend';
+import { useChatScopeController } from '@/features/chat/hooks/useChatScopeController';
+import { useChatSessionController } from '@/features/chat/hooks/useChatSessionController';
+import { useChatRuntimeBridge } from '@/features/chat/hooks/useChatRuntimeBridge';
 import { useRuntime } from '@/features/chat/runtime/useRuntime';
 import type {
   CitationItem,
-  ExtendedChatMessage,
   ToolTimelineItem,
 } from '@/features/chat/components/workspaceTypes';
 
@@ -108,163 +107,21 @@ export function ChatWorkspaceV2() {
     setIsPinnedToBottom(isPinnedToBottom);
   }, [isPinnedToBottom, setIsPinnedToBottom]);
 
-  // D-07: Single source of truth for scope (banner AND SSE body use same state)
-  const [searchParams, setSearchParams] = useSearchParams();
-  const paperId = searchParams.get('paperId');
-  const kbId = searchParams.get('kbId');
-
-  interface ChatScope {
-    type: ScopeType;
-    id: string | null;
-    title?: string;
-    errorMessage?: string;
-  }
-
-  const [scope, setScope] = useState<ChatScope>({ type: null, id: null });
-  const [scopeLoading, setScopeLoading] = useState(false);
-
   const safeToolTimeline = (toolTimeline?: ToolTimelineItem[]) =>
     (toolTimeline ?? []).filter(Boolean);
 
   const safeCitations = (citations?: CitationItem[]) =>
     (citations ?? []).filter(Boolean);
 
-  // Sprint 3: mode state for fast/slow path
-  // - 'auto': complexity-based routing (default)
-  // - 'rag': force fast path (RAG only, no agent tool loop)
-  // - 'agent': force slow path (full agent orchestrator)
-
-  // D-05 + D-07: Parse URL params once at component top, store in state
-  useEffect(() => {
-    let cancelled = false;
-
-    const validateScope = async () => {
-      if (!paperId && !kbId) {
-        if (cancelled) {
-          return;
-        }
-        setScope({ type: null, id: null });
-        setWorkspaceScope({ type: null, id: null });
-        setScopeLoading(false);
-        return;
-      }
-
-      if (paperId && kbId) {
-        if (cancelled) {
-          return;
-        }
-        setScope({
-          type: 'error',
-          id: paperId,
-          errorMessage: 'paperId and kbId cannot coexist',
-        });
-        setWorkspaceScope({
-          type: 'error',
-          id: paperId,
-          errorMessage: 'paperId and kbId cannot coexist',
-        });
-        setScopeLoading(false);
-        return;
-      }
-
-      setScopeLoading(true);
-      try {
-        // D-08: Validate priority - paperId first, then kbId
-        if (paperId) {
-          // Validate paperId exists and user has access
-          // papersApi.get returns Promise<Paper> (throws on error)
-          try {
-            const paper = await papersApi.get(paperId);
-            if (cancelled) {
-              return;
-            }
-            setScope({
-              type: 'single_paper',
-              id: paperId,
-              title: paper.title || '未知论文',
-            });
-            setWorkspaceScope({
-              type: 'single_paper',
-              id: paperId,
-              title: paper.title || '未知论文',
-            });
-          } catch (err) {
-            if (cancelled) {
-              return;
-            }
-            setScope({
-              type: 'error',
-              id: paperId,
-              errorMessage: `${paperId} 不存在或无权访问`,
-            });
-            setWorkspaceScope({
-              type: 'error',
-              id: paperId,
-              errorMessage: `${paperId} 不存在或无权访问`,
-            });
-          }
-          return;
-        }
-
-        if (kbId) {
-          // Validate kbId exists and user has access
-          const kbRes = await kbApi.get(kbId);
-          if (cancelled) {
-            return;
-          }
-          setScope({
-            type: 'full_kb',
-            id: kbId,
-            title: kbRes.name,
-          });
-          setWorkspaceScope({
-            type: 'full_kb',
-            id: kbId,
-            title: kbRes.name,
-          });
-          return;
-        }
-      } catch (err) {
-        if (cancelled) {
-          return;
-        }
-        setScope({
-          type: 'error',
-          id: paperId || kbId,
-          errorMessage: '作用域验证失败',
-        });
-        setWorkspaceScope({
-          type: 'error',
-          id: paperId || kbId,
-          errorMessage: '作用域验证失败',
-        });
-      } finally {
-        if (!cancelled) {
-          setScopeLoading(false);
-        }
-      }
-    };
-
-    void validateScope();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [paperId, kbId, setWorkspaceScope]);
-
-  useEffect(() => {
-    if (scope.type === 'single_paper' || scope.type === 'full_kb') {
-      if (mode === 'auto') {
-        setMode('rag');
-      }
-      return;
-    }
-
-    setMode('auto');
-  }, [scope.type, scope.id, mode, setMode]);
-
   const { language } = useLanguage();
+  const isZh = language === "zh";
   const runtime = useRuntime();
+  const { scope, scopeLoading, handleExitScope } = useChatScopeController({
+    mode,
+    isZh,
+    setMode,
+    setWorkspaceScope,
+  });
 
   // Feature-level streaming entry (state machine + buffer + throttle)
   const streamApi = useChatStreaming({
@@ -292,15 +149,6 @@ export function ChatWorkspaceV2() {
     resetConfirmation,
   } = streamApi;
   const streamStateRef = useRef(streamState); // ref for stale closure fix in onDone
-
-  const ingestRuntimeEvent = useCallback((event: SSEEventEnvelope) => {
-    runtime.ingestEvent({
-      message_id: event.message_id || currentMessageIdRef.current,
-      event: event.event || '',
-      data: event.data ?? {},
-      timestamp: Date.now(),
-    });
-  }, [runtime]);
 
   const {
     sessions,
@@ -331,11 +179,14 @@ export function ChatWorkspaceV2() {
     streamingMessageId,
   });
 
-  const isZh = language === "zh";
   const safeSessions = useMemo(
     () => sessions.filter((session) => Boolean(session?.id)),
     [sessions],
   );
+  const uiScope = useMemo(() => ({
+    ...scope,
+    type: scope.type === 'general' ? null : scope.type as ScopeType,
+  }), [scope]);
   const normalizedSessionSearchQuery = sessionSearchQuery.trim().toLowerCase();
   const filteredSessions = useMemo(() => {
     const sortedSessions = [...safeSessions].sort((a, b) => {
@@ -358,16 +209,6 @@ export function ChatWorkspaceV2() {
     });
   }, [normalizedSessionSearchQuery, safeSessions]);
 
-  const handleExitScope = useCallback(() => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('paperId');
-    nextParams.delete('kbId');
-    setSearchParams(nextParams);
-    setScope({ type: null, id: null });
-    setWorkspaceScope({ type: null, id: null });
-    toast.info(isZh ? '已退出作用域模式' : 'Scope cleared');
-  }, [isZh, searchParams, setSearchParams, setWorkspaceScope]);
-
   const t = {
     terminal: isZh ? "终端对话" : "Terminal",
     sessions: isZh ? "会话列表" : "Sessions",
@@ -387,67 +228,31 @@ export function ChatWorkspaceV2() {
   // Initialize SSEService instance
   useEffect(() => {
     sseServiceRef.current = new SSEService();
-    return () => {
-      sseServiceRef.current?.disconnect();
-    };
   }, []);
 
-  const handleNewSession = useCallback(async () => {
-    // Disconnect current SSE if connected
-    if (sseServiceRef.current) {
-      sseServiceRef.current.disconnect();
-    }
-    sendLockRef.current = false;
-    const session = await createSession(isZh ? "新对话" : "New Chat");
-    if (session) {
-      setSessionSearchQuery('');
-      resetForSessionSwitch();
-      setSessionTokens(0); // 重置token计数
-      setSessionCost(0); // 重置cost计数
-      runtime.resetRun();
-      resetRun(); // Reset stream state
-    }
-  }, [createSession, isZh, resetForSessionSwitch, resetRun, runtime]);
-
-  const handleSwitchSession = useCallback(
-    async (sessionId: string) => {
-      // Disconnect current SSE if connected
-      if (sseServiceRef.current) {
-        sseServiceRef.current.disconnect();
-      }
-      sendLockRef.current = false;
-      await switchSession(sessionId);
-      resetForSessionSwitch();
-      setSessionTokens(0); // 重置token计数
-      setSessionCost(0); // 重置cost计数
-      runtime.resetRun();
-      resetRun(); // Reset stream state
-    },
-    [switchSession, resetForSessionSwitch, resetRun, runtime],
-  );
-
-  const handleDeleteSession = useCallback(
-    async (sessionId: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      openDeleteConfirm(sessionId);
-    },
-    [openDeleteConfirm],
-  );
-
-  const confirmDeleteSession = useCallback(async () => {
-    if (!sessionToDelete) return;
-    try {
-      await deleteSession(sessionToDelete);
-      toast.success(isZh ? "对话已删除" : "Session deleted");
-    } catch (err) {
-      toast.error(isZh ? "删除失败" : "Delete failed");
-    }
-    closeDeleteConfirm();
-  }, [sessionToDelete, deleteSession, isZh, closeDeleteConfirm]);
-
-  const cancelDeleteSession = useCallback(() => {
-    closeDeleteConfirm();
-  }, [closeDeleteConfirm]);
+  const {
+    handleNewSession,
+    handleSwitchSession,
+    handleDeleteSession,
+    confirmDeleteSession,
+    cancelDeleteSession,
+  } = useChatSessionController({
+    isZh,
+    sessionToDelete,
+    createSession,
+    switchSession,
+    deleteSession,
+    resetForSessionSwitch,
+    resetRuntimeRun: runtime.resetRun,
+    resetStreamingRun: resetRun,
+    openDeleteConfirm,
+    closeDeleteConfirm,
+    setSessionSearchQuery,
+    setSessionTokens,
+    setSessionCost,
+    sendLockRef,
+    sseServiceRef,
+  });
 
   // ============================================================================
   // Placeholder Message Mechanism (HARD RULE 0.2)
@@ -491,11 +296,33 @@ export function ChatWorkspaceV2() {
     });
   }, [getBufferedContent, patchStreamingMessage]);
 
+  const { ingestRuntimeEvent, handleConfirmation } = useChatRuntimeBridge({
+    isZh,
+    currentSessionId: currentSession?.id ?? null,
+    currentMessageId,
+    currentMessageIdRef,
+    sseServiceRef,
+    runtime,
+    streamState,
+    confirmation,
+    resetConfirmation,
+    handleSSEEvent,
+    dispatch,
+    syncStreamingMessage,
+    setActiveRun,
+    setSelectedRunId,
+    setActiveRunStatus,
+    setPendingActions,
+    setRecoveryBannerVisible,
+    setRunArtifactsPanelOpen,
+    setStreamingMessageId,
+  });
+
   const { handleSend, handleStop } = useChatSend({
     input,
     sending,
     mode,
-    scope,
+    scope: uiScope,
     scopeLoading,
     currentSession,
     isZh,
@@ -522,44 +349,6 @@ export function ChatWorkspaceV2() {
     clearPlaceholder,
   });
 
-  useEffect(() => {
-    setActiveRun(runtime.run);
-    setSelectedRunId(runtime.run.runId);
-    setActiveRunStatus(runtime.run.status);
-    setPendingActions(runtime.run.pendingActions);
-    setRecoveryBannerVisible(runtime.run.recoverable || runtime.run.pendingActions.length > 0);
-    setRunArtifactsPanelOpen(runtime.run.artifacts.length > 0 || runtime.run.evidence.length > 0);
-  }, [
-    runtime.run,
-    setActiveRun,
-    setSelectedRunId,
-    setActiveRunStatus,
-    setPendingActions,
-    setRecoveryBannerVisible,
-    setRunArtifactsPanelOpen,
-  ]);
-
-  useEffect(() => {
-    if (streamState.streamStatus === 'cancelled' && runtime.run.status === 'running') {
-      runtime.dispatchRun({
-        type: 'RUN_COMPLETE',
-        status: 'cancelled',
-        tokensUsed: streamState.tokensUsed,
-        cost: streamState.cost,
-      });
-      return;
-    }
-
-    if (streamState.streamStatus === 'error' && runtime.run.status === 'running') {
-      runtime.dispatchRun({
-        type: 'RUN_COMPLETE',
-        status: 'failed',
-        tokensUsed: streamState.tokensUsed,
-        cost: streamState.cost,
-      });
-    }
-  }, [runtime, streamState.cost, streamState.streamStatus, streamState.tokensUsed]);
-
   // ============================================================================
   // UI Effects
   // ============================================================================
@@ -578,11 +367,6 @@ export function ChatWorkspaceV2() {
   useEffect(() => {
     streamStateRef.current = streamState;
   }, [streamState]);
-
-  // Keep workspace-level streaming message id aligned with stream runtime source of truth.
-  useEffect(() => {
-    setStreamingMessageId(currentMessageId);
-  }, [currentMessageId, setStreamingMessageId]);
 
   // Pinned-bottom auto-follow: only follow when user stays near bottom.
   useEffect(() => {
@@ -628,68 +412,6 @@ export function ChatWorkspaceV2() {
         : undefined,
     }));
   }, [streamState.reasoningBuffer, streamState.startedAt]);
-
-  // Handle agent confirmation (approve/reject)
-  const handleConfirmation = useCallback(async (approved: boolean) => {
-    if (!confirmation) return;
-    try {
-      const url = `${API_BASE_URL}/api/v1/chat/confirm`;
-      const body = {
-        confirmation_id: confirmation.confirmation_id,
-        approved,
-        session_id: currentSession?.id || '',
-      };
-
-      if (!sseServiceRef.current) {
-        sseServiceRef.current = new SSEService();
-      }
-
-      // The confirm endpoint returns an SSE stream with resumed agent output
-      sseServiceRef.current.connect(url, {
-        onEnvelope: (event: SSEEventEnvelope) => {
-          const eventType = event.event || '';
-          const eventMessageId = event.message_id || '';
-          const eventData = event.data;
-
-          // Feed events back into useChatStream
-          handleSSEEvent({
-            message_id: eventMessageId,
-            event_type: eventType,
-            data: eventData,
-            timestamp: Date.now(),
-          });
-          ingestRuntimeEvent(event);
-
-          syncStreamingMessage(currentMessageIdRef.current || eventMessageId);
-        },
-          onError: (error) => {
-          console.error('[Chat] Confirmation stream error:', error);
-          dispatch({
-            type: 'ERROR',
-            code: 'STREAM_ERROR',
-            message: error.message,
-          });
-          toast.error(isZh ? '确认后恢复失败' : 'Failed to resume after confirmation');
-        },
-        onDone: () => {
-          console.debug('[Chat] Confirmation stream done');
-          dispatch({
-            type: 'STREAM_COMPLETE',
-            tokensUsed: streamStateRef.current.tokensUsed,
-            cost: streamStateRef.current.cost,
-            durationMs: streamStateRef.current.endedAt && streamStateRef.current.startedAt
-              ? streamStateRef.current.endedAt - streamStateRef.current.startedAt
-              : 0,
-          });
-        },
-      }, body);
-
-      resetConfirmation();
-    } catch (err) {
-      toast.error(approved ? (isZh ? '批准失败' : 'Approval failed') : (isZh ? '拒绝失败' : 'Rejection failed'));
-      resetConfirmation();
-    }
-  }, [confirmation, currentSession, handleSSEEvent, resetConfirmation, isZh, syncStreamingMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -760,9 +482,9 @@ export function ChatWorkspaceV2() {
 
         {/* D-03: Scope banner - below header, above messages */}
         <ScopeBanner
-          type={scope.type}
-          title={scope.title}
-          errorMessage={scope.errorMessage}
+          type={uiScope.type}
+          title={uiScope.title}
+          errorMessage={uiScope.errorMessage}
           onExitScope={handleExitScope}
         />
 
@@ -791,7 +513,7 @@ export function ChatWorkspaceV2() {
         />
 
         <ComposerInput
-          scopeType={scope.type}
+          scopeType={uiScope.type}
           isZh={isZh}
           mode={mode}
           input={input}
