@@ -164,13 +164,13 @@ function KnowledgeBaseListContent() {
       <PaperTexture />
       
       {/* Toolbar Header — Create button and Storage */}
-      <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm border-b border-zinc-200">
+      <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm border-b border-border/70">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-zinc-50 p-4 border border-zinc-200">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-paper-2 p-4 border border-border/70">
             {/* Create button */}
             <Button 
               onClick={handleCreate}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-3 font-bold uppercase tracking-[0.14em] transition-colors rounded-none"
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-3 font-semibold tracking-wide transition-colors rounded-sm"
             >
               <Plus className="w-5 h-5" />
               创建知识库
@@ -178,13 +178,13 @@ function KnowledgeBaseListContent() {
             
             {/* Search input */}
             <div className="relative w-full sm:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 w-5 h-5" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
             <Input
               type="text"
               placeholder="搜索知识库..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border border-zinc-300 pl-10 pr-4 py-3 font-medium placeholder:text-zinc-400 focus:outline-none focus:border-primary focus:ring-0 transition-colors rounded-none"
+              className="w-full bg-paper-1 border border-border pl-10 pr-4 py-3 font-medium placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-0 transition-colors rounded-sm"
             />
           </div>
           
@@ -204,7 +204,7 @@ function KnowledgeBaseListContent() {
           
           {/* Sort dropdown */}
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as "updated" | "papers" | "name")}>
-            <SelectTrigger className="w-36 h-9 text-xs border border-zinc-300 bg-white font-bold uppercase rounded-none">
+            <SelectTrigger className="w-36 h-9 text-xs border border-border bg-paper-1 font-bold uppercase rounded-sm">
               <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
               <SelectValue />
             </SelectTrigger>
@@ -219,7 +219,7 @@ function KnowledgeBaseListContent() {
           <Button
             variant={isBatchMode ? "default" : "outline"}
             size="sm"
-            className="gap-1.5 h-9 text-xs border border-zinc-300 bg-white font-bold uppercase rounded-none"
+            className="gap-1.5 h-9 text-xs border border-border bg-paper-1 font-bold uppercase rounded-sm"
             onClick={() => {
               setIsBatchMode(!isBatchMode);
               if (isBatchMode) setSelectedIds(new Set());
@@ -230,7 +230,7 @@ function KnowledgeBaseListContent() {
           </Button>
           
           {/* View toggle */}
-          <div className="flex items-center gap-0.5 border border-zinc-300 rounded-none p-0.5 bg-white">
+          <div className="flex items-center gap-0.5 border border-border rounded-sm p-0.5 bg-paper-1">
             <Button
               variant={viewMode === "card" ? "default" : "ghost"}
               size="icon"
@@ -256,10 +256,10 @@ function KnowledgeBaseListContent() {
           
           {/* Storage Status */}
           {storageStats && (
-          <div className="flex items-center gap-3 bg-white border border-zinc-200 px-4 py-3">
-            <HardDrive className="w-5 h-5 text-zinc-900" />
+          <div className="flex items-center gap-3 bg-paper-1 border border-border/70 px-4 py-3">
+            <HardDrive className="w-5 h-5 text-foreground" />
             <div className="flex-1">
-              <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 存储统计
               </div>
               <div className="flex items-center gap-4 mt-1">
@@ -273,11 +273,11 @@ function KnowledgeBaseListContent() {
                   {storageStats.chunkCount.toLocaleString()} 切片
                 </span>
               </div>
-              <div className="text-xs text-zinc-400 mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 {storageStats.estimatedStorageMB.toLocaleString()} MB / {storageStats.storageLimitMB.toLocaleString()} MB
               </div>
             </div>
-            {storageStatsLoading && <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />}
+            {storageStatsLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
           </div>
           )}
         </div>
@@ -317,12 +317,12 @@ function KnowledgeBaseListContent() {
         {loading && (
           <div className="text-center py-12 flex items-center justify-center gap-3">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <span className="text-zinc-500 font-medium">加载中...</span>
+            <span className="text-muted-foreground font-medium">加载中...</span>
           </div>
         )}
         {error && (
           <div className="text-center py-12">
-            <div className="text-red-500 font-medium mb-4">{error}</div>
+            <div className="text-destructive font-medium mb-4">{error}</div>
             <Button variant="outline" onClick={refetch}>
               重试
             </Button>
@@ -416,7 +416,12 @@ function KnowledgeBaseListContent() {
                   onClick={() => handleEnter(kb.id)}
                   role="link"
                   tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleEnter(kb.id); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleEnter(kb.id);
+                    }
+                  }}
                 >
                   {isBatchMode && (
                     <TableCell onClick={(e) => e.stopPropagation()}>
@@ -526,22 +531,22 @@ function KnowledgeBaseListContent() {
       )}
 
       {/* Magazine Masthead Footer */}
-      <div className="max-w-7xl mx-auto px-6 py-16 border-t-4 border-zinc-900 mt-16">
+      <div className="max-w-7xl mx-auto px-6 py-16 border-t-2 border-border mt-16 bg-paper-2/40">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-4">
             {/* Badge label */}
-            <div className="inline-block px-3 py-1 bg-orange-100 text-orange-800 font-bold uppercase tracking-widest text-xs">
+            <div className="inline-block px-3 py-1 bg-primary/10 text-primary font-semibold tracking-wide text-xs rounded-sm">
               知识库
             </div>
             
             {/* Magazine masthead title */}
-            <h1 className="text-5xl md:text-7xl font-black font-serif uppercase tracking-tighter text-zinc-900 leading-none">
+            <h1 className="text-5xl md:text-7xl font-black font-serif uppercase tracking-tighter text-foreground leading-none">
               Knowledge<br/>
               <span className="text-primary">Repositories</span>
             </h1>
             
             {/* Description */}
-            <p className="text-zinc-600 font-medium max-w-xl text-lg font-sans">
+            <p className="text-muted-foreground font-medium max-w-xl text-lg font-sans">
               管理您的向量化文档集合。上传、处理和使用高级嵌入模型查询企业知识。
             </p>
           </div>

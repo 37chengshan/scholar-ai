@@ -14,12 +14,12 @@ export function ChatHeader({
   onToggleRightPanel,
 }: ChatHeaderProps) {
   return (
-    <div className="h-11 px-4 border-b border-zinc-100 flex items-center justify-between bg-background/95 flex-shrink-0">
-      <h2 className="text-sm font-medium text-zinc-700 truncate max-w-[60%]">{title}</h2>
+    <div className="h-11 px-4 border-b border-border/70 flex items-center justify-between bg-paper-1/95 flex-shrink-0">
+      <h2 className="text-sm font-serif font-semibold text-foreground/85 truncate max-w-[60%]">{title}</h2>
       <button
         type="button"
         onClick={onToggleRightPanel}
-        className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-md transition-colors"
+        className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-sm transition-colors"
         aria-pressed={showRightPanel}
         aria-label={showRightPanel ? (isZh ? '收起右侧栏' : 'Hide panel') : (isZh ? '展开右侧栏' : 'Show panel')}
       >
