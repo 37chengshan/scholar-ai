@@ -48,11 +48,40 @@ async function createAuthState(page: Page, request: APIRequestContext): Promise<
   await page.waitForURL(/\/chat/, { timeout: 20000 });
   await page.getByTestId('chat-workspace-root').waitFor({ timeout: 20000 });
 
-  // Wait for the authenticated workspace to fully mount before returning.
-  // Some specs immediately trigger a hard navigation after login, and this
-  // extra guard avoids racing the auth/session bootstrap.
-  await page.waitForURL(/\/chat/, { timeout: 20000 });
-  await page.getByTestId('chat-workspace-root').waitFor({ timeout: 20000 });
+  return {
+    user,
+    cookies: await page.context().cookies(),
+  };
+}
 
-  return user;
+async function getAuthState(page: Page, request: APIRequestContext): Promise<CachedAuthState> {
+  if (cachedAuthState) {
+    return cachedAuthState;
+  }
+
+  if (!cachedAuthStatePromise) {
+    cachedAuthStatePromise = createAuthState(page, request)
+      .then((state) => {
+        cachedAuthState = state;
+        return state;
+      })
+      .catch((error) => {
+        cachedAuthStatePromise = null;
+        cachedAuthState = null;
+        throw error;
+      });
+  }
+
+  return cachedAuthStatePromise;
+}
+
+export async function registerAndLogin(page: Page, request: APIRequestContext): Promise<E2EUser> {
+  const authState = await getAuthState(page, request);
+
+  // Reuse the authenticated browser cookies after the first login in this worker.
+  await page.context().addCookies(authState.cookies);
+  await page.goto('/chat');
+  await page.waitForURL(/\/(dashboard|chat|knowledge-bases)/, { timeout: 20000 });
+
+  return authState.user;
 }
