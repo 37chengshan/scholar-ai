@@ -44,6 +44,7 @@ interface UseChatSendOptions {
   addPlaceholderMessage: (message: ExtendedChatMessage) => void;
   bindPlaceholderToMessageId: (nextMessageId: string, previousPlaceholderId: string) => void;
   syncStreamingMessage: (messageId: string) => void;
+  ingestRuntimeEvent?: (event: SSEEventEnvelope) => void;
   markStreamError: (messageId: string) => void;
   markStreamCancelled: (messageId: string) => void;
   completeStreamingMessage: (payload: {
@@ -84,6 +85,7 @@ export function useChatSend({
   addPlaceholderMessage,
   bindPlaceholderToMessageId,
   syncStreamingMessage,
+  ingestRuntimeEvent,
   markStreamError,
   markStreamCancelled,
   completeStreamingMessage,
@@ -214,6 +216,8 @@ export function useChatSend({
               return;
             }
 
+            ingestRuntimeEvent?.(event);
+
             streamApi.handleSSEEvent({
               message_id: eventMessageId,
               event_type: eventType,
@@ -315,6 +319,7 @@ export function useChatSend({
     streamStateRef,
     bindPlaceholderToMessageId,
     syncStreamingMessage,
+    ingestRuntimeEvent,
     markStreamError,
     setAgentUIState,
     completeStreamingMessage,

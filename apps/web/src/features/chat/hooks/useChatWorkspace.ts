@@ -5,7 +5,7 @@ import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore'
 import { useChatScope } from '@/features/chat/hooks/useChatScope';
 import type { WorkspaceScope } from '@/features/chat/state/chatWorkspaceStore';
 
-function parseScopeFromQuery(searchParams: URLSearchParams): WorkspaceScope {
+export function parseScopeFromQuery(searchParams: URLSearchParams): WorkspaceScope {
   const paperId = searchParams.get('paperId');
   const kbId = searchParams.get('kbId');
 
@@ -40,6 +40,7 @@ function parseScopeFromQuery(searchParams: URLSearchParams): WorkspaceScope {
 export function useChatWorkspace() {
   const [searchParams] = useSearchParams();
   const {
+    activeRun,
     rightPanelOpen,
     showDeleteConfirm,
     pendingDeleteSessionId,
@@ -56,6 +57,7 @@ export function useChatWorkspace() {
     timelinePanelOpen,
     recoveryBannerVisible,
     runArtifactsPanelOpen,
+    setActiveRun,
     setScope,
     setMode,
     setRightPanelOpen,
@@ -74,6 +76,7 @@ export function useChatWorkspace() {
     setRunArtifactsPanelOpen,
   } = useChatWorkspaceStore(
     useShallow((state) => ({
+      activeRun: state.activeRun,
       rightPanelOpen: state.rightPanelOpen,
       showDeleteConfirm: state.showDeleteConfirm,
       pendingDeleteSessionId: state.pendingDeleteSessionId,
@@ -90,6 +93,7 @@ export function useChatWorkspace() {
       timelinePanelOpen: state.timelinePanelOpen,
       recoveryBannerVisible: state.recoveryBannerVisible,
       runArtifactsPanelOpen: state.runArtifactsPanelOpen,
+      setActiveRun: state.setActiveRun,
       setScope: state.setScope,
       setMode: state.setMode,
       setRightPanelOpen: state.setRightPanelOpen,
@@ -139,6 +143,7 @@ export function useChatWorkspace() {
   };
 
   return {
+    activeRun,
     rightPanelOpen,
     showDeleteConfirm,
     pendingDeleteSessionId,
@@ -154,6 +159,7 @@ export function useChatWorkspace() {
     timelinePanelOpen,
     recoveryBannerVisible,
     runArtifactsPanelOpen,
+    setActiveRun,
     scope,
     queryScope,
     scopeState,

@@ -46,10 +46,18 @@ if [[ -z "$changed_files" ]]; then
   exit 0
 fi
 
-contract_surface_regex='^(apps/api/app/api/|apps/api/app/models/|apps/api/app/services/|apps/web/src/services/|packages/types/|packages/sdk/|docs/architecture/api-contract.md|docs/domain/resources.md)'
+# Frontend service changes should only trigger contract docs when they touch
+# real API client surfaces. Barrel exports and presentation-only helpers do not
+# change the repository contract by themselves.
+contract_surface_regex='^(apps/api/app/api/|apps/api/app/models/|apps/api/app/services/|packages/types/|packages/sdk/|docs/architecture/api-contract.md|docs/domain/resources.md)'
+frontend_contract_surface_regex='^apps/web/src/services/(annotationsApi|authApi|chatApi|importApi|kbApi|notesApi|papersApi|projectsApi|ragApi|searchApi|sessionResponse|sessionsApi|sseService|systemApi|uploadApi|uploadHistoryApi|uploadSessionApi|usersApi)\.ts$'
 
 contract_surface_changed="false"
 if grep -E "$contract_surface_regex" <<<"$changed_files" >/dev/null; then
+  contract_surface_changed="true"
+fi
+
+if grep -E "$frontend_contract_surface_regex" <<<"$changed_files" >/dev/null; then
   contract_surface_changed="true"
 fi
 
@@ -78,7 +86,7 @@ while IFS= read -r file; do
     grep -nE '\b(content_data|similarity)\b' "$file" >&2
     legacy_alias_fail=1
   fi
-done < <(grep -E "$contract_surface_regex" <<<"$changed_files" || true)
+done < <(printf '%s\n' "$changed_files" | grep -E "($contract_surface_regex|$frontend_contract_surface_regex)" || true)
 
 if [[ "$legacy_alias_fail" -ne 0 ]]; then
   echo "[contract-gate] failed due to legacy contract alias usage" >&2

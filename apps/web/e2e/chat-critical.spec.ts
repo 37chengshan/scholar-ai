@@ -8,6 +8,8 @@ test.describe('Critical E2E - Chat', () => {
     await page.waitForURL(/\/(dashboard|chat|knowledge-bases)/, { timeout: 20000 });
 
     await page.goto('/chat');
+    await expect(page.getByText('Workflow Console')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Run #chat-active-run')).toHaveCount(0);
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 10000 });
 
     const input = page.locator('textarea').first();
@@ -16,5 +18,13 @@ test.describe('Critical E2E - Chat', () => {
 
     await expect(input).toBeDisabled({ timeout: 15000 });
     await expect(input).toBeEnabled({ timeout: 120000 });
+  });
+
+  test('dashboard remains compatibility redirect only', async ({ page, request }) => {
+    await registerAndLogin(page, request);
+
+    await page.goto('/dashboard');
+    await page.waitForURL(/\/knowledge-bases/, { timeout: 20000 });
+    await expect(page).toHaveURL(/\/knowledge-bases/);
   });
 });

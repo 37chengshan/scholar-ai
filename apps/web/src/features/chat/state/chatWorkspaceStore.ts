@@ -1,5 +1,7 @@
 import { create } from 'zustand';
+import { createInitialRun } from '@/features/chat/runtime/chatRuntime';
 import type { PendingAction, RunStatus } from '@/features/chat/types/run';
+import type { AgentRun } from '@/features/chat/types/run';
 
 export type WorkspaceScopeType = 'single_paper' | 'full_kb' | 'general' | 'error' | null;
 
@@ -11,6 +13,7 @@ export interface WorkspaceScope {
 }
 
 interface ChatWorkspaceState {
+  activeRun: AgentRun;
   selectedSessionId: string | null;
   selectedMessageId: string | null;
   selectedRunId: string | null;
@@ -27,6 +30,7 @@ interface ChatWorkspaceState {
   streamingMessageId: string | null;
   showDeleteConfirm: boolean;
   pendingDeleteSessionId: string | null;
+  setActiveRun: (run: AgentRun) => void;
   setSelectedSessionId: (id: string | null) => void;
   setSelectedMessageId: (id: string | null) => void;
   setSelectedRunId: (id: string | null) => void;
@@ -46,6 +50,7 @@ interface ChatWorkspaceState {
 }
 
 export const useChatWorkspaceStore = create<ChatWorkspaceState>((set) => ({
+  activeRun: createInitialRun(),
   selectedSessionId: null,
   selectedMessageId: null,
   selectedRunId: null,
@@ -65,6 +70,7 @@ export const useChatWorkspaceStore = create<ChatWorkspaceState>((set) => ({
   streamingMessageId: null,
   showDeleteConfirm: false,
   pendingDeleteSessionId: null,
+  setActiveRun: (run) => set({ activeRun: run }),
   setSelectedSessionId: (id) => set({ selectedSessionId: id }),
   setSelectedMessageId: (id) => set({ selectedMessageId: id }),
   setSelectedRunId: (id) => set({ selectedRunId: id }),

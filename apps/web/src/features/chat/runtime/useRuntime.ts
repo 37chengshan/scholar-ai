@@ -13,7 +13,10 @@ import {
   type RunAction,
 } from '@/features/chat/runtime/chatRuntime';
 import type { AgentRun, RecoveryState } from '@/features/chat/types/run';
-import type { CanonicalSSEEventEnvelope } from '@/features/chat/adapters/sseEventAdapter';
+import {
+  normalizeSSEEventEnvelope,
+  type RawSSEEventEnvelope,
+} from '@/features/chat/adapters/sseEventAdapter';
 
 // Run protocol event types that chatRuntime handles
 const RUN_PROTOCOL_EVENTS = new Set([
@@ -25,6 +28,7 @@ const RUN_PROTOCOL_EVENTS = new Set([
   'recovery_available',
   'evidence',
   'artifact',
+  'confirmation_required',
 ]);
 
 export interface UseRuntimeReturn {
@@ -33,7 +37,7 @@ export interface UseRuntimeReturn {
   /** Dispatch a run action directly */
   dispatchRun: (action: RunAction) => void;
   /** Process a normalized SSE event — returns true if consumed */
-  ingestEvent: (envelope: CanonicalSSEEventEnvelope) => boolean;
+  ingestEvent: (envelope: RawSSEEventEnvelope) => boolean;
   /** Reset run state */
   resetRun: () => void;
   /** Current recovery state */
@@ -44,11 +48,12 @@ export function useRuntime(): UseRuntimeReturn {
   const [run, dispatchRun] = useReducer(runReducer, createInitialRun());
 
   const ingestEvent = useCallback(
-    (envelope: CanonicalSSEEventEnvelope): boolean => {
-      if (!RUN_PROTOCOL_EVENTS.has(envelope.event_type)) {
+    (envelope: RawSSEEventEnvelope): boolean => {
+      const normalized = normalizeSSEEventEnvelope(envelope);
+      if (!normalized || !RUN_PROTOCOL_EVENTS.has(normalized.event_type)) {
         return false;
       }
-      const action = mapSSEToRunAction(envelope.event_type, envelope.data);
+      const action = mapSSEToRunAction(normalized.event_type, normalized.data);
       if (action) {
         dispatchRun(action);
         return true;
@@ -63,7 +68,7 @@ export function useRuntime(): UseRuntimeReturn {
   }, []);
 
   const recovery = useMemo<RecoveryState>(() => ({
-    available: run.recoverable,
+    available: run.recoverable || run.pendingActions.length > 0,
     actions: run.pendingActions.map(a => a.type),
     context: {},
   }), [run.recoverable, run.pendingActions]);

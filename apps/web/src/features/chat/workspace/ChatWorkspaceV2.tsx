@@ -47,11 +47,13 @@ import { MessageFeed } from '@/features/chat/components/message-feed/MessageFeed
 import { ComposerInput } from '@/features/chat/components/composer-input/ComposerInput';
 import { ChatHeader } from '@/features/chat/components/ChatHeader';
 import { ChatRightPanel } from '@/features/chat/components/ChatRightPanel';
+import { RunHeader } from '@/features/chat/components/workbench/RunHeader';
 import { usePinnedBottom } from '@/features/chat/hooks/usePinnedBottom';
 import { useChatWorkspace } from '@/features/chat/hooks/useChatWorkspace';
 import { useChatMessagesViewModel } from '@/features/chat/hooks/useChatMessagesViewModel';
 import { useChatStreaming } from '@/features/chat/hooks/useChatStreaming';
 import { useChatSend } from '@/features/chat/hooks/useChatSend';
+import { useRuntime } from '@/features/chat/runtime/useRuntime';
 import type {
   CitationItem,
   ExtendedChatMessage,
@@ -89,6 +91,12 @@ export function ChatWorkspaceV2() {
     setStreamingMessageId,
     setIsPinnedToBottom,
     setScope: setWorkspaceScope,
+    setActiveRun,
+    setSelectedRunId,
+    setActiveRunStatus,
+    setPendingActions,
+    setRecoveryBannerVisible,
+    setRunArtifactsPanelOpen,
   } = useChatWorkspace();
 
   const { isPinnedToBottom, maybeFollowBottom, alignToBottom } = usePinnedBottom({
@@ -137,6 +145,24 @@ export function ChatWorkspaceV2() {
         }
         setScope({ type: null, id: null });
         setWorkspaceScope({ type: null, id: null });
+        setScopeLoading(false);
+        return;
+      }
+
+      if (paperId && kbId) {
+        if (cancelled) {
+          return;
+        }
+        setScope({
+          type: 'error',
+          id: paperId,
+          errorMessage: 'paperId and kbId cannot coexist',
+        });
+        setWorkspaceScope({
+          type: 'error',
+          id: paperId,
+          errorMessage: 'paperId and kbId cannot coexist',
+        });
         setScopeLoading(false);
         return;
       }
@@ -238,6 +264,7 @@ export function ChatWorkspaceV2() {
   }, [scope.type, scope.id, mode, setMode]);
 
   const { language } = useLanguage();
+  const runtime = useRuntime();
 
   // Feature-level streaming entry (state machine + buffer + throttle)
   const streamApi = useChatStreaming({
@@ -265,6 +292,15 @@ export function ChatWorkspaceV2() {
     resetConfirmation,
   } = streamApi;
   const streamStateRef = useRef(streamState); // ref for stale closure fix in onDone
+
+  const ingestRuntimeEvent = useCallback((event: SSEEventEnvelope) => {
+    runtime.ingestEvent({
+      message_id: event.message_id || currentMessageIdRef.current,
+      event: event.event || '',
+      data: event.data ?? {},
+      timestamp: Date.now(),
+    });
+  }, [runtime]);
 
   const {
     sessions,
@@ -368,9 +404,10 @@ export function ChatWorkspaceV2() {
       resetForSessionSwitch();
       setSessionTokens(0); // 重置token计数
       setSessionCost(0); // 重置cost计数
+      runtime.resetRun();
       resetRun(); // Reset stream state
     }
-  }, [createSession, isZh, resetForSessionSwitch, resetRun]);
+  }, [createSession, isZh, resetForSessionSwitch, resetRun, runtime]);
 
   const handleSwitchSession = useCallback(
     async (sessionId: string) => {
@@ -383,9 +420,10 @@ export function ChatWorkspaceV2() {
       resetForSessionSwitch();
       setSessionTokens(0); // 重置token计数
       setSessionCost(0); // 重置cost计数
+      runtime.resetRun();
       resetRun(); // Reset stream state
     },
-    [switchSession, resetForSessionSwitch, resetRun],
+    [switchSession, resetForSessionSwitch, resetRun, runtime],
   );
 
   const handleDeleteSession = useCallback(
@@ -476,12 +514,51 @@ export function ChatWorkspaceV2() {
     addPlaceholderMessage,
     bindPlaceholderToMessageId,
     syncStreamingMessage,
+    ingestRuntimeEvent,
     markStreamError,
     markStreamCancelled,
     completeStreamingMessage,
     removePlaceholderMessage,
     clearPlaceholder,
   });
+
+  useEffect(() => {
+    setActiveRun(runtime.run);
+    setSelectedRunId(runtime.run.runId);
+    setActiveRunStatus(runtime.run.status);
+    setPendingActions(runtime.run.pendingActions);
+    setRecoveryBannerVisible(runtime.run.recoverable || runtime.run.pendingActions.length > 0);
+    setRunArtifactsPanelOpen(runtime.run.artifacts.length > 0 || runtime.run.evidence.length > 0);
+  }, [
+    runtime.run,
+    setActiveRun,
+    setSelectedRunId,
+    setActiveRunStatus,
+    setPendingActions,
+    setRecoveryBannerVisible,
+    setRunArtifactsPanelOpen,
+  ]);
+
+  useEffect(() => {
+    if (streamState.streamStatus === 'cancelled' && runtime.run.status === 'running') {
+      runtime.dispatchRun({
+        type: 'RUN_COMPLETE',
+        status: 'cancelled',
+        tokensUsed: streamState.tokensUsed,
+        cost: streamState.cost,
+      });
+      return;
+    }
+
+    if (streamState.streamStatus === 'error' && runtime.run.status === 'running') {
+      runtime.dispatchRun({
+        type: 'RUN_COMPLETE',
+        status: 'failed',
+        tokensUsed: streamState.tokensUsed,
+        cost: streamState.cost,
+      });
+    }
+  }, [runtime, streamState.cost, streamState.streamStatus, streamState.tokensUsed]);
 
   // ============================================================================
   // UI Effects
@@ -581,6 +658,7 @@ export function ChatWorkspaceV2() {
             data: eventData,
             timestamp: Date.now(),
           });
+          ingestRuntimeEvent(event);
 
           syncStreamingMessage(currentMessageIdRef.current || eventMessageId);
         },
@@ -688,6 +766,8 @@ export function ChatWorkspaceV2() {
           onExitScope={handleExitScope}
         />
 
+        <RunHeader run={runtime.run} />
+
         <MessageFeed
           renderMessages={renderMessages}
           streamState={streamState}
@@ -737,6 +817,7 @@ export function ChatWorkspaceV2() {
           <ChatRightPanel
             selectedMessage={selectedMessage}
             streamState={streamState}
+            activeRun={runtime.run}
             sessionTokens={sessionTokens}
             sessionCost={sessionCost}
             onStop={handleStop}
