@@ -14,6 +14,7 @@ from app.core.multimodal_search_service import (
     MultimodalSearchService,
     get_multimodal_search_service,
 )
+from app.models.retrieval import RetrievedChunk
 
 
 class TestMultimodalSearchService:
@@ -23,7 +24,7 @@ class TestMultimodalSearchService:
     def mock_services(self):
         """Mock dependent services."""
         with patch("app.core.multimodal_search_service.get_embedding_service") as mock_embedding, \
-             patch("app.core.multimodal_search_service.get_milvus_service") as mock_milvus, \
+             patch("app.core.multimodal_search_service.get_vector_store_repository") as mock_vector_store, \
              patch("app.core.multimodal_search_service.get_reranker_service") as mock_reranker:
 
             # Setup embedding mock
@@ -32,20 +33,19 @@ class TestMultimodalSearchService:
             embedding_instance.encode_text.return_value = [0.1] * 2048
             mock_embedding.return_value = embedding_instance
 
-            # Setup Milvus mock
-            milvus_instance = MagicMock()
-            milvus_instance.search_contents_v2.return_value = [
-                {
-                    "id": f"test-{i}",
-                    "paper_id": "paper-1",
-                    "page_num": i,
-                    "content_type": "text",
-                    "content_data": f"content {i}",
-                    "distance": 0.1,
-                }
+            # Setup repository mock
+            vector_store_instance = MagicMock()
+            vector_store_instance.search.return_value = [
+                RetrievedChunk(
+                    paper_id="paper-1",
+                    text=f"content {i}",
+                    score=0.9 - (i * 0.01),
+                    page_num=i + 1,
+                    content_type="text",
+                )
                 for i in range(5)
             ]
-            mock_milvus.return_value = milvus_instance
+            mock_vector_store.return_value = vector_store_instance
 
             # Setup ReRanker mock
             reranker_instance = MagicMock()
@@ -59,7 +59,7 @@ class TestMultimodalSearchService:
 
             yield {
                 "embedding": embedding_instance,
-                "milvus": milvus_instance,
+                "vector_store": vector_store_instance,
                 "reranker": reranker_instance,
             }
 
@@ -130,15 +130,14 @@ class TestMultimodalSearchService:
         service = MultimodalSearchService()
 
         # Setup Milvus to return more than 10 results to trigger reranking
-        mock_services["milvus"].search_contents_v2.return_value = [
-            {
-                "id": f"test-{i}",
-                "paper_id": "paper-1",
-                "page_num": i,
-                "content_type": "text",
-                "content_data": f"content {i}",
-                "distance": 0.1,
-            }
+        mock_services["vector_store"].search.return_value = [
+            RetrievedChunk(
+                paper_id="paper-1",
+                text=f"content {i}",
+                score=0.9 - (i * 0.01),
+                page_num=i + 1,
+                content_type="text",
+            )
             for i in range(15)  # 15 results to trigger reranking
         ]
 
@@ -169,31 +168,29 @@ class TestMultimodalSearchService:
 
         # Setup Milvus to return results from multiple papers
         all_hits = [
-            {
-                "id": "test-1",
-                "paper_id": "paper-1",
-                "page_num": 1,
-                "content_type": "text",
-                "content_data": "content 1",
-                "distance": 0.1,
-            },
-            {
-                "id": "test-2",
-                "paper_id": "paper-2",  # Different paper
-                "page_num": 2,
-                "content_type": "text",
-                "content_data": "content 2",
-                "distance": 0.2,
-            },
+            RetrievedChunk(
+                paper_id="paper-1",
+                text="content 1",
+                score=0.9,
+                page_num=1,
+                content_type="text",
+            ),
+            RetrievedChunk(
+                paper_id="paper-2",
+                text="content 2",
+                score=0.8,
+                page_num=2,
+                content_type="text",
+            ),
         ]
 
-        def search_contents_v2_side_effect(*args, **kwargs):
+        def vector_store_search_side_effect(*args, **kwargs):
             constraints = kwargs["constraints"]
             return [
-                hit for hit in all_hits if hit["paper_id"] in constraints.paper_ids
+                hit for hit in all_hits if hit.paper_id in constraints.paper_ids
             ]
 
-        mock_services["milvus"].search_contents_v2.side_effect = search_contents_v2_side_effect
+        mock_services["vector_store"].search.side_effect = vector_store_search_side_effect
 
         # Search only for paper-1
         result = await service.search(
@@ -205,7 +202,7 @@ class TestMultimodalSearchService:
         )
 
         # Verify paper_ids were pushed down to Milvus constraints.
-        call_kwargs = mock_services["milvus"].search_contents_v2.call_args[1]
+        call_kwargs = mock_services["vector_store"].search.call_args[1]
         assert call_kwargs["constraints"].paper_ids == ["paper-1"]
         assert all(item["paper_id"] == "paper-1" for item in result["results"])
 
@@ -225,8 +222,8 @@ class TestMultimodalSearchService:
         )
 
         # Verify Milvus called with image content_type
-        mock_services["milvus"].search_contents_v2.assert_called()
-        call_kwargs = mock_services["milvus"].search_contents_v2.call_args[1]
+        mock_services["vector_store"].search.assert_called()
+        call_kwargs = mock_services["vector_store"].search.call_args[1]
         assert call_kwargs["content_type"] == "image"
 
 
@@ -236,7 +233,7 @@ class TestMultimodalSearchServiceSingleton:
     def test_get_multimodal_search_service_singleton(self):
         """Test that get_multimodal_search_service returns singleton."""
         with patch("app.core.multimodal_search_service.get_embedding_service"), \
-             patch("app.core.multimodal_search_service.get_milvus_service"), \
+             patch("app.core.multimodal_search_service.get_vector_store_repository"), \
              patch("app.core.multimodal_search_service.get_reranker_service"):
 
             service1 = get_multimodal_search_service()

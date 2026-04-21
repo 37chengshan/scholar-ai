@@ -27,7 +27,6 @@ Requirements:
 from typing import Any, Dict, List, Optional
 
 from app.core.embedding.factory import get_embedding_service
-from app.core.milvus_service import get_milvus_service
 from app.core.reranker.factory import get_reranker_service
 from app.core.modality_fusion import detect_intent as detect_modality_intent, weighted_rrf_fusion, WEIGHT_PRESETS
 from app.core.intent_rules import detect_intent as detect_query_intent
@@ -35,6 +34,7 @@ from app.core.synonyms import expand_query
 from app.core.query_metadata_extractor import extract_metadata_filters
 from app.core.query_planner import plan_queries
 from app.core.bm25_service import get_sparse_recall_service
+from app.core.vector_store_repository import get_vector_store_repository
 from app.models.retrieval import RetrievedChunk, SearchConstraints
 from app.utils.logger import logger
 
@@ -47,14 +47,14 @@ class MultimodalSearchService:
 
     Attributes:
         embedding_service: Configured embedding service
-        milvus: Milvus vector search service
+        vector_store: Canonical vector store repository
         reranker: Configured reranker service
     """
 
     def __init__(self):
         """Initialize MultimodalSearchService."""
         self.embedding_service = get_embedding_service()
-        self.milvus = get_milvus_service()
+        self.vector_store = get_vector_store_repository()
         self.reranker = get_reranker_service()
         self.sparse_recall = get_sparse_recall_service()
 
@@ -297,7 +297,7 @@ class MultimodalSearchService:
         self._ensure_service_loaded(self.embedding_service)
         query_embeddings = [self.embedding_service.encode_text(q) for q in expanded_queries]
 
-        # Step 6: Search Milvus across modalities with constraints pushdown
+        # Step 6: Search vector store across modalities with constraints pushdown
         content_types = content_types or ["text", "image", "table"]
         multimodal_results: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -306,25 +306,28 @@ class MultimodalSearchService:
                 # Run multiple planned dense queries and merge candidates.
                 planned_hits: List[Dict[str, Any]] = []
                 for query_embedding in query_embeddings:
-                    results = self.milvus.search_contents_v2(
+                    results = self.vector_store.search(
                         embedding=query_embedding,
                         user_id=user_id,
                         content_type=content_type,
                         top_k=20,
                         constraints=constraints,
                     )
-                    planned_hits.extend(results)
+                    for result in results:
+                        hit = result.model_dump()
+                        hit["id"] = hit.get("source_id") or f"{hit.get('paper_id', 'unknown')}-{hit.get('page_num', 0)}-{hit.get('content_type', 'text')}"
+                        planned_hits.append(hit)
 
                 multimodal_results[content_type] = self._dedupe_hits(planned_hits, limit=20)
 
                 logger.debug(
-                    f"Milvus {content_type} search with constraints pushdown",
+                    f"Vector store {content_type} search with constraints pushdown",
                     results=len(multimodal_results[content_type]),
                     paper_ids_in_constraints=len(constraints.paper_ids),
                 )
             except Exception as e:
                 logger.error(
-                    f"Milvus search failed for {content_type}",
+                    f"Vector store search failed for {content_type}",
                     error=str(e),
                 )
                 multimodal_results[content_type] = []
