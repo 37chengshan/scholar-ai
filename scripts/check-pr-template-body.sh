@@ -103,7 +103,11 @@ is_placeholder_only() {
     return 0
   fi
 
-  if printf '%s\n' "$normalized" | grep -Eq '^(Closes #|Related #|低 / 中 / 高|页面：|接口：|服务/脚本：|数据/配置：|主要风险：|回滚方式：|Phase ID:|Deliverable Unit:|Migration-Task:|未覆盖项:)$'; then
+  # Remove lines that are just placeholder hints, then check if anything remains
+  local non_placeholder
+  non_placeholder="$(printf '%s\n' "$normalized" | grep -Ev '^(Closes #|Related #|低 / 中 / 高|页面：|接口：|服务/脚本：|数据/配置：|主要风险：|回滚方式：|Phase ID:|Deliverable Unit:|Migration-Task:|未覆盖项:)$')"
+
+  if [[ -z "${non_placeholder//[$' \n\r\t']/}" ]]; then
     return 0
   fi
 
