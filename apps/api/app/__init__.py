@@ -18,7 +18,6 @@ Usage:
     from app.deps import get_db, get_current_user
 """
 
-from app.main import app
 from app.config import settings, get_settings
 
 __all__ = [
@@ -26,3 +25,11 @@ __all__ = [
     "settings",
     "get_settings",
 ]
+
+
+def __getattr__(name: str):
+    if name == "app":
+        from app.main import app as fastapi_app
+
+        return fastapi_app
+    raise AttributeError(name)

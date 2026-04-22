@@ -32,7 +32,7 @@ from app.core.modality_fusion import detect_intent as detect_modality_intent, we
 from app.core.intent_rules import detect_intent as detect_query_intent
 from app.core.synonyms import expand_query
 from app.core.query_metadata_extractor import extract_metadata_filters
-from app.core.query_planner import plan_queries
+from app.core.query_planner import build_academic_query_plan
 from app.core.retrieval_scoring import RetrievalScoringService
 from app.core.retrieval_trace import RetrievalTraceService
 from app.core.vector_store_repository import get_vector_store_repository
@@ -120,6 +120,7 @@ class MultimodalSearchService:
             paper_id=hit.get("paper_id", ""),
             paper_title=hit.get("paper_title"),
             text=hit.get("text") or hit.get("content_data") or hit.get("content") or "",
+            text_span=hit.get("text_span"),
             score=self._raw_score(hit),
             backend=hit.get("backend", settings.VECTOR_STORE_BACKEND),
             source_id=(str(hit.get("source_id")) if hit.get("source_id") is not None else str(hit.get("id")) if hit.get("id") is not None else None),
@@ -128,6 +129,19 @@ class MultimodalSearchService:
             content_subtype=hit.get("content_subtype"),
             anchor_text=hit.get("anchor_text"),
             section=hit.get("section"),
+            paper_role=hit.get("paper_role"),
+            table_ref=hit.get("table_ref"),
+            figure_ref=hit.get("figure_ref"),
+            metric_sentence=hit.get("metric_sentence"),
+            dataset=hit.get("dataset"),
+            baseline=hit.get("baseline"),
+            method=hit.get("method"),
+            score_value=hit.get("score_value"),
+            metric_name=hit.get("metric_name"),
+            metric_direction=hit.get("metric_direction"),
+            caption_text=hit.get("caption_text"),
+            evidence_bundle_id=hit.get("evidence_bundle_id"),
+            evidence_types=hit.get("evidence_types") if isinstance(hit.get("evidence_types"), list) else [],
             content_type=hit.get("content_type", "text"),
             quality_score=hit.get("quality_score"),
             raw_data=hit.get("raw_data"),
@@ -160,6 +174,33 @@ class MultimodalSearchService:
 
         ranked = sorted(deduped.values(), key=self._raw_score, reverse=True)
         return ranked[:limit]
+
+    @staticmethod
+    def _bundle_key(hit: Dict[str, Any]) -> str:
+        """Build stable bundle key for bundle-aware dedupe."""
+        return (
+            hit.get("evidence_bundle_id")
+            or f"{hit.get('paper_id', 'unknown')}:{hit.get('table_ref') or hit.get('figure_ref') or hit.get('source_id') or hit.get('id') or 'chunk'}"
+        )
+
+    def _bundle_dedupe_hits(self, hits: List[Dict[str, Any]], limit: int = 20) -> List[Dict[str, Any]]:
+        """Deduplicate with evidence bundle preference for academic evidence queries."""
+        deduped: Dict[str, Dict[str, Any]] = {}
+        for hit in hits:
+            key = self._bundle_key(hit)
+            existing = deduped.get(key)
+            if existing is None or self._raw_score(hit) > self._raw_score(existing):
+                deduped[key] = hit
+        ranked = sorted(deduped.values(), key=self._raw_score, reverse=True)
+        return ranked[:limit]
+
+    @staticmethod
+    def _is_weak_first_pass(fused: List[Dict[str, Any]]) -> bool:
+        """Determine whether retrieval is weak enough to trigger second pass."""
+        if not fused:
+            return True
+        top_score = max((float(item.get("hybrid_score") or item.get("score") or 0.0) for item in fused), default=0.0)
+        return top_score < 0.52 or len(fused) < 3
 
     def compile_to_constraints(
         self,
@@ -249,6 +290,8 @@ class MultimodalSearchService:
         top_k: int = 10,
         use_reranker: bool = True,
         content_types: Optional[List[str]] = None,
+        graph_hint: Optional[Dict[str, Any]] = None,
+        graph_candidates: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Execute multimodal search with intent detection and fusion.
 
@@ -263,6 +306,19 @@ class MultimodalSearchService:
         Returns:
             Dictionary with query, intent, expanded_query, metadata_filters, weights, results, and metadata
         """
+        graph_used = bool(graph_hint and graph_hint.get("requires_graph"))
+        graph_candidate_count = len(graph_candidates or [])
+        graph_paper_ids = {
+            str(item.get("paper_id"))
+            for item in (graph_candidates or [])
+            if item.get("paper_id")
+        }
+        narrowed_paper_ids = paper_ids
+        if graph_used and graph_paper_ids:
+            narrowed_paper_ids = [paper_id for paper_id in paper_ids if str(paper_id) in graph_paper_ids]
+            if not narrowed_paper_ids:
+                narrowed_paper_ids = paper_ids
+
         # Step 1: Detect query intent (question/compare/summary/evolution) per D-15
         query_intent = detect_query_intent(query)
         logger.info(f"Detected intent: {query_intent} for query: {query[:50]}")
@@ -279,8 +335,9 @@ class MultimodalSearchService:
             paper_count=len(paper_ids),
         )
 
-        # Step 3: Query planning + expansion for hybrid retrieval
-        planner_queries = plan_queries(query, query_intent)
+        # Step 3: Academic query planning + expansion for hybrid retrieval
+        academic_plan = build_academic_query_plan(query, query_intent, paper_ids=paper_ids)
+        planner_queries = academic_plan.get("planner_queries") or [query]
         expanded_queries = [expand_query(q) for q in planner_queries]
         if not expanded_queries:
             expanded_queries = [expand_query(query)]
@@ -295,7 +352,7 @@ class MultimodalSearchService:
 
         # Compile filters to constraints for Milvus pushdown per D-07
         constraints = self.compile_to_constraints(
-            metadata_filters, user_id, paper_ids
+            metadata_filters, user_id, narrowed_paper_ids
         )
 
         # Step 5: Encode planned queries for dense retrieval
@@ -303,7 +360,8 @@ class MultimodalSearchService:
         query_embeddings = [self.embedding_service.encode_text(q) for q in expanded_queries]
 
         # Step 6: Search vector store across modalities with constraints pushdown
-        content_types = content_types or ["text", "image", "table"]
+        expected_evidence_types = academic_plan.get("expected_evidence_types") or ["text", "image", "table"]
+        content_types = content_types or expected_evidence_types
         multimodal_results: Dict[str, List[Dict[str, Any]]] = {}
 
         for content_type in content_types:
@@ -324,7 +382,10 @@ class MultimodalSearchService:
                         hit["id"] = hit.get("source_id") or f"{hit.get('paper_id', 'unknown')}-{hit.get('page_num', 0)}-{hit.get('content_type', 'text')}"
                         planned_hits.append(hit)
 
-                multimodal_results[content_type] = self._dedupe_hits(planned_hits, limit=20)
+                if academic_plan.get("query_family") in {"compare", "numeric", "figure", "table"}:
+                    multimodal_results[content_type] = self._bundle_dedupe_hits(planned_hits, limit=20)
+                else:
+                    multimodal_results[content_type] = self._dedupe_hits(planned_hits, limit=20)
 
                 logger.debug(
                     f"Vector store {content_type} search with constraints pushdown",
@@ -351,6 +412,55 @@ class MultimodalSearchService:
         self.scoring.annotate_hybrid_scores(query, fused)
         fused.sort(key=lambda x: x.get("hybrid_score", 0.0), reverse=True)
 
+        # Step 5.5: Second-pass rewrite when first pass retrieval is weak
+        second_pass_used = False
+        second_pass_gain = 0
+        if self._is_weak_first_pass(fused):
+            fallback_rewrites = academic_plan.get("fallback_rewrites") or []
+            if fallback_rewrites:
+                second_pass_used = True
+                extra_embeddings = [self.embedding_service.encode_text(expand_query(rw)) for rw in fallback_rewrites[:2]]
+                before_ids = {
+                    f"{item.get('paper_id')}:{item.get('source_id') or item.get('id') or item.get('page_num')}"
+                    for item in fused
+                }
+                for content_type in content_types:
+                    extra_hits: List[Dict[str, Any]] = []
+                    for emb in extra_embeddings:
+                        extra_results = self.vector_store.search(
+                            embedding=emb,
+                            user_id=user_id,
+                            content_type=content_type,
+                            top_k=12,
+                            constraints=constraints,
+                        )
+                        for result in extra_results:
+                            hit = result.model_dump()
+                            hit["backend"] = result.backend
+                            hit["id"] = hit.get("source_id") or f"{hit.get('paper_id', 'unknown')}-{hit.get('page_num', 0)}-{hit.get('content_type', 'text')}"
+                            extra_hits.append(hit)
+
+                    merged = (multimodal_results.get(content_type) or []) + extra_hits
+                    if academic_plan.get("query_family") in {"compare", "numeric", "figure", "table"}:
+                        multimodal_results[content_type] = self._bundle_dedupe_hits(merged, limit=24)
+                    else:
+                        multimodal_results[content_type] = self._dedupe_hits(merged, limit=24)
+
+                fused = weighted_rrf_fusion(multimodal_results, weights)
+                self.scoring.annotate_hybrid_scores(query, fused)
+                fused.sort(key=lambda x: x.get("hybrid_score", 0.0), reverse=True)
+                after_ids = {
+                    f"{item.get('paper_id')}:{item.get('source_id') or item.get('id') or item.get('page_num')}"
+                    for item in fused
+                }
+                second_pass_gain = max(len(after_ids - before_ids), 0)
+
+        # Step 5.6: Graph hint retrieval narrowing (Phase 4 lightweight)
+        if graph_used and graph_paper_ids:
+            preferred = [item for item in fused if str(item.get("paper_id")) in graph_paper_ids]
+            others = [item for item in fused if str(item.get("paper_id")) not in graph_paper_ids]
+            fused = preferred + others
+
         # Step 6: Structured ReRanker (optional)
         if use_reranker and len(fused) > 10:
             try:
@@ -375,7 +485,12 @@ class MultimodalSearchService:
         trace_payload = self.trace_service.build_trace(
             query=query,
             planner_queries=planner_queries,
-            metadata_filters=metadata_filters,
+            metadata_filters={
+                **metadata_filters,
+                "graph_retrieval_used": graph_used,
+                "graph_candidate_count": graph_candidate_count,
+                "graph_narrowed_paper_ids": narrowed_paper_ids,
+            },
             weights=weights,
             results=fused,
         )
@@ -404,13 +519,23 @@ class MultimodalSearchService:
             "expanded_query": expanded_query,
             "intent": modality_intent,
             "query_intent": query_intent,
+            "query_family": academic_plan.get("query_family"),
             "planner_queries": planner_queries,
+            "planner_query_count": len(planner_queries),
+            "decontextualized_query": academic_plan.get("decontextualized_query"),
+            "second_pass_used": second_pass_used,
+            "second_pass_gain": second_pass_gain,
+            "expected_evidence_types": expected_evidence_types,
             "retrieval_mode": "hybrid_dense_sparse",
             "metadata_filters": metadata_filters,
             "weights": weights,
             "results": final_results,
             "total_count": len(fused),
             "vector_backend": settings.VECTOR_STORE_BACKEND,
+            "graph_retrieval_used": graph_used,
+            "graph_candidate_count": graph_candidate_count,
+            "graph_vector_merged_evidence": len(final_results),
+            "graph_narrowed_paper_ids": narrowed_paper_ids,
         }
 
         if trace_payload is not None:

@@ -1,1 +1,1 @@
-{"case_id":"rag.compare","input":{"query":"compare paper A and B"},"expected":{"min_source_count":2,"min_citation_count":2,"confidence":0.72,"latency_ms":520}}
+{"case_id":"rag.compare","phase":"phase4","gold_answer_type":"graph_compare","gold_triples":[{"subject":"paper-a","relation":"compares_against_baseline","object":"paper-b"}],"gold_entities":{"methods":["paper-a","paper-b"],"datasets":["SQuAD"],"metrics":["F1"]},"input":{"query":"compare paper A and B"},"expected":{"min_source_count":2,"min_citation_count":2,"confidence":0.72,"latency_ms":520}}

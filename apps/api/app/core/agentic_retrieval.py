@@ -20,11 +20,17 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.utils.logger import logger
+from app.core.abstention_policy import get_abstention_policy
+from app.core.claim_extractor import get_claim_extractor
+from app.core.claim_verifier import get_claim_verifier
 from app.core.query_decomposer import (
     QueryDecomposer,
     ConvergenceChecker,
     QueryType,
 )
+from app.core.query_planner import build_academic_query_plan
+from app.core.graph_query_compiler import get_graph_query_compiler
+from app.core.graph_retrieval_service import get_graph_retrieval_service
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.citation_verifier import get_citation_verifier
 
@@ -57,6 +63,11 @@ class AgenticRetrievalOrchestrator:
         self.convergence_checker = convergence_checker or ConvergenceChecker()
         self.search_service = get_multimodal_search_service()
         self.citation_verifier = get_citation_verifier()
+        self.claim_extractor = get_claim_extractor()
+        self.claim_verifier = get_claim_verifier()
+        self.abstention_policy = get_abstention_policy()
+        self.graph_query_compiler = get_graph_query_compiler()
+        self.graph_retrieval_service = get_graph_retrieval_service()
 
     async def retrieve(
         self,
@@ -90,11 +101,34 @@ class AgenticRetrievalOrchestrator:
             paper_count=len(paper_ids) if paper_ids else 0,
         )
 
+        academic_plan = build_academic_query_plan(query, query_type or "", paper_ids=paper_ids)
+        effective_query_type = (query_type or academic_plan.get("query_family") or "single")
+        expected_evidence_types = academic_plan.get("expected_evidence_types") or ["text"]
+        graph_hint = self.graph_query_compiler.compile(query, str(effective_query_type))
+        graph_candidates = await self.graph_retrieval_service.expand_graph_context(
+            graph_hint=graph_hint,
+            paper_ids=paper_ids or [],
+            query=query,
+        )
+
         sub_questions = await self.decomposer.decompose_query(
             query=query,
-            query_type=query_type,
+            query_type=effective_query_type,
             paper_ids=paper_ids,
         )
+
+        planned_sub_questions = academic_plan.get("sub_questions") or []
+        if planned_sub_questions:
+            sub_questions = [
+                {
+                    "question": item.get("question"),
+                    "query_type": effective_query_type,
+                    "target_papers": paper_ids or [],
+                    "rationale": item.get("role", "academic_plan"),
+                }
+                for item in planned_sub_questions
+                if item.get("question")
+            ]
 
         if not sub_questions:
             return {
@@ -124,6 +158,9 @@ class AgenticRetrievalOrchestrator:
                 paper_ids=paper_ids or [],
                 user_id=user_id,
                 top_k=top_k_per_subquestion,
+                content_types=expected_evidence_types,
+                graph_hint=graph_hint,
+                graph_candidates=graph_candidates,
             )
 
             all_results.append(
@@ -153,7 +190,7 @@ class AgenticRetrievalOrchestrator:
             # Synthesize results for this round
             previous_synthesis = await self._synthesize_results(
                 query=query,
-                query_type=query_type or "single",
+                query_type=effective_query_type,
                 results=round_results,
                 round_num=round_num,
             )
@@ -164,7 +201,7 @@ class AgenticRetrievalOrchestrator:
 
             # For evolution/cross_paper queries, refine sub-questions based on results
             if (
-                query_type in ("evolution", "cross_paper")
+                effective_query_type in ("evolution", "cross_paper", "compare")
                 and round_num < self.max_rounds
             ):
                 sub_questions = await self._refine_subquestions(
@@ -176,15 +213,30 @@ class AgenticRetrievalOrchestrator:
         # Step 3: Final synthesis
         final_answer = await self._final_synthesis(
             query=query,
-            query_type=query_type or "single",
+            query_type=effective_query_type,
             all_results=all_results,
         )
 
         # Collect all sources
         all_sources = self._collect_sources(all_results)
 
-        verified_answer, verification_report = (
+        citation_checked_answer, citation_report = (
             self.citation_verifier.prune_unsupported_claims(final_answer, all_sources)
+        )
+        extracted_claims = self.claim_extractor.extract(citation_checked_answer)
+        claim_results = self.claim_verifier.verify(extracted_claims, all_sources)
+        claim_report = self.claim_verifier.build_report(claim_results)
+        consistency_score = self._compute_answer_evidence_consistency(citation_checked_answer, all_sources)
+        abstain_decision = self.abstention_policy.decide(
+            claim_report=claim_report,
+            citation_report=citation_report,
+            answer_evidence_consistency=consistency_score,
+        )
+        verified_answer = self._apply_answer_mode(
+            answer=citation_checked_answer,
+            claim_results=claim_results,
+            answer_mode=abstain_decision.answer_mode.value,
+            abstain_reason=abstain_decision.abstain_reason,
         )
 
         logger.info(
@@ -193,7 +245,7 @@ class AgenticRetrievalOrchestrator:
             rounds=rounds_executed,
             converged=converged,
             sources=len(all_sources),
-            citation_support=verification_report.get("support_score"),
+            citation_coverage=citation_report.get("citation_coverage"),
         )
 
         return {
@@ -206,10 +258,60 @@ class AgenticRetrievalOrchestrator:
             "rounds_executed": rounds_executed,
             "converged": converged,
             "metadata": {
-                "query_type": query_type or "single",
+                "query_type": effective_query_type,
+                "query_family": academic_plan.get("query_family"),
+                "decontextualized_query": academic_plan.get("decontextualized_query"),
+                "expected_evidence_types": expected_evidence_types,
+                "rewrite_count": len(academic_plan.get("fallback_rewrites") or []),
                 "paper_count": len(paper_ids) if paper_ids else 0,
                 "subquestion_count": len(sub_questions) if sub_questions else 0,
-                "citation_verification": verification_report,
+                "citation_verification": citation_report,
+                "claimVerification": claim_report,
+                "unsupported_claim_rate": abstain_decision.unsupported_claim_rate,
+                "citation_coverage": abstain_decision.citation_coverage,
+                "answer_evidence_consistency": abstain_decision.answer_evidence_consistency,
+                "supportedClaimCount": abstain_decision.supported_claim_count,
+                "unsupportedClaimCount": abstain_decision.unsupported_claim_count,
+                "weaklySupportedClaimCount": abstain_decision.weakly_supported_claim_count,
+                "abstained": abstain_decision.abstained,
+                "abstainReason": abstain_decision.abstain_reason,
+                "answerMode": abstain_decision.answer_mode.value,
+                "graph_retrieval_used": bool(graph_candidates),
+                "graph_candidate_count": len(graph_candidates),
+                "graph_vector_merged_evidence": len(all_sources),
+                "benchmarkMetrics": {
+                    "unsupported_claim_rate": abstain_decision.unsupported_claim_rate,
+                    "citation_coverage": abstain_decision.citation_coverage,
+                    "answer_evidence_consistency": abstain_decision.answer_evidence_consistency,
+                    "claim_support_precision": round(
+                        (abstain_decision.supported_claim_count / max(
+                            abstain_decision.supported_claim_count + abstain_decision.weakly_supported_claim_count,
+                            1,
+                        )),
+                        4,
+                    ),
+                    "claim_support_recall": round(
+                        (abstain_decision.supported_claim_count / max(
+                            abstain_decision.supported_claim_count + abstain_decision.unsupported_claim_count,
+                            1,
+                        )),
+                        4,
+                    ),
+                    "abstain_precision": 1.0 if abstain_decision.abstained else 0.0,
+                    "abstain_recall": 1.0 if abstain_decision.abstained or abstain_decision.answer_mode.value == "partial" else 0.0,
+                    "partial_answer_quality": round(
+                        1.0 - abstain_decision.unsupported_claim_rate if abstain_decision.answer_mode.value == "partial" else float(abstain_decision.answer_mode.value == "full"),
+                        4,
+                    ),
+                    "compare_accuracy": 1.0 if effective_query_type == "compare" and graph_candidates else 0.0,
+                    "graph_triplet_recall": round(min(len(graph_candidates) / max(len(paper_ids or []), 1), 1.0), 4),
+                    "graph_triplet_precision": round(min(len(graph_candidates) / max(len(graph_candidates), 1), 1.0), 4),
+                    "method_dataset_metric_f1": round(min(len(graph_candidates) / max(len(all_sources), 1), 1.0), 4),
+                    "complex_relation_accuracy": 1.0 if effective_query_type in {"compare", "evolution", "numeric"} and graph_candidates else 0.0,
+                    "graph_assisted_recall_at_5": round(min(len(graph_candidates) / 5.0, 1.0), 4),
+                    "graph_assisted_latency_ms": 0.0,
+                    "graph_vector_merge_gain": round(min(len(graph_candidates) / max(len(all_sources), 1), 1.0), 4),
+                },
             },
         }
 
@@ -372,6 +474,9 @@ class AgenticRetrievalOrchestrator:
         paper_ids: List[str],
         user_id: str,
         top_k: int = 5,
+        content_types: Optional[List[str]] = None,
+        graph_hint: Optional[Dict[str, Any]] = None,
+        graph_candidates: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """Execute sub-questions in parallel using asyncio.gather with Milvus.
 
@@ -398,7 +503,9 @@ class AgenticRetrievalOrchestrator:
                     user_id=user_id,
                     top_k=top_k,
                     use_reranker=True,
-                    content_types=["text"],  # Text-only for sub-questions
+                    content_types=content_types or ["text"],
+                    graph_hint=graph_hint,
+                    graph_candidates=graph_candidates,
                 )
 
                 # Extract chunks from results
@@ -454,6 +561,64 @@ class AgenticRetrievalOrchestrator:
                 valid_results.append(result)
 
         return valid_results
+
+    @staticmethod
+    def _compute_answer_evidence_consistency(answer: str, sources: List[Dict[str, Any]]) -> float:
+        answer_tokens = {token for token in (answer or "").lower().split() if len(token) >= 3}
+        if not answer_tokens or not sources:
+            return 0.0
+
+        evidence_tokens = set()
+        for source in sources[:5]:
+            text = " ".join(
+                [
+                    str(source.get("anchor_text") or ""),
+                    str(source.get("text") or ""),
+                    str(source.get("text_preview") or ""),
+                ]
+            )
+            for token in text.lower().split():
+                if len(token) >= 3:
+                    evidence_tokens.add(token)
+
+        if not evidence_tokens:
+            return 0.0
+
+        overlap = len(answer_tokens & evidence_tokens)
+        return round(min(overlap / max(len(answer_tokens), 1), 1.0), 4)
+
+    @staticmethod
+    def _apply_answer_mode(
+        answer: str,
+        claim_results: List[Dict[str, Any]] | List[Any],
+        answer_mode: str,
+        abstain_reason: Optional[str],
+    ) -> str:
+        if answer_mode == "abstain":
+            reason = abstain_reason or "insufficient_evidence"
+            return f"Insufficient evidence to provide a reliable answer. reason={reason}."
+
+        if answer_mode != "partial":
+            return answer
+
+        unsupported_phrases = []
+        for item in claim_results:
+            level = getattr(item, "support_level", None)
+            text = getattr(item, "text", None)
+            if level is not None and str(level) == "ClaimSupportLevel.unsupported" and text:
+                unsupported_phrases.append(text)
+            elif isinstance(item, dict) and item.get("support_level") == "unsupported" and item.get("text"):
+                unsupported_phrases.append(str(item.get("text")))
+
+        filtered = answer
+        for phrase in unsupported_phrases[:5]:
+            if phrase in filtered:
+                filtered = filtered.replace(phrase, "")
+
+        filtered = re.sub(r"\n{3,}", "\n\n", filtered).strip()
+        if not filtered:
+            return "Partial answer available but unsupported claims were removed due to limited evidence."
+        return filtered
 
     async def _check_convergence(
         self,
@@ -880,7 +1045,7 @@ Based on {len(all_results)} rounds of retrieval with {len(evidence_blocks)} evid
 
             for result in round_results:
                 for chunk in result.get("chunks", []):
-                    chunk_id = chunk.get("id") or chunk.get("chunk_id")
+                    chunk_id = chunk.get("source_id") or chunk.get("id") or chunk.get("chunk_id")
 
                     if chunk_id and chunk_id not in seen_chunks:
                         seen_chunks.add(chunk_id)

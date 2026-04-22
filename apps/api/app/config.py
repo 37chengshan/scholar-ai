@@ -189,6 +189,9 @@ class Settings(BaseSettings):
     RETRIEVAL_TRACE_INCLUDE_RESULTS: bool = False
     RETRIEVAL_VECTOR_WEIGHT: float = 0.75
     RETRIEVAL_SPARSE_WEIGHT: float = 0.25
+    GRAPH_RETRIEVAL_ENABLED: bool = True
+    GRAPH_RETRIEVAL_TOP_K: int = 8
+    GRAPH_EXTRACTION_ON_INGEST: bool = False
 
     # =========================================================================
     # JWT Authentication Configuration

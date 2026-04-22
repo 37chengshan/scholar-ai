@@ -20,15 +20,8 @@
 核心资源清单：
 
 - Paper：论文与元数据
-- Note：用户可编辑笔记实体
 - ImportJob：导入任务与状态机
 - UploadSession：分片上传会话与断点恢复状态
-- Run：单次 Agent 执行实例（与 session/message 绑定）
-- RunStep：Run 内部有序步骤（planning/executing/verifying 细粒度状态）
-- ToolEvent：步骤内工具调用事件（call/result/error）
-- ConfirmationRequest：高风险操作确认请求
-- RunArtifact：执行产物（citation/note/summary/tool_output/result）
-- RunEvidence：证据片段与答案一致性绑定
 - Collection：文献集合与组织单元
 - Chunk：文本切片与向量化单元
 - ChatSession：会话上下文
@@ -36,23 +29,20 @@
 - Task：异步任务
 - IndexArtifact：索引或检索产物
 - ImportBatch：批量导入会话
+- EvidenceBundle：面向学术检索的证据包聚合资源（跨 text/table/figure/caption）
+- ClaimVerificationReport：RAG 回答阶段的 claim 级验证结果资源（支持/弱支持/不支持）
+- GraphRetrievalResult：图增强检索候选与融合统计资源（compare/evolution/numeric 场景）
 
 资源关系：
 
 - Paper 属于零个或多个 Collection。
 - Paper 产生多个 Chunk。
-- Paper 可派生一个系统生成阅读摘要（`reading_notes`），但该摘要不是 `Note` 资源。
-- Note 可关联零个或多个 Paper，表示用户显式沉淀的知识对象。
 - ChatSession 包含多个 ChatMessage。
 - Task 作用于 Paper、Collection 或 IndexArtifact。
 - UploadHistory 是 ImportJob、UploadSession、ProcessingTask 的状态投影视图，不应成为并行真源。
-
-Paper/Note ownership 约束：
-
-- `paper.reading_notes`：系统生成阅读摘要真源。
-- `Note`：用户可编辑笔记真源。
-- Notes 页面中由 `paper.reading_notes` 呈现的系统摘要属于派生视图，不得反向写入 `notes` 表。
-- Read 页面自动创建的 `reading note` 属于 `Note`，只服务用户编辑链路。
+- EvidenceBundle 由 Chunk 聚合而成，可关联 table/figure/caption 与指标证据槽位。
+- ClaimVerificationReport 绑定单次 RAG 响应，引用 EvidenceBundle/Chunk 作为 claim 证据来源。
+- GraphRetrievalResult 绑定单次检索计划，作为 vector 检索的约束与重排辅助，不独立替代 Chunk。
 
 ChatSession/ChatMessage 读取契约约束：
 
@@ -85,78 +75,23 @@ Chat 查询作用域资源约束：
 - Paper：uploaded -> parsing -> parsed -> indexed -> archived | failed
 - ImportJob：created -> queued -> running -> awaiting_user_action -> completed | failed | cancelled
 - UploadSession：created -> uploading -> completed | aborted | failed
-- Run：idle -> planning -> executing -> waiting_for_user | verifying -> completed | failed | cancelled
-- RunStep：pending -> running -> completed | failed | skipped | waiting
 - `UploadSession.aborted` 为终态；前端允许将其投影为 `cancelled` 交互状态，但不得继续复用原 `uploadSessionId` 上传新分片。
 - Task：queued -> running -> succeeded | failed | canceled
 - ChatSession：active -> closed | archived
 - IndexArtifact：building -> ready | failed -> rebuilding
 - ImportBatch：created -> running -> completed | failed | cancelled | partial
 
-ImportJob 交互补充：
-
-- `nextAction` 为 ImportJob 对前端的交互指令投影字段。
-- 主路径本地上传场景：
-	- `nextAction.type = create_upload_session`
-	- `nextAction.createSessionUrl = /api/v1/import-jobs/{id}/upload-sessions`
-- DOI/URL 无 PDF 场景：
-	- `nextAction.type = upload_local_pdf`
-	- 可附带 `triedSources[]` 与 `sourceErrors{}` 供前端提示与诊断。
-- `PUT /api/v1/import-jobs/{jobId}/file` 为 fallback/small-file-only 路径，其响应 `pathMode = fallback_small_file_only`。
-
-RAG 查询结果资源补充：
-
-- RAGQueryResult 在 `confidence` 之外增加：
-	- `answerEvidenceConsistency`（`0..1`）
-	- `lowConfidenceReasons[]`
-- `lowConfidenceReasons` 枚举冻结：`retrieval_weak`、`evidence_insufficient`、`evidence_conflict`。
-
-Agent Run 资源契约补充（PR37）：
-
-- `RunPhase` 冻结枚举：`idle`、`planning`、`executing`、`waiting_for_user`、`verifying`、`completed`、`failed`、`cancelled`。
-- `StepType` 冻结枚举：`analyze`、`retrieve`、`read`、`tool_call`、`synthesize`、`verify`、`confirm`。
-- `StepStatus` 冻结枚举：`pending`、`running`、`completed`、`failed`、`skipped`、`waiting`。
-- `ToolEvent.event_type` 冻结枚举：`call`、`result`、`error`。
-- `confirmation_required` 是 Run 一级字段；当值为 `true` 时，必须同步返回 `confirmation` 结构。
-- `final_summary` 允许携带 `answerEvidenceConsistency` 与 `lowConfidenceReasons[]`。
-
-Run 控制接口资源补充（PR37）：
-
-- `POST /api/v1/chat/cancel`：
-	- 请求：`session_id`（必填），`run_id`（可选）。
-	- 响应：`status=cancelled`，并返回 `session_id`、`run_id`。
-	- 语义：取消当前会话活跃运行，并断开会话 SSE。
-- `POST /api/v1/chat/retry`：
-	- 请求：`session_id`（必填），可选 `mode` 与 `scope`。
-	- 语义：重放会话最后一条用户消息，并复用 `chat/stream` 返回。
-	- 无可重放用户消息时返回 `404`。
-
 Paper 交互资源补充：
 
 - PaperStar：用户与 Paper 的收藏关系资源，操作入口为 `/api/v1/papers/{paperId}/star`。
 - PaperBatchOperation：批量操作结果资源，至少包含 `successItems` 与 `failedItems`。
 - SearchResult：搜索结果资源，支持论文与知识片段的统一搜索，包括请求取消与前端缓存策略。
-- ReadingSummaryProjection：前端基于 `paper.reading_notes` 派生出的只读系统摘要视图，不是独立持久化资源。
-
-SearchResult 资源补充：
-
-- `SearchResult.results[]` 可返回检索调试字段：`backend`、`vector_score`、`sparse_score`、`hybrid_score`、`reranker_score`、`retrieval_trace_id`。
-- `SearchResult.vector_backend` 为本次搜索使用的后端标识，冻结为 `milvus | qdrant`。
-- `SearchResult.trace` 为可选观测字段，仅在显式开启检索追踪时返回；它是运行时调试投影，不得作为持久化真源。
 
 关键生命周期事件：
 
 - paper.uploaded
 - paper.parsed
 - paper.indexed
-- run.started
-- run.phase_changed
-- run.confirmation_required
-- run.step_started
-- run.step_completed
-- run.cancelled
-- run.completed
-- run.recovery_available
 - task.started
 - task.finished
 - task.failed
@@ -171,6 +106,27 @@ SearchResult 资源补充：
 - Task（执行状态）
 - IndexArtifact（构建状态）
 - ImportBatch（聚合计数与整体状态）
+- EvidenceBundle（重建、去重、字段回填）
+
+EvidenceBundle 最小字段契约：
+
+- `paper_role`：`method|result|limitation|ablation|conclusion`
+- `table_ref`、`figure_ref`、`caption_text`
+- `metric_sentence`、`metric_name`、`score_value`、`metric_direction`
+- `dataset`、`baseline`、`method`
+- `evidence_bundle_id`、`evidence_types[]`
+
+ClaimVerificationReport 最小字段契约：
+
+- `totalClaims`、`supportedClaimCount`、`weaklySupportedClaimCount`、`unsupportedClaimCount`
+- `unsupportedClaimRate`
+- `results[]`：每条 claim 包含 `claim_id`、`text`、`claim_type`、`support_level`、`support_score`、`evidence_ids[]`
+- 回答决策字段：`abstained`、`abstainReason`、`answerMode(full|partial|abstain)`
+
+GraphRetrievalResult 最小字段契约：
+
+- `graphRetrievalUsed`、`graphCandidateCount`、`graphVectorMergedEvidence`
+- 可选追踪字段：`graph_narrowed_paper_ids[]`（用于检索约束下推可观测性）
 
 ## Required Updates
 
