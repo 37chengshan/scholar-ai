@@ -60,7 +60,8 @@ fi
 
 tmp_file="$(mktemp)"
 trap 'rm -f "$tmp_file"' EXIT
-printf '%s\n' "$body_content" > "$tmp_file"
+# Normalize CRLF to LF for consistent matching
+printf '%s\n' "$body_content" | tr -d '\r' > "$tmp_file"
 
 required_sections=(
   "## 变更目的"
