@@ -30,6 +30,8 @@
 - IndexArtifact：索引或检索产物
 - ImportBatch：批量导入会话
 - EvidenceBundle：面向学术检索的证据包聚合资源（跨 text/table/figure/caption）
+- ClaimVerificationReport：RAG 回答阶段的 claim 级验证结果资源（支持/弱支持/不支持）
+- GraphRetrievalResult：图增强检索候选与融合统计资源（compare/evolution/numeric 场景）
 
 资源关系：
 
@@ -39,6 +41,8 @@
 - Task 作用于 Paper、Collection 或 IndexArtifact。
 - UploadHistory 是 ImportJob、UploadSession、ProcessingTask 的状态投影视图，不应成为并行真源。
 - EvidenceBundle 由 Chunk 聚合而成，可关联 table/figure/caption 与指标证据槽位。
+- ClaimVerificationReport 绑定单次 RAG 响应，引用 EvidenceBundle/Chunk 作为 claim 证据来源。
+- GraphRetrievalResult 绑定单次检索计划，作为 vector 检索的约束与重排辅助，不独立替代 Chunk。
 
 ChatSession/ChatMessage 读取契约约束：
 
@@ -111,6 +115,18 @@ EvidenceBundle 最小字段契约：
 - `metric_sentence`、`metric_name`、`score_value`、`metric_direction`
 - `dataset`、`baseline`、`method`
 - `evidence_bundle_id`、`evidence_types[]`
+
+ClaimVerificationReport 最小字段契约：
+
+- `totalClaims`、`supportedClaimCount`、`weaklySupportedClaimCount`、`unsupportedClaimCount`
+- `unsupportedClaimRate`
+- `results[]`：每条 claim 包含 `claim_id`、`text`、`claim_type`、`support_level`、`support_score`、`evidence_ids[]`
+- 回答决策字段：`abstained`、`abstainReason`、`answerMode(full|partial|abstain)`
+
+GraphRetrievalResult 最小字段契约：
+
+- `graphRetrievalUsed`、`graphCandidateCount`、`graphVectorMergedEvidence`
+- 可选追踪字段：`graph_narrowed_paper_ids[]`（用于检索约束下推可观测性）
 
 ## Required Updates
 

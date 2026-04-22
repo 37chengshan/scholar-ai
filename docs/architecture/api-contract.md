@@ -233,6 +233,17 @@ RAG 检索与规划字段补充（Phase 1 + 2）：
   - `score_value`、`metric_name`、`metric_direction`
   - `caption_text`、`evidence_bundle_id`、`evidence_types`
 - 向后兼容：新增字段均为可选，不得破坏既有客户端对基础字段的读取。
+
+RAG 回答验证与图检索字段补充（Phase 3 + 4）：
+
+- `POST /api/v1/rag/query` 的 `RAGQueryResponse` 在保留既有字段基础上新增可选字段：
+  - `claimVerification`：claim 级验证报告，至少包含 `totalClaims`、`supportedClaimCount`、`weaklySupportedClaimCount`、`unsupportedClaimCount`、`unsupportedClaimRate`、`results[]`。
+  - `supportedClaimCount`、`unsupportedClaimCount`：回答级 claim 支持统计。
+  - `abstained`、`abstainReason`、`answerMode`：回答三态决策，`answerMode` 取值冻结为 `full|partial|abstain`。
+  - `graphRetrievalUsed`、`graphCandidateCount`、`graphVectorMergedEvidence`：图检索参与与融合证据统计。
+- `sources[]` 仍为主证据数组；新增验证/图字段均不得替代已有 `sources[]` 读取路径。
+- cache 语义不变：命中缓存时以上字段应与首次计算结果保持同构。
+- 向后兼容：客户端未消费新增字段时，旧渲染链路必须可继续工作。
 - `POST /api/v1/chat/retry`
   - 请求：`session_id`（必填），可选 `mode` 与 `scope`
   - 语义：重放该会话最后一条 `user` 消息，并复用 `chat/stream` 流式返回。
