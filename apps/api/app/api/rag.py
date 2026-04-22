@@ -287,6 +287,15 @@ class RAGQueryResponse(BaseModel):
     confidence_explain: Optional[Dict] = Field(None, description="置信度解释信息")
     answerEvidenceConsistency: float = Field(0.0, ge=0, le=1, description="答案与证据一致性")
     lowConfidenceReasons: List[str] = Field(default_factory=list, description="低置信原因")
+    claimVerification: Optional[Dict] = Field(None, description="claim级验证报告")
+    supportedClaimCount: int = Field(0, description="支持的claim数量")
+    unsupportedClaimCount: int = Field(0, description="不支持的claim数量")
+    abstained: bool = Field(False, description="是否触发拒答")
+    abstainReason: Optional[str] = Field(None, description="拒答原因")
+    answerMode: str = Field("full", description="回答模式: full/partial/abstain")
+    graphRetrievalUsed: bool = Field(False, description="是否使用graph retrieval")
+    graphCandidateCount: int = Field(0, description="graph候选数量")
+    graphVectorMergedEvidence: int = Field(0, description="graph与vector合并证据数量")
     conversation_id: Optional[str] = Field(None, description="对话会话ID")
     cached: bool = Field(False, description="是否来自缓存")
 
@@ -395,6 +404,15 @@ async def rag_query(
                 confidence_explain=cached.get("confidence_explain"),
                 answerEvidenceConsistency=cached.get("answerEvidenceConsistency", 0.0),
                 lowConfidenceReasons=cached.get("lowConfidenceReasons", []),
+                claimVerification=cached.get("claimVerification"),
+                supportedClaimCount=cached.get("supportedClaimCount", 0),
+                unsupportedClaimCount=cached.get("unsupportedClaimCount", 0),
+                abstained=cached.get("abstained", False),
+                abstainReason=cached.get("abstainReason"),
+                answerMode=cached.get("answerMode", "full"),
+                graphRetrievalUsed=cached.get("graphRetrievalUsed", False),
+                graphCandidateCount=cached.get("graphCandidateCount", 0),
+                graphVectorMergedEvidence=cached.get("graphVectorMergedEvidence", 0),
                 conversation_id=request.conversation_id,
                 cached=True
             )
@@ -424,6 +442,7 @@ async def rag_query(
         )
 
         # Build response (expanded_query/intent not available from orchestrator)
+        retrieval_meta = result.get("metadata", {}) if isinstance(result.get("metadata"), dict) else {}
         response = RAGQueryResponse(
             answer=answer,
             query=request.question,
@@ -435,6 +454,15 @@ async def rag_query(
             confidence_explain=confidence_explain,
             answerEvidenceConsistency=answer_evidence_consistency,
             lowConfidenceReasons=low_confidence_reasons,
+            claimVerification=retrieval_meta.get("claimVerification"),
+            supportedClaimCount=int(retrieval_meta.get("supportedClaimCount") or 0),
+            unsupportedClaimCount=int(retrieval_meta.get("unsupportedClaimCount") or 0),
+            abstained=bool(retrieval_meta.get("abstained", False)),
+            abstainReason=retrieval_meta.get("abstainReason"),
+            answerMode=str(retrieval_meta.get("answerMode") or "full"),
+            graphRetrievalUsed=bool(retrieval_meta.get("graph_retrieval_used", False)),
+            graphCandidateCount=int(retrieval_meta.get("graph_candidate_count") or 0),
+            graphVectorMergedEvidence=int(retrieval_meta.get("graph_vector_merged_evidence") or 0),
             conversation_id=request.conversation_id,
             cached=False
         )
@@ -451,6 +479,15 @@ async def rag_query(
                 "confidence_explain": confidence_explain,
                 "answerEvidenceConsistency": answer_evidence_consistency,
                 "lowConfidenceReasons": low_confidence_reasons,
+                "claimVerification": retrieval_meta.get("claimVerification"),
+                "supportedClaimCount": int(retrieval_meta.get("supportedClaimCount") or 0),
+                "unsupportedClaimCount": int(retrieval_meta.get("unsupportedClaimCount") or 0),
+                "abstained": bool(retrieval_meta.get("abstained", False)),
+                "abstainReason": retrieval_meta.get("abstainReason"),
+                "answerMode": str(retrieval_meta.get("answerMode") or "full"),
+                "graphRetrievalUsed": bool(retrieval_meta.get("graph_retrieval_used", False)),
+                "graphCandidateCount": int(retrieval_meta.get("graph_candidate_count") or 0),
+                "graphVectorMergedEvidence": int(retrieval_meta.get("graph_vector_merged_evidence") or 0),
             },
             query_type=request.query_type,
             retrieval_version="v3",

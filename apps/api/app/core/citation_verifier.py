@@ -5,7 +5,7 @@ from typing import Dict, List, Set, Tuple
 
 
 class CitationVerifier:
-    """Verify citations and prune unsupported claims from final answers."""
+    """Verify citation validity and surface citation coverage."""
 
     CITATION_PATTERN = re.compile(r"\[[^\[\],]+,\s*[^\[\]]+\]")
     SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？.!?])\s+")
@@ -28,7 +28,7 @@ class CitationVerifier:
         return citations
 
     def verify(self, answer: str, sources: List[Dict]) -> Dict:
-        """Verify citation coverage and return a verification report."""
+        """Verify citation validity and sentence-level citation surface coverage."""
         text = answer or ""
         citations_in_answer = set(self.CITATION_PATTERN.findall(text))
         valid_citations = self._valid_citation_set(sources)
@@ -48,26 +48,34 @@ class CitationVerifier:
                 unsupported_sentences.append(sentence)
 
         total_claim_sentences = max(len([s for s in sentences if len(s) >= 20]), 1)
-        support_score = 1.0 - (len(unsupported_sentences) / total_claim_sentences)
-        support_score = max(0.0, min(support_score, 1.0))
+        sentence_coverage = 1.0 - (len(unsupported_sentences) / total_claim_sentences)
+        sentence_coverage = max(0.0, min(sentence_coverage, 1.0))
+
+        citation_coverage = 0.0
+        if citations_in_answer:
+            citation_coverage = len(matched_citations) / len(citations_in_answer)
 
         return {
             "citation_count": len(citations_in_answer),
             "matched_citation_count": len(matched_citations),
             "invalid_citations": invalid_citations,
             "unsupported_sentence_count": len(unsupported_sentences),
-            "support_score": round(support_score, 4),
+            "citation_coverage": round(citation_coverage, 4),
+            "surface_sentence_coverage": round(sentence_coverage, 4),
         }
 
     def prune_unsupported_claims(
         self,
         answer: str,
         sources: List[Dict],
-        min_support_score: float = 0.45,
+        min_surface_sentence_coverage: float = 0.45,
     ) -> Tuple[str, Dict]:
-        """Return answer with evidence warning when support coverage is low."""
+        """Backward-compatible wrapper to append warning for low citation surface coverage."""
         report = self.verify(answer, sources)
-        if report["support_score"] >= min_support_score and not report["invalid_citations"]:
+        if (
+            report["surface_sentence_coverage"] >= min_surface_sentence_coverage
+            and not report["invalid_citations"]
+        ):
             return answer, report
 
         warning = (

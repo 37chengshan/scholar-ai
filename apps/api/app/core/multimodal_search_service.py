@@ -290,6 +290,8 @@ class MultimodalSearchService:
         top_k: int = 10,
         use_reranker: bool = True,
         content_types: Optional[List[str]] = None,
+        graph_hint: Optional[Dict[str, Any]] = None,
+        graph_candidates: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Execute multimodal search with intent detection and fusion.
 
@@ -304,6 +306,19 @@ class MultimodalSearchService:
         Returns:
             Dictionary with query, intent, expanded_query, metadata_filters, weights, results, and metadata
         """
+        graph_used = bool(graph_hint and graph_hint.get("requires_graph"))
+        graph_candidate_count = len(graph_candidates or [])
+        graph_paper_ids = {
+            str(item.get("paper_id"))
+            for item in (graph_candidates or [])
+            if item.get("paper_id")
+        }
+        narrowed_paper_ids = paper_ids
+        if graph_used and graph_paper_ids:
+            narrowed_paper_ids = [paper_id for paper_id in paper_ids if str(paper_id) in graph_paper_ids]
+            if not narrowed_paper_ids:
+                narrowed_paper_ids = paper_ids
+
         # Step 1: Detect query intent (question/compare/summary/evolution) per D-15
         query_intent = detect_query_intent(query)
         logger.info(f"Detected intent: {query_intent} for query: {query[:50]}")
@@ -337,7 +352,7 @@ class MultimodalSearchService:
 
         # Compile filters to constraints for Milvus pushdown per D-07
         constraints = self.compile_to_constraints(
-            metadata_filters, user_id, paper_ids
+            metadata_filters, user_id, narrowed_paper_ids
         )
 
         # Step 5: Encode planned queries for dense retrieval
@@ -440,6 +455,12 @@ class MultimodalSearchService:
                 }
                 second_pass_gain = max(len(after_ids - before_ids), 0)
 
+        # Step 5.6: Graph hint retrieval narrowing (Phase 4 lightweight)
+        if graph_used and graph_paper_ids:
+            preferred = [item for item in fused if str(item.get("paper_id")) in graph_paper_ids]
+            others = [item for item in fused if str(item.get("paper_id")) not in graph_paper_ids]
+            fused = preferred + others
+
         # Step 6: Structured ReRanker (optional)
         if use_reranker and len(fused) > 10:
             try:
@@ -464,7 +485,12 @@ class MultimodalSearchService:
         trace_payload = self.trace_service.build_trace(
             query=query,
             planner_queries=planner_queries,
-            metadata_filters=metadata_filters,
+            metadata_filters={
+                **metadata_filters,
+                "graph_retrieval_used": graph_used,
+                "graph_candidate_count": graph_candidate_count,
+                "graph_narrowed_paper_ids": narrowed_paper_ids,
+            },
             weights=weights,
             results=fused,
         )
@@ -506,6 +532,10 @@ class MultimodalSearchService:
             "results": final_results,
             "total_count": len(fused),
             "vector_backend": settings.VECTOR_STORE_BACKEND,
+            "graph_retrieval_used": graph_used,
+            "graph_candidate_count": graph_candidate_count,
+            "graph_vector_merged_evidence": len(final_results),
+            "graph_narrowed_paper_ids": narrowed_paper_ids,
         }
 
         if trace_payload is not None:
