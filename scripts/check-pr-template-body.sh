@@ -83,7 +83,10 @@ section_body() {
 }
 
 strip_comments_and_blank() {
-  sed '/<!--/,/-->/d' | sed '/^\s*$/d'
+  # Delete lines containing HTML comments (single-line <!-- ... -->)
+  # Note: Using /<!--.*-->/d instead of /<!--/,/-->/d because BSD sed
+  # treats the range as continuing even when both markers are on the same line
+  sed '/<!--.*-->/d' | sed '/^\s*$/d'
 }
 
 is_placeholder_only() {
