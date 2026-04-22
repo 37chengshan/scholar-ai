@@ -15,17 +15,33 @@ API_ROOT = ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from app.config import canonical_embedding_dimension, normalize_embedding_model_name, settings
+from app import config as app_config
 from app.core.embedding.factory import get_embedding_service
 from app.core.milvus_service import get_milvus_service
 from app.core.qdrant_service import get_qdrant_service
 from app.models.retrieval import SearchConstraints
 
+settings = app_config.settings
+
+
+def _normalize_embedding_model_name(model_name: str) -> str:
+    normalize = getattr(app_config, "normalize_embedding_model_name", None)
+    if callable(normalize):
+        return str(normalize(model_name))
+    return str(model_name)
+
+
+def _canonical_embedding_dimension(model_name: str, configured_dimension: int) -> int:
+    canonical = getattr(app_config, "canonical_embedding_dimension", None)
+    if callable(canonical):
+        return int(canonical(model_name, configured_dimension))
+    return int(configured_dimension)
+
 
 def _check_embedding() -> dict[str, Any]:
     configured_model = settings.EMBEDDING_MODEL
-    normalized_model = normalize_embedding_model_name(configured_model)
-    expected_dimension = canonical_embedding_dimension(
+    normalized_model = _normalize_embedding_model_name(configured_model)
+    expected_dimension = _canonical_embedding_dimension(
         normalized_model,
         settings.EMBEDDING_DIMENSION,
     )

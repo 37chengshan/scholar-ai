@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Prepare a small real-PDF retrieval dataset in paper_contents_v2."""
+"""Prepare real-PDF retrieval datasets in paper_contents_v2."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from app.core.embedding.factory import get_embedding_service
 from app.core.milvus_service import get_milvus_service
 from app.core.qdrant_service import get_qdrant_service
 
-DATASET_SPEC = [
+SMALL_DATASET_SPEC = [
     {
         "paper_id": "dataset-s-001",
         "source": "tests/evals/fixtures/papers/2303.08774.pdf",
@@ -150,7 +150,12 @@ def chunk_page_text(text: str, max_chars: int = 1400, overlap: int = 200) -> lis
     return [chunk for chunk in chunks if chunk]
 
 
-def build_dataset_entries(spec: dict[str, Any], user_id: str, pages_per_paper: int) -> list[dict[str, Any]]:
+def build_dataset_entries(
+    spec: dict[str, Any],
+    user_id: str,
+    pages_per_paper: int,
+    dataset_name: str,
+) -> list[dict[str, Any]]:
     pdf_path = ROOT / spec["source"]
     reader = PdfReader(str(pdf_path))
     entries: list[dict[str, Any]] = []
@@ -174,7 +179,7 @@ def build_dataset_entries(spec: dict[str, Any], user_id: str, pages_per_paper: i
                     "raw_data": {
                         "source_pdf": spec["source"],
                         "chunk_index": chunk_index,
-                        "dataset": "dataset-s",
+                            "dataset": dataset_name,
                     },
                 }
             )
@@ -196,24 +201,106 @@ def delete_existing_records(paper_ids: list[str], user_id: str) -> None:
     collection.flush()
 
 
-def build_golden_queries() -> dict[str, Any]:
+def _first_non_empty_lines(pdf_path: Path, max_lines: int = 24) -> list[str]:
+    reader = PdfReader(str(pdf_path))
+    if not reader.pages:
+        return []
+    raw = normalize_text((reader.pages[0].extract_text() or "").replace("\x00", " "))
+    if not raw:
+        return []
+    lines = [line.strip() for line in re.split(r"(?<=[.!?])\s+|\n+", raw) if line.strip()]
+    return lines[:max_lines]
+
+
+def _infer_title_from_pdf(pdf_path: Path) -> str:
+    lines = _first_non_empty_lines(pdf_path)
+    candidates = [line for line in lines if 6 <= len(line) <= 180]
+    if candidates:
+        return candidates[0].strip(" .")
+    return pdf_path.stem
+
+
+def build_large_dataset_spec(limit_papers: int) -> list[dict[str, Any]]:
+    papers_dir = ROOT / "tests" / "evals" / "fixtures" / "papers"
+    pdf_files = sorted(papers_dir.glob("*.pdf"))[:limit_papers]
+
+    specs: list[dict[str, Any]] = []
+    for idx, pdf_path in enumerate(pdf_files, start=1):
+        paper_id = f"dataset-l-{idx:03d}"
+        title = _infer_title_from_pdf(pdf_path)
+        title_for_query = title[:120]
+        specs.append(
+            {
+                "paper_id": paper_id,
+                "source": str(pdf_path.relative_to(ROOT)),
+                "title": title,
+                "queries": [
+                    {
+                        "id": f"{paper_id}-q1",
+                        "query": f"What are the main contributions of {title_for_query}?",
+                        "expected_sections": ["Abstract", "Introduction"],
+                        "expected_paper_ids": [paper_id],
+                        "query_type": "single",
+                    },
+                    {
+                        "id": f"{paper_id}-q2",
+                        "query": f"How does {title_for_query} evaluate its method?",
+                        "expected_sections": ["Experiments", "Results"],
+                        "expected_paper_ids": [paper_id],
+                        "query_type": "single",
+                    },
+                ],
+            }
+        )
+
+    return specs
+
+
+def build_cross_paper_queries(dataset_spec: list[dict[str, Any]], max_pairs: int = 8) -> list[dict[str, Any]]:
+    queries: list[dict[str, Any]] = []
+    for idx in range(min(len(dataset_spec) - 1, max_pairs)):
+        left = dataset_spec[idx]
+        right = dataset_spec[idx + 1]
+        queries.append(
+            {
+                "id": f"ds-cp-l-{idx + 1}",
+                "query": (
+                    f"Compare the main focus of {left['title'][:80]} and {right['title'][:80]}. "
+                    "Which paper emphasizes representation quality and which emphasizes task performance?"
+                ),
+                "paper_ids": [left["paper_id"], right["paper_id"]],
+                "expected_paper_ids": [left["paper_id"], right["paper_id"]],
+                "expected_sections": ["Abstract", "Introduction", "Results"],
+                "query_type": "compare",
+            }
+        )
+    return queries
+
+
+def build_golden_queries(
+    dataset_version: str,
+    dataset_spec: list[dict[str, Any]],
+    cross_paper_queries: list[dict[str, Any]],
+) -> dict[str, Any]:
     return {
-        "version": "dataset-s-1.0",
+        "version": dataset_version,
         "papers": [
             {
                 "paper_id": spec["paper_id"],
                 "title": spec["title"],
                 "queries": spec["queries"],
             }
-            for spec in DATASET_SPEC
+            for spec in dataset_spec
         ],
         "multimodal_queries": [],
-        "cross_paper_queries": CROSS_PAPER_QUERIES,
+        "cross_paper_queries": cross_paper_queries,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prepare real retrieval dataset")
+    parser.add_argument("--profile", choices=["small", "large"], default="small")
+    parser.add_argument("--limit-papers", type=int, default=12)
     parser.add_argument("--user-id", default="benchmark-user")
     parser.add_argument("--pages-per-paper", type=int, default=4)
     parser.add_argument(
@@ -225,6 +312,17 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.profile == "large":
+        dataset_name = "dataset-l"
+        dataset_version = "dataset-l-1.0"
+        dataset_spec = build_large_dataset_spec(args.limit_papers)
+        cross_paper_queries = build_cross_paper_queries(dataset_spec)
+    else:
+        dataset_name = "dataset-s"
+        dataset_version = "dataset-s-1.0"
+        dataset_spec = SMALL_DATASET_SPEC
+        cross_paper_queries = CROSS_PAPER_QUERIES
+
     embedding_service = get_embedding_service()
     embedding_service.load_model()
     if settings.VECTOR_STORE_BACKEND == "qdrant":
@@ -235,12 +333,12 @@ def main() -> int:
         milvus.connect()
         milvus.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
 
-    paper_ids = [spec["paper_id"] for spec in DATASET_SPEC]
+    paper_ids = [spec["paper_id"] for spec in dataset_spec]
     delete_existing_records(paper_ids, args.user_id)
 
     manifest_papers: list[dict[str, Any]] = []
-    for spec in DATASET_SPEC:
-        entries = build_dataset_entries(spec, args.user_id, args.pages_per_paper)
+    for spec in dataset_spec:
+        entries = build_dataset_entries(spec, args.user_id, args.pages_per_paper, dataset_name)
         if not entries:
             continue
 
@@ -265,7 +363,8 @@ def main() -> int:
         )
 
     manifest = {
-        "dataset": "dataset-s",
+        "dataset": dataset_name,
+        "profile": args.profile,
         "backend": settings.VECTOR_STORE_BACKEND,
         "embedding_model": settings.EMBEDDING_MODEL,
         "embedding_dimension": settings.EMBEDDING_DIMENSION,
@@ -274,8 +373,9 @@ def main() -> int:
     manifest_path = output_dir / "dataset_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    golden_queries = build_golden_queries()
-    golden_path = output_dir / "golden_queries_dataset_s.json"
+    golden_queries = build_golden_queries(dataset_version, dataset_spec, cross_paper_queries)
+    golden_filename = "golden_queries_dataset_l.json" if args.profile == "large" else "golden_queries_dataset_s.json"
+    golden_path = output_dir / golden_filename
     golden_path.write_text(json.dumps(golden_queries, indent=2), encoding="utf-8")
 
     print(json.dumps({"manifest": str(manifest_path), "golden": str(golden_path), "papers": manifest_papers}, indent=2))

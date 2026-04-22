@@ -240,18 +240,25 @@ async def evaluate_retrieval(
         )
 
         results = result.get("results", [])
-        retrieved_ids = [
-            str(item.get("source_id") or item.get("id") or item.get("chunk_id") or item.get("paper_id") or "")
-            for item in results
-        ]
-        expected_chunks = query_data.get("expected_chunks") or query_data.get("expected_paper_ids") or []
-        expected_sections = query_data.get("expected_sections") or []
+        expected_chunks = query_data.get("expected_chunks") or []
         expected_papers = query_data.get("expected_paper_ids") or query_data.get("paper_ids") or paper_ids
+
+        if expected_chunks:
+            retrieved_ids = [
+                str(item.get("source_id") or item.get("id") or item.get("chunk_id") or "")
+                for item in results
+            ]
+            expected_ids = expected_chunks
+        else:
+            retrieved_ids = [str(item.get("paper_id") or "") for item in results]
+            expected_ids = expected_papers
+
+        expected_sections = query_data.get("expected_sections") or []
         query_family = result.get("query_family") or query_data.get("query_family") or query_data.get("query_type") or default_type
 
-        recall_5 = calculate_recall_at_k(retrieved_ids, expected_chunks, 5)
-        recall_10 = calculate_recall_at_k(retrieved_ids, expected_chunks, 10)
-        mrr = calculate_mrr(retrieved_ids, expected_chunks)
+        recall_5 = calculate_recall_at_k(retrieved_ids, expected_ids, 5)
+        recall_10 = calculate_recall_at_k(retrieved_ids, expected_ids, 10)
+        mrr = calculate_mrr(retrieved_ids, expected_ids)
         section_hit = calculate_section_hit_rate(results, expected_sections)
         paper_hit = calculate_paper_hit_rate(results, expected_papers)
         cross_paper_top5 = calculate_top5_cross_paper_completeness(results, expected_papers)
@@ -383,6 +390,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Retrieval evaluation harness")
     parser.add_argument("--golden", default="tests/evals/golden_queries.json", help="Path to golden queries JSON")
     parser.add_argument("--paper-id", nargs="*", help="Filter by specific paper IDs")
+    parser.add_argument("--user-id", default="eval-user", help="User id to query against")
     parser.add_argument("--output", default="eval_retrieval_report.json", help="Output report path")
     parser.add_argument("--allow-mock", action="store_true", help="Run in mock mode")
     parser.add_argument("--use-reranker", action="store_true", help="Enable reranker during evaluation")
@@ -391,6 +399,7 @@ def main() -> None:
     report = asyncio.run(
         evaluate_retrieval(
             args.golden,
+            user_id=args.user_id,
             paper_ids_filter=args.paper_id,
             mock_mode=args.allow_mock,
             use_reranker=args.use_reranker,
