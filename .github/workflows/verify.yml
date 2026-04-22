@@ -2,7 +2,6 @@ name: Verify Gate
 
 on:
   pull_request:
-    branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
   workflow_dispatch:
 

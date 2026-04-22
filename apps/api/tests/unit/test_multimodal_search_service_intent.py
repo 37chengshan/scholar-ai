@@ -23,8 +23,8 @@ class TestIntentFieldVerification:
                 "app.core.multimodal_search_service.get_embedding_service"
             ) as mock_embedding,
             patch(
-                "app.core.multimodal_search_service.get_milvus_service"
-            ) as mock_milvus,
+                "app.core.multimodal_search_service.get_vector_store_repository"
+            ) as mock_vector_store,
             patch(
                 "app.core.multimodal_search_service.get_reranker_service"
             ) as mock_reranker,
@@ -34,9 +34,9 @@ class TestIntentFieldVerification:
             mock_embedding_instance.encode_text.return_value = [0.1] * 2048
             mock_embedding.return_value = mock_embedding_instance
 
-            mock_milvus_instance = MagicMock()
-            mock_milvus_instance.search_contents_v2.return_value = []
-            mock_milvus.return_value = mock_milvus_instance
+            mock_vector_store_instance = MagicMock()
+            mock_vector_store_instance.search.return_value = []
+            mock_vector_store.return_value = mock_vector_store_instance
 
             mock_reranker_instance = MagicMock()
             mock_reranker_instance.is_loaded.return_value = True
@@ -45,7 +45,7 @@ class TestIntentFieldVerification:
 
             yield {
                 "embedding": mock_embedding_instance,
-                "milvus": mock_milvus_instance,
+                "vector_store": mock_vector_store_instance,
                 "reranker": mock_reranker_instance,
             }
 
@@ -151,8 +151,8 @@ class TestIntentFieldStructure:
                 "app.core.multimodal_search_service.get_embedding_service"
             ) as mock_embedding,
             patch(
-                "app.core.multimodal_search_service.get_milvus_service"
-            ) as mock_milvus,
+                "app.core.multimodal_search_service.get_vector_store_repository"
+            ) as mock_vector_store,
             patch(
                 "app.core.multimodal_search_service.get_reranker_service"
             ) as mock_reranker,
@@ -162,15 +162,15 @@ class TestIntentFieldStructure:
             mock_embedding_instance.encode_text.return_value = [0.1] * 2048
             mock_embedding.return_value = mock_embedding_instance
 
-            mock_milvus_instance = MagicMock()
-            mock_milvus_instance.search_contents_v2.return_value = []
-            mock_milvus.return_value = mock_milvus_instance
+            mock_vector_store_instance = MagicMock()
+            mock_vector_store_instance.search.return_value = []
+            mock_vector_store.return_value = mock_vector_store_instance
 
             mock_reranker_instance = MagicMock()
             mock_reranker_instance.is_loaded.return_value = True
             mock_reranker.return_value = mock_reranker_instance
 
-            yield {}
+            yield {"vector_store": mock_vector_store_instance}
 
     @pytest.mark.asyncio
     async def test_response_has_both_intent_fields(self, mock_services):

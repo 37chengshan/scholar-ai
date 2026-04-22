@@ -1,0 +1,114 @@
+"""Scoring helpers for hybrid retrieval and reranking."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, List
+
+from app.core.bm25_service import SparseRecallService, get_sparse_recall_service
+
+
+@dataclass(frozen=True)
+class RetrievalScoreBreakdown:
+    """Detailed scoring components for a single retrieval candidate."""
+
+    vector_score: float
+    sparse_score: float
+    hybrid_score: float
+
+
+class RetrievalScoringService:
+    """Compute dense/sparse hybrid scores and apply reranker outputs."""
+
+    def __init__(
+        self,
+        *,
+        sparse_recall: SparseRecallService | None = None,
+        vector_weight: float = 0.75,
+        sparse_weight: float = 0.25,
+    ):
+        self.sparse_recall = sparse_recall or get_sparse_recall_service()
+        self.vector_weight = vector_weight
+        self.sparse_weight = sparse_weight
+
+    @staticmethod
+    def _clamp_score(value: Any) -> float:
+        try:
+            return max(0.0, min(float(value), 1.0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def build_structured_reranker_document(hit: Dict[str, Any]) -> str:
+        text = hit.get("text") or hit.get("content_data") or hit.get("content") or ""
+        paper_title = hit.get("paper_title") or hit.get("title") or ""
+        section = hit.get("section") or ""
+        page_num = hit.get("page_num") or hit.get("page") or ""
+        content_type = hit.get("content_type") or "text"
+        return (
+            f"title: {paper_title}\n"
+            f"section: {section}\n"
+            f"page_num: {page_num}\n"
+            f"content_type: {content_type}\n"
+            f"text: {text}"
+        )
+
+    def score_candidate(
+        self,
+        *,
+        query: str,
+        candidate_text: str,
+        raw_vector_score: Any,
+    ) -> RetrievalScoreBreakdown:
+        vector_score = self._clamp_score(raw_vector_score)
+        sparse_score = self._clamp_score(self.sparse_recall.score(query, candidate_text))
+        hybrid_score = self._clamp_score(
+            (self.vector_weight * vector_score) + (self.sparse_weight * sparse_score)
+        )
+        return RetrievalScoreBreakdown(
+            vector_score=vector_score,
+            sparse_score=sparse_score,
+            hybrid_score=hybrid_score,
+        )
+
+    def annotate_hybrid_scores(self, query: str, results: Iterable[Dict[str, Any]]) -> None:
+        for result in results:
+            scored = self.score_candidate(
+                query=query,
+                candidate_text=result.get("text") or result.get("content_data") or result.get("content") or "",
+                raw_vector_score=result.get("score", result.get("similarity", 0.0)),
+            )
+            result["vector_score"] = scored.vector_score
+            result["sparse_score"] = scored.sparse_score
+            result["hybrid_score"] = scored.hybrid_score
+
+    def apply_reranker_scores(
+        self,
+        results: List[Dict[str, Any]],
+        reranked: List[Any],
+    ) -> List[Dict[str, Any]]:
+        content_to_score: Dict[str, float] = {}
+        for item in reranked:
+            if isinstance(item, dict):
+                document = item.get("document")
+                score = item.get("score", 0.0)
+            else:
+                try:
+                    document, score = item
+                except (TypeError, ValueError):
+                    continue
+
+            if not isinstance(document, str):
+                continue
+            content_to_score[document] = self._clamp_score(score)
+
+        for result in results:
+            structured = self.build_structured_reranker_document(result)
+            plain_text = result.get("text") or result.get("content_data") or result.get("content") or ""
+            result["reranker_score"] = content_to_score.get(
+                structured,
+                content_to_score.get(plain_text, 0.0),
+            )
+
+        results.sort(key=lambda item: item.get("reranker_score", 0.0), reverse=True)
+        return results

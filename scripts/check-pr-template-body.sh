@@ -60,7 +60,8 @@ fi
 
 tmp_file="$(mktemp)"
 trap 'rm -f "$tmp_file"' EXIT
-printf '%s\n' "$body_content" > "$tmp_file"
+# Normalize CRLF to LF for consistent matching
+printf '%s\n' "$body_content" | tr -d '\r' > "$tmp_file"
 
 required_sections=(
   "## 变更目的"
@@ -82,7 +83,10 @@ section_body() {
 }
 
 strip_comments_and_blank() {
-  sed '/<!--/,/-->/d' | sed '/^\s*$/d'
+  # Delete lines containing HTML comments (single-line <!-- ... -->)
+  # Note: Using /<!--.*-->/d instead of /<!--/,/-->/d because BSD sed
+  # treats the range as continuing even when both markers are on the same line
+  sed '/<!--.*-->/d' | sed '/^\s*$/d'
 }
 
 is_placeholder_only() {

@@ -257,6 +257,13 @@ Search API 契约补充：
   - 客户端实现：支持 AbortSignal 用于请求取消（frontend request cancellation）
   - 前端额外功能：支持会话搜索（session-side filtering）与结果缓存（react-query keepPreviousData）
 
+- `POST /api/v1/search/multimodal`：库内多模态检索接口
+  - 请求体：`query`、`paper_ids[]`、`top_k`、`use_reranker`、`content_types[]`、`enable_clustering`
+  - 响应格式：统一 `success + data` envelope
+  - `data.results[]` 检索条目允许返回：`backend`、`source_id`、`section_path`、`content_subtype`、`anchor_text`、`vector_score`、`sparse_score`、`hybrid_score`、`reranker_score`、`retrieval_trace_id`
+  - `data.vectorBackend` 表示本次检索实际使用的后端，允许值仅为 `milvus | qdrant`；默认主线仍为 `milvus`
+  - `data.trace` 为可选调试字段，仅在显式开启检索追踪时返回，至少包含 `trace_id`、`planner_queries[]`、`metadata_filters`、`weights` 与结果级分数快照
+
 Plan C 契约治理约束：
 
 - 契约表面改动（apps/api/app/api, apps/api/app/models, apps/web/src/services, packages/types, packages/sdk）必须同步更新本文件与 `docs/domain/resources.md`。
