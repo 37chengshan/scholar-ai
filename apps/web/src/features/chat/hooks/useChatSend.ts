@@ -42,6 +42,7 @@ interface UseChatSendOptions {
   streamApi: ReturnType<typeof useChatStreaming>;
   addUserMessage: (message: ExtendedChatMessage) => void;
   addPlaceholderMessage: (message: ExtendedChatMessage) => void;
+  rebindSessionId: (fromSessionId: string, toSessionId: string) => void;
   bindPlaceholderToMessageId: (nextMessageId: string, previousPlaceholderId: string) => void;
   syncStreamingMessage: (messageId: string) => void;
   ingestRuntimeEvent?: (event: SSEEventEnvelope) => void;
@@ -83,6 +84,7 @@ export function useChatSend({
   streamApi,
   addUserMessage,
   addPlaceholderMessage,
+  rebindSessionId,
   bindPlaceholderToMessageId,
   syncStreamingMessage,
   ingestRuntimeEvent,
@@ -115,17 +117,8 @@ export function useChatSend({
     sendLockRef.current = true;
 
     try {
-      let sessionId = currentSession?.id;
-
-      if (!sessionId) {
-        const newSession = await createSession(input.trim().substring(0, 50));
-        if (!newSession) {
-          setSending(false);
-          sendLockRef.current = false;
-          return;
-        }
-        sessionId = newSession.id;
-      }
+      const pendingSessionId = `pending-session-${Date.now()}`;
+      let sessionId = currentSession?.id || pendingSessionId;
 
       const userMessage: ExtendedChatMessage = {
         id: `user-${Date.now()}`,
@@ -158,6 +151,19 @@ export function useChatSend({
       currentMessageIdRef.current = '';
 
       setInput('');
+
+      if (!currentSession?.id) {
+        const newSession = await createSession(input.trim().substring(0, 50));
+        if (!newSession) {
+          removePlaceholderMessage();
+          clearPlaceholder();
+          setSending(false);
+          sendLockRef.current = false;
+          return;
+        }
+        sessionId = newSession.id;
+        rebindSessionId(pendingSessionId, sessionId);
+      }
 
       if (!sseServiceRef.current) {
         sseServiceRef.current = new SSEService();
@@ -314,6 +320,7 @@ export function useChatSend({
     isZh,
     addPlaceholderMessage,
     setInput,
+    rebindSessionId,
     sseServiceRef,
     currentMessageIdRef,
     streamStateRef,

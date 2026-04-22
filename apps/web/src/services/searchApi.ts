@@ -161,7 +161,13 @@ export async function unified(
     pdfUrl?: string;
     citations?: number;
   }>;
-  total: number;
+    total: number;
+    query_family?: string;
+    planner_query_count?: number;
+    decontextualized_query?: string;
+    second_pass_used?: boolean;
+    second_pass_gain?: number;
+    evidence_bundle_hit_count?: number;
   filters: {
     year_from: number | null;
     year_to: number | null;
@@ -189,6 +195,12 @@ export async function unified(
       citations?: number;
     }>;
     total: number;
+      query_family?: string;
+      planner_query_count?: number;
+      decontextualized_query?: string;
+      second_pass_used?: boolean;
+      second_pass_gain?: number;
+      evidence_bundle_hit_count?: number;
     filters: {
       year_from: number | null;
       year_to: number | null;

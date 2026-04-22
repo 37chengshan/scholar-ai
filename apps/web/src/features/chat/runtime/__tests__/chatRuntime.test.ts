@@ -2,7 +2,7 @@
  * Tests for chatRuntime reducer and SSE→RunAction mapper.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   runReducer,
   createInitialRun,
@@ -91,6 +91,61 @@ describe('runReducer', () => {
     });
     expect(state.status).toBe('completed');
     expect(state.phase).toBe('completed');
+  });
+
+  it('generates unique timeline IDs even when Date.now is constant', () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+    let state = runReducer(createInitialRun(), {
+      type: 'RUN_START',
+      runId: 'r1', sessionId: 's1', messageId: 'm1',
+      scope: 'general', objective: '', mode: 'auto',
+    });
+    state = runReducer(state, {
+      type: 'RUN_PHASE_CHANGE',
+      phase: 'executing',
+      label: 'Executing',
+    });
+    state = runReducer(state, {
+      type: 'CONFIRMATION_REQUEST',
+      confirmation: {
+        confirmationId: 'c1',
+        runId: 'r1',
+        stepId: 's1',
+        reason: 'Approve',
+        riskLevel: 'medium',
+        proposedAction: 'Run tool',
+        toolName: 'browser',
+        payload: {},
+      },
+    });
+
+    const ids = state.timeline.map((item) => item.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    nowSpy.mockRestore();
+  });
+
+  it('keeps only one terminal timeline item when RUN_COMPLETE is received repeatedly', () => {
+    let state = runReducer(createInitialRun(), {
+      type: 'RUN_START',
+      runId: 'r1', sessionId: 's1', messageId: 'm1',
+      scope: 'general', objective: '', mode: 'auto',
+    });
+
+    state = runReducer(state, {
+      type: 'RUN_COMPLETE',
+      status: 'completed',
+      tokensUsed: 10,
+      cost: 0.001,
+    });
+    state = runReducer(state, {
+      type: 'RUN_COMPLETE',
+      status: 'completed',
+      tokensUsed: 11,
+      cost: 0.0011,
+    });
+
+    expect(state.timeline.filter((item) => item.type === 'done')).toHaveLength(1);
   });
 
   it('handles RECOVERY_AVAILABLE', () => {

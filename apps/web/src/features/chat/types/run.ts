@@ -165,6 +165,12 @@ export interface RunOutcome {
   summary?: string;
   error?: string;
   finalSummary?: FinalSummary;
+  queryFamily?: string;
+  plannerQueryCount?: number;
+  decontextualizedQuery?: string;
+  secondPassUsed?: boolean;
+  secondPassGain?: number;
+  evidenceBundleHitCount?: number;
 }
 
 // ── Agent Run (full state) ───────────────────────────────
