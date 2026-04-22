@@ -108,6 +108,19 @@ def _is_system_ai_note(tags: Optional[List[str]]) -> bool:
     return SYSTEM_AI_NOTE_TAG in (tags or [])
 
 
+def _sort_notes(notes: List[Note], sort_by: str, order: str) -> List[Note]:
+    """Sort notes in Python to avoid dialect-specific ARRAY operators in dev envs."""
+    sort_key = {
+        "createdAt": lambda note: note.created_at,
+        "created_at": lambda note: note.created_at,
+        "updatedAt": lambda note: note.updated_at,
+        "updated_at": lambda note: note.updated_at,
+        "title": lambda note: (note.title or "").lower(),
+    }.get(sort_by, lambda note: note.created_at)
+
+    return sorted(notes, key=sort_key, reverse=order == "desc")
+
+
 class GenerateNotesRequest(BaseModel):
     """Request to generate notes for a paper."""
 
@@ -178,7 +191,7 @@ async def create_note(
 async def list_notes(
     paperId: Optional[str] = Query(None, description="Filter by paper ID"),
     tag: Optional[str] = Query(None, description="Filter by tag"),
-    sortBy: str = Query("created_at", description="Sort field"),
+    sortBy: str = Query("createdAt", description="Sort field"),
     order: str = Query("desc", description="Sort order (asc/desc)"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -190,35 +203,18 @@ async def list_notes(
     Supports filtering by paperId (notes associated with specific paper) and tag.
     """
     try:
-        # Build query
-        query = select(Note).where(
-            Note.user_id == user_id,
-            ~Note.tags.contains([SYSTEM_AI_NOTE_TAG]),
-        )
+        result = await db.execute(select(Note).where(Note.user_id == user_id))
+        notes = [
+            note
+            for note in result.scalars().all()
+            if not _is_system_ai_note(note.tags)
+            and (not paperId or paperId in (note.paper_ids or []))
+            and (not tag or tag in (note.tags or []))
+        ]
 
-        # Filter by paperId (notes where paper_ids contains the paperId)
-        if paperId:
-            query = query.where(Note.paper_ids.contains([paperId]))
-
-        # Filter by tag
-        if tag:
-            query = query.where(Note.tags.contains([tag]))
-
-        # Get total count
-        count_query = select(func.count()).select_from(query.subquery())
-        total_result = await db.execute(count_query)
-        total = total_result.scalar() or 0
-
-        # Apply sorting
-        order_func = desc if order == "desc" else asc
-        sort_column = getattr(Note, sortBy, Note.created_at)
-        query = query.order_by(order_func(sort_column))
-
-        # Apply pagination
-        query = query.offset(offset).limit(limit)
-
-        result = await db.execute(query)
-        notes = result.scalars().all()
+        total = len(notes)
+        notes = _sort_notes(notes, sortBy, order)
+        notes = notes[offset : offset + limit]
 
         return NotesListResponse(
             success=True,
@@ -354,18 +350,13 @@ async def get_notes_by_paper(
 ):
     """Get notes for a specific paper (legacy endpoint)."""
     try:
-        query = (
-            select(Note)
-            .where(
-                Note.user_id == user_id,
-                Note.paper_ids.contains([paper_id]),
-                ~Note.tags.contains([SYSTEM_AI_NOTE_TAG]),
-            )
-            .order_by(desc(Note.created_at))
-        )
-
-        result = await db.execute(query)
-        notes = result.scalars().all()
+        result = await db.execute(select(Note).where(Note.user_id == user_id))
+        notes = [
+            note
+            for note in result.scalars().all()
+            if not _is_system_ai_note(note.tags) and paper_id in (note.paper_ids or [])
+        ]
+        notes = _sort_notes(notes, "createdAt", "desc")
 
         return NotesListResponse(
             success=True,

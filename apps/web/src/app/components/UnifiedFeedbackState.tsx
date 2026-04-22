@@ -38,7 +38,7 @@ export function UnifiedLoadingState({
         .join(' ')
         .trim()}
     >
-      <div className="inline-flex items-center gap-2 text-zinc-600">
+      <div className="inline-flex items-center gap-2 text-muted-foreground">
         <Loader2 className="w-6 h-6 animate-spin text-primary" />
         <span className="text-sm font-medium">{label}</span>
       </div>
@@ -56,14 +56,14 @@ export function UnifiedEmptyState({
   return (
     <div
       className={[
-        'bg-white border-2 border-zinc-900 p-10 text-center space-y-4 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)]',
+        'bg-paper-1 border border-border/80 p-10 text-center space-y-4',
         className || '',
       ]
         .join(' ')
         .trim()}
     >
-      <div className="text-zinc-700 font-semibold">{title}</div>
-      {description && <p className="text-zinc-500 text-sm leading-relaxed">{description}</p>}
+      <div className="text-foreground font-semibold">{title}</div>
+      {description && <p className="text-muted-foreground text-sm leading-relaxed">{description}</p>}
       {actionLabel && onAction ? <Button onClick={onAction}>{actionLabel}</Button> : null}
     </div>
   );
@@ -79,17 +79,17 @@ export function UnifiedErrorState({
   return (
     <div
       className={[
-        'bg-white border-2 border-zinc-900 p-8 text-center space-y-4 shadow-[8px_8px_0px_0px_rgba(24,24,27,1)]',
+        'bg-paper-1 border border-border/80 p-8 text-center space-y-4',
         className || '',
       ]
         .join(' ')
         .trim()}
     >
-      <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-red-50 text-red-600 mx-auto">
+      <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/[0.08] text-primary mx-auto">
         <AlertCircle className="w-5 h-5" />
       </div>
-      <div className="text-zinc-800 font-semibold">{title}</div>
-      {description && <p className="text-zinc-500 text-sm leading-relaxed">{description}</p>}
+      <div className="text-foreground font-semibold">{title}</div>
+      {description && <p className="text-muted-foreground text-sm leading-relaxed">{description}</p>}
       {retryLabel && onRetry ? (
         <Button variant="outline" onClick={onRetry}>
           {retryLabel}

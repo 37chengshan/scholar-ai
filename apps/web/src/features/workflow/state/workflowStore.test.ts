@@ -18,6 +18,7 @@ describe('workflowStore', () => {
       ui: {
         showTimelineDrawer: false,
         showArtifactsDrawer: false,
+        showConsole: false,
       },
     });
   });
@@ -53,9 +54,11 @@ describe('workflowStore', () => {
   it('toggles drawers', () => {
     useWorkflowStore.getState().setArtifactsDrawer(true);
     useWorkflowStore.getState().setTimelineDrawer(true);
+    useWorkflowStore.getState().setWorkflowConsole(true);
 
     const state = useWorkflowStore.getState();
     expect(state.ui.showArtifactsDrawer).toBe(true);
     expect(state.ui.showTimelineDrawer).toBe(true);
+    expect(state.ui.showConsole).toBe(true);
   });
 });

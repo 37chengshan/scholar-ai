@@ -24,8 +24,9 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useLanguage } from "@/app/contexts/LanguageContext";
 import { useSessions } from "@/app/hooks/useSessions";
 import { ChatMessage as RichChatMessage } from "@/app/components/ChatMessageCard";
@@ -39,12 +40,11 @@ import {
 } from "@/services/sseService";
 import { toast } from "sonner";
 import { ScopeBanner } from '@/app/components/ScopeBanner';
-import { SessionSidebar } from '@/features/chat/components/session-sidebar/SessionSidebar';
 import { MessageFeed } from '@/features/chat/components/message-feed/MessageFeed';
 import { ComposerInput } from '@/features/chat/components/composer-input/ComposerInput';
-import { ChatHeader } from '@/features/chat/components/ChatHeader';
 import { ChatRightPanel } from '@/features/chat/components/ChatRightPanel';
 import { RunHeader } from '@/features/chat/components/workbench/RunHeader';
+import { WorkflowShell } from '@/features/workflow/components/WorkflowShell';
 import { usePinnedBottom } from '@/features/chat/hooks/usePinnedBottom';
 import { useChatWorkspace } from '@/features/chat/hooks/useChatWorkspace';
 import { useChatMessagesViewModel } from '@/features/chat/hooks/useChatMessagesViewModel';
@@ -61,6 +61,7 @@ import type {
 
 export function ChatWorkspaceV2() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
   const [agentUIState, setAgentUIState] = useState<AgentUIState>("IDLE");
   const [sending, setSending] = useState(false); // 防止重复发送
@@ -159,6 +160,8 @@ export function ChatWorkspaceV2() {
     switchSession,
     deleteSession,
   } = useSessions();
+  const desiredSessionId = searchParams.get('session');
+  const wantsNewSession = searchParams.get('new') === '1';
 
   const {
     renderMessages,
@@ -253,6 +256,47 @@ export function ChatWorkspaceV2() {
     sendLockRef,
     sseServiceRef,
   });
+
+  useEffect(() => {
+    if (!wantsNewSession || loading) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void handleNewSession().then((session) => {
+      if (cancelled) {
+        return;
+      }
+
+      const next = new URLSearchParams(searchParams);
+      next.delete('new');
+      if (session?.id) {
+        next.set('session', session.id);
+      }
+      setSearchParams(next, { replace: true });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handleNewSession, loading, searchParams, setSearchParams, wantsNewSession]);
+
+  useEffect(() => {
+    if (!desiredSessionId || loading) {
+      return;
+    }
+
+    if (currentSession?.id === desiredSessionId) {
+      return;
+    }
+
+    if (!safeSessions.some((session) => session.id === desiredSessionId)) {
+      return;
+    }
+
+    void handleSwitchSession(desiredSessionId);
+  }, [currentSession?.id, desiredSessionId, handleSwitchSession, loading, safeSessions]);
 
   // ============================================================================
   // Placeholder Message Mechanism (HARD RULE 0.2)
@@ -447,93 +491,94 @@ export function ChatWorkspaceV2() {
   };
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] w-full flex font-sans bg-background text-foreground overflow-hidden">
-      <div className="flex-shrink-0">
-        <SessionSidebar
-          sessions={filteredSessions}
-          currentSessionId={currentSession?.id ?? null}
-          loading={loading}
-          isZh={isZh}
-          labels={{
-            terminal: t.terminal,
-            sessions: t.sessions,
-            search: t.search,
-            history: t.history,
-            newChat: t.newChat,
-            noSearchResults: isZh ? '未找到匹配会话' : 'No matching sessions',
-            messageSuffix: isZh ? '条消息' : 'messages',
-          }}
-          searchValue={sessionSearchQuery}
-          onSearchChange={setSessionSearchQuery}
-          onCreateSession={handleNewSession}
-          onSwitchSession={handleSwitchSession}
-          onDeleteSession={handleDeleteSession}
-        />
+    <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        <div className="shrink-0 border-b border-border/30 bg-white/30 backdrop-blur-sm">
+          <WorkflowShell />
+        </div>
+
+        {uiScope.type && (
+          <div className="shrink-0 border-b border-blue-200/50 bg-blue-50/40">
+            <ScopeBanner
+              type={uiScope.type}
+              title={uiScope.title}
+              errorMessage={uiScope.errorMessage}
+              onExitScope={handleExitScope}
+            />
+          </div>
+        )}
+
+        {runtime.run && (
+          <div className="shrink-0 border-b border-amber-200/50 bg-amber-50/30">
+            <RunHeader run={runtime.run} />
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1 flex flex-col overflow-hidden bg-background">
+          <div className="px-6 py-3 border-b border-border/30 bg-white/20 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+            📬 对话历史
+          </div>
+          <MessageFeed
+            renderMessages={renderMessages}
+            streamState={streamState}
+            currentMessageId={streamingMessageId || ''}
+            thinkingSteps={thinkingSteps}
+            labels={{
+              noMessages: t.noMessages,
+              sendFirst: t.sendFirst,
+              thinking: t.thinking,
+              stop: t.stop,
+            }}
+            isZh={isZh}
+            messagesEndRef={messagesEndRef}
+            scrollContainerRef={messageListRef}
+            onCitationClick={handleCitationClick}
+            onStop={handleStop}
+            formatTime={formatTime}
+            onSuggest={(text) => {
+              setInput(text);
+            }}
+          />
+        </div>
+
+        <div className="shrink-0 border-t border-border/30 bg-white/40 backdrop-blur-sm">
+          <div className="px-6 py-3 border-b border-border/30 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+            ✏️ 输入
+          </div>
+          <ComposerInput
+            scopeType={uiScope.type}
+            isZh={isZh}
+            mode={mode}
+            input={input}
+            disabled={scopeLoading || sending}
+            streaming={streamState.streamStatus === 'streaming'}
+            placeholder={t.placeholder}
+            labels={{
+              mode: isZh ? '模式' : 'Mode',
+              verify: t.verify,
+              sendKeyHint: isZh ? '↵ 发送' : '↵ TO SEND',
+            }}
+            onModeChange={setMode}
+            onInputChange={setInput}
+            onKeyDown={handleKeyDown}
+            onSend={handleSend}
+            onStop={handleStop}
+          />
+        </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-h-0 bg-background min-w-0">
-        <ChatHeader
-          title={currentSession?.title || t.newChat}
-          showRightPanel={showRightPanel}
-          isZh={isZh}
-          onToggleRightPanel={() => setRightPanelOpen(!showRightPanel)}
-        />
+      {!showRightPanel ? (
+        <button
+          type="button"
+          onClick={() => setRightPanelOpen(true)}
+          className="absolute right-5 top-20 z-20 hidden h-10 w-10 items-center justify-center rounded-2xl border border-border/70 bg-paper-1/94 text-foreground/60 transition-colors hover:border-primary/20 hover:text-primary xl:inline-flex"
+          aria-label={isZh ? "展开右侧栏" : "Show panel"}
+          title={isZh ? "展开右侧栏" : "Show panel"}
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </button>
+      ) : null}
 
-        {/* D-03: Scope banner - below header, above messages */}
-        <ScopeBanner
-          type={uiScope.type}
-          title={uiScope.title}
-          errorMessage={uiScope.errorMessage}
-          onExitScope={handleExitScope}
-        />
-
-        <RunHeader run={runtime.run} />
-
-        <MessageFeed
-          renderMessages={renderMessages}
-          streamState={streamState}
-          currentMessageId={streamingMessageId || ''}
-          thinkingSteps={thinkingSteps}
-          labels={{
-            noMessages: t.noMessages,
-            sendFirst: t.sendFirst,
-            thinking: t.thinking,
-            stop: t.stop,
-          }}
-          isZh={isZh}
-          messagesEndRef={messagesEndRef}
-          scrollContainerRef={messageListRef}
-          onCitationClick={handleCitationClick}
-          onStop={handleStop}
-          formatTime={formatTime}
-          onSuggest={(text) => {
-            setInput(text);
-          }}
-        />
-
-        <ComposerInput
-          scopeType={uiScope.type}
-          isZh={isZh}
-          mode={mode}
-          input={input}
-          disabled={scopeLoading || sending}
-          streaming={streamState.streamStatus === 'streaming'}
-          placeholder={t.placeholder}
-          labels={{
-            mode: isZh ? '模式' : 'Mode',
-            verify: t.verify,
-            sendKeyHint: isZh ? '↵ 发送' : '↵ TO SEND',
-          }}
-          onModeChange={setMode}
-          onInputChange={setInput}
-          onKeyDown={handleKeyDown}
-          onSend={handleSend}
-          onStop={handleStop}
-        />
-      </div>
-
-      {/* Right Sidebar: Agent State + Activity Panel */}
       <AnimatePresence>
         {showRightPanel && (
           <ChatRightPanel
@@ -543,6 +588,8 @@ export function ChatWorkspaceV2() {
             sessionTokens={sessionTokens}
             sessionCost={sessionCost}
             onStop={handleStop}
+            onClose={() => setRightPanelOpen(false)}
+            isZh={isZh}
           />
         )}
       </AnimatePresence>

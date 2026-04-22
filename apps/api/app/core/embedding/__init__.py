@@ -15,9 +15,15 @@ Design decisions (per D-01, D-02):
 """
 
 from app.core.embedding.base import BaseEmbeddingService
-from app.core.embedding.bge_embedding import BGEEmbeddingService
 from app.core.embedding.qwen3vl_embedding import Qwen3VLEmbeddingService
 from app.core.embedding.factory import EmbeddingServiceFactory, get_embedding_service
+
+def __getattr__(name: str):
+    """Lazy import BGEEmbeddingService to avoid FlagEmbedding import at startup."""
+    if name == "BGEEmbeddingService":
+        from app.core.embedding.bge_embedding import BGEEmbeddingService
+        return BGEEmbeddingService
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "BaseEmbeddingService",

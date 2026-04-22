@@ -4,6 +4,7 @@ import type { WorkflowAction, WorkflowArtifact, WorkflowHydratedPayload, Workflo
 interface WorkflowUiState {
   showTimelineDrawer: boolean;
   showArtifactsDrawer: boolean;
+  showConsole: boolean;
 }
 
 interface WorkflowStoreState {
@@ -17,6 +18,7 @@ interface WorkflowStoreState {
   hydrate: (payload: WorkflowHydratedPayload) => void;
   setTimelineDrawer: (show: boolean) => void;
   setArtifactsDrawer: (show: boolean) => void;
+  setWorkflowConsole: (show: boolean) => void;
   clearWorkflowRun: () => void;
 }
 
@@ -37,6 +39,7 @@ export const useWorkflowStore = create<WorkflowStoreState>((set) => ({
   ui: {
     showTimelineDrawer: false,
     showArtifactsDrawer: false,
+    showConsole: false,
   },
   hydrate: (payload) =>
     set({
@@ -59,6 +62,13 @@ export const useWorkflowStore = create<WorkflowStoreState>((set) => ({
       ui: {
         ...state.ui,
         showArtifactsDrawer: show,
+      },
+    })),
+  setWorkflowConsole: (show) =>
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        showConsole: show,
       },
     })),
   clearWorkflowRun: () =>

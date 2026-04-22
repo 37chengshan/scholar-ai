@@ -25,7 +25,6 @@ Usage:
 
 from typing import Dict, Any
 from app.core.reranker.base import BaseRerankerService
-from app.core.reranker.bge_reranker import BGERerankerService
 from app.core.reranker.qwen3vl_reranker import Qwen3VLRerankerService
 from app.config import settings
 from app.utils.logger import logger
@@ -86,6 +85,7 @@ class RerankerServiceFactory:
         )
 
         if model_type == "bge-reranker":
+            from app.core.reranker.bge_reranker import BGERerankerService
             service = BGERerankerService()
         elif model_type == "qwen3-vl-reranker":
             service = Qwen3VLRerankerService(

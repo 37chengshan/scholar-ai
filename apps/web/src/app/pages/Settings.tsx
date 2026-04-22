@@ -21,6 +21,7 @@ import { ProfileForm } from "../components/ProfileForm";
 import { APIKeyManager } from "../components/APIKeyManager";
 import { FontSizeSelector } from "../components/FontSizeSelector";
 import { SystemDiagnostics } from "../components/SystemDiagnostics";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -115,12 +116,17 @@ function SettingsContent() {
         <div className="flex-1 overflow-y-auto py-5 flex flex-col gap-6 px-4">
 
           <div className="flex flex-col items-center gap-3 pb-6 border-b border-border/50">
-            <div className="w-20 h-20 rounded-full border-2 border-background overflow-hidden relative cursor-pointer shadow-md group">
-              <img
-                src={user?.avatar || "/default-avatar.png"}
-                alt={user?.name || "User"}
-                className="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-all duration-700"
-              />
+            <div className="relative cursor-pointer group">
+              <Avatar className="h-20 w-20 rounded-full border-2 border-background shadow-md">
+                <AvatarImage
+                  src={user?.avatar ?? undefined}
+                  alt={user?.name || "User"}
+                  className="object-cover filter grayscale group-hover:grayscale-0 transition-all duration-700"
+                />
+                <AvatarFallback className="bg-paper-2 text-lg font-semibold tracking-[0.18em] text-foreground/70">
+                  {getUserInitials(user?.name)}
+                </AvatarFallback>
+              </Avatar>
               <div className="absolute inset-0 bg-primary/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
                 <Camera className="w-4 h-4 text-primary-foreground" />
               </div>
@@ -453,6 +459,18 @@ function SettingsContent() {
       />
     </div>
   );
+}
+
+function getUserInitials(name?: string | null) {
+  if (!name) return "SA";
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) return "SA";
+  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
 
 /**

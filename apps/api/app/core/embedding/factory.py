@@ -27,7 +27,6 @@ Usage:
 
 from typing import Dict
 from app.core.embedding.base import BaseEmbeddingService
-from app.core.embedding.bge_embedding import BGEEmbeddingService
 from app.core.embedding.qwen3vl_embedding import Qwen3VLEmbeddingService
 from app.config import settings
 from app.utils.logger import logger
@@ -89,6 +88,7 @@ class EmbeddingServiceFactory:
         )
 
         if model_type == "bge-m3":
+            from app.core.embedding.bge_embedding import BGEEmbeddingService
             service = BGEEmbeddingService()
         elif model_type == "qwen3-vl-2b":
             service = Qwen3VLEmbeddingService(

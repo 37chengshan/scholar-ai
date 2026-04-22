@@ -37,6 +37,7 @@ describe('useWorkflowHydration', () => {
       ui: {
         showTimelineDrawer: false,
         showArtifactsDrawer: false,
+        showConsole: false,
       },
     });
     useChatWorkspaceStore.setState({

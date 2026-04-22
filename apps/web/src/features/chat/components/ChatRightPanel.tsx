@@ -1,3 +1,4 @@
+import { PanelRightClose } from 'lucide-react';
 import { motion } from 'motion/react';
 import { AgentStateSidebar } from '@/app/components/AgentStateSidebar';
 import { TokenMonitor } from '@/app/components/TokenMonitor';
@@ -14,6 +15,8 @@ interface ChatRightPanelProps {
   sessionTokens: number;
   sessionCost: number;
   onStop: () => void;
+  onClose: () => void;
+  isZh: boolean;
 }
 
 export function ChatRightPanel({
@@ -23,37 +26,59 @@ export function ChatRightPanel({
   sessionTokens,
   sessionCost,
   onStop,
+  onClose,
+  isZh,
 }: ChatRightPanelProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="w-[300px] border-l border-zinc-200 flex-shrink-0 hidden xl:block bg-zinc-50/60"
+      className="hidden min-w-[320px] shrink-0 border-l border-border/40 bg-paper-1/72 backdrop-blur-md xl:flex xl:w-[320px] xl:flex-col"
     >
-      <AgentStateSidebar
-        selectedMessage={selectedMessage}
-        currentRunningState={streamState.streamStatus === 'streaming' ? streamState : undefined}
-        onStop={onStop}
-      />
-
-      {activeRun.timeline.length > 0 ? (
-        <div className="border-t border-border/50 p-4">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-            Run Timeline
+      <div className="sticky top-0 z-10 border-b border-border/40 bg-background/78 px-5 py-4 backdrop-blur-md">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-serif text-lg font-bold tracking-tight">Agent Status</h2>
+            <p className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Inspector</p>
           </div>
-          <ExecutionTimeline items={activeRun.timeline} collapsed />
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-paper-2 text-foreground/60 transition-colors hover:text-primary"
+            aria-label={isZh ? '收起右侧栏' : 'Hide panel'}
+            title={isZh ? '收起右侧栏' : 'Hide panel'}
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <AgentStateSidebar
+          className="w-full border-l-0 bg-transparent"
+          selectedMessage={selectedMessage}
+          currentRunningState={streamState.streamStatus === 'streaming' ? streamState : undefined}
+          onStop={onStop}
+        />
+
+        {activeRun.timeline.length > 0 ? (
+          <div className="border-t border-border/50 px-5 py-4">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 mb-3 flex items-center gap-1.5">
+              Run Timeline
+            </h3>
+            <ExecutionTimeline items={activeRun.timeline} collapsed />
         </div>
       ) : null}
 
       {activeRun.evidence.length > 0 ? (
-        <div className="border-t border-border/50 p-4">
+        <div className="border-t border-border/50 px-5 py-4">
           <EvidencePanel evidence={activeRun.evidence} maxVisible={6} />
         </div>
       ) : null}
 
       {sessionTokens > 0 && (
-        <div className="border-t border-border/50 p-4">
+        <div className="border-t border-border/50 px-5 py-4">
           <TokenMonitor
             tokens={sessionTokens}
             cost={sessionCost}
@@ -61,6 +86,7 @@ export function ChatRightPanel({
           />
         </div>
       )}
+      </div>
     </motion.div>
   );
 }

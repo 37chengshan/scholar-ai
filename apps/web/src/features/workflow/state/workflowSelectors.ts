@@ -12,8 +12,4 @@ export const useWorkflowUiState = () => useWorkflowStore((state) => state.ui);
 export const selectHasActiveRun = (state: WorkflowStoreState): boolean => Boolean(state.currentRun);
 export const selectHasPendingActions = (state: WorkflowStoreState): boolean => state.pendingActions.length > 0;
 export const selectHasRecoverableTasks = (state: WorkflowStoreState): boolean => state.recoverableTasks.length > 0;
-export const selectWorkflowSurfaceVisible = (pathname: string): boolean =>
-  pathname.startsWith('/chat') ||
-  pathname.startsWith('/knowledge-bases') ||
-  pathname.startsWith('/search') ||
-  pathname.startsWith('/read/');
+export const selectWorkflowSurfaceVisible = (pathname: string): boolean => pathname.startsWith('/chat');

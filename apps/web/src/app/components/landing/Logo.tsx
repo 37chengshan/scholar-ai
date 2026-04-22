@@ -1,9 +1,21 @@
 import React from "react";
 
-export function Logo() {
+type LogoProps = {
+  className?: string;
+  markSize?: number;
+  textClassName?: string;
+  hideText?: boolean;
+};
+
+export function Logo({
+  className = "",
+  markSize = 40,
+  textClassName = "text-2xl",
+  hideText = false,
+}: LogoProps) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="relative shrink-0" style={{ width: 40, height: 40 }}>
+    <div className={`flex items-center gap-3 ${className}`.trim()}>
+      <div className="relative shrink-0" style={{ width: markSize, height: markSize }}>
         <svg
           viewBox="0 0 90 90"
           fill="none"
@@ -20,12 +32,14 @@ export function Logo() {
           <path d="M30 74C30 74 38 78 45 78C52 78 60 74 60 74" stroke="currentColor" strokeWidth="1" fill="none" strokeLinecap="round" opacity="0.4" className="text-primary" />
         </svg>
       </div>
-      <span
-        className="text-2xl font-semibold tracking-wide text-foreground"
-        style={{ fontFamily: "'Libre Bodoni', serif", fontStyle: "italic" }}
-      >
-        ScholarAI
-      </span>
+      {!hideText ? (
+        <span
+          className={`${textClassName} font-semibold tracking-wide text-foreground`.trim()}
+          style={{ fontFamily: "'Libre Bodoni', serif", fontStyle: "italic" }}
+        >
+          ScholarAI
+        </span>
+      ) : null}
     </div>
   );
 }

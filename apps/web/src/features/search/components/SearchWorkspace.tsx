@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { BarChart2, Calendar, Hash, TrendingUp, Users } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -19,6 +19,7 @@ export function SearchWorkspace() {
   const { language } = useLanguage();
   const isZh = language === 'zh';
   const navigate = useNavigate();
+  const [showInspector, setShowInspector] = useState(true);
 
   const workspace = useSearchWorkspace();
   const {
@@ -143,6 +144,8 @@ export function SearchWorkspace() {
           queryLabel={labels.query}
           total={results?.total}
           isZh={isZh}
+          inspectorOpen={showInspector}
+          onToggleInspector={() => setShowInspector((value) => !value)}
         />
 
         <div className="flex-1 overflow-y-auto bg-paper-2/35 p-5">
@@ -188,87 +191,100 @@ export function SearchWorkspace() {
         </div>
       </div>
 
+      {showInspector ? (
       <motion.aside
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-[240px] border-l border-border/70 flex flex-col h-full bg-paper-2 flex-shrink-0 relative"
+        className="hidden h-full w-[280px] flex-shrink-0 border-l border-border/50 bg-muted/10 lg:flex flex-col"
       >
-        <div className="px-5 py-4 border-b border-border/60 bg-paper-1/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BarChart2 className="w-3.5 h-3.5 text-primary" />
-            <h2 className="font-serif text-lg font-semibold tracking-tight">{labels.analysis}</h2>
+            <h2 className="font-serif text-lg font-bold tracking-tight">Inspector</h2>
           </div>
+          <button className="text-[8px] font-bold tracking-[0.2em] uppercase text-muted-foreground hover:text-primary transition-colors">{labels.analysis}</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
-          <SearchFilters
-            filters={{ sortBy: workspace.sortBy }}
-            onFilterChange={(nextFilters) => {
-              if (nextFilters.sortBy) {
-                workspace.updateSortBy(nextFilters.sortBy);
-              }
-            }}
-          />
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+              {isZh ? "当前检索" : "Current Query"}
+            </h3>
+            <div className="mt-1 font-serif text-xl leading-tight text-foreground line-clamp-3">
+              {query || (isZh ? "等待输入关键词" : "Waiting for a search term")}
+            </div>
+            <div className="mt-2 rounded-sm bg-muted/30 px-3 py-3 border border-border/50">
+              <SearchFilters
+                filters={{ sortBy: workspace.sortBy }}
+                onFilterChange={(nextFilters) => {
+                  if (nextFilters.sortBy) {
+                    workspace.updateSortBy(nextFilters.sortBy);
+                  }
+                }}
+              />
+            </div>
+          </section>
 
-          <div className="flex flex-col gap-3">
-            <h3 className="editorial-rule-heading flex items-center gap-1.5">
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
               <Calendar className="w-3 h-3" /> {labels.velocity}
             </h3>
-            <div className="flex items-end gap-1 h-20 mt-2">
+            <div className="flex items-end gap-1 h-16 mt-1">
               <div className="w-full bg-muted/50 rounded-sm h-[20%]" />
               <div className="w-full bg-muted/50 rounded-sm h-[30%]" />
               <div className="w-full bg-muted/50 rounded-sm h-[50%]" />
-              <div className="w-full bg-primary rounded-sm h-[90%] shadow-sm shadow-primary/20">
-                <span className="absolute text-[8px] font-mono text-primary font-bold">{results?.external.length || 0}</span>
+              <div className="w-full bg-primary rounded-sm h-[90%] shadow-sm shadow-primary/20 relative group">
+                <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] font-mono text-primary font-bold opacity-0 group-hover:opacity-100 transition-opacity">{results?.external.length || 0}</span>
               </div>
               <div className="w-full bg-muted/50 rounded-sm h-[60%]" />
             </div>
-            <div className="flex justify-between text-[8px] font-mono text-muted-foreground mt-1">
+            <div className="flex justify-between text-[8px] font-mono text-muted-foreground">
               <span>2019</span>
               <span className="text-primary font-bold">2022</span>
               <span>2024</span>
             </div>
-          </div>
+          </section>
 
-          <div className="flex flex-col gap-3">
-            <h3 className="editorial-rule-heading flex items-center gap-1.5">
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
               <Users className="w-3 h-3" /> {labels.topAuthors}
             </h3>
-            <div className="flex flex-col gap-2 mt-1">
+            <div className="flex flex-col gap-1.5 mt-1">
               {results?.external
                 .slice(0, 4)
                 .flatMap((result) => result.authors || [])
                 .slice(0, 4)
                 .map((author, index) => (
-                  <div key={`${author}-${index}`} className="text-xs font-medium text-foreground/80">
+                  <div key={`${author}-${index}`} className="text-[11px] font-bold text-foreground/80 truncate">
                     {author}
                   </div>
                 ))}
             </div>
-          </div>
+          </section>
 
-          <div className="flex flex-col gap-3">
-            <h3 className="editorial-rule-heading flex items-center gap-1.5">
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
               <Hash className="w-3 h-3" /> {labels.topics}
             </h3>
             <div className="flex flex-wrap gap-1.5 mt-1">
               {labels.tagNames.map((tag) => (
-                <span key={tag} className="font-sans text-[10px] font-semibold tracking-wide bg-paper-1 border border-border/60 text-foreground/75 px-2 py-1 rounded-sm">
+                <span key={tag} className="font-sans text-[9px] font-bold tracking-wide bg-background border border-border/50 text-foreground/75 px-1.5 py-0.5 rounded-sm uppercase">
                   {tag}
                 </span>
               ))}
             </div>
-          </div>
+          </section>
         </div>
 
-        <div className="px-5 py-4 border-t border-border/60 bg-paper-1/80 backdrop-blur-md">
-          <button className="w-full bg-transparent border border-foreground/20 text-foreground py-2 rounded-sm text-[10px] font-semibold tracking-wide hover:bg-muted transition-colors flex justify-center items-center gap-2">
-            <TrendingUp className="w-3.5 h-3.5 text-foreground/50" />
+        <div className="p-4 border-t border-border/50 bg-background/80 backdrop-blur-md">
+          <button className="w-full border border-foreground/20 text-foreground py-2.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] hover:bg-muted transition-colors flex items-center justify-center gap-2 group shadow-sm bg-card">
+            <TrendingUp className="w-3 h-3 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform duration-300" />
             {labels.report}
           </button>
         </div>
       </motion.aside>
+      ) : null}
 
       <SearchAuthorPanel
         open={authorSearch.showAuthorPapersModal}

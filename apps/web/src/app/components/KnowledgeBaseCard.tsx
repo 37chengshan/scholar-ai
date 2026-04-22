@@ -80,16 +80,15 @@ export function KnowledgeBaseCard({
       <CardHeader className="pb-2 pt-4 pl-5 pr-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
-            {/* Category icon — circular background */}
-            <div className="flex-shrink-0 w-9 h-9 border border-zinc-200 bg-zinc-50 flex items-center justify-center group-hover:border-primary/50 transition-colors">
-              <Icon className="h-4 w-4 text-zinc-500 group-hover:text-primary transition-colors" />
+            <div className="flex-shrink-0 w-9 h-9 border border-border/70 bg-paper-2 flex items-center justify-center group-hover:border-primary/40 transition-colors">
+              <Icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-serif text-base font-semibold leading-tight text-zinc-900 group-hover:text-primary transition-colors truncate">
+              <h3 className="font-serif text-base font-semibold leading-tight text-foreground group-hover:text-primary transition-colors truncate">
                 {name}
               </h3>
               {category && (
-                <span className="inline-flex px-2 py-0.5 bg-zinc-50 text-zinc-500 text-[10px] font-bold uppercase tracking-[0.14em] border border-zinc-200 mt-1.5">
+                <span className="mt-1.5 inline-flex border border-border/70 bg-paper-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                   {config.label} · {category}
                 </span>
               )}
@@ -102,21 +101,21 @@ export function KnowledgeBaseCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-zinc-100"
+                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
                 onClick={(e) => e.stopPropagation()}
                 aria-label="更多操作"
               >
-                <MoreHorizontal className="h-4 w-4 text-zinc-400 group-hover:text-zinc-900" />
+                <MoreHorizontal className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[160px] bg-white border border-zinc-300 shadow-none rounded-none">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }} className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-zinc-50 hover:text-primary">
+            <DropdownMenuContent align="end" className="min-w-[160px] bg-paper-1 border border-border shadow-none rounded-none">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }} className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-muted hover:text-primary">
                 <Pencil className="h-4 w-4" /> 编辑信息
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onImport(); }} className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-zinc-50 hover:text-primary">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onImport(); }} className="flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] cursor-pointer outline-none hover:bg-muted hover:text-primary">
                 <Download className="h-4 w-4" /> 导入论文
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="h-px bg-zinc-200" />
+              <DropdownMenuSeparator className="h-px bg-border" />
               <DropdownMenuItem
                 variant="destructive"
                 onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -130,7 +129,7 @@ export function KnowledgeBaseCard({
       </CardHeader>
 
       <CardContent className="pb-3 pt-0 pl-5 pr-4">
-        <p className="text-sm text-zinc-600 font-medium line-clamp-2 leading-relaxed">
+        <p className="text-sm text-muted-foreground font-medium line-clamp-2 leading-relaxed">
           {description}
         </p>
       </CardContent>

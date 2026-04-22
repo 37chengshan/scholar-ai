@@ -95,7 +95,7 @@ export function KnowledgeWorkspaceShell() {
           <div className="space-y-3">
             <Link
               to="/knowledge-bases"
-              className="inline-flex items-center gap-2 text-zinc-500 hover:text-primary transition-colors text-xs font-bold uppercase tracking-[0.16em] mb-1"
+              className="mb-1 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-primary"
               onClick={(event) => {
                 event.preventDefault();
                 navigate('/knowledge-bases');
@@ -105,14 +105,14 @@ export function KnowledgeWorkspaceShell() {
               返回知识库列表
             </Link>
             <div className="flex items-center gap-4">
-              <h1 className="text-3xl md:text-4xl font-black font-serif uppercase tracking-tight text-zinc-900 leading-none">
+              <h1 className="text-3xl md:text-4xl font-black font-serif uppercase tracking-tight text-foreground leading-none">
                 {kb.name}
               </h1>
-              <span className="bg-zinc-50 border border-zinc-200 px-2.5 py-1 font-mono text-xs text-zinc-500">
+              <span className="border border-border/70 bg-paper-1 px-2.5 py-1 font-mono text-xs text-muted-foreground">
                 {kbId}
               </span>
             </div>
-            <div className="flex flex-wrap gap-4 text-xs font-bold uppercase tracking-[0.14em] text-zinc-500 pt-1">
+            <div className="flex flex-wrap gap-4 pt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
               <span className="flex items-center gap-2">
                 <Database className="w-4 h-4" /> {kb.embeddingModel} Model
               </span>
@@ -125,14 +125,14 @@ export function KnowledgeWorkspaceShell() {
           <div className="flex items-center gap-4 shrink-0">
             <button
               onClick={() => syncTab('uploads')}
-              className="flex items-center gap-2 border border-zinc-300 bg-white hover:border-primary hover:text-primary text-zinc-800 px-4 py-2.5 font-bold uppercase tracking-[0.14em] text-xs transition-colors"
+              className="flex items-center gap-2 border border-border/80 bg-paper-1 text-foreground px-4 py-2.5 font-bold uppercase tracking-[0.14em] text-xs transition-colors hover:border-primary hover:text-primary"
             >
               <UploadCloud className="w-4 h-4" />
               上传工作台
             </button>
             <button
               onClick={() => setImportDialogOpen(true)}
-              className="flex items-center gap-2 border border-zinc-300 bg-white hover:border-primary hover:text-primary text-zinc-800 px-4 py-2.5 font-bold uppercase tracking-[0.14em] text-xs transition-colors"
+              className="flex items-center gap-2 border border-border/80 bg-paper-1 text-foreground px-4 py-2.5 font-bold uppercase tracking-[0.14em] text-xs transition-colors hover:border-primary hover:text-primary"
             >
               <UploadCloud className="w-4 h-4" />
               导入来源
@@ -148,46 +148,46 @@ export function KnowledgeWorkspaceShell() {
         </div>
 
         <Tabs value={activeTab} onValueChange={syncTab} className="w-full">
-          <TabsList className="flex flex-wrap border-b border-zinc-200 bg-transparent h-auto p-0 gap-0 w-full justify-start">
+          <TabsList className="flex h-auto w-full flex-wrap justify-start gap-0 border-b border-border/80 bg-transparent p-0">
             <TabsTrigger value="papers" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'papers'
-                ? 'border-primary text-zinc-900 bg-transparent'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
+                ? 'border-primary text-foreground bg-transparent'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
             }`}>
               <span className="flex items-center justify-center gap-2"><Library className="w-4 h-4" /> 论文列表</span>
             </TabsTrigger>
             <TabsTrigger value="import-status" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'import-status'
-                ? 'border-primary text-zinc-900 bg-transparent'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
+                ? 'border-primary text-foreground bg-transparent'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
             }`}>
               <span className="flex items-center justify-center gap-2"><Clock3 className="w-4 h-4" /> 导入状态</span>
             </TabsTrigger>
             <TabsTrigger value="uploads" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'uploads'
-                ? 'border-primary text-zinc-900 bg-transparent'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
+                ? 'border-primary text-foreground bg-transparent'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
             }`}>
               <span className="flex items-center justify-center gap-2"><UploadCloud className="w-4 h-4" /> 上传工作台</span>
             </TabsTrigger>
             <TabsTrigger value="search" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'search'
-                ? 'border-primary text-zinc-900 bg-transparent'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
+                ? 'border-primary text-foreground bg-transparent'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
             }`}>
               <span className="flex items-center justify-center gap-2"><Search className="w-4 h-4" /> 知识库检索</span>
             </TabsTrigger>
             <TabsTrigger value="runs" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'runs'
-                ? 'border-primary text-zinc-900 bg-transparent'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
+                ? 'border-primary text-foreground bg-transparent'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
             }`}>
               <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> Run 历史</span>
             </TabsTrigger>
             <TabsTrigger value="chat" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'chat'
-                ? 'border-primary text-zinc-900 bg-transparent'
-                : 'border-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50/60'
+                ? 'border-primary text-foreground bg-transparent'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
             }`}>
               <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> 问答</span>
             </TabsTrigger>

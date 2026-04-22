@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { useNotes, useCreateNote, useUpdateNote, useDeleteNote } from '@/hooks/useNotes';
 import type { Note } from '@/services/notesApi';
 import { NotesEditor } from '@/app/components/NotesEditor';
@@ -668,61 +668,59 @@ function NotesContent() {
 
   return (
     <div className="relative min-h-screen bg-background">
-      <div className="magazine-toolbar sticky top-0 z-10 border-b bg-background/95 backdrop-blur-sm">
-        <div className="px-6 py-5">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h1 className="font-serif text-3xl font-bold text-foreground tracking-tight">笔记</h1>
-              <p className="text-sm text-muted-foreground mt-0.5 font-sans">Notes</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {paperIdFilter && (
-                <Badge variant="secondary" className="text-xs">
-                  论文筛选: {paperTitleMap.get(paperIdFilter) || paperIdFilter.slice(0, 8)}
-                </Badge>
-              )}
-              {catalogLoading && (
-                <Badge variant="outline" className="text-xs">
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  同步目录中
-                </Badge>
-              )}
-            </div>
+      <div className="magazine-toolbar sticky top-0 z-10 border-b border-border/50 bg-background/95 backdrop-blur-md">
+        <div className="px-6 py-5 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-3xl font-bold text-foreground tracking-tight">笔记</h1>
+            <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-muted-foreground mt-1.5 font-sans">Notes</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {paperIdFilter && (
+              <Badge variant="secondary" className="text-[9px] uppercase tracking-wider font-bold">
+                论文筛选: {paperTitleMap.get(paperIdFilter) || paperIdFilter.slice(0, 8)}
+              </Badge>
+            )}
+            {catalogLoading && (
+              <Badge variant="outline" className="text-[9px] uppercase tracking-wider font-bold">
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                同步目录中
+              </Badge>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="flex h-[calc(100vh-10rem)]">
-        <div className="w-72 border-r border-zinc-300 bg-zinc-100 flex flex-col shrink-0">
-          <div className="p-3 border-b border-zinc-200 space-y-2">
+      <div className="relative flex h-[calc(100vh-10rem)] bg-background/50">
+        <div className="absolute left-4 top-4 bottom-4 w-[300px] bg-white rounded-lg border border-border/40 flex flex-col shadow-2xl z-10">
+          <div className="px-5 py-5 border-b border-border/30 space-y-4 bg-gradient-to-b from-white to-slate-50/50">
             <div className="flex items-center justify-between">
-              <h2 className="font-serif text-sm font-bold uppercase tracking-wider text-foreground">笔记</h2>
-              <Button variant="default" size="sm" className="h-7 px-2" onClick={handleCreateNote}>
-                <Plus className="w-3.5 h-3.5" />
+              <h2 className="font-serif text-xs font-bold tracking-widest text-foreground uppercase">笔记库</h2>
+              <Button variant="outline" size="sm" className="h-6 px-2.5 text-[9px] uppercase font-bold tracking-wider rounded-sm shadow-sm" onClick={handleCreateNote}>
+                <Plus className="w-3 h-3 mr-1" />
                 新建
               </Button>
             </div>
 
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <div className="relative group">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <Input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索笔记..."
-                className="pl-8 h-8 text-xs"
+                placeholder="搜索..."
+                className="pl-8 h-8 text-xs bg-background/50 border-border/40 focus-visible:ring-1 focus-visible:ring-primary/50 shadow-sm rounded"
               />
             </div>
 
             {allTags.length > 0 && (
               <Select value={tagFilter} onValueChange={setTagFilter}>
-                <SelectTrigger className="h-7 text-xs">
+                <SelectTrigger className="h-8 text-xs bg-background/50 border-border/40 focus:ring-1 focus:ring-primary/50 shadow-sm">
                   <SelectValue placeholder="全部标签" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部标签</SelectItem>
+                  <SelectItem value="all" className="text-xs">全部标签</SelectItem>
                   {allTags.map((tag) => (
-                    <SelectItem key={tag} value={tag}>
+                    <SelectItem key={tag} value={tag} className="text-xs">
                       {tag}
                     </SelectItem>
                   ))}
@@ -731,7 +729,10 @@ function NotesContent() {
             )}
           </div>
 
-          <div className="border-b border-border bg-background/70">
+          <div className="border-t border-b border-blue-200/40 bg-blue-50/30 px-4 py-3">
+            <div className="text-[7px] font-bold tracking-[0.35em] uppercase text-blue-700/70 mb-3 px-1 pb-2 flex justify-between items-center border-b border-blue-200/30">
+              <span>📁 文件夹</span>
+            </div>
             <NoteFolderTree
               folders={folders}
               selectedFolderId={selectedFolderId}
@@ -740,7 +741,7 @@ function NotesContent() {
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto bg-background/40 border-t border-border/30">
             {(notesLoading || catalogLoading) && (
               <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -757,17 +758,19 @@ function NotesContent() {
             )}
 
             {!notesLoading && derivedSummaries.length > 0 && (
-              <div className="border-b border-border/50 bg-amber-50/40">
-                <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800">
-                  系统摘要
+              <div className="border-b border-border/60 bg-amber-50/30">
+                <div className="px-3 py-2.5 text-[9px] font-bold uppercase tracking-[0.2em] text-amber-700/70 border-b border-amber-200/30">
+                  ▸ 系统摘要
                 </div>
                 {derivedSummaries.map((summary) => (
                   <button
                     key={summary.paperId}
                     type="button"
                     className={clsx(
-                      'w-full px-3 py-3 text-left transition-colors hover:bg-amber-100/60',
-                      selectedSummaryPaperId === summary.paperId && 'bg-amber-100 border-l-2 border-l-amber-500',
+                      'w-full px-3 py-3 text-left transition-all duration-150 border-l-2 border-l-transparent group',
+                      selectedSummaryPaperId === summary.paperId 
+                        ? 'bg-primary/[0.03] border-l-primary' 
+                        : 'hover:bg-primary/[0.02] hover:border-l-primary/30',
                     )}
                     onClick={() => handleSelectSummary(summary)}
                   >
@@ -800,8 +803,10 @@ function NotesContent() {
                     <div
                       key={note.id}
                       className={clsx(
-                        'group p-3 cursor-pointer transition-colors hover:bg-muted/50',
-                        selectedNoteId === note.id && 'bg-muted/80 border-l-2 border-l-accent',
+                        'group p-3 cursor-pointer transition-all duration-150 border-l-2 border-l-transparent',
+                        selectedNoteId === note.id 
+                          ? 'bg-primary/[0.03] border-l-primary' 
+                          : 'hover:bg-primary/[0.02] hover:border-l-primary/50',
                       )}
                       onClick={() => handleSelectNote(note)}
                     >
@@ -850,13 +855,13 @@ function NotesContent() {
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col bg-[#fdfaf6] max-w-7xl mx-auto px-6">
+        <div className="ml-[320px] flex-1 flex flex-col bg-background border-l border-border/20 rounded-tl-lg rounded-bl-lg">
           {selectedNote ? (
             <>
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-border/50 bg-background/60 backdrop-blur-sm">
                 <div>
-                  <h3 className="font-medium text-sm">{selectedNote.title || '未命名笔记'}</h3>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <h3 className="font-semibold text-sm tracking-tight">{selectedNote.title || '未命名笔记'}</h3>
+                  <div className="flex items-center gap-2 mt-1">
                     {selectedNote.paperIds.length > 0 && (
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <FileText className="w-3 h-3" />
@@ -868,17 +873,19 @@ function NotesContent() {
                 <SaveIndicator />
               </div>
 
-              <div className="flex-1 p-4 overflow-auto">
-                <NotesEditor
-                  content={editorContent}
-                  onChange={handleEditorChange}
-                  placeholder="开始写笔记... 使用 [[pdf:paperId:page:5]] 引用论文"
-                />
+              <div className="flex-1 p-6 overflow-auto bg-background">
+                <div className="mx-auto max-w-4xl">
+                  <NotesEditor
+                    content={editorContent}
+                    onChange={handleEditorChange}
+                    placeholder="开始写笔记... 使用 [[pdf:paperId:page:5]] 引用论文"
+                  />
+                </div>
               </div>
             </>
           ) : selectedSummary ? (
             <>
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-border/50 bg-background/60 backdrop-blur-sm">
                 <div>
                   <h3 className="font-medium text-sm">{selectedSummary.title}</h3>
                   <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
@@ -894,26 +901,22 @@ function NotesContent() {
                 </Button>
               </div>
 
-              <div className="flex-1 overflow-auto px-6 py-5">
-                <div className="mx-auto max-w-3xl rounded-2xl border border-amber-200 bg-white/90 p-6 shadow-sm">
+              <div className="flex-1 overflow-auto px-6 py-5 bg-background">
+                <div className="mx-auto max-w-3xl rounded-xl border border-amber-200/60 bg-amber-50/30 p-6 shadow-xs">
                   <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                    系统摘要只读视图
+                    📖 系统摘要 - 只读视图
                   </p>
-                  <div className="whitespace-pre-wrap text-sm leading-7 text-zinc-800">
+                  <div className="whitespace-pre-wrap text-sm leading-7 text-foreground/85">
                     {selectedSummary.readingNotes}
                   </div>
                 </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-              <FileText className="w-16 h-16 mb-4 opacity-30" />
-              <h3 className="text-lg font-semibold mb-1">选择或创建一个笔记开始编辑</h3>
-              <p className="text-sm mb-4">请先在左侧选择文件夹、系统摘要，或点击「新建」创建笔记</p>
-              <Button variant="outline" onClick={handleCreateNote}>
-                <Plus className="w-4 h-4 mr-1" />
-                新建笔记
-              </Button>
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-gradient-to-b from-background to-slate-50/30">
+              <FileText className="w-12 h-12 mb-3 opacity-30" />
+              <p className="text-sm font-medium">选择笔记开始编辑</p>
+              <p className="text-xs mt-2 text-muted-foreground/60">从左侧面板选择或创建新笔记</p>
             </div>
           )}
         </div>
