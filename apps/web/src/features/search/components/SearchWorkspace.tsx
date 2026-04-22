@@ -135,7 +135,7 @@ export function SearchWorkspace() {
         }}
       />
 
-      <div className="flex-1 flex flex-col h-full bg-background min-w-[500px]">
+      <div className="flex-1 flex flex-col h-full bg-paper-1 min-w-0 md:min-w-[500px]">
         <SearchToolbar
           query={query}
           onQueryChange={setQuery}
@@ -145,7 +145,7 @@ export function SearchWorkspace() {
           isZh={isZh}
         />
 
-        <div className="flex-1 overflow-y-auto bg-muted/5 p-5">
+        <div className="flex-1 overflow-y-auto bg-paper-2/35 p-5">
           <SearchResultsPanel
             activeSource={workspace.activeSource}
             query={query}
@@ -192,12 +192,12 @@ export function SearchWorkspace() {
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-[240px] border-l border-border/50 flex flex-col h-full bg-muted/10 flex-shrink-0 relative"
+        className="w-[240px] border-l border-border/70 flex flex-col h-full bg-paper-2 flex-shrink-0 relative"
       >
-        <div className="px-5 py-4 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-border/60 bg-paper-1/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BarChart2 className="w-3.5 h-3.5 text-primary" />
-            <h2 className="font-serif text-lg font-bold tracking-tight">{labels.analysis}</h2>
+            <h2 className="font-serif text-lg font-semibold tracking-tight">{labels.analysis}</h2>
           </div>
         </div>
 
@@ -212,7 +212,7 @@ export function SearchWorkspace() {
           />
 
           <div className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+            <h3 className="editorial-rule-heading flex items-center gap-1.5">
               <Calendar className="w-3 h-3" /> {labels.velocity}
             </h3>
             <div className="flex items-end gap-1 h-20 mt-2">
@@ -232,7 +232,7 @@ export function SearchWorkspace() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+            <h3 className="editorial-rule-heading flex items-center gap-1.5">
               <Users className="w-3 h-3" /> {labels.topAuthors}
             </h3>
             <div className="flex flex-col gap-2 mt-1">
@@ -249,12 +249,12 @@ export function SearchWorkspace() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+            <h3 className="editorial-rule-heading flex items-center gap-1.5">
               <Hash className="w-3 h-3" /> {labels.topics}
             </h3>
             <div className="flex flex-wrap gap-1.5 mt-1">
               {labels.tagNames.map((tag) => (
-                <span key={tag} className="font-sans text-[9px] font-bold uppercase tracking-[0.1em] bg-card border border-border/50 text-foreground/70 px-2 py-1 rounded-sm">
+                <span key={tag} className="font-sans text-[10px] font-semibold tracking-wide bg-paper-1 border border-border/60 text-foreground/75 px-2 py-1 rounded-sm">
                   {tag}
                 </span>
               ))}
@@ -262,8 +262,8 @@ export function SearchWorkspace() {
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-border/50 bg-background/80 backdrop-blur-md">
-          <button className="w-full bg-transparent border border-foreground/20 text-foreground py-2 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] hover:bg-muted transition-colors flex justify-center items-center gap-2">
+        <div className="px-5 py-4 border-t border-border/60 bg-paper-1/80 backdrop-blur-md">
+          <button className="w-full bg-transparent border border-foreground/20 text-foreground py-2 rounded-sm text-[10px] font-semibold tracking-wide hover:bg-muted transition-colors flex justify-center items-center gap-2">
             <TrendingUp className="w-3.5 h-3.5 text-foreground/50" />
             {labels.report}
           </button>

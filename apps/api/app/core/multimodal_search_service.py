@@ -79,6 +79,17 @@ class MultimodalSearchService:
             load_model()
 
     @staticmethod
+    def _ensure_service_loaded(service: Any) -> None:
+        """Lazily load model-backed services when startup mode is lazy."""
+        is_loaded = getattr(service, "is_loaded", None)
+        if callable(is_loaded) and is_loaded():
+            return
+
+        load_model = getattr(service, "load_model", None)
+        if callable(load_model):
+            load_model()
+
+    @staticmethod
     def _raw_score(hit: Dict[str, Any]) -> float:
         """Read vector score from canonical field with compatibility fallback."""
         score = hit.get("score")
@@ -409,6 +420,7 @@ class MultimodalSearchService:
         response.update(additional_fields)
         
         return response
+
 
 # Singleton instance
 _multimodal_search_service: Optional[MultimodalSearchService] = None
