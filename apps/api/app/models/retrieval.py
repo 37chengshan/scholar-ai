@@ -44,6 +44,10 @@ class RetrievedChunk(BaseModel):
         ...,
         description="Chunk content text",
     )
+    text_span: Optional[str] = Field(
+        default=None,
+        description="Evidence span text for bundle-level retrieval",
+    )
     score: float = Field(
         ...,
         description="Relevance score (0.0-1.0, unified field)",
@@ -83,6 +87,69 @@ class RetrievedChunk(BaseModel):
         default=None,
         description="IMRaD section (Introduction, Methods, Results, Discussion)",
         max_length=100,
+    )
+    paper_role: Optional[str] = Field(
+        default=None,
+        description="Academic paper role for this chunk",
+        pattern=r"^(method|result|limitation|ablation|conclusion)$",
+    )
+    table_ref: Optional[str] = Field(
+        default=None,
+        description="Referenced table identifier",
+        max_length=120,
+    )
+    figure_ref: Optional[str] = Field(
+        default=None,
+        description="Referenced figure identifier",
+        max_length=120,
+    )
+    metric_sentence: Optional[str] = Field(
+        default=None,
+        description="Sentence containing metric evidence",
+        max_length=1000,
+    )
+    dataset: Optional[str] = Field(
+        default=None,
+        description="Dataset name extracted for evidence bundle",
+        max_length=200,
+    )
+    baseline: Optional[str] = Field(
+        default=None,
+        description="Baseline method name",
+        max_length=200,
+    )
+    method: Optional[str] = Field(
+        default=None,
+        description="Method name extracted from chunk",
+        max_length=200,
+    )
+    score_value: Optional[float] = Field(
+        default=None,
+        description="Numeric metric value in evidence",
+    )
+    metric_name: Optional[str] = Field(
+        default=None,
+        description="Metric name (accuracy/f1/etc.)",
+        max_length=120,
+    )
+    metric_direction: Optional[str] = Field(
+        default=None,
+        description="Metric optimization direction",
+        pattern=r"^(higher_better|lower_better|neutral)$",
+    )
+    caption_text: Optional[str] = Field(
+        default=None,
+        description="Figure or table caption text",
+        max_length=1000,
+    )
+    evidence_bundle_id: Optional[str] = Field(
+        default=None,
+        description="Stable identifier for grouped evidence bundle",
+        max_length=200,
+    )
+    evidence_types: List[str] = Field(
+        default_factory=list,
+        description="Evidence types included in this bundle (text/table/image/caption)",
     )
     content_type: str = Field(
         default="text",

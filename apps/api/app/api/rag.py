@@ -264,7 +264,13 @@ class RAGQueryRequest(BaseModel):
     """RAG查询请求"""
     question: str = Field(..., min_length=1, description="用户问题")
     paper_ids: Optional[List[str]] = Field(None, description="要查询的论文ID列表")
-    query_type: str = Field("single", description="查询类型: single, cross_paper, evolution")
+    query_type: str = Field(
+        "single",
+        description=(
+            "查询类型: single, cross_paper, evolution, "
+            "fact, compare, critique, limitation, numeric, figure, table"
+        ),
+    )
     top_k: int = Field(10, ge=1, le=50, description="返回的chunk数量")
     conversation_id: Optional[str] = Field(None, description="对话会话ID (多轮对话)")
 
@@ -304,7 +310,13 @@ class ConversationListResponse(BaseModel):
 class AgenticSearchRequest(BaseModel):
     """Agentic search request for complex cross-paper queries."""
     query: str = Field(..., min_length=1, description="User query")
-    query_type: str = Field("single", description="Query type: single, cross_paper, evolution")
+    query_type: str = Field(
+        "single",
+        description=(
+            "Query type: single, cross_paper, evolution, "
+            "fact, compare, critique, limitation, numeric, figure, table"
+        ),
+    )
     paper_ids: Optional[List[str]] = Field(None, description="Paper IDs to search")
     max_rounds: int = Field(3, ge=1, le=5, description="Maximum retrieval rounds")
     top_k: int = Field(5, ge=1, le=20, description="Chunks per sub-question")

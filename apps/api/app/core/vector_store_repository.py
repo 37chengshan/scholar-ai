@@ -45,10 +45,19 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
         if score is None:
             score = 1 - float(hit.get("distance", 0.5))
 
+        raw_data = hit.get("raw_data") or {}
+
+        evidence_types = hit.get("evidence_types") or raw_data.get("evidence_types")
+        if isinstance(evidence_types, str):
+            evidence_types = [evidence_types]
+        if not evidence_types:
+            evidence_types = [hit.get("content_type")] if hit.get("content_type") else []
+
         return RetrievedChunk(
             paper_id=hit.get("paper_id", ""),
             paper_title=hit.get("paper_title"),
             text=hit.get("text") or hit.get("content_data") or hit.get("content") or "",
+            text_span=hit.get("text_span") or raw_data.get("text_span"),
             score=max(0.0, min(float(score), 1.0)),
             backend=hit.get("backend", "milvus"),
             source_id=(str(hit.get("id")) if hit.get("id") is not None else None),
@@ -57,6 +66,19 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
             content_subtype=hit.get("content_subtype"),
             anchor_text=hit.get("anchor_text"),
             section=hit.get("section"),
+            paper_role=hit.get("paper_role") or raw_data.get("paper_role"),
+            table_ref=hit.get("table_ref") or raw_data.get("table_ref"),
+            figure_ref=hit.get("figure_ref") or raw_data.get("figure_ref"),
+            metric_sentence=hit.get("metric_sentence") or raw_data.get("metric_sentence"),
+            dataset=hit.get("dataset") or raw_data.get("dataset") or raw_data.get("dataset_name"),
+            baseline=hit.get("baseline") or raw_data.get("baseline") or raw_data.get("baseline_name"),
+            method=hit.get("method") or raw_data.get("method") or raw_data.get("method_name"),
+            score_value=hit.get("score_value") or raw_data.get("score_value") or raw_data.get("metric_value"),
+            metric_name=hit.get("metric_name") or raw_data.get("metric_name"),
+            metric_direction=hit.get("metric_direction") or raw_data.get("metric_direction"),
+            caption_text=hit.get("caption_text") or raw_data.get("caption_text"),
+            evidence_bundle_id=hit.get("evidence_bundle_id") or raw_data.get("evidence_bundle_id"),
+            evidence_types=evidence_types,
             content_type=hit.get("content_type", "text"),
             quality_score=hit.get("quality_score"),
             raw_data=hit.get("raw_data"),

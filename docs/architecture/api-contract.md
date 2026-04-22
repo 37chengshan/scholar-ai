@@ -218,6 +218,21 @@ Run 恢复与控制接口（PR37）：
   - 请求：`session_id`（必填），`run_id`（可选）
   - 成功响应：`{ "status": "cancelled", "session_id": "...", "run_id": "..." }`
   - 语义：取消当前会话活跃运行，并主动断开该会话 SSE 连接。
+
+RAG 检索与规划字段补充（Phase 1 + 2）：
+
+- `/api/v1/rag/query` 与检索评测链路允许返回以下 planner 字段：
+  - `query_family`：`fact|compare|evolution|critique|limitation|numeric|figure|table`
+  - `planner_query_count`：planner 生成检索变体数量
+  - `decontextualized_query`：去语境化后的查询
+  - `second_pass_used`：是否触发 second-pass rewrite
+  - `second_pass_gain`：second-pass 带来的新增命中增益
+- 检索结果 `results[]` 支持 evidence bundle 字段：
+  - `paper_role`、`table_ref`、`figure_ref`、`metric_sentence`
+  - `dataset`、`baseline`、`method`
+  - `score_value`、`metric_name`、`metric_direction`
+  - `caption_text`、`evidence_bundle_id`、`evidence_types`
+- 向后兼容：新增字段均为可选，不得破坏既有客户端对基础字段的读取。
 - `POST /api/v1/chat/retry`
   - 请求：`session_id`（必填），可选 `mode` 与 `scope`
   - 语义：重放该会话最后一条 `user` 消息，并复用 `chat/stream` 流式返回。

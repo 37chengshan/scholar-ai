@@ -25,6 +25,7 @@ from app.core.query_decomposer import (
     ConvergenceChecker,
     QueryType,
 )
+from app.core.query_planner import build_academic_query_plan
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.citation_verifier import get_citation_verifier
 
@@ -90,11 +91,28 @@ class AgenticRetrievalOrchestrator:
             paper_count=len(paper_ids) if paper_ids else 0,
         )
 
+        academic_plan = build_academic_query_plan(query, query_type or "", paper_ids=paper_ids)
+        effective_query_type = (query_type or academic_plan.get("query_family") or "single")
+        expected_evidence_types = academic_plan.get("expected_evidence_types") or ["text"]
+
         sub_questions = await self.decomposer.decompose_query(
             query=query,
-            query_type=query_type,
+            query_type=effective_query_type,
             paper_ids=paper_ids,
         )
+
+        planned_sub_questions = academic_plan.get("sub_questions") or []
+        if planned_sub_questions:
+            sub_questions = [
+                {
+                    "question": item.get("question"),
+                    "query_type": effective_query_type,
+                    "target_papers": paper_ids or [],
+                    "rationale": item.get("role", "academic_plan"),
+                }
+                for item in planned_sub_questions
+                if item.get("question")
+            ]
 
         if not sub_questions:
             return {
@@ -124,6 +142,7 @@ class AgenticRetrievalOrchestrator:
                 paper_ids=paper_ids or [],
                 user_id=user_id,
                 top_k=top_k_per_subquestion,
+                content_types=expected_evidence_types,
             )
 
             all_results.append(
@@ -153,7 +172,7 @@ class AgenticRetrievalOrchestrator:
             # Synthesize results for this round
             previous_synthesis = await self._synthesize_results(
                 query=query,
-                query_type=query_type or "single",
+                query_type=effective_query_type,
                 results=round_results,
                 round_num=round_num,
             )
@@ -164,7 +183,7 @@ class AgenticRetrievalOrchestrator:
 
             # For evolution/cross_paper queries, refine sub-questions based on results
             if (
-                query_type in ("evolution", "cross_paper")
+                effective_query_type in ("evolution", "cross_paper", "compare")
                 and round_num < self.max_rounds
             ):
                 sub_questions = await self._refine_subquestions(
@@ -176,7 +195,7 @@ class AgenticRetrievalOrchestrator:
         # Step 3: Final synthesis
         final_answer = await self._final_synthesis(
             query=query,
-            query_type=query_type or "single",
+            query_type=effective_query_type,
             all_results=all_results,
         )
 
@@ -206,7 +225,11 @@ class AgenticRetrievalOrchestrator:
             "rounds_executed": rounds_executed,
             "converged": converged,
             "metadata": {
-                "query_type": query_type or "single",
+                "query_type": effective_query_type,
+                "query_family": academic_plan.get("query_family"),
+                "decontextualized_query": academic_plan.get("decontextualized_query"),
+                "expected_evidence_types": expected_evidence_types,
+                "rewrite_count": len(academic_plan.get("fallback_rewrites") or []),
                 "paper_count": len(paper_ids) if paper_ids else 0,
                 "subquestion_count": len(sub_questions) if sub_questions else 0,
                 "citation_verification": verification_report,
@@ -372,6 +395,7 @@ class AgenticRetrievalOrchestrator:
         paper_ids: List[str],
         user_id: str,
         top_k: int = 5,
+        content_types: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Execute sub-questions in parallel using asyncio.gather with Milvus.
 
@@ -398,7 +422,7 @@ class AgenticRetrievalOrchestrator:
                     user_id=user_id,
                     top_k=top_k,
                     use_reranker=True,
-                    content_types=["text"],  # Text-only for sub-questions
+                    content_types=content_types or ["text"],
                 )
 
                 # Extract chunks from results

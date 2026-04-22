@@ -4,9 +4,10 @@ Uses LiteLLM to decompose complex queries (evolution, cross-paper) into
 3-5 sub-questions that can be executed in parallel.
 
 Query types:
-- single: Direct query on one paper
-- cross_paper: Compare/contrast multiple papers
+- fact/single: Direct query on one paper
+- compare/cross_paper: Compare/contrast multiple papers
 - evolution: Track changes across paper versions
+- critique/limitation/numeric/figure/table: Academic retrieval specializations
 """
 
 import json
@@ -16,7 +17,18 @@ from typing import Any, Dict, List, Literal, Optional
 from app.utils.logger import logger
 
 # Query type classification
-QueryType = Literal["single", "cross_paper", "evolution"]
+QueryType = Literal[
+    "single",
+    "cross_paper",
+    "fact",
+    "compare",
+    "evolution",
+    "critique",
+    "limitation",
+    "numeric",
+    "figure",
+    "table",
+]
 
 # Keywords for query type detection
 EVOLUTION_KEYWORDS = [
@@ -29,6 +41,12 @@ CROSS_PAPER_KEYWORDS = [
     "compare", "contrast", "difference", "similarities",
     "vs", "versus", "between", "among", "across papers"
 ]
+
+CRITIQUE_KEYWORDS = ["critique", "weakness", "failure mode", "批判", "不足"]
+LIMITATION_KEYWORDS = ["limitation", "boundary", "局限", "限制"]
+NUMERIC_KEYWORDS = ["accuracy", "f1", "auc", "score", "数值", "指标", "%"]
+FIGURE_KEYWORDS = ["figure", "fig.", "图", "caption"]
+TABLE_KEYWORDS = ["table", "tab.", "表格", "表"]
 
 
 class QueryDecomposer:
@@ -60,9 +78,20 @@ class QueryDecomposer:
             query: User query string
 
         Returns:
-            Query type: single, cross_paper, or evolution
+            Query type in extended academic taxonomy
         """
         query_lower = query.lower()
+
+        if any(kw in query_lower for kw in FIGURE_KEYWORDS):
+            return "figure"
+        if any(kw in query_lower for kw in TABLE_KEYWORDS):
+            return "table"
+        if any(kw in query_lower for kw in NUMERIC_KEYWORDS):
+            return "numeric"
+        if any(kw in query_lower for kw in LIMITATION_KEYWORDS):
+            return "limitation"
+        if any(kw in query_lower for kw in CRITIQUE_KEYWORDS):
+            return "critique"
 
         # Check for evolution keywords
         if any(kw in query_lower for kw in EVOLUTION_KEYWORDS):
@@ -70,9 +99,9 @@ class QueryDecomposer:
 
         # Check for cross-paper keywords
         if any(kw in query_lower for kw in CROSS_PAPER_KEYWORDS):
-            return "cross_paper"
+            return "compare"
 
-        return "single"
+        return "fact"
 
     async def decompose_query(
         self,
@@ -94,11 +123,11 @@ class QueryDecomposer:
         if query_type is None:
             query_type = self.classify_query(query)
 
-        # Single queries don't need decomposition
-        if query_type == "single":
+        # Simple fact/single queries don't need decomposition
+        if query_type in {"single", "fact"}:
             return [{
                 "question": query,
-                "query_type": "single",
+                "query_type": "fact",
                 "target_papers": paper_ids or [],
                 "rationale": "Direct single-paper query"
             }]
@@ -196,7 +225,7 @@ Requirements:
 - Target papers should be from the available list when possible
 - Include rationale for each sub-question"""
 
-        elif query_type == "cross_paper":
+        elif query_type in {"cross_paper", "compare"}:
             template = f"""You are an expert research assistant. Decompose the following cross-paper comparison query into {self.min_subquestions}-{self.max_subquestions} specific sub-questions.
 
 Original query: "{query}"{paper_context}
@@ -222,6 +251,48 @@ Requirements:
 - Each question should be self-contained and answerable
 - Target papers should be from the available list when possible
 - Include rationale for each sub-question"""
+
+        elif query_type in {"critique", "limitation"}:
+            template = f"""You are an expert research assistant. Decompose the following critical-analysis query into {self.min_subquestions}-{self.max_subquestions} specific sub-questions.
+
+Original query: "{query}"{paper_context}
+
+Create sub-questions that cover:
+1. Author-stated limitations
+2. Experimental boundaries
+3. Failure modes or contradictory evidence
+
+Respond ONLY with a JSON array in this exact format:
+[
+    {{
+        "question": "Specific sub-question text",
+        "query_type": "single",
+        "target_papers": ["paper_id_1"],
+        "rationale": "Why this sub-question is relevant"
+    }}
+]
+"""
+
+        elif query_type in {"numeric", "figure", "table"}:
+            template = f"""You are an expert research assistant. Decompose this evidence-targeted query into {self.min_subquestions}-{self.max_subquestions} specific sub-questions.
+
+Original query: "{query}"{paper_context}
+
+Create sub-questions that explicitly target evidence extraction:
+1. locate direct evidence
+2. verify metric or visual/table evidence
+3. gather contextual condition statements
+
+Respond ONLY with a JSON array in this exact format:
+[
+    {{
+        "question": "Specific sub-question text",
+        "query_type": "single",
+        "target_papers": ["paper_id_1"],
+        "rationale": "Why this sub-question is relevant"
+    }}
+]
+"""
 
         else:
             template = f"""You are an expert research assistant. Break down the following query into {self.min_subquestions}-{self.max_subquestions} sub-questions.
@@ -367,7 +438,7 @@ Requirements:
                     "rationale": "Identify overarching patterns in the evolution"
                 })
 
-        elif query_type == "cross_paper":
+        elif query_type in {"cross_paper", "compare"}:
             # Add comparison questions if needed
             if len(expanded) < self.min_subquestions:
                 expanded.append({
@@ -375,6 +446,24 @@ Requirements:
                     "query_type": "cross_paper",
                     "target_papers": paper_ids or [],
                     "rationale": "Direct comparison between papers"
+                })
+
+        elif query_type in {"critique", "limitation"}:
+            if len(expanded) < self.min_subquestions:
+                expanded.append({
+                    "question": "What failure cases or boundary conditions are explicitly reported?",
+                    "query_type": "single",
+                    "target_papers": paper_ids or [],
+                    "rationale": "Capture robustness and boundary evidence",
+                })
+
+        elif query_type in {"numeric", "figure", "table"}:
+            if len(expanded) < self.min_subquestions:
+                expanded.append({
+                    "question": f"What exact evidence artifact supports this ({query_type}) query?",
+                    "query_type": "single",
+                    "target_papers": paper_ids or [],
+                    "rationale": "Ensure evidence-backed answerability",
                 })
 
         # Generic expansion
