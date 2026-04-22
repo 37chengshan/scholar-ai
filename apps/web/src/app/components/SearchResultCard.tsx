@@ -42,8 +42,8 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: Search
       <div className="flex justify-between items-start">
         <div className="flex items-center gap-2 text-[8px] font-bold uppercase tracking-widest text-primary">
           <span className={clsx(
-            "px-1.5 py-0.5 rounded-sm",
-            isInternal ? "bg-primary/10" : "bg-secondary/10"
+            "px-1.5 py-0.5 rounded-sm border",
+            isInternal ? "border-primary/15 bg-primary/10" : "border-primary/10 bg-primary/[0.07] text-foreground/75"
           )}>
             {result.source === 's2' ? 'Semantic Scholar' : result.source}
           </span>
@@ -53,7 +53,7 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: Search
         </div>
         {result.citations !== undefined && (
           <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
-            <div className="w-1.5 h-1.5 rounded-full bg-secondary" />
+            <div className="w-1.5 h-1.5 rounded-full bg-primary/70" />
             {result.citations}
           </div>
         )}

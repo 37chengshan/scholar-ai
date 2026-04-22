@@ -12,7 +12,7 @@
  * 2. Use useAuth() in components to access auth state
  */
 
-import { createContext, useContext, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useEffect, ReactNode, useRef } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useUserStore } from '@/stores/userStore';
 import * as authApi from '@/services/authApi';
@@ -49,6 +49,7 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Get auth state and actions from store
   const { user, isAuthenticated, loading, setUser, setLoading, logout: clearAuth } = useAuthStore();
+  const authRequestVersionRef = useRef(0);
 
   // Get user store actions
   const { setProfile, setSettings, clearUser } = useUserStore();
@@ -60,9 +61,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Updates auth store with user data if session exists.
    */
   const checkAuth = async () => {
+    const requestVersion = ++authRequestVersionRef.current;
+
     try {
       setLoading(true);
       const userData = await authApi.me();
+      if (requestVersion !== authRequestVersionRef.current) {
+        return;
+      }
       setUser(userData);
       setProfile(userData);
 
@@ -71,11 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // const settings = await usersApi.getSettings();
       // setSettings(settings);
     } catch (error) {
+      if (requestVersion !== authRequestVersionRef.current) {
+        return;
+      }
       // Session invalid or not found
       setUser(null);
       clearUser();
     } finally {
-      setLoading(false);
+      if (requestVersion === authRequestVersionRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -89,13 +100,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * @param password - User password
    */
   const login = async (email: string, password: string) => {
-    const response = await authApi.login(email, password);
+    const requestVersion = ++authRequestVersionRef.current;
 
-    if (response.user) {
-      setUser(response.user);
-      setProfile(response.user);
-    } else {
+    try {
+      setLoading(true);
+      const response = await authApi.login(email, password);
+
+      if (requestVersion !== authRequestVersionRef.current) {
+        return;
+      }
+
+      if (response.user) {
+        setUser(response.user);
+        setProfile(response.user);
+        return;
+      }
+
       throw new Error('Login failed');
+    } finally {
+      if (requestVersion === authRequestVersionRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -106,15 +131,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Clears auth store state.
    */
   const logout = async () => {
+    const requestVersion = ++authRequestVersionRef.current;
+
     try {
+      setLoading(true);
       await authApi.logout();
     } catch (error) {
       // Ignore logout errors - still clear local state
       console.error('Logout error:', error);
     } finally {
-      // Clear auth state
-      clearAuth();
-      clearUser();
+      if (requestVersion === authRequestVersionRef.current) {
+        clearAuth();
+        clearUser();
+        setLoading(false);
+      }
     }
   };
 

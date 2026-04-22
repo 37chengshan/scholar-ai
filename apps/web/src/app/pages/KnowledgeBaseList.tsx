@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive, Loader2, MoreHorizontal, ArrowRight, Download, Pencil, Trash2 } from "lucide-react";
+import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive, Loader2, MoreHorizontal, ArrowRight, Download, Pencil, Trash2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { KnowledgeBaseCard } from "../components/KnowledgeBaseCard";
 import { CreateKnowledgeBaseDialog } from "../components/CreateKnowledgeBaseDialog";
 import { ImportDialog } from "../components/ImportDialog";
@@ -55,6 +55,7 @@ function KnowledgeBaseListContent() {
   const [importTarget, setImportTarget] = useState<{ id: string; name: string } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const [showInspector, setShowInspector] = useState(true);
 
   // Storage stats state
   const [storageStats, setStorageStats] = useState<KBStorageStats | null>(null);
@@ -79,6 +80,7 @@ function KnowledgeBaseListContent() {
   // API integration - use real data
   const {
     knowledgeBases,
+    total,
     loading,
     error,
     refetch,
@@ -159,22 +161,37 @@ function KnowledgeBaseListContent() {
     }
   };
 
+  const latestKnowledgeBases = [...sorted].slice(0, 5);
+
   return (
-    <div className="relative min-h-screen bg-background">
-      <PaperTexture />
-      
-      {/* Toolbar Header — Create button and Storage */}
-      <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm border-b border-border/70">
+    <div className="flex h-full min-h-0 bg-background">
+      <div className="relative flex-1 min-h-0 overflow-y-auto">
+        <PaperTexture />
+
+        {/* Toolbar Header — Create button and Storage */}
+        <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm border-b border-border/70">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-paper-2 p-4 border border-border/70">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-muted/30 p-4 border border-border/70">
             {/* Create button */}
-            <Button 
-              onClick={handleCreate}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-3 font-semibold tracking-wide transition-colors rounded-sm"
-            >
-              <Plus className="w-5 h-5" />
-              创建知识库
-            </Button>
+            <div className="flex items-center gap-2 self-start sm:self-center">
+              <Button 
+                onClick={handleCreate}
+                className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-3 font-semibold tracking-wide transition-colors rounded-sm"
+              >
+                <Plus className="w-5 h-5" />
+                创建知识库
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowInspector((value) => !value)}
+                className="hidden items-center gap-2 rounded-full border border-border/70 bg-paper-2 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:border-primary/20 hover:text-primary lg:inline-flex"
+                aria-pressed={showInspector}
+                aria-label={showInspector ? "收起右侧栏" : "展开右侧栏"}
+              >
+                {showInspector ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
+                {showInspector ? "收起侧注" : "展开侧注"}
+              </button>
+            </div>
             
             {/* Search input */}
             <div className="relative w-full sm:w-96">
@@ -184,7 +201,7 @@ function KnowledgeBaseListContent() {
               placeholder="搜索知识库..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-paper-1 border border-border pl-10 pr-4 py-3 font-medium placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-0 transition-colors rounded-sm"
+              className="w-full bg-background border border-border pl-10 pr-4 py-3 font-medium placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-0 transition-colors rounded-sm"
             />
           </div>
           
@@ -204,7 +221,7 @@ function KnowledgeBaseListContent() {
           
           {/* Sort dropdown */}
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as "updated" | "papers" | "name")}>
-            <SelectTrigger className="w-36 h-9 text-xs border border-border bg-paper-1 font-bold uppercase rounded-sm">
+            <SelectTrigger className="w-36 h-9 text-xs border border-border bg-background font-bold uppercase rounded-sm">
               <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
               <SelectValue />
             </SelectTrigger>
@@ -219,7 +236,7 @@ function KnowledgeBaseListContent() {
           <Button
             variant={isBatchMode ? "default" : "outline"}
             size="sm"
-            className="gap-1.5 h-9 text-xs border border-border bg-paper-1 font-bold uppercase rounded-sm"
+            className="gap-1.5 h-9 text-xs border border-border bg-background font-bold uppercase rounded-sm"
             onClick={() => {
               setIsBatchMode(!isBatchMode);
               if (isBatchMode) setSelectedIds(new Set());
@@ -230,7 +247,7 @@ function KnowledgeBaseListContent() {
           </Button>
           
           {/* View toggle */}
-          <div className="flex items-center gap-0.5 border border-border rounded-sm p-0.5 bg-paper-1">
+          <div className="flex items-center gap-0.5 border border-border rounded-sm p-0.5 bg-background">
             <Button
               variant={viewMode === "card" ? "default" : "ghost"}
               size="icon"
@@ -256,7 +273,7 @@ function KnowledgeBaseListContent() {
           
           {/* Storage Status */}
           {storageStats && (
-          <div className="flex items-center gap-3 bg-paper-1 border border-border/70 px-4 py-3">
+          <div className="flex items-center gap-3 bg-background border border-border/70 px-4 py-3">
             <HardDrive className="w-5 h-5 text-foreground" />
             <div className="flex-1">
               <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -310,10 +327,10 @@ function KnowledgeBaseListContent() {
             </Button>
           </div>
         )}
-      </div>
+        </div>
 
-      {/* Content Area */}
-      <div className="container-query max-w-7xl mx-auto px-6 pb-12">
+        {/* Content Area */}
+        <div className="container-query max-w-7xl mx-auto px-6 pb-12">
         {loading && (
           <div className="text-center py-12 flex items-center justify-center gap-3">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -360,7 +377,7 @@ function KnowledgeBaseListContent() {
                         else next.delete(kb.id);
                         setSelectedIds(next);
                       }}
-                      className="bg-paper-1"
+                      className="bg-background"
                     />
                   </div>
                 )}
@@ -508,30 +525,30 @@ function KnowledgeBaseListContent() {
           </Table>
           </div>
         )}
-      </div>
+        </div>
 
-      {/* Create Dialog */}
-      <CreateKnowledgeBaseDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        onCreate={handleCreateSubmit}
-      />
-
-      {/* Import Dialog */}
-      {importTarget && (
-        <ImportDialog
-          open={!!importTarget}
-          onOpenChange={(open) => {
-            if (!open) setImportTarget(null);
-          }}
-          knowledgeBaseId={importTarget.id}
-          knowledgeBaseName={importTarget.name}
-          onImportComplete={refetch}
+        {/* Create Dialog */}
+        <CreateKnowledgeBaseDialog
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+          onCreate={handleCreateSubmit}
         />
-      )}
 
-      {/* Magazine Masthead Footer */}
-      <div className="max-w-7xl mx-auto px-6 py-16 border-t-2 border-border mt-16 bg-paper-2/40">
+        {/* Import Dialog */}
+        {importTarget && (
+          <ImportDialog
+            open={!!importTarget}
+            onOpenChange={(open) => {
+              if (!open) setImportTarget(null);
+            }}
+            knowledgeBaseId={importTarget.id}
+            knowledgeBaseName={importTarget.name}
+            onImportComplete={refetch}
+          />
+        )}
+
+        {/* Magazine Masthead Footer */}
+        <div className="max-w-7xl mx-auto px-6 py-16 border-t-2 border-border mt-16 bg-muted/30/40">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-4">
             {/* Badge label */}
@@ -552,6 +569,95 @@ function KnowledgeBaseListContent() {
           </div>
         </div>
       </div>
+      </div>
+
+      {showInspector ? (
+      <aside className="hidden lg:flex w-[280px] shrink-0 border-l border-border/50 bg-muted/10 flex-col h-full">
+        <div className="px-5 py-4 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="font-serif text-lg font-bold tracking-tight">知识库</h2>
+          </div>
+          <p className="text-[8px] font-bold tracking-[0.2em] uppercase text-primary">Vol. 4</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+              Overview
+            </h3>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <div className="rounded-sm bg-muted/30 px-3 py-3 flex flex-col gap-1 items-center justify-center border border-border/50">
+                <div className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">Collections</div>
+                <div className="font-serif text-2xl font-black text-foreground">{storageStats?.kbCount ?? total}</div>
+              </div>
+              <div className="rounded-sm bg-muted/30 px-3 py-3 flex flex-col gap-1 items-center justify-center border border-border/50">
+                <div className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">Papers</div>
+                <div className="font-serif text-2xl font-black text-foreground">{storageStats?.paperCount ?? "—"}</div>
+              </div>
+            </div>
+            <div className="mt-2 rounded-sm bg-primary/10 px-3 py-2 text-[10px] text-primary/80 border border-primary/20 text-center">
+              {storageStats
+                ? `已用 ${storageStats.estimatedStorageMB.toLocaleString()} / ${storageStats.storageLimitMB.toLocaleString()} MB`
+                : "创建知识库后汇总数据"}
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+              Current Filters
+            </h3>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <span className="rounded-sm border border-border/50 bg-background px-2 py-0.5 text-[10px] text-foreground/75 font-medium tracking-wide">
+                视图 · {viewMode === "card" ? "卡片" : "列表"}
+              </span>
+              <span className="rounded-sm border border-border/50 bg-background px-2 py-0.5 text-[10px] text-foreground/75 font-medium tracking-wide">
+                分类 · {activeTag}
+              </span>
+              <span className="rounded-sm border border-border/50 bg-background px-2 py-0.5 text-[10px] text-foreground/75 font-medium tracking-wide">
+                排序 · {sortBy}
+              </span>
+              {searchQuery ? (
+                <span className="rounded-sm border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] text-primary font-medium tracking-wide shadow-sm shadow-primary/10">
+                  搜索 · {searchQuery}
+                </span>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex items-center justify-between text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">
+              <h3>Recent Updates</h3>
+              <button
+                type="button"
+                onClick={handleCreate}
+                className="text-primary hover:text-primary/80 hover:underline transition-all"
+              >
+                新建
+              </button>
+            </div>
+            <div className="mt-1 flex flex-col gap-1">
+              {latestKnowledgeBases.length > 0 ? latestKnowledgeBases.map((kb) => (
+                <button
+                  key={kb.id}
+                  type="button"
+                  onClick={() => handleEnter(kb.id)}
+                  className="w-full rounded-sm bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted/50 border border-transparent hover:border-border/50 group"
+                >
+                  <div className="line-clamp-1 text-[11px] font-bold text-foreground/80 group-hover:text-primary transition-colors">{kb.name}</div>
+                  <div className="mt-0.5 text-[9px] font-mono text-muted-foreground">
+                    {kb.paperCount} papers · {kb.chunkCount.toLocaleString()} chunks
+                  </div>
+                </button>
+              )) : (
+                <div className="rounded-sm border border-dashed border-border/50 px-3 py-4 text-[10px] text-center text-muted-foreground">
+                  暂无内容
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </aside>
+      ) : null}
     </div>
   );
 }

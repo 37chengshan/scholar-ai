@@ -62,7 +62,7 @@ export function useChatSessionController({
 
     const session = await createSession(isZh ? '新对话' : 'New Chat');
     if (!session) {
-      return;
+      return null;
     }
 
     setSessionSearchQuery('');
@@ -71,6 +71,7 @@ export function useChatSessionController({
     setSessionCost(0);
     resetRuntimeRun();
     resetStreamingRun();
+    return session;
   }, [
     createSession,
     isZh,

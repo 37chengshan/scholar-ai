@@ -18,7 +18,7 @@ export function KnowledgeRunHistoryPanel({ runs, loading, onOpenRun }: Knowledge
 
   if (runs.length === 0) {
     return (
-      <div className="bg-white border-2 border-zinc-900 p-8 text-center text-zinc-600 font-medium shadow-[8px_8px_0px_0px_rgba(24,24,27,1)]">
+      <div className="border border-border/80 bg-paper-1 p-8 text-center font-medium text-muted-foreground">
         暂无可用 Run 历史。
       </div>
     );
@@ -31,14 +31,14 @@ export function KnowledgeRunHistoryPanel({ runs, loading, onOpenRun }: Knowledge
           key={run.id}
           type="button"
           onClick={() => onOpenRun(run.id)}
-          className="w-full text-left bg-white border-2 border-zinc-200 hover:border-primary transition-colors p-4 shadow-[4px_4px_0px_0px_rgba(24,24,27,0.2)]"
+          className="w-full border border-border/80 bg-paper-1 p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/[0.03]"
         >
           <div className="flex items-center gap-3">
             <MessageSquare className="w-4 h-4 text-primary" />
-            <div className="font-semibold text-zinc-900 truncate">{run.title}</div>
+            <div className="truncate font-semibold text-foreground">{run.title}</div>
           </div>
-          <div className="text-xs text-zinc-500 mt-2">run_id: {run.id}</div>
-          {run.updatedAt ? <div className="text-xs text-zinc-400">updated: {run.updatedAt}</div> : null}
+          <div className="mt-2 text-xs text-muted-foreground">run_id: {run.id}</div>
+          {run.updatedAt ? <div className="text-xs text-muted-foreground/70">updated: {run.updatedAt}</div> : null}
         </button>
       ))}
     </div>

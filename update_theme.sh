@@ -1,0 +1,3 @@
+#!/bin/bash
+cat apps/web/src/styles/theme.css | sed 's/--color-primary: #c25b1f;/--color-primary: #FF3300;/' | sed 's/--color-background: #f7f2ea;/--color-background: #F4F4F0;/' | sed 's/--color-foreground: #241c16;/--color-foreground: #09090b;/' | sed 's/--color-muted: #efe7da;/--color-muted: #E8E8E3;/' | sed 's/--color-paper-1: #fffdfa;/--color-paper-1: #FFFFFF;/' | sed 's/--color-paper-2: #f7f2ea;/--color-paper-2: #F4F4F0;/' | sed 's/--color-paper-3: #efe7da;/--color-paper-3: #E8E8E3;/' | sed 's/--color-rule: rgba(36, 28, 22, 0.1);/--color-rule: #09090b;/' | sed 's/--color-rule-strong: rgba(36, 28, 22, 0.18);/--color-rule-strong: #09090b;/' > apps/web/src/styles/theme_new.css
+mv apps/web/src/styles/theme_new.css apps/web/src/styles/theme.css

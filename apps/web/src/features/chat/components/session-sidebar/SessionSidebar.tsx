@@ -78,7 +78,7 @@ export function SessionSidebar({
   // Collapsed sidebar: icon-only rail
   if (collapsed) {
     return (
-      <div className="w-12 border-r border-border/70 flex flex-col h-full bg-paper-2 items-center py-3 gap-2">
+      <div className="w-12 border-r border-border/50 flex flex-col h-full bg-muted/20 items-center py-3 gap-2">
         <button
           onClick={() => setCollapsed(false)}
           className="w-8 h-8 flex items-center justify-center hover:bg-muted transition-colors rounded-sm text-muted-foreground hover:text-foreground"
@@ -115,10 +115,11 @@ export function SessionSidebar({
   }
 
   return (
-    <div className="w-[260px] border-r border-border/70 flex flex-col h-full bg-paper-2 transition-all duration-200">
+    <div className="w-[220px] border-r border-border/50 flex flex-col h-full bg-muted/20 transition-all duration-200 shrink-0">
       {/* Header */}
-      <div className="px-3 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="border-b border-border/50 px-5 py-4 flex items-center justify-between bg-background/80 backdrop-blur-md sticky top-0 z-10">
+        <h2 className="font-serif text-lg font-bold tracking-tight">Recents</h2>
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setCollapsed(true)}
             className="p-1.5 hover:bg-muted transition-colors rounded-sm text-muted-foreground hover:text-foreground"
@@ -126,21 +127,21 @@ export function SessionSidebar({
           >
             <PanelLeftClose className="w-4 h-4" />
           </button>
+          <button
+            onClick={onCreateSession}
+            data-testid="session-create-button"
+            className="w-7 h-7 hover:bg-primary/10 hover:text-primary transition-colors flex items-center justify-center rounded-sm text-primary"
+            title={isZh ? '新建对话' : 'New chat'}
+          >
+            <Plus className="w-4 h-4" />
+          </button>
         </div>
-        <button
-          onClick={onCreateSession}
-          data-testid="session-create-button"
-          className="w-8 h-8 hover:bg-primary/10 hover:text-primary transition-colors flex items-center justify-center rounded-sm text-muted-foreground"
-          title={isZh ? '新建对话' : 'New chat'}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Search */}
-      <div className="px-3 pb-2">
+      <div className="px-4 py-4 border-b border-border/50">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder={labels.search}
@@ -148,7 +149,7 @@ export function SessionSidebar({
             onChange={(event) => onSearchChange(event.target.value)}
             aria-label={labels.search}
             data-testid="session-search-input"
-            className="w-full bg-paper-1 rounded-sm pl-8 pr-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30  transition-all"
+            className="w-full bg-background border border-border/50 rounded-[4px] pl-8 pr-3 py-2 text-[11px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all font-sans shadow-sm"
           />
         </div>
       </div>

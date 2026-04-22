@@ -64,7 +64,7 @@ function ReadContent() {
   const MIN_PANEL_WIDTH = 320;
   const MAX_PANEL_WIDTH = 620;
 
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { language } = useLanguage();
@@ -163,9 +163,8 @@ function ReadContent() {
   useEffect(() => {
     async function loadPaper() {
       if (!id) {
-        const errorMsg = isZh ? "未提供论文ID" : "No paper ID provided";
-        setError(errorMsg);
-        toast.error(errorMsg);
+        setPaper(null);
+        setError(null);
         setLoading(false);
         return;
       }
@@ -308,6 +307,34 @@ function ReadContent() {
     };
   }, []);
 
+  if (!id) {
+    return (
+      <div className="flex h-full items-center justify-center bg-background">
+        <div className="max-w-xl px-8 text-center">
+          <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-muted-foreground">
+            {isZh ? "阅读工作台" : "Reading Workspace"}
+          </div>
+          <h1 className="mt-4 font-serif text-4xl font-semibold tracking-tight text-foreground">
+            {isZh ? "选择一篇论文开始沉浸阅读" : "Choose a paper to start focused reading"}
+          </h1>
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
+            {isZh
+              ? "左侧导航已经可以进入阅读页；接下来从知识库、检索结果或笔记引用里打开具体论文。"
+              : "The reading page is now directly reachable. Open a paper from knowledge bases, search results, or linked notes to continue."}
+          </p>
+          <div className="mt-8 flex items-center justify-center gap-3">
+            <Button onClick={() => navigate("/knowledge-bases")} className="rounded-full px-5">
+              {isZh ? "前往知识库" : "Open Knowledge Bases"}
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/search")} className="rounded-full px-5">
+              {isZh ? "前往检索" : "Go to Search"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading || !paper) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -328,15 +355,20 @@ function ReadContent() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex h-full min-h-0 flex-col bg-background">
       {/* Top Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-white shrink-0">
-        <h1
-          className="text-sm font-semibold truncate max-w-xs"
+      <div className="magazine-toolbar flex items-center gap-3 border-b border-border/50 bg-background/95 px-4 py-3 backdrop-blur-sm shrink-0">
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+            {isZh ? "Focused Reading" : "Focused Reading"}
+          </div>
+          <h1
+          className="mt-2 max-w-xs truncate font-serif text-lg font-semibold text-foreground"
           title={paper.title}
         >
           {paper.title || (isZh ? "未命名论文" : "Untitled Paper")}
-        </h1>
+          </h1>
+        </div>
 
         <div className="flex-1" />
 
@@ -351,7 +383,7 @@ function ReadContent() {
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-xs min-w-[64px] text-center tabular-nums">
+          <span className="min-w-[72px] text-center text-xs tabular-nums text-muted-foreground">
             {currentPage} / {totalPages ?? (isZh ? "加载中" : "...")}
           </span>
           <Button
@@ -382,7 +414,7 @@ function ReadContent() {
               <TooltipContent>{isZh ? "缩小" : "Zoom out"}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <span className="text-xs min-w-[40px] text-center">
+          <span className="min-w-[48px] text-center text-xs text-muted-foreground">
             {Math.round(scale * 100)}%
           </span>
           <TooltipProvider>
@@ -454,11 +486,11 @@ function ReadContent() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden bg-background">
         {/* Left Sidebar: Section Navigation */}
-        <div className="w-64 border-r bg-muted/10 flex flex-col shrink-0">
-          <div className="px-3 py-2 border-b">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        <div className="hidden w-[220px] shrink-0 border-r border-border/50 bg-muted/20 lg:flex lg:flex-col">
+          <div className="border-b border-border/50 px-5 py-4">
+            <h2 className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
               {isZh ? "论文章节" : "Sections"}
             </h2>
           </div>
@@ -518,12 +550,12 @@ function ReadContent() {
               role="separator"
               aria-orientation="vertical"
               aria-label={isZh ? "调整右侧面板宽度" : "Resize right panel"}
-              className="w-1 cursor-col-resize bg-border/50 transition-colors hover:bg-primary/50"
+              className="hidden w-1 cursor-col-resize bg-border/50 transition-colors hover:bg-primary/50 lg:block"
               onMouseDown={() => setIsResizingPanel(true)}
             />
 
             <div
-              className="border-l bg-white flex flex-col shrink-0"
+              className="hidden border-l border-border/50 bg-muted/10 lg:flex lg:flex-col shrink-0"
               style={{ width: `${panelWidth}px` }}
             >
             <Tabs
@@ -531,7 +563,15 @@ function ReadContent() {
               onValueChange={setRightTab}
               className="h-full flex flex-col"
             >
-              <TabsList className="px-2 pt-2 justify-start shrink-0">
+              <div className="border-b border-border/50 bg-background/80 backdrop-blur-md px-5 py-4">
+                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  {isZh ? "Reading Inspector" : "Reading Inspector"}
+                </div>
+                <div className="mt-2 font-serif text-[1.35rem] font-bold text-foreground">
+                  {isZh ? "批注与笔记" : "Notes & Annotations"}
+                </div>
+              </div>
+              <TabsList className="px-3 pt-3 justify-start shrink-0 bg-transparent">
                 <TabsTrigger value="notes" className="text-xs">
                   {isZh ? "笔记" : "Notes"}
                 </TabsTrigger>
@@ -565,7 +605,7 @@ function ReadContent() {
                         {annotations.map((ann) => (
                           <div
                             key={ann.id}
-                            className="cursor-pointer p-2 rounded border text-xs transition-colors hover:bg-muted/30"
+                            className="cursor-pointer rounded-2xl border border-border/60 bg-background p-3 text-xs transition-colors hover:bg-primary/[0.04]"
                             onClick={() => {
                               setCurrentPage(clampPage(ann.pageNumber));
                               handlePageChange(clampPage(ann.pageNumber));
@@ -605,14 +645,14 @@ function ReadContent() {
                 className="flex-1 overflow-hidden mt-0"
               >
                 <div className="h-full flex flex-col">
-                  <div className="flex items-center justify-between px-3 py-2 border-b">
+                  <div className="flex items-center justify-between border-b border-border/60 px-3 py-3">
                     <span className="text-xs font-medium text-muted-foreground">
                       {isZh ? "阅读笔记" : "Reading Notes"}
                     </span>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-6 text-[10px] px-2"
+                      className="h-8 rounded-full border-border/70 bg-background px-3 text-[10px]"
                       onClick={() => navigate(`/notes?paperId=${id}${linkedNoteId ? `&noteId=${linkedNoteId}` : ""}`)}
                     >
                       <FileText className="w-3 h-3 mr-1" />

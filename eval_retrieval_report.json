@@ -1,0 +1,295 @@
+{
+  "total_queries": 14,
+  "recall_at_5_avg": 0.0,
+  "recall_at_10_avg": 0.0,
+  "mrr_avg": 0.0,
+  "section_hit_rate_avg": 0.0,
+  "multimodal_hit_rate_avg": 0.0,
+  "metrics_raw": {
+    "recall_at_5": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "recall_at_10": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "mrr": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "section_hit_rate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "multimodal_hit_rate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "query_details": [
+    {
+      "query_id": "q1",
+      "query": "What is the main contribution of this paper?",
+      "paper_id": "test-paper-001",
+      "query_type": "single",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 2,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q2",
+      "query": "How does the proposed method compare to baseline?",
+      "paper_id": "test-paper-001",
+      "query_type": "compare",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 3,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q3",
+      "query": "What are the key findings from the experiments?",
+      "paper_id": "test-paper-001",
+      "query_type": "single",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 2,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q4",
+      "query": "What methodology was used in this study?",
+      "paper_id": "test-paper-001",
+      "query_type": "single",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 2,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q5",
+      "query": "How does this approach differ from previous work?",
+      "paper_id": "test-paper-001",
+      "query_type": "compare",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 3,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q6",
+      "query": "What architecture is proposed for image classifica...",
+      "paper_id": "test-paper-002",
+      "query_type": "single",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 2,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q7",
+      "query": "What improvements were made compared to ResNet?",
+      "paper_id": "test-paper-002",
+      "query_type": "compare",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 3,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q8",
+      "query": "How has the model evolved across different version...",
+      "paper_id": "test-paper-002",
+      "query_type": "evolution",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 3,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q9",
+      "query": "What datasets were used for evaluation?",
+      "paper_id": "test-paper-002",
+      "query_type": "single",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 2,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q10",
+      "query": "What are the main contributions of this research?",
+      "paper_id": "test-paper-003",
+      "query_type": "single",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 2,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q11",
+      "query": "How does the transformer architecture improve over...",
+      "paper_id": "test-paper-003",
+      "query_type": "compare",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 3,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "q12",
+      "query": "What preprocessing steps are applied to the input ...",
+      "paper_id": "test-paper-003",
+      "query_type": "single",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "expected_chunks_count": 2,
+      "retrieved_count": 0
+    },
+    {
+      "query_id": "mq1",
+      "query": "What does Figure 3 show about performance?",
+      "query_type": "multimodal",
+      "multimodal_hit": false,
+      "expected_types": [
+        "image",
+        "text"
+      ]
+    },
+    {
+      "query_id": "mq2",
+      "query": "What data is presented in Table 2?",
+      "query_type": "multimodal",
+      "multimodal_hit": false,
+      "expected_types": [
+        "table",
+        "text"
+      ]
+    },
+    {
+      "query_id": "mq3",
+      "query": "What can be learned from the architecture diagram?",
+      "query_type": "multimodal",
+      "multimodal_hit": false,
+      "expected_types": [
+        "image",
+        "text"
+      ]
+    },
+    {
+      "query_id": "mq4",
+      "query": "What metrics are compared in the performance chart...",
+      "query_type": "multimodal",
+      "multimodal_hit": false,
+      "expected_types": [
+        "image",
+        "text"
+      ]
+    },
+    {
+      "query_id": "cp1",
+      "query": "How do YOLO and SSD differ in their object detecti...",
+      "query_type": "cross_paper",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "target_papers": [
+        "test-paper-001",
+        "test-paper-002"
+      ]
+    },
+    {
+      "query_id": "cp2",
+      "query": "What are the common preprocessing steps across the...",
+      "query_type": "cross_paper",
+      "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
+      "mrr": 0.0,
+      "section_hit_rate": 0.0,
+      "target_papers": [
+        "test-paper-001",
+        "test-paper-002",
+        "test-paper-003"
+      ]
+    }
+  ],
+  "evaluation_mode": "real",
+  "timestamp": "2026-04-21T11:20:23Z"
+}

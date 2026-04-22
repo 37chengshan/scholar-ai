@@ -18,6 +18,43 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock('@/app/hooks/useSessions', () => ({
+  useSessions: () => ({
+    sessions: [],
+    currentSession: null,
+    messages: [],
+    loading: false,
+    error: null,
+    loadSessions: vi.fn(),
+    createSession: vi.fn(),
+    switchSession: vi.fn(),
+    deleteSession: vi.fn(),
+    addMessage: vi.fn(),
+    clearMessages: vi.fn(),
+    updateCurrentSession: vi.fn(),
+  }),
+}));
+
+vi.mock('@/hooks/useKnowledgeBases', () => ({
+  useKnowledgeBases: () => ({
+    knowledgeBases: [],
+    total: 0,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+    createKB: vi.fn(),
+    deleteKB: vi.fn(),
+  }),
+}));
+
+class IntersectionObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal('IntersectionObserver', IntersectionObserverMock);
+
 // Test helper components
 const TestChild = () => <div>Protected Content</div>;
 const LoginPage = () => <div>Login Page</div>;
@@ -40,6 +77,12 @@ function createTestRouter(initialPath: string) {
       element: <LoginPage />,
     },
   ], {
+    initialEntries: [initialPath],
+  });
+}
+
+function createAppRouter(initialPath: string) {
+  return createMemoryRouter(router.routes, {
     initialEntries: [initialPath],
   });
 }
@@ -142,5 +185,41 @@ describe('ProtectedRoute', () => {
     const appShell = router.routes.find((route: any) => route.children);
     const childPaths = (appShell?.children || []).map((route: any) => route.path);
     expect(childPaths).not.toContain('upload');
+  });
+
+  it('should render landing page at root path', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      loading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      checkAuth: vi.fn(),
+    });
+
+    const testRouter = createAppRouter('/');
+    render(<RouterProvider router={testRouter} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('进入研究工作区')).toBeInTheDocument();
+    });
+  });
+
+  it('should redirect unknown routes back to landing page', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      loading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      checkAuth: vi.fn(),
+    });
+
+    const testRouter = createAppRouter('/batch-upload');
+    render(<RouterProvider router={testRouter} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('进入研究工作区')).toBeInTheDocument();
+    });
   });
 });

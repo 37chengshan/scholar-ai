@@ -11,6 +11,9 @@ export const workflowActions = {
   setTimelineDrawer(show: boolean): void {
     useWorkflowStore.getState().setTimelineDrawer(show);
   },
+  setWorkflowConsole(show: boolean): void {
+    useWorkflowStore.getState().setWorkflowConsole(show);
+  },
   clearRun(): void {
     useWorkflowStore.getState().clearWorkflowRun();
   },
