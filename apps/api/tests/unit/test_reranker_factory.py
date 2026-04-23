@@ -206,3 +206,33 @@ class TestRerankerServiceFactoryConfiguration:
             # Should create Qwen3VLRerankerService with quantization
             assert isinstance(service, Qwen3VLRerankerService)
             assert service.quantization == "int8"
+
+    def test_factory_create_accepts_explicit_model_override(self):
+        """Factory should honor explicit model arguments for A/B benchmark runs."""
+        from app.core.reranker.factory import RerankerServiceFactory
+        from app.core.reranker.bge_reranker import BGERerankerService
+
+        RerankerServiceFactory._instances = {}
+
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_MODEL = "qwen3-vl-reranker"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
+            service = RerankerServiceFactory.create(model_type="bge-reranker", quantization="fp16")
+
+        assert isinstance(service, BGERerankerService)
+
+    def test_get_reranker_service_for_experiment(self):
+        """Benchmark helper should return requested reranker model."""
+        from app.core.reranker.factory import (
+            RerankerServiceFactory,
+            get_reranker_service_for_experiment,
+        )
+        from app.core.reranker.qwen3vl_reranker import Qwen3VLRerankerService
+
+        RerankerServiceFactory._instances = {}
+
+        service = get_reranker_service_for_experiment(
+            model_type="qwen3-vl-reranker",
+            quantization="fp16",
+        )
+        assert isinstance(service, Qwen3VLRerankerService)

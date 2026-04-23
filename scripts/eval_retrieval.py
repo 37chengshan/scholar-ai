@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -23,6 +24,14 @@ if backend_path.exists():
 
 def _avg(values: List[float]) -> float:
     return sum(values) / len(values) if values else 0.0
+
+
+def _p95(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    index = max(int(len(sorted_values) * 0.95) - 1, 0)
+    return sorted_values[index]
 
 
 def calculate_recall_at_k(retrieved_ids: List[str], expected_ids: List[str], k: int) -> float:
@@ -56,6 +65,29 @@ def calculate_section_hit_rate(results: List[Dict[str, Any]], expected_sections:
             if expected_lower in section or section in expected_lower:
                 hit_sections.add(expected_lower)
     return len(hit_sections) / len(expected_sections)
+
+
+def calculate_chunk_hit_rate(results: List[Dict[str, Any]], expected_chunk_ids: List[str], k: int = 10) -> float:
+    if not expected_chunk_ids:
+        return 0.0
+    retrieved = {
+        str(item.get("source_id") or item.get("id") or item.get("chunk_id") or "")
+        for item in results[:k]
+    }
+    retrieved.discard("")
+    expected = {str(item) for item in expected_chunk_ids}
+    return len(retrieved & expected) / len(expected)
+
+
+def calculate_section_mrr(results: List[Dict[str, Any]], expected_sections: List[str]) -> float:
+    if not expected_sections:
+        return 0.0
+    normalized_expected = {str(item).lower() for item in expected_sections}
+    for idx, result in enumerate(results[:10], start=1):
+        section = str(result.get("section") or result.get("content_section") or "").lower()
+        if section in normalized_expected:
+            return 1.0 / idx
+    return 0.0
 
 
 def calculate_paper_hit_rate(results: List[Dict[str, Any]], expected_paper_ids: List[str], k: int = 5) -> float:
@@ -199,6 +231,9 @@ async def evaluate_retrieval(
     paper_ids_filter: Optional[List[str]] = None,
     mock_mode: bool = False,
     use_reranker: bool = False,
+    dataset_label: str = "unknown",
+    model_stack: str = "manual",
+    run_label: str = "round1",
 ) -> Dict[str, Any]:
     with open(golden_queries_path, encoding="utf-8") as f:
         golden = json.load(f)
@@ -225,11 +260,18 @@ async def evaluate_retrieval(
         "figure_hit_rate": [],
         "numeric_qa_exact_match": [],
         "top5_cross_paper_completeness": [],
+        "chunk_hit_rate": [],
+        "section_mrr": [],
+        "single_paper_recall_at_5": [],
+        "cross_paper_recall_at_5": [],
+        "hard_query_hit_rate": [],
+        "latency_ms": [],
     }
 
     query_details: List[Dict[str, Any]] = []
 
     async def evaluate_case(query_data: Dict[str, Any], paper_ids: List[str], default_type: str) -> None:
+        started_at = time.perf_counter()
         result = await _run_single_query(
             service,
             query_data,
@@ -238,6 +280,7 @@ async def evaluate_retrieval(
             use_reranker=use_reranker,
             mock_mode=mock_mode,
         )
+        latency_ms = (time.perf_counter() - started_at) * 1000.0
 
         results = result.get("results", [])
         expected_chunks = query_data.get("expected_chunks") or []
@@ -255,6 +298,7 @@ async def evaluate_retrieval(
 
         expected_sections = query_data.get("expected_sections") or []
         query_family = result.get("query_family") or query_data.get("query_family") or query_data.get("query_type") or default_type
+        query_type = str(query_data.get("query_type") or query_family)
 
         recall_5 = calculate_recall_at_k(retrieved_ids, expected_ids, 5)
         recall_10 = calculate_recall_at_k(retrieved_ids, expected_ids, 10)
@@ -265,6 +309,8 @@ async def evaluate_retrieval(
         table_hit = calculate_table_hit_rate(results, query_data.get("gold_table_refs") or [])
         figure_hit = calculate_figure_hit_rate(results, query_data.get("gold_figure_refs") or [])
         numeric_exact = calculate_numeric_qa_exact_match(results, query_data.get("gold_metric_triplets") or [])
+        chunk_hit = calculate_chunk_hit_rate(results, query_data.get("expected_chunk_ids") or query_data.get("expected_chunks") or [])
+        section_mrr = calculate_section_mrr(results, expected_sections)
 
         evidence_bundle_hit_count = len(
             {
@@ -290,6 +336,15 @@ async def evaluate_retrieval(
         metrics["figure_hit_rate"].append(figure_hit)
         metrics["numeric_qa_exact_match"].append(numeric_exact)
         metrics["top5_cross_paper_completeness"].append(cross_paper_top5)
+        metrics["chunk_hit_rate"].append(chunk_hit)
+        metrics["section_mrr"].append(section_mrr)
+        metrics["latency_ms"].append(latency_ms)
+        if query_type.startswith("single"):
+            metrics["single_paper_recall_at_5"].append(recall_5)
+        if query_type in {"cross_paper", "compare"}:
+            metrics["cross_paper_recall_at_5"].append(recall_5)
+        if query_type == "hard":
+            metrics["hard_query_hit_rate"].append(1.0 if paper_hit >= 1.0 else 0.0)
 
         query_details.append(
             {
@@ -310,6 +365,10 @@ async def evaluate_retrieval(
                 "mrr": mrr,
                 "paper_hit_rate": paper_hit,
                 "section_hit_rate": section_hit,
+                "chunk_hit_rate": chunk_hit,
+                "section_mrr": section_mrr,
+                "latency_ms": latency_ms,
+                "query_type": query_type,
             }
         )
 
@@ -377,13 +436,40 @@ async def evaluate_retrieval(
         "figure_hit_rate_avg": _avg(metrics["figure_hit_rate"]),
         "numeric_qa_exact_match": _avg(metrics["numeric_qa_exact_match"]),
         "top5_cross_paper_completeness": _avg(metrics["top5_cross_paper_completeness"]),
+        "chunk_hit_rate_avg": _avg(metrics["chunk_hit_rate"]),
+        "section_mrr_avg": _avg(metrics["section_mrr"]),
+        "single_paper_recall_at_5": _avg(metrics["single_paper_recall_at_5"]),
+        "cross_paper_recall_at_5": _avg(metrics["cross_paper_recall_at_5"]),
+        "hard_query_hit_rate": _avg(metrics["hard_query_hit_rate"]),
+        "latency_avg_ms": _avg(metrics["latency_ms"]),
+        "latency_p95_ms": _p95(metrics["latency_ms"]),
         "metrics_raw": metrics,
         "query_details": query_details,
         "evaluation_mode": "mock" if mock_mode else "real",
         "use_reranker": bool(use_reranker),
+        "dataset_label": dataset_label,
+        "model_stack": model_stack,
+        "run_label": run_label,
+        "experiment_tag": f"{dataset_label}_{model_stack}_{'on' if use_reranker else 'off'}_{run_label}",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     return report
+
+
+def _markdown_summary_table(report: Dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "| dataset | model_stack | reranker | run | recall@5 | recall@10 | mrr | paper_hit | section_hit | chunk_hit | cross_paper_r@5 | hard_hit | avg_latency_ms | p95_latency_ms |",
+            "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            (
+                f"| {report['dataset_label']} | {report['model_stack']} | {'on' if report['use_reranker'] else 'off'} "
+                f"| {report['run_label']} | {report['recall_at_5_avg']:.4f} | {report['recall_at_10_avg']:.4f} "
+                f"| {report['mrr_avg']:.4f} | {report['paper_hit_rate_avg']:.4f} | {report['section_hit_rate_avg']:.4f} "
+                f"| {report['chunk_hit_rate_avg']:.4f} | {report['cross_paper_recall_at_5']:.4f} | {report['hard_query_hit_rate']:.4f} "
+                f"| {report['latency_avg_ms']:.2f} | {report['latency_p95_ms']:.2f} |"
+            ),
+        ]
+    )
 
 
 def main() -> None:
@@ -394,6 +480,10 @@ def main() -> None:
     parser.add_argument("--output", default="eval_retrieval_report.json", help="Output report path")
     parser.add_argument("--allow-mock", action="store_true", help="Run in mock mode")
     parser.add_argument("--use-reranker", action="store_true", help="Enable reranker during evaluation")
+    parser.add_argument("--dataset-label", default="unknown", help="Dataset label, e.g., large/xlarge")
+    parser.add_argument("--model-stack", default="manual", help="Model stack label, e.g., bge_dual/qwen_dual")
+    parser.add_argument("--run-label", default="round1", help="Run label, e.g., round1/round2")
+    parser.add_argument("--markdown-summary", default="", help="Optional markdown summary output path")
     args = parser.parse_args()
 
     report = asyncio.run(
@@ -403,11 +493,19 @@ def main() -> None:
             paper_ids_filter=args.paper_id,
             mock_mode=args.allow_mock,
             use_reranker=args.use_reranker,
+            dataset_label=args.dataset_label,
+            model_stack=args.model_stack,
+            run_label=args.run_label,
         )
     )
 
     output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.markdown_summary:
+        markdown_path = Path(args.markdown_summary)
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(_markdown_summary_table(report), encoding="utf-8")
 
     print("=" * 60)
     print("Retrieval Evaluation Report")
@@ -420,6 +518,12 @@ def main() -> None:
     print(f"Figure Hit Rate: {report['figure_hit_rate_avg']:.2%}")
     print(f"Numeric QA EM: {report['numeric_qa_exact_match']:.2%}")
     print(f"Top5 Cross-paper Completeness: {report['top5_cross_paper_completeness']:.2%}")
+    print(f"Chunk Hit Rate: {report['chunk_hit_rate_avg']:.2%}")
+    print(f"Section MRR: {report['section_mrr_avg']:.2%}")
+    print(f"Single-paper Recall@5: {report['single_paper_recall_at_5']:.2%}")
+    print(f"Cross-paper Recall@5: {report['cross_paper_recall_at_5']:.2%}")
+    print(f"Hard Query Hit Rate: {report['hard_query_hit_rate']:.2%}")
+    print(f"Latency Avg/P95(ms): {report['latency_avg_ms']:.2f}/{report['latency_p95_ms']:.2f}")
     print("=" * 60)
     print(f"Report saved to: {output_path}")
 

@@ -185,6 +185,7 @@ class Settings(BaseSettings):
     RERANKER_VARIANT: str = "2b"
     VECTOR_STORE_BACKEND: Literal["milvus", "qdrant"] = "milvus"
     RETRIEVAL_BENCH_PROFILE: str = "dev"
+    RETRIEVAL_MODEL_STACK: Literal["bge_dual", "qwen_dual", "manual"] = "qwen_dual"
     RETRIEVAL_TRACE_ENABLED: bool = False
     RETRIEVAL_TRACE_INCLUDE_RESULTS: bool = False
     RETRIEVAL_VECTOR_WEIGHT: float = 0.75
@@ -256,6 +257,10 @@ class Settings(BaseSettings):
     # Reranker Configuration
     RERANKER_MODEL: str = "bge-reranker"
     RERANKER_QUANTIZATION: str = "fp16"
+    BGE_DUAL_EMBEDDING_MODEL: str = "bge-m3"
+    BGE_DUAL_RERANKER_MODEL: str = "bge-reranker"
+    QWEN_DUAL_EMBEDDING_MODEL: str = "qwen3-vl-2b"
+    QWEN_DUAL_RERANKER_MODEL: str = "qwen3-vl-reranker"
 
     # Local Model Paths
     QWEN3VL_EMBEDDING_MODEL_PATH: str = "./Qwen/Qwen3-VL-Embedding-2B"
@@ -352,3 +357,58 @@ def get_settings() -> Settings:
 
 # Global settings instance
 settings = get_settings()
+
+
+def normalize_embedding_model_name(model_name: str) -> str:
+    """Normalize embedding model aliases to canonical names."""
+    normalized = (model_name or "").strip().lower()
+    alias_map = {
+        "baai/bge-m3": "bge-m3",
+        "bge-m3": "bge-m3",
+        "qwen/qwen3-vl-embedding-2b": "qwen3-vl-2b",
+        "qwen3-vl-embedding-2b": "qwen3-vl-2b",
+        "qwen3-vl-2b": "qwen3-vl-2b",
+    }
+    return alias_map.get(normalized, normalized)
+
+
+def normalize_reranker_model_name(model_name: str) -> str:
+    """Normalize reranker model aliases to canonical names."""
+    normalized = (model_name or "").strip().lower()
+    alias_map = {
+        "baai/bge-reranker-large": "bge-reranker",
+        "bge-reranker": "bge-reranker",
+        "qwen/qwen3-vl-reranker-2b": "qwen3-vl-reranker",
+        "qwen3-vl-reranker-2b": "qwen3-vl-reranker",
+        "qwen3-vl-reranker": "qwen3-vl-reranker",
+    }
+    return alias_map.get(normalized, normalized)
+
+
+def canonical_embedding_dimension(model_name: str, fallback_dimension: int) -> int:
+    """Return canonical embedding vector dimension by model, with fallback."""
+    canonical = normalize_embedding_model_name(model_name)
+    canonical_map = {
+        "bge-m3": 1024,
+        "qwen3-vl-2b": 2048,
+    }
+    return canonical_map.get(canonical, fallback_dimension)
+
+
+def resolve_model_stack(
+    stack_name: str,
+    embedding_model: str,
+    reranker_model: str,
+) -> str:
+    """Resolve explicit stack label from stack_name or model pair."""
+    normalized_stack = (stack_name or "").strip().lower()
+    if normalized_stack in {"bge_dual", "qwen_dual"}:
+        return normalized_stack
+
+    embedding = normalize_embedding_model_name(embedding_model)
+    reranker = normalize_reranker_model_name(reranker_model)
+    if embedding == "bge-m3" and reranker == "bge-reranker":
+        return "bge_dual"
+    if embedding == "qwen3-vl-2b" and reranker == "qwen3-vl-reranker":
+        return "qwen_dual"
+    return "manual"

@@ -37,7 +37,7 @@ from app.core.retrieval_scoring import RetrievalScoringService
 from app.core.retrieval_trace import RetrievalTraceService
 from app.core.vector_store_repository import get_vector_store_repository
 from app.models.retrieval import RetrievedChunk, SearchConstraints
-from app.config import settings
+from app.config import settings, resolve_model_stack
 from app.utils.logger import logger
 
 
@@ -427,13 +427,21 @@ class MultimodalSearchService:
                 for content_type in content_types:
                     extra_hits: List[Dict[str, Any]] = []
                     for emb in extra_embeddings:
-                        extra_results = self.vector_store.search(
-                            embedding=emb,
-                            user_id=user_id,
-                            content_type=content_type,
-                            top_k=12,
-                            constraints=constraints,
-                        )
+                        try:
+                            extra_results = self.vector_store.search(
+                                embedding=emb,
+                                user_id=user_id,
+                                content_type=content_type,
+                                top_k=12,
+                                constraints=constraints,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                "Second-pass vector store search failed",
+                                content_type=content_type,
+                                error=str(e),
+                            )
+                            extra_results = []
                         for result in extra_results:
                             hit = result.model_dump()
                             hit["backend"] = result.backend
@@ -490,6 +498,14 @@ class MultimodalSearchService:
                 "graph_retrieval_used": graph_used,
                 "graph_candidate_count": graph_candidate_count,
                 "graph_narrowed_paper_ids": narrowed_paper_ids,
+                "use_reranker": bool(use_reranker),
+                "embedding_model": settings.EMBEDDING_MODEL,
+                "reranker_model": settings.RERANKER_MODEL,
+                "model_stack": resolve_model_stack(
+                    settings.RETRIEVAL_MODEL_STACK,
+                    settings.EMBEDDING_MODEL,
+                    settings.RERANKER_MODEL,
+                ),
             },
             weights=weights,
             results=fused,
@@ -532,6 +548,14 @@ class MultimodalSearchService:
             "results": final_results,
             "total_count": len(fused),
             "vector_backend": settings.VECTOR_STORE_BACKEND,
+            "use_reranker": bool(use_reranker),
+            "embedding_model": settings.EMBEDDING_MODEL,
+            "reranker_model": settings.RERANKER_MODEL,
+            "model_stack": resolve_model_stack(
+                settings.RETRIEVAL_MODEL_STACK,
+                settings.EMBEDDING_MODEL,
+                settings.RERANKER_MODEL,
+            ),
             "graph_retrieval_used": graph_used,
             "graph_candidate_count": graph_candidate_count,
             "graph_vector_merged_evidence": len(final_results),

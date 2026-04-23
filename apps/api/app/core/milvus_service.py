@@ -12,12 +12,13 @@ Provides:
 import re
 import time
 import os
+import math
 from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from app.config import settings
 from app.utils.logger import logger
-from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
+from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
 from pymilvus.exceptions import MilvusException
 
 
@@ -25,6 +26,32 @@ def _is_missing_collection_error(error: Exception) -> bool:
     """Return True when Milvus reports a missing collection."""
     message = str(error).lower()
     return "collection" in message and "not exist" in message
+
+
+def _is_unsupported_field_type_error(error: Exception) -> bool:
+    """Return True when Milvus search result parsing fails on field types."""
+    return "unsupported field type" in str(error).lower()
+
+
+def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+    """Compute cosine similarity with numeric stability guards."""
+    if not vec1 or not vec2 or len(vec1) != len(vec2):
+        return 0.0
+    dot = 0.0
+    norm1 = 0.0
+    norm2 = 0.0
+    for v1, v2 in zip(vec1, vec2):
+        dot += v1 * v2
+        norm1 += v1 * v1
+        norm2 += v2 * v2
+    if norm1 <= 0.0 or norm2 <= 0.0:
+        return 0.0
+    return dot / (math.sqrt(norm1) * math.sqrt(norm2))
+
+
+def _should_force_query_fallback() -> bool:
+    """Enable direct query fallback when benchmark explicitly requests it."""
+    return os.getenv("MILVUS_FORCE_QUERY_FALLBACK", "0") == "1"
 
 
 def retry_with_backoff(max_retries: int = 5, base_delay: float = 1.0):
@@ -569,7 +596,7 @@ class MilvusService:
         """
         try:
             self.connect()
-            return connections.has_collection(collection_name, using=self._alias)
+            return bool(utility.has_collection(collection_name, using=self._alias))
         except Exception as e:
             logger.warning(f"Error checking collection existence: {e}")
             return False
@@ -1114,41 +1141,88 @@ class MilvusService:
                 conditions.append(f"content_type == '{content_type}'")
             expr = " and ".join(conditions)
 
-        results = collection.search(
-            data=[embedding],
-            anns_field="embedding",
-            param=search_params,
-            limit=top_k,
-            expr=expr,
-            output_fields=[
-                "paper_id",
-                "page_num",
-                "content_type",
-                "section",
-                "content_data",
-                "raw_data",
-                "quality_score",
-            ],
-        )
-
-        formatted = []
-        for hits in results:
-            for hit in hits:
-                formatted.append(
+        def _query_fallback() -> List[Dict[str, Any]]:
+            rows = collection.query(
+                expr=expr,
+                output_fields=[
+                    "id",
+                    "paper_id",
+                    "page_num",
+                    "content_type",
+                    "section",
+                    "content_data",
+                    "quality_score",
+                    "embedding",
+                ],
+                limit=max(top_k * 20, 200),
+            )
+            scored_rows: list[dict[str, Any]] = []
+            for row in rows:
+                row_embedding = row.get("embedding") or []
+                score = _cosine_similarity(embedding, row_embedding)
+                scored_rows.append(
                     {
-                        "id": hit.id,
-                        "distance": hit.distance,
-                        "score": 1 - hit.distance,
-                        "paper_id": hit.entity.get("paper_id"),
-                        "page_num": hit.entity.get("page_num"),
-                        "content_type": hit.entity.get("content_type"),
-                        "section": hit.entity.get("section"),
-                        "content_data": hit.entity.get("content_data"),
-                        "raw_data": hit.entity.get("raw_data"),
-                        "quality_score": hit.entity.get("quality_score"),
+                        "id": row.get("id"),
+                        "distance": 1 - score,
+                        "score": score,
+                        "paper_id": row.get("paper_id"),
+                        "page_num": row.get("page_num"),
+                        "content_type": row.get("content_type"),
+                        "section": row.get("section"),
+                        "content_data": row.get("content_data"),
+                        "raw_data": {},
+                        "quality_score": row.get("quality_score"),
                     }
                 )
-        return formatted
+            scored_rows.sort(key=lambda item: item.get("score", 0.0), reverse=True)
+            return scored_rows[:top_k]
+
+        if _should_force_query_fallback():
+            return _query_fallback()
+
+        try:
+            results = collection.search(
+                data=[embedding],
+                anns_field="embedding",
+                param=search_params,
+                limit=top_k,
+                expr=expr,
+                output_fields=[
+                    "paper_id",
+                    "page_num",
+                    "content_type",
+                    "section",
+                    "content_data",
+                    "quality_score",
+                ],
+            )
+
+            formatted = []
+            for hits in results:
+                for hit in hits:
+                    formatted.append(
+                        {
+                            "id": hit.id,
+                            "distance": hit.distance,
+                            "score": 1 - hit.distance,
+                            "paper_id": hit.entity.get("paper_id"),
+                            "page_num": hit.entity.get("page_num"),
+                            "content_type": hit.entity.get("content_type"),
+                            "section": hit.entity.get("section"),
+                            "content_data": hit.entity.get("content_data"),
+                            "raw_data": {},
+                            "quality_score": hit.entity.get("quality_score"),
+                        }
+                    )
+            return formatted
+        except Exception as e:
+            if not _is_unsupported_field_type_error(e):
+                raise
+            logger.warning(
+                "Milvus search failed with unsupported field type, falling back to python cosine search",
+                error=str(e),
+            )
+            return _query_fallback()
 
     def delete_by_paper_contents(self, paper_id: str) -> None:
         """Delete all content entries for a paper.
