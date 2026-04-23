@@ -45,7 +45,7 @@ describe('MessageFeed', () => {
       />
     );
 
-    expect(screen.getByText('开始一次学术对话')).toBeInTheDocument();
+    expect(screen.getByText('从一个清晰问题开始')).toBeInTheDocument();
   });
 
   it('calls stop on streaming message', async () => {
