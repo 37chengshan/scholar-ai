@@ -38,19 +38,19 @@ def _p95(values: List[float]) -> float:
     return sorted_values[index]
 
 
-def calculate_recall_at_k(retrieved_ids: List[str], expected_ids: List[str], k: int) -> float:
+def calculate_recall_at_k(retrieved_ids: List[str], expected_ids: List[Any], k: int) -> float:
     if not expected_ids:
         return 0.0
-    retrieved = set(retrieved_ids[:k])
-    expected = set(expected_ids)
+    retrieved = set(_normalize_ranked_ids(retrieved_ids[:k]))
+    expected = set(_normalize_ranked_ids(expected_ids))
     return len(retrieved & expected) / len(expected)
 
 
-def calculate_mrr(retrieved_ids: List[str], expected_ids: List[str]) -> float:
+def calculate_mrr(retrieved_ids: List[str], expected_ids: List[Any]) -> float:
     if not expected_ids:
         return 0.0
-    expected = set(expected_ids)
-    for idx, item in enumerate(retrieved_ids, start=1):
+    expected = set(_normalize_ranked_ids(expected_ids))
+    for idx, item in enumerate(_normalize_ranked_ids(retrieved_ids), start=1):
         if item in expected:
             return 1.0 / idx
     return 0.0
@@ -71,6 +71,28 @@ def _normalize_section_value(section_value: object) -> str:
     if normalized_tokens:
         return normalized_tokens[-1]
     return canonicalize_section_name(raw)
+
+
+def _extract_expected_chunk_id(item: Any) -> str:
+    if isinstance(item, str):
+        return item.strip()
+    if isinstance(item, dict):
+        return str(item.get("chunk_id") or item.get("id") or item.get("source_id") or "").strip()
+    return str(item or "").strip()
+
+
+def _normalize_ranked_ids(items: List[Any]) -> List[str]:
+    normalized: List[str] = []
+    for item in items:
+        if isinstance(item, str):
+            value = item.strip()
+        elif isinstance(item, dict):
+            value = str(item.get("chunk_id") or item.get("id") or item.get("source_id") or "").strip()
+        else:
+            value = str(item or "").strip()
+        if value:
+            normalized.append(value)
+    return normalized
 
 
 def _extract_result_section(result: Dict[str, Any]) -> str:
@@ -197,6 +219,7 @@ def calculate_chunk_match_metrics(results: List[Dict[str, Any]], expected_chunks
     exact_hits = 0
     overlap_hits = 0
     anchor_hits = 0
+    any_hits = 0
 
     for expected_item in expected:
         expected_chunk_id = str(expected_item.get("chunk_id") or "")
@@ -243,11 +266,12 @@ def calculate_chunk_match_metrics(results: List[Dict[str, Any]], expected_chunks
         exact_hits += 1 if matched_exact else 0
         overlap_hits += 1 if matched_overlap else 0
         anchor_hits += 1 if matched_anchor else 0
+        any_hits += 1 if (matched_exact or matched_overlap or matched_anchor) else 0
 
     total = float(len(expected))
-    any_hit = 1.0 if (exact_hits > 0 or overlap_hits > 0 or anchor_hits > 0) else 0.0
+    any_hit = 1.0 if any_hits > 0 else 0.0
     return {
-        "chunk_hit_rate": max(exact_hits, overlap_hits, anchor_hits) / total,
+        "chunk_hit_rate": any_hits / total,
         "exact_chunk_hit": exact_hits / total,
         "overlap_chunk_hit": overlap_hits / total,
         "anchor_hit": anchor_hits / total,
@@ -360,7 +384,10 @@ def _mock_results(query_data: Dict[str, Any], query_type: str) -> Dict[str, Any]
     expected_chunks = query_data.get("expected_chunks")
 
     if expected_chunks:
-        result_ids = list(expected_chunks)
+        result_ids = [
+            _extract_expected_chunk_id(item) or f"mock-chunk-{idx + 1}"
+            for idx, item in enumerate(expected_chunks)
+        ]
     elif expected_paper_ids:
         # Keep deterministic behavior for unit tests.
         if query_type in {"cross_paper", "compare"} and len(expected_paper_ids) > 1:
@@ -540,7 +567,11 @@ async def evaluate_retrieval(
                 str(item.get("source_id") or item.get("id") or item.get("chunk_id") or "")
                 for item in results
             ]
-            expected_ids = expected_chunks
+            expected_ids = [
+                chunk_id
+                for chunk_id in (_extract_expected_chunk_id(item) for item in expected_chunks)
+                if chunk_id
+            ]
         else:
             retrieved_ids = [str(item.get("paper_id") or "") for item in results]
             expected_ids = expected_papers

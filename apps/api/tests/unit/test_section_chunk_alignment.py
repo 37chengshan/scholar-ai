@@ -129,6 +129,55 @@ def test_exact_overlap_anchor_chunk_hits() -> None:
     assert metrics["anchor_hit"] > 0.0
 
 
+def test_chunk_hit_rate_counts_distinct_matching_chunks() -> None:
+    eval_module = _load_eval_module()
+    results = [
+        {
+            "chunk_id": "chunk_1",
+            "paper_id": "paper-4",
+            "page_num": 1,
+            "normalized_section_path": "method",
+            "char_start": 0,
+            "char_end": 10,
+            "anchor_text": "mismatch anchor",
+        },
+        {
+            "chunk_id": "chunk_2",
+            "paper_id": "paper-4",
+            "page_num": 1,
+            "normalized_section_path": "method",
+            "char_start": 100,
+            "char_end": 110,
+            "anchor_text": "beta",
+        },
+    ]
+    expected_chunks = [
+        {
+            "chunk_id": "chunk_1",
+            "paper_id": "paper-4",
+            "page_num": 1,
+            "normalized_section_path": "method",
+            "char_start": 0,
+            "char_end": 10,
+            "anchor_text": "alpha",
+        },
+        {
+            "chunk_id": "missing",
+            "paper_id": "paper-4",
+            "page_num": 1,
+            "normalized_section_path": "method",
+            "char_start": 200,
+            "char_end": 210,
+            "anchor_text": "beta",
+        },
+    ]
+
+    metrics = eval_module.calculate_chunk_match_metrics(results, expected_chunks, k=10)
+    assert metrics["chunk_hit_rate"] == 1.0
+    assert metrics["exact_chunk_hit"] == 0.5
+    assert metrics["anchor_hit"] == 0.5
+
+
 def test_failure_bucket_classification() -> None:
     eval_module = _load_eval_module()
 

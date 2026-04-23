@@ -91,6 +91,52 @@ async def test_mock_eval_uses_paper_ids_for_cross_paper_queries(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_mock_eval_accepts_expected_chunk_objects(tmp_path: Path):
+    eval_module = _load_eval_module()
+    golden_path = tmp_path / "golden_chunks.json"
+    golden_path.write_text(
+        json.dumps(
+            {
+                "papers": [
+                    {
+                        "paper_id": "dataset-s-010",
+                        "queries": [
+                            {
+                                "id": "chunk-q1",
+                                "query": "What section contains the method?",
+                                "expected_chunks": [
+                                    {
+                                        "chunk_id": "chunk_a",
+                                        "paper_id": "dataset-s-010",
+                                        "page_num": 1,
+                                        "normalized_section_path": "method",
+                                        "char_start": 0,
+                                        "char_end": 12,
+                                        "anchor_text": "method text",
+                                    }
+                                ],
+                                "expected_sections": ["Methodology"],
+                                "query_type": "single",
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+
+    report = await eval_module.evaluate_retrieval(
+        str(golden_path),
+        mock_mode=True,
+    )
+
+    assert report["total_queries"] == 1
+    assert report["recall_at_5_avg"] == pytest.approx(1.0)
+    assert report["mrr_avg"] == pytest.approx(1.0)
+    assert report["chunk_hit_rate_avg"] == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
 async def test_real_eval_forwards_use_reranker_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     eval_module = _load_eval_module()
     golden_path = tmp_path / "golden_real.json"
