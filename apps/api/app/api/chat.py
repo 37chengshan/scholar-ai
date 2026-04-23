@@ -27,6 +27,8 @@ SSE Event Types:
 """
 
 import json
+import re
+import time
 from typing import Any, AsyncIterator, Dict
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -54,6 +56,45 @@ router = APIRouter()
 
 # Task 1.4: Initialize ComplexityRouter (rule-based, no LLM client for now)
 complexity_router = ComplexityRouter()
+
+_FAST_PATH_MAX_CHARS = 40
+_COMPARE_HINT_PATTERN = re.compile(r"比较|对比|差异|区别|演进|综述|优缺点|研究现状", re.IGNORECASE)
+_SMALLTALK_HINT_PATTERN = re.compile(r"^(你好|您好|hi|hello|hey|在吗|你是谁|你能做什么)[!?！。\s]*$", re.IGNORECASE)
+
+
+def _is_general_scope(scope: Dict[str, Any] | None) -> bool:
+    scope_type = ((scope or {}).get("type") or "general").strip().lower()
+    return scope_type in {"", "general"}
+
+
+def _should_use_simple_fast_path(
+    message: str,
+    scope: Dict[str, Any] | None,
+    routing_result: Dict[str, Any],
+) -> bool:
+    query = (message or "").strip()
+    if not query:
+        return False
+    if not _is_general_scope(scope):
+        return False
+
+    complexity = str(routing_result.get("complexity", "simple")).lower()
+    if complexity != "simple":
+        return False
+
+    if _COMPARE_HINT_PATTERN.search(query):
+        return False
+
+    if _SMALLTALK_HINT_PATTERN.match(query):
+        return True
+
+    return len(query) <= _FAST_PATH_MAX_CHARS
+
+
+def _build_simple_fast_reply(query: str) -> str:
+    if _SMALLTALK_HINT_PATTERN.match(query.strip()):
+        return "你好，我是 ScholarAI。你可以问我论文检索、方法解释、研究对比或知识库问答。"
+    return f"收到：{query.strip()}。如果你希望，我可以继续给出更详细的学术解释或下一步建议。"
 
 
 @router.post("/stream")
@@ -87,6 +128,7 @@ async def chat_stream(
     - event: confirmation_required - Needs user approval
     """
     session_id = request.session_id or "unknown-session"
+    request_received_at = time.perf_counter()
 
     try:
         logger.info(
@@ -202,13 +244,29 @@ async def chat_stream(
                     return
 
                 # Task 1.4: Route query complexity (async with LLM fallback)
+                routing_start = time.perf_counter()
                 routing_result = await complexity_router.route_async(request.message)
+                routing_decision_ready_at = time.perf_counter()
 
                 logger.info(
                     "Query routed",
                     complexity=routing_result["complexity"],
                     method=routing_result["method"],
                     confidence=routing_result["confidence"],
+                )
+
+                use_fast_path = _should_use_simple_fast_path(
+                    message=request.message,
+                    scope=request.scope,
+                    routing_result=routing_result,
+                )
+
+                logger.info(
+                    "Chat path selected",
+                    session_id=session_id,
+                    use_fast_path=use_fast_path,
+                    scope_type=(request.scope or {}).get("type", "general"),
+                    complexity=routing_result.get("complexity"),
                 )
 
                 # routing_decision must carry message_id (HARD RULE 0.2), so emit it
@@ -231,6 +289,78 @@ async def chat_stream(
                         )
                     except Exception as e:
                         logger.warning("Failed to save user message", error=str(e))
+
+                    if use_fast_path:
+                        session_ready_at = time.perf_counter()
+                        assistant_message_id = await chat_orchestrator._create_assistant_message(
+                            session_id=session_id,
+                            user_id=user_id,
+                        )
+
+                        session_start_payload = {
+                            "session_id": session_id,
+                            "task_type": "general",
+                            "message_id": assistant_message_id,
+                        }
+                        buffered_session = await event_buffer.emit(
+                            SSEEventType.SESSION_START,
+                            session_start_payload,
+                        )
+                        yield buffered_session.to_sse_format()
+
+                        if not routing_emitted:
+                            routing_event = await event_buffer.emit(
+                                "routing_decision",
+                                {
+                                    "complexity": routing_result["complexity"],
+                                    "method": routing_result["method"],
+                                    "confidence": routing_result["confidence"],
+                                    "reasoning": routing_result.get("reasoning", ""),
+                                    "query_preview": request.message[:100],
+                                    "message_id": assistant_message_id,
+                                },
+                            )
+                            yield routing_event.to_sse_format()
+                            routing_emitted = True
+
+                        answer = _build_simple_fast_reply(request.message)
+                        first_message_emitted_at = time.perf_counter()
+                        buffered_message = await event_buffer.emit(
+                            SSEEventType.MESSAGE,
+                            {
+                                "delta": answer,
+                                "seq": 1,
+                                "message_id": assistant_message_id,
+                            },
+                        )
+                        yield buffered_message.to_sse_format()
+
+                        await chat_orchestrator._safe_update_assistant_message(
+                            assistant_message_id,
+                            answer,
+                        )
+
+                        done_payload = {
+                            "finish_reason": "stop",
+                            "tokens_used": 0,
+                            "cost": 0.0,
+                            "total_time_ms": int((time.perf_counter() - request_received_at) * 1000),
+                            "message_id": assistant_message_id,
+                            "diagnostics": {
+                                "request_received_at": request_received_at,
+                                "session_ready_at": session_ready_at,
+                                "routing_decision_ready_at": routing_decision_ready_at,
+                                "assistant_message_created_at": session_ready_at,
+                                "first_message_emitted_at": first_message_emitted_at,
+                                "route_decision_latency_ms": int((routing_decision_ready_at - routing_start) * 1000),
+                                "first_token_emit_latency_ms": int((first_message_emitted_at - request_received_at) * 1000),
+                                "total_stream_latency_ms": int((time.perf_counter() - request_received_at) * 1000),
+                                "path": "simple_fast_path",
+                            },
+                        }
+                        buffered_done = await event_buffer.emit(SSEEventType.DONE, done_payload)
+                        yield buffered_done.to_sse_format()
+                        return
 
                     # Task 1.4: Branch based on routing result
                     # Note: For MVP, both paths use chat_orchestrator

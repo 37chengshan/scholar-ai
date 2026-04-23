@@ -112,6 +112,53 @@ describe('MessageFeed', () => {
     expect(screen.getByText('实时流式内容片段')).toBeInTheDocument();
   });
 
+  it('keeps first message chunk visible even when runtime metadata updates simultaneously', () => {
+    const streamState = {
+      ...createInitialState(),
+      streamStatus: 'streaming' as const,
+      contentBuffer: '首个 message chunk',
+      reasoningBuffer: '正在推理',
+      toolTimeline: [
+        {
+          id: 'tool-1',
+          tool: 'search_docs',
+          label: '检索文档',
+          status: 'running' as const,
+          startedAt: Date.now(),
+          summary: '检索中',
+        },
+      ],
+    };
+
+    render(
+      <MessageFeed
+        renderMessages={[
+          asRenderMessage({
+            id: 'assistant-stream-priority',
+            session_id: 's1',
+            role: 'assistant',
+            content: '',
+            displayContent: '首个 message chunk',
+            created_at: '2026-01-01T00:00:00Z',
+            streamStatus: 'streaming',
+            isStreaming: true,
+          }),
+        ]}
+        streamState={streamState}
+        currentMessageId={'assistant-stream-priority'}
+        thinkingSteps={[{ type: 'thinking', content: '正在思考中' }]}
+        labels={{ noMessages: '开始新对话', sendFirst: '发送第一条消息', thinking: '思考中', stop: '停止' }}
+        messagesEndRef={createRef<HTMLDivElement>()}
+        onCitationClick={() => {}}
+        onStop={() => {}}
+        formatTime={() => '10:00'}
+      />
+    );
+
+    expect(screen.getByText('首个 message chunk')).toBeInTheDocument();
+    expect(screen.getByText('思考中')).toBeInTheDocument();
+  });
+
   it('shows stop button only for streaming assistant message', () => {
     render(
       <MessageFeed
