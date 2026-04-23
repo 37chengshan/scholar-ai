@@ -201,7 +201,7 @@ describe('ProtectedRoute', () => {
     render(<RouterProvider router={testRouter} />);
 
     await waitFor(() => {
-      expect(screen.getByText('进入研究工作区')).toBeInTheDocument();
+      expect(screen.getByText('AI-Powered Personal Literature Database')).toBeInTheDocument();
     });
   });
 
@@ -219,7 +219,7 @@ describe('ProtectedRoute', () => {
     render(<RouterProvider router={testRouter} />);
 
     await waitFor(() => {
-      expect(screen.getByText('进入研究工作区')).toBeInTheDocument();
+      expect(screen.getByText('AI-Powered Personal Literature Database')).toBeInTheDocument();
     });
   });
 });
