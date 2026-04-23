@@ -10,6 +10,7 @@ STATUS_FILE="$OUTPUT_ROOT/matrix_status.tsv"
 QUERY_COUNT_LARGE="${QUERY_COUNT_LARGE:-48}"
 QUERY_COUNT_XLARGE="${QUERY_COUNT_XLARGE:-100}"
 REUSE_PREPARED_DATASET="${REUSE_PREPARED_DATASET:-1}"
+BENCHMARK_USER_ID="${BENCHMARK_USER_ID:-benchmark-user}"
 
 mkdir -p "$OUTPUT_ROOT"
 printf "dataset\tmodel_stack\treranker\tround\tstatus\n" > "$STATUS_FILE"
@@ -62,6 +63,7 @@ run_eval() {
   RETRIEVAL_MODEL_STACK="$model_stack" \
   "$PYTHON_BIN" "$ROOT_DIR/scripts/eval_retrieval.py" \
     --golden "$golden_path" \
+    --user-id "$BENCHMARK_USER_ID" \
     --dataset-label "$dataset_label" \
     --model-stack "$model_stack" \
     --run-label "$run_label" \
@@ -134,18 +136,27 @@ prepare_dataset() {
     embedding_dim="1024"
   fi
 
-  VECTOR_STORE_BACKEND="$BACKEND" \
-  EMBEDDING_DIMENSION="$embedding_dim" \
-  MILVUS_COLLECTION_CONTENTS_V2="$collection_name" \
-  EMBEDDING_MODEL="$embedding_model" \
-  RERANKER_MODEL="$reranker_model" \
-  RETRIEVAL_MODEL_STACK="$model_stack" \
-  "$PYTHON_BIN" "$ROOT_DIR/scripts/prepare_real_retrieval_dataset.py" \
-    --dataset-profile "$dataset_profile" \
-    --model-stack "$model_stack" \
-    --query-count "$query_count" \
-    --pages-per-paper "$PAGES_PER_PAPER" \
-    --output-dir "$ROOT_DIR/artifacts/benchmarks"
+  if ! VECTOR_STORE_BACKEND="$BACKEND" \
+    EMBEDDING_DIMENSION="$embedding_dim" \
+    MILVUS_COLLECTION_CONTENTS_V2="$collection_name" \
+    EMBEDDING_MODEL="$embedding_model" \
+    RERANKER_MODEL="$reranker_model" \
+    RETRIEVAL_MODEL_STACK="$model_stack" \
+    "$PYTHON_BIN" "$ROOT_DIR/scripts/prepare_real_retrieval_dataset.py" \
+      --user-id "$BENCHMARK_USER_ID" \
+      --dataset-profile "$dataset_profile" \
+      --model-stack "$model_stack" \
+      --query-count "$query_count" \
+      --pages-per-paper "$PAGES_PER_PAPER" \
+      --output-dir "$ROOT_DIR/artifacts/benchmarks"; then
+    echo "[matrix] dataset preparation failed for ${cache_key}" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$manifest_path" || ! -f "$golden_path" ]]; then
+    echo "[matrix] prepared dataset missing files for ${cache_key}" >&2
+    return 1
+  fi
 
   : > "$cache_marker"
 }

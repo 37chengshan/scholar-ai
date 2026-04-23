@@ -16,8 +16,9 @@ Implementation per D-01, D-02, D-11, D-12 from CONTEXT.md.
 
 import sys
 import os
+import json
 from importlib import import_module
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 import torch
 
@@ -380,10 +381,12 @@ class Qwen3VLMultimodalEmbedding:
                 return [0.0] * self.EMBEDDING_DIM
             return []
 
+        normalized_texts = [self._normalize_text_value(t) for t in texts]
+
         # Prepare inputs in Qwen3VLEmbedder format
         # Format: {"text": "text content"}
         # Replace empty strings with "NULL" placeholder
-        inputs = [{"text": t if t and t.strip() else "NULL"} for t in texts]
+        inputs = [{"text": t if t.strip() else "NULL"} for t in normalized_texts]
 
         try:
             # Get embeddings (already normalized)
@@ -396,8 +399,23 @@ class Qwen3VLMultimodalEmbedding:
                 return embeddings_list[0]
             return embeddings_list
         except Exception as e:
-            logger.error("Failed to encode texts", error=str(e), text_count=len(texts))
+            logger.error("Failed to encode texts", error=str(e), text_count=len(normalized_texts))
             raise
+
+    def _normalize_text_value(self, value: Any) -> str:
+        """Normalize unknown input values into tokenizer-safe text."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            normalized = value
+        elif isinstance(value, bytes):
+            normalized = value.decode("utf-8", errors="ignore")
+        elif isinstance(value, (dict, list, tuple, set)):
+            normalized = json.dumps(value, ensure_ascii=False, default=str)
+        else:
+            normalized = str(value)
+
+        return normalized.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
 
     def encode_table(
         self,
