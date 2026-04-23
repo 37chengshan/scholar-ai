@@ -5,7 +5,6 @@
  */
 
 import { motion, AnimatePresence } from 'motion/react';
-import { memo, useMemo } from 'react';
 import type { RunTimelineItem } from '@/features/chat/types/run';
 
 interface ExecutionTimelineProps {
@@ -31,38 +30,10 @@ const STATUS_COLORS: Record<string, string> = {
   success: 'text-emerald-500',
 };
 
-function ExecutionTimelineBase({ items, collapsed = false }: ExecutionTimelineProps) {
+export function ExecutionTimeline({ items, collapsed = false }: ExecutionTimelineProps) {
   if (items.length === 0) return null;
 
-  const visibleItems = useMemo(() => (collapsed ? items.slice(-5) : items), [collapsed, items]);
-
-  if (collapsed) {
-    return (
-      <div className="px-3 py-2">
-        {visibleItems.map((item) => {
-          const icon = TYPE_ICONS[item.type] || '•';
-          const colorClass = STATUS_COLORS[item.status || ''] || 'text-gray-400';
-
-          return (
-            <div key={item.id} className="flex items-center gap-2 py-0.5 text-xs">
-              <span className={`font-mono ${colorClass}`}>{icon}</span>
-              <span className="text-gray-600 dark:text-gray-400 truncate">{item.label}</span>
-              {item.status === 'running' && (
-                <span className="ml-auto">
-                  <span className="animate-pulse text-blue-400">●</span>
-                </span>
-              )}
-            </div>
-          );
-        })}
-        {items.length > 5 && (
-          <div className="text-xs text-gray-400 mt-1">
-            +{items.length - 5} more steps
-          </div>
-        )}
-      </div>
-    );
-  }
+  const visibleItems = collapsed ? items.slice(-5) : items;
 
   return (
     <div className="px-3 py-2">
@@ -90,8 +61,11 @@ function ExecutionTimelineBase({ items, collapsed = false }: ExecutionTimelinePr
           );
         })}
       </AnimatePresence>
+      {collapsed && items.length > 5 && (
+        <div className="text-xs text-gray-400 mt-1">
+          +{items.length - 5} more steps
+        </div>
+      )}
     </div>
   );
 }
-
-export const ExecutionTimeline = memo(ExecutionTimelineBase);

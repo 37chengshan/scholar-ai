@@ -23,7 +23,7 @@
  * - 0.4: Separate buffers for reasoning (think panel) and content (assistant message)
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef, useDeferredValue } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
@@ -168,7 +168,6 @@ export function ChatWorkspaceV2() {
     placeholderId,
     addUserMessage,
     addPlaceholderMessage,
-    rebindSessionId,
     bindPlaceholderToMessageId,
     syncStreamingMessage: patchStreamingMessage,
     markStreamError,
@@ -384,7 +383,6 @@ export function ChatWorkspaceV2() {
     streamApi,
     addUserMessage,
     addPlaceholderMessage,
-    rebindSessionId,
     bindPlaceholderToMessageId,
     syncStreamingMessage,
     ingestRuntimeEvent,
@@ -458,18 +456,6 @@ export function ChatWorkspaceV2() {
         : undefined,
     }));
   }, [streamState.reasoningBuffer, streamState.startedAt]);
-
-  const deferredRun = useDeferredValue(runtime.run);
-  const panelStreamState = useMemo(() => {
-    if (streamState.streamStatus !== 'streaming') {
-      return streamState;
-    }
-    return {
-      ...streamState,
-      contentBuffer: '',
-      reasoningBuffer: '',
-    };
-  }, [streamState]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -597,8 +583,8 @@ export function ChatWorkspaceV2() {
         {showRightPanel && (
           <ChatRightPanel
             selectedMessage={selectedMessage}
-            streamState={panelStreamState}
-            activeRun={deferredRun}
+            streamState={streamState}
+            activeRun={runtime.run}
             sessionTokens={sessionTokens}
             sessionCost={sessionCost}
             onStop={handleStop}
