@@ -33,6 +33,16 @@ export interface SearchResults {
   internal: SearchResult[];
   external: SearchResult[];
   total: number;
+  metadata?: SearchPlannerMetadata;
+}
+
+export interface SearchPlannerMetadata {
+  query_family?: string;
+  planner_query_count?: number;
+  decontextualized_query?: string;
+  second_pass_used?: boolean;
+  second_pass_gain?: number;
+  evidence_bundle_hit_count?: number;
 }
 
 export interface SearchFilters {
@@ -52,6 +62,21 @@ export interface UseSearchOptions {
 
 const PAGE_SIZE = 20;
 const SEARCH_QUERY_KEY = 'search-unified';
+const SEARCH_STALE_TIME_MS = 45_000;
+const SEARCH_GC_TIME_MS = 15 * 60_000;
+const sessionSearchCache = new Map<string, SearchResults>();
+
+function buildSessionCacheKey(query: string, page: number, filters: SearchFilters): string {
+  const normalizedSources = [...(filters.sources || [])].sort().join(',');
+  return [
+    query.trim().toLowerCase(),
+    page,
+    filters.yearFrom ?? '',
+    filters.yearTo ?? '',
+    filters.sortBy ?? 'relevance',
+    normalizedSources,
+  ].join('|');
+}
 
 interface FetchSearchParams {
   query: string;
@@ -99,6 +124,14 @@ async function fetchSearchResults({
     internal,
     external,
     total: data.total,
+    metadata: {
+      query_family: (data as Record<string, unknown>).query_family as string | undefined,
+      planner_query_count: (data as Record<string, unknown>).planner_query_count as number | undefined,
+      decontextualized_query: (data as Record<string, unknown>).decontextualized_query as string | undefined,
+      second_pass_used: (data as Record<string, unknown>).second_pass_used as boolean | undefined,
+      second_pass_gain: (data as Record<string, unknown>).second_pass_gain as number | undefined,
+      evidence_bundle_hit_count: (data as Record<string, unknown>).evidence_bundle_hit_count as number | undefined,
+    },
   };
 }
 
@@ -124,7 +157,24 @@ export function useSearch(options: UseSearchOptions = {}) {
     }),
     [filters?.yearFrom, filters?.yearTo, filters?.sortBy, filters?.sources],
   );
+  const hasInput = query.trim().length > 0;
   const queryEnabled = debouncedQuery.trim().length > 0;
+  const immediateCacheKey = useMemo(
+    () => buildSessionCacheKey(query, page, normalizedFilters),
+    [query, page, normalizedFilters],
+  );
+  const immediateCachedData = useMemo(
+    () => sessionSearchCache.get(immediateCacheKey) ?? null,
+    [immediateCacheKey],
+  );
+  const activeCacheKey = useMemo(
+    () => buildSessionCacheKey(debouncedQuery, page, normalizedFilters),
+    [debouncedQuery, page, normalizedFilters],
+  );
+  const sessionCachedData = useMemo(
+    () => sessionSearchCache.get(activeCacheKey) ?? null,
+    [activeCacheKey],
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -143,6 +193,9 @@ export function useSearch(options: UseSearchOptions = {}) {
     queryKey: [SEARCH_QUERY_KEY, debouncedQuery, page, normalizedFilters],
     enabled: queryEnabled,
     placeholderData: keepPreviousData,
+    staleTime: SEARCH_STALE_TIME_MS,
+    gcTime: SEARCH_GC_TIME_MS,
+    initialData: () => (queryEnabled ? (sessionSearchCache.get(activeCacheKey) ?? undefined) : undefined),
     queryFn: ({ signal }) =>
       fetchSearchResults({
         query: debouncedQuery,
@@ -151,6 +204,13 @@ export function useSearch(options: UseSearchOptions = {}) {
         signal,
       }),
   });
+
+  useEffect(() => {
+    if (!queryEnabled || !searchQuery.data) {
+      return;
+    }
+    sessionSearchCache.set(activeCacheKey, searchQuery.data);
+  }, [activeCacheKey, queryEnabled, searchQuery.data]);
 
   useEffect(() => {
     if (!queryEnabled || !searchQuery.data) {
@@ -181,10 +241,10 @@ export function useSearch(options: UseSearchOptions = {}) {
   }, [debouncedQuery, normalizedFilters, page, queryClient, queryEnabled, searchQuery.data]);
 
   const shouldHidePlaceholderData = searchQuery.isPlaceholderData && page === 0;
-  const results = queryEnabled
+  const results = hasInput
     ? shouldHidePlaceholderData
-      ? null
-      : (searchQuery.data ?? null)
+      ? (immediateCachedData ?? sessionCachedData ?? null)
+      : (searchQuery.data ?? immediateCachedData ?? sessionCachedData ?? null)
     : null;
   const isInitialLoading = queryEnabled && searchQuery.isFetching && !searchQuery.data;
   const isPageFetching = queryEnabled && searchQuery.isFetching && !!searchQuery.data;

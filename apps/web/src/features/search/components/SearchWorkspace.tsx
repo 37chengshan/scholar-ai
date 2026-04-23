@@ -120,6 +120,21 @@ export function SearchWorkspace() {
     await importFlow.startImportSelection(paper);
   };
 
+  const plannerMetaRows = useMemo(() => {
+    const metadata = results?.metadata;
+    if (!metadata) {
+      return [];
+    }
+    return [
+      { label: 'query_family', value: metadata.query_family },
+      { label: 'planner_query_count', value: metadata.planner_query_count },
+      { label: 'decontextualized_query', value: metadata.decontextualized_query },
+      { label: 'second_pass_used', value: metadata.second_pass_used },
+      { label: 'second_pass_gain', value: metadata.second_pass_gain },
+      { label: 'evidence_bundle_hit_count', value: metadata.evidence_bundle_hit_count },
+    ].filter((row) => row.value !== undefined && row.value !== null && row.value !== '');
+  }, [results?.metadata]);
+
   return (
     <section className="h-full flex font-sans bg-background text-foreground relative selection:bg-primary selection:text-primary-foreground" data-testid="search-workspace-root">
       <SearchSidebar
@@ -274,6 +289,26 @@ export function SearchWorkspace() {
                 </span>
               ))}
             </div>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">
+              Planner / Evidence
+            </h3>
+            {plannerMetaRows.length > 0 ? (
+              <dl className="mt-1 space-y-2 text-[11px]">
+                {plannerMetaRows.map((row) => (
+                  <div key={row.label} className="grid grid-cols-[1fr_auto] items-start gap-2">
+                    <dt className="text-muted-foreground">{row.label}</dt>
+                    <dd className="text-foreground break-all text-right">{String(row.value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                {isZh ? '当前结果暂无 planner/evidence 元数据' : 'Planner/evidence metadata is not available for this result set'}
+              </p>
+            )}
           </section>
         </div>
 
