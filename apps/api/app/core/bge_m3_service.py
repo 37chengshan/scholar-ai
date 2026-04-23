@@ -10,7 +10,8 @@ BGE-M3 is used as the unified embedding model for all content types
 to enable cross-modal retrieval in a single vector space.
 """
 
-from typing import Dict, List, Optional, Union
+import json
+from typing import Any, Dict, List, Optional, Union
 
 from FlagEmbedding import BGEM3FlagModel
 
@@ -119,15 +120,17 @@ class BGEM3Service:
                 return [0.0] * self.EMBEDDING_DIM
             return []
 
-        # Check for empty strings and replace with placeholder
-        processed_texts = []
-        empty_indices = []
+        # Normalize all values to strings before tokenization.
+        # Dataset extraction may occasionally surface non-string values.
+        processed_texts: List[str] = []
+        empty_indices: set[int] = set()
         for i, text in enumerate(texts):
-            if not text or not text.strip():
+            normalized_text = self._normalize_text_value(text)
+            if not normalized_text.strip():
                 processed_texts.append("")  # Will be handled below
-                empty_indices.append(i)
+                empty_indices.add(i)
             else:
-                processed_texts.append(text)
+                processed_texts.append(normalized_text)
 
         # Encode non-empty texts - filter out empty strings
         non_empty_texts = [t for t in processed_texts if t.strip()]
@@ -159,6 +162,22 @@ class BGEM3Service:
         if is_single:
             return embeddings[0] if embeddings else [0.0] * self.EMBEDDING_DIM
         return embeddings
+
+    def _normalize_text_value(self, value: Any) -> str:
+        """Normalize unknown input values into tokenizer-safe text."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            normalized = value
+        elif isinstance(value, bytes):
+            normalized = value.decode("utf-8", errors="ignore")
+        elif isinstance(value, (dict, list, tuple, set)):
+            normalized = json.dumps(value, ensure_ascii=False, default=str)
+        else:
+            normalized = str(value)
+
+        # Drop invalid unicode code points that may appear in extracted PDF text.
+        return normalized.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
 
     def encode_table(
         self,

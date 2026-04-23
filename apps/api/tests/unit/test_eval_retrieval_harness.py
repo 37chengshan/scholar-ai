@@ -55,6 +55,8 @@ async def test_mock_eval_uses_paper_ids_for_single_paper_queries(tmp_path: Path)
     assert report["paper_hit_rate_avg"] == pytest.approx(1.0)
     assert report["recall_at_5_avg"] == pytest.approx(1.0)
     assert report["mrr_avg"] == pytest.approx(1.0)
+    assert "chunk_hit_rate_avg" in report
+    assert "latency_p95_ms" in report
 
 
 @pytest.mark.asyncio
@@ -135,9 +137,16 @@ async def test_real_eval_forwards_use_reranker_flag(tmp_path: Path, monkeypatch:
         str(golden_path),
         mock_mode=False,
         use_reranker=True,
+        dataset_label="large",
+        model_stack="qwen_dual",
+        run_label="round2",
     )
 
     assert report["total_queries"] == 1
     assert report["use_reranker"] is True
+    assert report["experiment_tag"] == "large_qwen_dual_on_round2"
+    assert report["dataset_label"] == "large"
+    assert report["model_stack"] == "qwen_dual"
+    assert report["run_label"] == "round2"
     assert calls
     assert calls[0]["use_reranker"] is True

@@ -124,4 +124,34 @@ describe('useSearch', () => {
 
     expect(result.current.results?.external[0]?.id).toBe('second-0');
   });
+
+  it('reuses cached results immediately when switching back to a previous query', async () => {
+    const unifiedMock = vi.mocked(searchApi.unified);
+    unifiedMock.mockImplementation(async (query, limit, offset) => (
+      buildUnifiedResponse(query, offset ?? 0, limit ?? 20)
+    ));
+
+    const wrapper = createWrapper();
+    const first = renderHook(
+      () => useSearch({ debounceMs: 1 }),
+      { wrapper },
+    );
+
+    act(() => {
+      first.result.current.setQuery('alpha');
+    });
+
+    await waitFor(() => {
+      expect(first.result.current.results?.external[0]?.id).toBe('alpha-0');
+    });
+
+    first.unmount();
+
+    const second = renderHook(
+      () => useSearch({ debounceMs: 1, initialQuery: 'alpha' }),
+      { wrapper },
+    );
+
+    expect(second.result.current.results?.external[0]?.id).toBe('alpha-0');
+  });
 });

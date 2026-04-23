@@ -39,7 +39,19 @@ export type RunAction =
   | { type: 'ARTIFACT_ADD'; artifact: RunArtifact }
   | { type: 'CONFIRMATION_REQUEST'; confirmation: ConfirmationRequest }
   | { type: 'RECOVERY_AVAILABLE'; actions: string[]; context: Record<string, unknown> }
-  | { type: 'RUN_COMPLETE'; status: string; finalSummary?: FinalSummary; tokensUsed: number; cost: number }
+  | {
+      type: 'RUN_COMPLETE';
+      status: string;
+      finalSummary?: FinalSummary;
+      tokensUsed: number;
+      cost: number;
+      queryFamily?: string;
+      plannerQueryCount?: number;
+      decontextualizedQuery?: string;
+      secondPassUsed?: boolean;
+      secondPassGain?: number;
+      evidenceBundleHitCount?: number;
+    }
   | { type: 'RUN_RESET' };
 
 // ── Initial State ────────────────────────────────────────
@@ -84,6 +96,30 @@ function phaseToStatus(phase: RunPhase): RunStatus {
   }
 }
 
+let timelineCounter = 0;
+
+function nextTimelineId(prefix: string): string {
+  timelineCounter += 1;
+  return `${prefix}-${timelineCounter}`;
+}
+
+function appendOrReplaceLastByType(
+  timeline: RunTimelineItem[],
+  type: RunTimelineItem['type'],
+  nextItem: RunTimelineItem,
+): RunTimelineItem[] {
+  if (timeline.length === 0) {
+    return [nextItem];
+  }
+
+  const last = timeline[timeline.length - 1];
+  if (last.type === type) {
+    return [...timeline.slice(0, -1), { ...nextItem, id: last.id }];
+  }
+
+  return [...timeline, nextItem];
+}
+
 // ── Reducer ──────────────────────────────────────────────
 
 export function runReducer(state: AgentRun, action: RunAction): AgentRun {
@@ -104,7 +140,7 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
         objective: action.objective,
         startedAt: now,
         timeline: [{
-          id: `tl-run-start-${Date.now()}`,
+          id: nextTimelineId('tl-run-start'),
           type: 'phase',
           label: 'Run started',
           timestamp: Date.now(),
@@ -115,7 +151,7 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
     case 'RUN_PHASE_CHANGE': {
       const newStatus = phaseToStatus(action.phase);
       const item: RunTimelineItem = {
-        id: `tl-phase-${Date.now()}`,
+        id: nextTimelineId('tl-phase'),
         type: 'phase',
         label: action.label || action.phase,
         timestamp: Date.now(),
@@ -209,7 +245,7 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
 
     case 'CONFIRMATION_REQUEST': {
       const item: RunTimelineItem = {
-        id: `tl-confirm-${Date.now()}`,
+        id: nextTimelineId('tl-confirm'),
         type: 'confirmation',
         label: action.confirmation.reason,
         timestamp: Date.now(),
@@ -219,8 +255,8 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
         ...state,
         confirmation: action.confirmation,
         pendingActions: [
-          { id: `pa-confirm-${Date.now()}`, type: 'confirm', tool: action.confirmation.toolName },
-          { id: `pa-reject-${Date.now()}`, type: 'reject', tool: action.confirmation.toolName },
+          { id: nextTimelineId('pa-confirm'), type: 'confirm', tool: action.confirmation.toolName },
+          { id: nextTimelineId('pa-reject'), type: 'reject', tool: action.confirmation.toolName },
         ],
         status: 'waiting_confirmation',
         phase: 'waiting_for_user',
@@ -231,22 +267,23 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
 
     case 'RECOVERY_AVAILABLE': {
       const pendingActions: PendingAction[] = action.actions.map(a => ({
-        id: `pa-${a}-${Date.now()}`,
+        id: nextTimelineId(`pa-${a}`),
         type: a as PendingAction['type'],
       }));
       const item: RunTimelineItem = {
-        id: `tl-recovery-${Date.now()}`,
+        id: nextTimelineId('tl-recovery'),
         type: 'recovery',
         label: 'Recovery available',
         timestamp: Date.now(),
         metadata: { actions: action.actions, context: action.context },
       };
+      const timeline = appendOrReplaceLastByType(state.timeline, 'recovery', item);
       return {
         ...state,
         recoverable: true,
         confirmation: null,
         pendingActions,
-        timeline: [...state.timeline, item],
+        timeline,
       };
     }
 
@@ -254,12 +291,13 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
       const status = action.status as RunStatus;
       const phase: RunPhase = status === 'completed' ? 'completed' : status === 'failed' ? 'failed' : 'cancelled';
       const item: RunTimelineItem = {
-        id: `tl-done-${Date.now()}`,
+        id: nextTimelineId('tl-done'),
         type: 'done',
         label: `Run ${action.status}`,
         timestamp: Date.now(),
         status: action.status,
       };
+      const timeline = appendOrReplaceLastByType(state.timeline, 'done', item);
       return {
         ...state,
         status,
@@ -272,8 +310,14 @@ export function runReducer(state: AgentRun, action: RunAction): AgentRun {
         outcome: {
           ...state.outcome,
           finalSummary: action.finalSummary,
+          queryFamily: action.queryFamily,
+          plannerQueryCount: action.plannerQueryCount,
+          decontextualizedQuery: action.decontextualizedQuery,
+          secondPassUsed: action.secondPassUsed,
+          secondPassGain: action.secondPassGain,
+          evidenceBundleHitCount: action.evidenceBundleHitCount,
         },
-        timeline: [...state.timeline, item],
+        timeline,
       };
     }
 
@@ -336,6 +380,12 @@ export function mapSSEToRunAction(
         finalSummary: data.final_summary as FinalSummary | undefined,
         tokensUsed: (data.tokens_used as number) || 0,
         cost: (data.cost as number) || 0,
+        queryFamily: data.query_family as string | undefined,
+        plannerQueryCount: data.planner_query_count as number | undefined,
+        decontextualizedQuery: data.decontextualized_query as string | undefined,
+        secondPassUsed: data.second_pass_used as boolean | undefined,
+        secondPassGain: data.second_pass_gain as number | undefined,
+        evidenceBundleHitCount: data.evidence_bundle_hit_count as number | undefined,
       };
 
     case 'recovery_available':

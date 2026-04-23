@@ -11,8 +11,18 @@ from app.workers.storage_manager import StorageManager
 
 def test_build_evidence_metadata_extracts_references_and_span():
     chunk = {
+        "paper_id": "paper-1",
         "section": "results",
+        "raw_section_path": "Findings",
+        "normalized_section_path": "result",
+        "normalized_section_leaf": "result",
+        "section_level": 1,
+        "parent_section_path": "",
         "page_start": 5,
+        "char_start": 10,
+        "char_end": 90,
+        "anchor_text": "Figure 2 reports results",
+        "chunk_id": "chunk_abc123",
     }
     text = "Figure 2: Model architecture. Table 3 reports metrics for ablation."
     parse_metadata = {
@@ -26,6 +36,15 @@ def test_build_evidence_metadata_extracts_references_and_span():
 
     assert metadata["evidence_version"] == "v1"
     assert metadata["section_path"] == "results"
+    assert metadata["raw_section_path"] == "Findings"
+    assert metadata["normalized_section_path"] == "result"
+    assert metadata["normalized_section_leaf"] == "result"
+    assert metadata["section_level"] == 1
+    assert metadata["parent_section_path"] == ""
+    assert metadata["chunk_id"] == "chunk_abc123"
+    assert metadata["char_start"] == 10
+    assert metadata["char_end"] == 90
+    assert metadata["anchor_text"] == "Figure 2 reports results"
     assert metadata["page_num"] == 5
     assert metadata["figure_id"] == "figure-2"
     assert metadata["table_id"] == "table-3"

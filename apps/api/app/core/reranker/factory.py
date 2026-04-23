@@ -47,7 +47,11 @@ class RerankerServiceFactory:
     _instances: Dict[str, BaseRerankerService] = {}
 
     @classmethod
-    def create(cls) -> BaseRerankerService:
+    def create(
+        cls,
+        model_type: str | None = None,
+        quantization: str | None = None,
+    ) -> BaseRerankerService:
         """Create or retrieve cached reranker service instance.
         
         Uses RERANKER_MODEL and RERANKER_QUANTIZATION from configuration.
@@ -60,18 +64,18 @@ class RerankerServiceFactory:
             ValueError: If RERANKER_MODEL is unknown
         """
         # Get configuration (with defaults for backward compatibility)
-        model_type = getattr(settings, "RERANKER_MODEL", "bge-reranker")
-        quantization = getattr(settings, "RERANKER_QUANTIZATION", "fp16")
+        resolved_model_type = model_type or getattr(settings, "RERANKER_MODEL", "bge-reranker")
+        resolved_quantization = quantization or getattr(settings, "RERANKER_QUANTIZATION", "fp16")
         device = "auto"  # Auto-detect device
 
         # Create cache key
-        cache_key = f"{model_type}:{device}:{quantization}"
+        cache_key = f"{resolved_model_type}:{device}:{resolved_quantization}"
 
         # Return cached instance if exists
         if cache_key in cls._instances:
             logger.debug(
                 "Returning cached reranker service",
-                model_type=model_type,
+                model_type=resolved_model_type,
                 cache_key=cache_key,
             )
             return cls._instances[cache_key]
@@ -79,22 +83,22 @@ class RerankerServiceFactory:
         # Create new instance based on model type
         logger.info(
             "Creating new reranker service",
-            model_type=model_type,
+            model_type=resolved_model_type,
             device=device,
-            quantization=quantization,
+            quantization=resolved_quantization,
         )
 
-        if model_type == "bge-reranker":
+        if resolved_model_type == "bge-reranker":
             from app.core.reranker.bge_reranker import BGERerankerService
             service = BGERerankerService()
-        elif model_type == "qwen3-vl-reranker":
+        elif resolved_model_type == "qwen3-vl-reranker":
             service = Qwen3VLRerankerService(
                 device=device,
-                quantization=quantization
+                quantization=resolved_quantization
             )
         else:
             raise ValueError(
-                f"Unknown reranker model: {model_type}. "
+                f"Unknown reranker model: {resolved_model_type}. "
                 f"Supported models: bge-reranker, qwen3-vl-reranker"
             )
 
@@ -103,7 +107,7 @@ class RerankerServiceFactory:
 
         logger.info(
             "Reranker service created and cached",
-            model_type=model_type,
+            model_type=resolved_model_type,
             cache_key=cache_key,
         )
 
@@ -130,6 +134,17 @@ def get_reranker_service() -> BaseRerankerService:
         Reranker service instance
     """
     return RerankerServiceFactory.create()
+
+
+def get_reranker_service_for_experiment(
+    model_type: str,
+    quantization: str | None = None,
+) -> BaseRerankerService:
+    """Return explicit reranker service for benchmark experiments."""
+    return RerankerServiceFactory.create(
+        model_type=model_type,
+        quantization=quantization,
+    )
 
 
 async def create_reranker_service() -> BaseRerankerService:
