@@ -5,6 +5,7 @@
  * - Redirects to /login when not authenticated
  * - Renders children when authenticated
  * - Shows loading state
+ * - Keeps route assertions aligned with the current landing-page copy
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
