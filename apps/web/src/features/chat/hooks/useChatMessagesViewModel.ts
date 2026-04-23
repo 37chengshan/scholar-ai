@@ -63,17 +63,6 @@ export function useChatMessagesViewModel({
     setPlaceholderId(message.id);
   }, []);
 
-  const rebindSessionId = useCallback((fromSessionId: string, toSessionId: string) => {
-    if (!fromSessionId || !toSessionId || fromSessionId === toSessionId) {
-      return;
-    }
-    setLocalMessages((prev) => prev.map((message) => (
-      message.session_id === fromSessionId
-        ? { ...message, session_id: toSessionId }
-        : message
-    )));
-  }, []);
-
   const bindPlaceholderToMessageId = useCallback((nextMessageId: string, previousPlaceholderId: string) => {
     setLocalMessages((prev) => prev.map((message) => (
       message.id === previousPlaceholderId
@@ -226,7 +215,6 @@ export function useChatMessagesViewModel({
     addUserMessage,
     addPlaceholderMessage,
     bindPlaceholderToMessageId,
-    rebindSessionId,
     syncStreamingMessage,
     markStreamError,
     markStreamCancelled,
