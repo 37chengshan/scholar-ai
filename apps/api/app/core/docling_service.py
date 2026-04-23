@@ -28,6 +28,13 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
 from docling_core.types.doc import TextItem, TableItem, PictureItem
 
+from app.core.chunk_identity import build_stable_chunk_id
+from app.core.section_normalizer import (
+    normalize_section_path,
+    section_leaf,
+    section_parent_path,
+    serialize_section_path,
+)
 from app.utils.logger import logger
 
 
@@ -678,6 +685,10 @@ class DoclingParser:
             section = (
                 self._assign_section(text, section_info, page=page) if section_info else ""
             )
+            normalized_path_tokens = normalize_section_path(section)
+            normalized_path = serialize_section_path(normalized_path_tokens)
+            normalized_leaf = section_leaf(normalized_path_tokens)
+            parent_path = section_parent_path(normalized_path_tokens)
 
             has_equations = self._has_equations(text)
             has_figures = "figure" in text.lower() or "table" in text.lower()
@@ -693,16 +704,25 @@ class DoclingParser:
 
             chunks.append(
                 {
+                    "paper_id": paper_id,
                     "text": text,
                     "page_start": page,
                     "page_end": page,
                     "section": section,
+                    "raw_section_path": section,
+                    "normalized_section_path": normalized_path,
+                    "normalized_section_leaf": normalized_leaf,
+                    "section_level": len(normalized_path_tokens),
+                    "parent_section_path": parent_path,
                     "media": [],
                     "has_equations": has_equations,
                     "has_figures": has_figures,
                     "has_special_boundaries": has_special_boundaries,
                     "adaptive_size": adaptive_size,
                     "word_count": word_count,
+                    "char_start": 0,
+                    "char_end": max(len(text), 1),
+                    "anchor_text": text.replace("\n", " ").strip()[:200],
                 }
             )
 
@@ -833,6 +853,8 @@ class DoclingParser:
                 current_chunk = chunk.copy()
                 current_chunk["word_count"] = word_count
                 current_chunk["overlap"] = 0
+                current_chunk.setdefault("char_start", 0)
+                current_chunk.setdefault("char_end", max(len(current_chunk.get("text", "")), 1))
             else:
                 current_words = current_chunk["word_count"]
                 new_total = current_words + word_count
@@ -849,13 +871,29 @@ class DoclingParser:
                     current_chunk["text"] += "\n\n" + chunk["text"]
                     current_chunk["word_count"] += word_count
                     current_chunk["page_end"] = chunk["page_end"]
+                    current_chunk["char_end"] = max(
+                        int(current_chunk.get("char_end", 0)),
+                        int(chunk.get("char_end", 0)),
+                    )
                     if chunk.get("section"):
                         current_chunk["section"] = chunk["section"]
+                    if chunk.get("raw_section_path"):
+                        current_chunk["raw_section_path"] = chunk["raw_section_path"]
+                    if chunk.get("normalized_section_path"):
+                        current_chunk["normalized_section_path"] = chunk["normalized_section_path"]
+                    if chunk.get("normalized_section_leaf"):
+                        current_chunk["normalized_section_leaf"] = chunk["normalized_section_leaf"]
+                    if "section_level" in chunk:
+                        current_chunk["section_level"] = chunk["section_level"]
+                    if "parent_section_path" in chunk:
+                        current_chunk["parent_section_path"] = chunk["parent_section_path"]
                 else:
                     merged.append(current_chunk)
                     current_chunk = chunk.copy()
                     current_chunk["word_count"] = word_count
                     current_chunk["overlap"] = 0
+                    current_chunk.setdefault("char_start", 0)
+                    current_chunk.setdefault("char_end", max(len(current_chunk.get("text", "")), 1))
 
         if current_chunk:
             merged.append(current_chunk)
@@ -875,6 +913,27 @@ class DoclingParser:
 
         for chunk in merged:
             chunk["word_count"] = len(chunk["text"].split())
+            raw_section_path = str(chunk.get("raw_section_path") or chunk.get("section") or "")
+            normalized_path_tokens = normalize_section_path(raw_section_path)
+            normalized_path = serialize_section_path(normalized_path_tokens)
+            chunk["raw_section_path"] = raw_section_path
+            chunk["normalized_section_path"] = normalized_path
+            chunk["normalized_section_leaf"] = section_leaf(normalized_path_tokens)
+            chunk["section_level"] = len(normalized_path_tokens)
+            chunk["parent_section_path"] = section_parent_path(normalized_path_tokens)
+            page_num = int(chunk.get("page_start") or 0)
+            char_start = int(chunk.get("char_start") or 0)
+            char_end = int(chunk.get("char_end") or max(len(chunk.get("text", "")), 1))
+            chunk["char_start"] = char_start
+            chunk["char_end"] = char_end
+            chunk["anchor_text"] = chunk.get("text", "").replace("\n", " ").strip()[:200]
+            chunk["chunk_id"] = build_stable_chunk_id(
+                paper_id=chunk.get("paper_id") or "",
+                page_num=page_num,
+                normalized_section_path=normalized_path,
+                char_start=char_start,
+                char_end=char_end,
+            )
             if "adaptive_size" in chunk:
                 del chunk["adaptive_size"]
 

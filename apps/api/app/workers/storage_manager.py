@@ -16,10 +16,17 @@ from typing import Any, Dict, List, Optional
 import asyncpg
 
 from app.workers.pipeline_context import PipelineContext
+from app.core.chunk_identity import build_stable_chunk_id
 from app.core.milvus_service import get_milvus_service, calculate_chunk_quality
 from app.core.neo4j_service import Neo4jService
 from app.core.notes_generator import NotesGenerator
 from app.core.docling_service import DoclingParser
+from app.core.section_normalizer import (
+    normalize_section_path,
+    section_leaf,
+    section_parent_path,
+    serialize_section_path,
+)
 from app.core.qwen3vl_service import get_qwen3vl_service
 from app.utils.logger import logger
 
@@ -168,7 +175,32 @@ class StorageManager:
         section = chunk.get("section") or ""
         page_num = chunk.get("page_start") or 0
         snippet = chunk_text.replace("\n", " ").strip()
-        anchor_text = snippet[:200]
+        anchor_text = str(chunk.get("anchor_text") or snippet[:200])
+        raw_section_path = str(chunk.get("raw_section_path") or section)
+        normalized_section_path = str(
+            chunk.get("normalized_section_path")
+            or serialize_section_path(normalize_section_path(raw_section_path))
+        )
+        normalized_section_leaf = str(
+            chunk.get("normalized_section_leaf") or section_leaf(normalize_section_path(raw_section_path))
+        )
+        section_level = int(chunk.get("section_level") or len(normalize_section_path(raw_section_path)))
+        parent_section_path = str(
+            chunk.get("parent_section_path")
+            or section_parent_path(normalize_section_path(raw_section_path))
+        )
+        char_start = int(chunk.get("char_start") or 0)
+        char_end = int(chunk.get("char_end") or max(len(chunk_text), 1))
+        chunk_id = str(
+            chunk.get("chunk_id")
+            or build_stable_chunk_id(
+                paper_id=str(chunk.get("paper_id") or ""),
+                page_num=int(page_num),
+                normalized_section_path=normalized_section_path,
+                char_start=char_start,
+                char_end=char_end,
+            )
+        )
 
         figure_match = re.search(r"\b(?:figure|fig\.)\s*(\d+)\b", snippet, re.IGNORECASE)
         table_match = re.search(r"\btable\s*(\d+)\b", snippet, re.IGNORECASE)
@@ -198,8 +230,16 @@ class StorageManager:
             "evidence_version": "v1",
             "content_subtype": "paragraph",
             "section_path": section,
+            "raw_section_path": raw_section_path,
+            "normalized_section_path": normalized_section_path,
+            "normalized_section_leaf": normalized_section_leaf,
+            "section_level": section_level,
+            "parent_section_path": parent_section_path,
             "anchor_text": anchor_text,
             "source_span": source_span,
+            "chunk_id": chunk_id,
+            "char_start": char_start,
+            "char_end": char_end,
             "figure_id": figure_id,
             "table_id": table_id,
             "caption": caption,
@@ -404,6 +444,38 @@ class StorageManager:
             if chunk.get("section") is None:
                 chunk["section"] = ""
 
+            raw_section_path = str(chunk.get("raw_section_path") or chunk.get("section") or "")
+            normalized_path_tokens = normalize_section_path(raw_section_path)
+            normalized_section_path = serialize_section_path(normalized_path_tokens)
+            normalized_leaf = section_leaf(normalized_path_tokens)
+            section_level = len(normalized_path_tokens)
+            parent_path = section_parent_path(normalized_path_tokens)
+
+            page_num = int(chunk.get("page_start") or 0)
+            char_start = int(chunk.get("char_start") or 0)
+            chunk_text_raw = str(chunk.get("text") or "")
+            char_end = int(chunk.get("char_end") or max(char_start + len(chunk_text_raw), char_start + 1))
+            anchor_text = str(chunk.get("anchor_text") or chunk_text_raw.replace("\n", " ").strip()[:200])
+
+            chunk_id = build_stable_chunk_id(
+                paper_id=ctx.paper_id,
+                page_num=page_num,
+                normalized_section_path=normalized_section_path,
+                char_start=char_start,
+                char_end=char_end,
+            )
+            chunk["raw_section_path"] = raw_section_path
+            chunk["normalized_section_path"] = normalized_section_path
+            chunk["normalized_section_leaf"] = normalized_leaf
+            chunk["section_level"] = section_level
+            chunk["parent_section_path"] = parent_path
+            chunk["page_num"] = page_num
+            chunk["char_start"] = char_start
+            chunk["char_end"] = char_end
+            chunk["anchor_text"] = anchor_text
+            chunk["chunk_id"] = chunk_id
+            chunk["paper_id"] = ctx.paper_id
+
             chunk_text = self._sanitize_text(chunk.get("text", "")) or ""
             if not chunk_text or not chunk_text.strip():
                 chunk_text = "NULL"
@@ -471,7 +543,7 @@ class StorageManager:
 
             # Fix: Handle None values in section field
             # When section is None, use empty string instead
-            section = chunk.get("section") or ""
+            section = chunk.get("normalized_section_leaf") or chunk.get("section") or ""
 
             quality_score = calculate_chunk_quality(
                 {
@@ -490,10 +562,19 @@ class StorageManager:
             raw_data = self._build_evidence_metadata(chunk, chunk_text, parse_metadata)
 
             text_record = {
+                "chunk_id": chunk_id,
                 "paper_id": ctx.paper_id,
                 "user_id": ctx.user_id,
                 "content_type": "text",
-                "page_num": chunk.get("page_start", 0),
+                "page_num": page_num,
+                "char_start": char_start,
+                "char_end": char_end,
+                "anchor_text": anchor_text,
+                "raw_section_path": raw_section_path,
+                "normalized_section_path": normalized_section_path,
+                "normalized_section_leaf": normalized_leaf,
+                "section_level": section_level,
+                "parent_section_path": parent_path,
                 "section": section,
                 "text": chunk_text,
                 "content_data": chunk_text[:8000],
