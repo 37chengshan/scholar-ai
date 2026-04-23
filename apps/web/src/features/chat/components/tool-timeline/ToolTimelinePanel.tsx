@@ -21,6 +21,7 @@ export function ToolTimelinePanel({ visible, timeline }: ToolTimelinePanelProps)
     <div className="w-full">
       {/* Collapsed summary row */}
       <button
+        type="button"
         onClick={() => setExpanded(v => !v)}
         className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-700 transition-colors py-1 group"
       >
@@ -60,4 +61,3 @@ export function ToolTimelinePanel({ visible, timeline }: ToolTimelinePanelProps)
     </div>
   );
 }
-

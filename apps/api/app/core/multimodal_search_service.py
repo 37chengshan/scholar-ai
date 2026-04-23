@@ -35,7 +35,10 @@ from app.core.query_metadata_extractor import extract_metadata_filters
 from app.core.query_planner import build_academic_query_plan
 from app.core.retrieval_scoring import RetrievalScoringService
 from app.core.retrieval_trace import RetrievalTraceService
+from app.core.specter2_embedding_service import create_embedding_service as create_scientific_embedding_service
 from app.core.vector_store_repository import get_vector_store_repository
+from app.core.multi_index_router import route_query, uses_summary_index
+from app.core.citation_hints import build_all_hints
 from app.models.retrieval import RetrievedChunk, SearchConstraints
 from app.config import settings, resolve_model_stack
 from app.utils.logger import logger
@@ -58,6 +61,13 @@ class MultimodalSearchService:
         self.embedding_service = get_embedding_service()
         self.vector_store = get_vector_store_repository()
         self.reranker = get_reranker_service()
+        self.scientific_embedding_service = None
+        if settings.SCIENTIFIC_TEXT_BRANCH_ENABLED:
+            scientific_backend = settings.SCIENTIFIC_TEXT_EMBEDDING_BACKEND
+            scientific_kwargs: Dict[str, Any] = {"backend": scientific_backend}
+            if scientific_backend == "specter2":
+                scientific_kwargs["adapter"] = settings.SCIENTIFIC_TEXT_SPECTER_ADAPTER
+            self.scientific_embedding_service = create_scientific_embedding_service(**scientific_kwargs)
         self.scoring = RetrievalScoringService(
             vector_weight=settings.RETRIEVAL_VECTOR_WEIGHT,
             sparse_weight=settings.RETRIEVAL_SPARSE_WEIGHT,
@@ -78,16 +88,21 @@ class MultimodalSearchService:
         if callable(load_model):
             load_model()
 
-    @staticmethod
-    def _ensure_service_loaded(service: Any) -> None:
-        """Lazily load model-backed services when startup mode is lazy."""
-        is_loaded = getattr(service, "is_loaded", None)
-        if callable(is_loaded) and is_loaded():
-            return
+    def _encode_scientific_query(self, query: str) -> Optional[List[float]]:
+        if self.scientific_embedding_service is None:
+            return None
 
-        load_model = getattr(service, "load_model", None)
-        if callable(load_model):
-            load_model()
+        try:
+            if hasattr(self.scientific_embedding_service, "generate_embedding"):
+                vector = self.scientific_embedding_service.generate_embedding(query)
+            elif hasattr(self.scientific_embedding_service, "encode_text"):
+                vector = self.scientific_embedding_service.encode_text(query)
+            else:
+                return None
+            return vector
+        except Exception as exc:
+            logger.warning("Scientific text branch embedding failed", error=str(exc))
+            return None
 
     @staticmethod
     def _raw_score(hit: Dict[str, Any]) -> float:
@@ -358,11 +373,21 @@ class MultimodalSearchService:
         # Step 5: Encode planned queries for dense retrieval
         self._ensure_service_loaded(self.embedding_service)
         query_embeddings = [self.embedding_service.encode_text(q) for q in expanded_queries]
+        scientific_query_embeddings = [
+            self._encode_scientific_query(q)
+            for q in expanded_queries
+        ]
+        scientific_query_embeddings = [emb for emb in scientific_query_embeddings if emb]
 
         # Step 6: Search vector store across modalities with constraints pushdown
         expected_evidence_types = academic_plan.get("expected_evidence_types") or ["text", "image", "table"]
         content_types = content_types or expected_evidence_types
         multimodal_results: Dict[str, List[Dict[str, Any]]] = {}
+        branch_results: Dict[str, List[Dict[str, Any]]] = {
+            "qwen_multimodal_dense": [],
+            "scientific_text_dense": [],
+            "sparse_bm25": [],
+        }
 
         for content_type in content_types:
             try:
@@ -399,8 +424,76 @@ class MultimodalSearchService:
                 )
                 multimodal_results[content_type] = []
 
-        # Step 4: Weighted RRF fusion
-        fused = weighted_rrf_fusion(multimodal_results, weights)
+        # Dense multimodal branch (Qwen/BGE depending on embedding stack)
+        for modality in ("text", "image", "table"):
+            branch_results["qwen_multimodal_dense"].extend(multimodal_results.get(modality, []))
+
+        # Scientific text dense branch (prefer text chunks; safe fallback on failure)
+        if scientific_query_embeddings:
+            scientific_hits: List[Dict[str, Any]] = []
+            for scientific_embedding in scientific_query_embeddings[: settings.SCIENTIFIC_TEXT_MAX_QUERIES]:
+                try:
+                    text_hits = self.vector_store.search(
+                        embedding=scientific_embedding,
+                        user_id=user_id,
+                        content_type="text",
+                        top_k=settings.SCIENTIFIC_TEXT_TOP_K,
+                        constraints=constraints,
+                    )
+                except Exception as e:
+                    logger.warning("Scientific text dense branch skipped", error=str(e))
+                    text_hits = []
+
+                for hit in text_hits:
+                    row = hit.model_dump()
+                    row["id"] = row.get("source_id") or row.get("id")
+                    row["retrieval_branch"] = "scientific_text_dense"
+                    scientific_hits.append(row)
+
+            branch_results["scientific_text_dense"] = self._dedupe_hits(
+                scientific_hits,
+                limit=settings.SCIENTIFIC_TEXT_TOP_K,
+            )
+
+        # Sparse BM25 independent recall branch
+        sparse_hits: List[Dict[str, Any]] = []
+        for target_type in content_types:
+            try:
+                sparse_rows = self.vector_store.search_sparse(
+                    query=query,
+                    user_id=user_id,
+                    content_type=target_type,
+                    top_k=settings.SPARSE_RECALL_TOP_K,
+                    constraints=constraints,
+                    prefetch_limit=settings.SPARSE_RECALL_PREFETCH_LIMIT,
+                )
+            except Exception as exc:
+                logger.warning("Sparse recall failed for content type", content_type=target_type, error=str(exc))
+                sparse_rows = []
+
+            for row in sparse_rows:
+                item = row.model_dump()
+                item["id"] = item.get("source_id") or item.get("id")
+                item["retrieval_branch"] = "sparse_bm25"
+                sparse_hits.append(item)
+        branch_results["sparse_bm25"] = self._dedupe_hits(sparse_hits, limit=settings.SPARSE_RECALL_TOP_K)
+
+        # Step 4: Weighted RRF fusion across modalities and retrieval branches
+        dense_modality_fused = weighted_rrf_fusion(multimodal_results, weights)
+        branch_results["qwen_multimodal_dense"] = self._dedupe_hits(
+            dense_modality_fused,
+            limit=max(top_k * 3, 40),
+        )
+        branch_weights = {
+            "qwen_multimodal_dense": settings.QWEN_MULTIMODAL_BRANCH_WEIGHT,
+            "scientific_text_dense": settings.SCIENTIFIC_TEXT_BRANCH_WEIGHT,
+            "sparse_bm25": settings.SPARSE_BRANCH_WEIGHT,
+        }
+        fused = self.scoring.fuse_branch_results(
+            branch_results,
+            branch_weights,
+            rrf_k=settings.RETRIEVAL_FUSION_RRF_K,
+        )
 
         logger.info(
             "RRF fusion completed",
@@ -490,6 +583,55 @@ class MultimodalSearchService:
                     error=str(e),
                 )
 
+        # Step 6.5: Iteration 2 — Summary Index for global / survey queries
+        query_family = academic_plan.get("query_family", "fact")
+        index_plan = route_query(query_family)
+        summary_index_results: List[Dict[str, Any]] = []
+
+        if uses_summary_index(query_family):
+            for primary_embedding in query_embeddings[:1]:
+                try:
+                    summary_hits = self.vector_store.search_summary_index(
+                        embedding=primary_embedding,
+                        user_id=user_id,
+                        top_k=min(top_k * 2, 20),
+                        constraints=constraints,
+                    )
+                    for hit in summary_hits:
+                        row = hit.model_dump()
+                        row["retrieval_branch"] = "summary_index"
+                        row["index_type"] = "summary"
+                        summary_index_results.append(row)
+                    logger.info(
+                        "Summary index search completed",
+                        query_family=query_family,
+                        hits=len(summary_index_results),
+                    )
+                except Exception as exc:
+                    logger.warning("Summary index search failed", error=str(exc))
+
+        # Merge summary index results at the top (they're prioritised for survey/evolution)
+        if summary_index_results:
+            fused = summary_index_results + fused
+
+        # Step 6.6: Iteration 2 — Citation relation hints
+        citation_hints: Dict[str, List] = {}
+        if index_plan.include_citation_hints:
+            try:
+                citation_hints = build_all_hints(
+                    retrieved_chunks=fused[:top_k],
+                    query_family=query_family,
+                    # Forward/backward/evolution hints require DB lookups that aren't
+                    # wired here yet — pass None to produce empty but valid dicts.
+                    citing_papers_meta=None,
+                    reference_entries=None,
+                    candidate_chunks=fused,
+                    all_paper_meta=None,
+                )
+            except Exception as exc:
+                logger.warning("Citation hints failed", error=str(exc))
+                citation_hints = {}
+
         trace_payload = self.trace_service.build_trace(
             query=query,
             planner_queries=planner_queries,
@@ -543,6 +685,11 @@ class MultimodalSearchService:
             "second_pass_gain": second_pass_gain,
             "expected_evidence_types": expected_evidence_types,
             "retrieval_mode": "hybrid_dense_sparse",
+            "retrieval_branches": {
+                "qwen_multimodal_dense": len(branch_results["qwen_multimodal_dense"]),
+                "scientific_text_dense": len(branch_results["scientific_text_dense"]),
+                "sparse_bm25": len(branch_results["sparse_bm25"]),
+            },
             "metadata_filters": metadata_filters,
             "weights": weights,
             "results": final_results,
@@ -560,6 +707,9 @@ class MultimodalSearchService:
             "graph_candidate_count": graph_candidate_count,
             "graph_vector_merged_evidence": len(final_results),
             "graph_narrowed_paper_ids": narrowed_paper_ids,
+            # Iteration 2 fields
+            "summary_index_results": len(summary_index_results),
+            "citation_hints": citation_hints,
         }
 
         if trace_payload is not None:

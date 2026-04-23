@@ -52,6 +52,81 @@ class GraphRetrievalService:
             )
         return candidates[:top_k]
 
+    async def reason_citation_context(
+        self,
+        query: str,
+        query_family: str,
+        paper_ids: List[str],
+        top_k: int = 8,
+    ) -> Dict[str, List[Dict]]:
+        """Build citation-aware expansion candidates for iterative retrieval.
+
+        Returns structured groups consumed by Iteration 3 orchestrator:
+        - foundational papers
+        - follow-up papers
+        - competing/refuting lines
+        - evolution chain hints
+        - merged candidate list
+        """
+        if not settings.GRAPH_RETRIEVAL_ENABLED:
+            return {
+                "foundational": [],
+                "follow_up": [],
+                "competing": [],
+                "evolution_chain": [],
+                "merged_candidates": [],
+            }
+
+        family = (query_family or "fact").lower()
+        limit = max(1, top_k // 2)
+
+        foundational = await self._search_fallback(
+            paper_ids,
+            query,
+            relation="foundational_reference",
+            top_k=limit,
+        )
+        follow_up = await self._search_fallback(
+            paper_ids,
+            query,
+            relation="follow_up_work",
+            top_k=limit,
+        )
+        competing: List[Dict] = []
+        evolution_chain: List[Dict] = []
+
+        if family in {"compare", "numeric", "critique"}:
+            competing = await self._search_fallback(
+                paper_ids,
+                query,
+                relation="competing_or_refuting",
+                top_k=limit,
+            )
+        if family in {"evolution", "compare", "survey"}:
+            evolution_chain = await self._search_fallback(
+                paper_ids,
+                query,
+                relation="evolution_chain",
+                top_k=limit,
+            )
+
+        merged_candidates: List[Dict] = []
+        seen_ids = set()
+        for group in [foundational, follow_up, competing, evolution_chain]:
+            for item in group:
+                key = item.get("graph_candidate_id")
+                if key and key not in seen_ids:
+                    seen_ids.add(key)
+                    merged_candidates.append(item)
+
+        return {
+            "foundational": foundational,
+            "follow_up": follow_up,
+            "competing": competing,
+            "evolution_chain": evolution_chain,
+            "merged_candidates": merged_candidates[:top_k],
+        }
+
 
 _graph_retrieval_service: GraphRetrievalService | None = None
 

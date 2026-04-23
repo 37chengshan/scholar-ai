@@ -165,14 +165,18 @@ export function Testimonials() {
           {/* Navigation Arrows */}
           <div className="absolute bottom-8 right-8 flex gap-2 z-20">
             <button
+              type="button"
               onClick={() => paginate(-1)}
-              className="w-12 h-12 rounded-full border border-border/50 flex items-center justify-center hover:bg-primary hover:text-white hover:border-primary transition-all relative z-50"
+              className="w-12 h-12 rounded-full border border-border/50 flex items-center justify-center hover:bg-primary hover:text-white hover:border-primary transition-colors relative z-50"
+              aria-label="查看上一条用户评价"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <button
+              type="button"
               onClick={() => paginate(1)}
-              className="w-12 h-12 rounded-full border border-border/50 flex items-center justify-center hover:bg-primary hover:text-white hover:border-primary transition-all relative z-50"
+              className="w-12 h-12 rounded-full border border-border/50 flex items-center justify-center hover:bg-primary hover:text-white hover:border-primary transition-colors relative z-50"
+              aria-label="查看下一条用户评价"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
@@ -184,15 +188,18 @@ export function Testimonials() {
           {testimonials.map((_, idx) => (
             <button
               key={idx}
+              type="button"
               onClick={() => {
                 setDirection(idx > currentIndex ? 1 : -1);
                 setCurrentIndex(idx);
               }}
-              className={`w-2 h-2 rounded-full transition-all relative z-50 ${
+              className={`w-2 h-2 rounded-full transition-[width,background-color] relative z-50 ${
                 idx === currentIndex
                   ? "w-8 bg-primary"
                   : "bg-border hover:bg-primary/50"
               }`}
+              aria-label={`查看第 ${idx + 1} 条用户评价`}
+              aria-pressed={idx === currentIndex}
             />
           ))}
         </div>

@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Search, ArrowRight, BookMarked, Cpu, LayoutTemplate, Network, Star } from "lucide-react";
 import { motion } from "motion/react";
 import { Logo } from "../components/landing/Logo";
@@ -46,6 +46,31 @@ const researchPresets = [
   "把检索结果整理成研究线索",
 ];
 
+type FooterLink = {
+  label: string;
+  to?: string;
+};
+
+const footerProductLinks: FooterLink[] = [
+  { label: "文献检索", to: "/search" },
+  { label: "智能解析", to: "/chat" },
+  { label: "知识图谱", to: "/knowledge-bases" },
+  { label: "API 文档" },
+] as const;
+
+const footerAboutLinks: FooterLink[] = [
+  { label: "团队" },
+  { label: "博客" },
+  { label: "联系我们" },
+  { label: "隐私政策" },
+] as const;
+
+const footerLegalLinks: FooterLink[] = [
+  { label: "Terms" },
+  { label: "Privacy" },
+  { label: "Cookies" },
+] as const;
+
 const scrollToSection = (id: string) => {
   const element = document.getElementById(id);
   if (element) {
@@ -74,24 +99,28 @@ export function Landing() {
         <Logo />
         <div className="hidden md:flex items-center gap-8 text-sm uppercase tracking-[0.2em]">
           <button
+            type="button"
             onClick={() => scrollToSection("features")}
             className="hover:text-primary transition-colors relative z-50 cursor-pointer"
           >
             功能探索
           </button>
           <button
+            type="button"
             onClick={() => scrollToSection("tech")}
             className="hover:text-primary transition-colors relative z-50 cursor-pointer"
           >
             技术架构
           </button>
           <button
+            type="button"
             onClick={() => scrollToSection("testimonials")}
             className="hover:text-primary transition-colors relative z-50 cursor-pointer"
           >
             用户评价
           </button>
           <button
+            type="button"
             onClick={() => scrollToSection("footer")}
             className="hover:text-primary transition-colors relative z-50 cursor-pointer"
           >
@@ -99,15 +128,16 @@ export function Landing() {
           </button>
         </div>
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate("/login")}
+          <Link
+            to="/login"
             className="text-sm uppercase tracking-widest font-bold hidden md:block relative z-50"
           >
             登录
-          </button>
+          </Link>
           <button
+            type="button"
             onClick={handleExplore}
-            className="bg-foreground text-background px-6 py-2.5 rounded-full text-xs uppercase tracking-widest font-bold hover:bg-primary hover:text-white transition-all relative z-50"
+            className="bg-foreground text-background px-6 py-2.5 rounded-full text-xs uppercase tracking-widest font-bold hover:bg-primary hover:text-white transition-colors relative z-50"
           >
             开始探索
           </button>
@@ -162,15 +192,17 @@ export function Landing() {
                 </p>
                 <div className="flex flex-col gap-4 mt-8 w-full max-w-sm">
                   <button
+                    type="button"
                     onClick={handleExplore}
-                    className="bg-primary text-white px-8 py-4 rounded-full text-sm font-bold tracking-widest uppercase hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center justify-between group relative z-50"
+                    className="bg-primary text-white px-8 py-4 rounded-full text-sm font-bold tracking-widest uppercase hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 flex items-center justify-between group relative z-50"
                   >
                     <span>进入研究工作区</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
                   <button
+                    type="button"
                     onClick={() => scrollToSection("tech")}
-                    className="bg-transparent text-foreground border border-foreground/20 px-8 py-3.5 rounded-full text-sm font-bold tracking-widest uppercase hover:border-foreground transition-all text-center relative z-50 bg-background/50 backdrop-blur-sm"
+                    className="bg-transparent text-foreground border border-foreground/20 px-8 py-3.5 rounded-full text-sm font-bold tracking-widest uppercase hover:border-foreground transition-colors text-center relative z-50 bg-background/50 backdrop-blur-sm"
                   >
                     查看技术架构
                   </button>
@@ -180,6 +212,7 @@ export function Landing() {
                   {researchPresets.map((preset, index) => (
                     <motion.button
                       key={preset}
+                      type="button"
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: [0, -4, 0] }}
                       transition={{
@@ -224,7 +257,7 @@ export function Landing() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.6 }}
-          className="py-24 px-8 lg:px-16 max-w-7xl mx-auto"
+          className="scroll-mt-32 py-24 px-8 lg:px-16 max-w-7xl mx-auto"
         >
           <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8 border-b-2 border-foreground pb-8">
             <motion.div
@@ -285,7 +318,7 @@ export function Landing() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.6 }}
-          className="py-24 px-8 lg:px-16 bg-[#F4ECE1]/50 border-y border-border/50"
+          className="scroll-mt-32 py-24 px-8 lg:px-16 bg-[#F4ECE1]/50 border-y border-border/50"
         >
           <div className="max-w-7xl mx-auto">
             <motion.div
@@ -336,10 +369,9 @@ export function Landing() {
               transition={{ duration: 0.5, delay: 0.8 }}
               className="mt-12 pt-8 border-t border-border/50"
             >
-              <button className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest hover:text-primary transition-colors group">
-                查看完整技术白皮书
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-2 transition-transform" />
-              </button>
+              <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
+                完整技术白皮书整理中
+              </p>
             </motion.div>
           </div>
         </motion.section>
@@ -350,13 +382,13 @@ export function Landing() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.6 }}
-          className="py-24 px-8 lg:px-16 max-w-7xl mx-auto"
+          className="scroll-mt-32 py-24 px-8 lg:px-16 max-w-7xl mx-auto"
         >
           <Testimonials />
         </motion.section>
       </main>
 
-      <footer id="footer" className="bg-foreground text-background py-16 px-8 lg:px-16 mt-20 relative z-10">
+      <footer id="footer" className="scroll-mt-32 bg-foreground text-background py-16 px-8 lg:px-16 mt-20 relative z-10">
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="col-span-1 md:col-span-2">
             <div className="invert grayscale brightness-200 contrast-200">
@@ -369,28 +401,36 @@ export function Landing() {
           <div>
             <h4 className="font-bold uppercase tracking-widest mb-6 text-xs text-background/50">产品</h4>
             <ul className="space-y-3 text-sm">
-              <li><a href="#" className="hover:text-primary transition-colors">文献检索</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">智能解析</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">知识图谱</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">API 文档</a></li>
+              {footerProductLinks.map((item) => (
+                <li key={item.label}>
+                  {item.to ? (
+                    <Link to={item.to} className="hover:text-primary transition-colors">
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <span className="text-background/60">{item.label}</span>
+                  )}
+                </li>
+              ))}
             </ul>
           </div>
           <div>
             <h4 className="font-bold uppercase tracking-widest mb-6 text-xs text-background/50">关于</h4>
             <ul className="space-y-3 text-sm">
-              <li><a href="#" className="hover:text-primary transition-colors">团队</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">博客</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">联系我们</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">隐私政策</a></li>
+              {footerAboutLinks.map((item) => (
+                <li key={item.label}>
+                  <span className="text-background/60">{item.label}</span>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
         <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-background/20 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-background/40">
           <p>© 2026 ScholarAI. All rights reserved.</p>
           <div className="flex gap-4">
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Cookies</a>
+            {footerLegalLinks.map((item) => (
+              <span key={item.label}>{item.label}</span>
+            ))}
           </div>
         </div>
       </footer>

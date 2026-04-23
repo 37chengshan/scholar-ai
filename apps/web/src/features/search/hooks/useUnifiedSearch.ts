@@ -12,10 +12,12 @@ export function useUnifiedSearch(options: UseUnifiedSearchOptions) {
 
   const filters = useMemo(() => ({ sortBy }), [sortBy]);
 
-  return useSearch({
+  const search = useSearch({
     debounceMs: 300,
     filters,
     initialQuery,
     initialPage,
   });
+
+  return search;
 }

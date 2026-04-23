@@ -103,28 +103,42 @@ class Specter2EmbeddingService:
     def _load_model(self):
         """Lazy load model, tokenizer, and adapter."""
         if self._model is None:
-            logger.info("Loading SPECTER 2 model...", base_model=self.BASE_MODEL)
+            local_root = os.getenv("SPECTER2_MODEL_DIR", "").strip()
+            local_base = os.path.join(local_root, "specter2_base") if local_root else ""
+            adapter_dir_map = {
+                "proximity": "specter2_proximity_adapter",
+                "adhoc_query": "specter2_adhoc_query_adapter",
+            }
+            local_adapter = ""
+            if local_root and self.adapter_name in adapter_dir_map:
+                local_adapter = os.path.join(local_root, adapter_dir_map[self.adapter_name])
+
+            base_ref = local_base if local_base and os.path.isdir(local_base) else self.BASE_MODEL
+
+            logger.info("Loading SPECTER 2 model...", base_model=base_ref)
 
             # Load tokenizer
-            self._tokenizer = AutoTokenizer.from_pretrained(self.BASE_MODEL)
+            self._tokenizer = AutoTokenizer.from_pretrained(base_ref)
 
             if self._adapters_enabled:
                 # Load base model with adapter support
-                self._model = AutoAdapterModel.from_pretrained(self.BASE_MODEL)
+                self._model = AutoAdapterModel.from_pretrained(base_ref)
 
                 # Load and activate adapter
                 adapter_path = self.ADAPTERS.get(
                     self.adapter_name,
                     self.ADAPTERS["proximity"],
                 )
+                if local_adapter and os.path.isdir(local_adapter):
+                    adapter_path = local_adapter
                 self._model.load_adapter(
                     adapter_path,
-                    source="hf",
+                    source="hf" if adapter_path.startswith("allenai/") else "local",
                     set_active=True,
                 )
             else:
                 # Fallback path for environments where adapters cannot be installed
-                self._model = AutoModel.from_pretrained(self.BASE_MODEL)
+                self._model = AutoModel.from_pretrained(base_ref)
 
             self._model.to(self.device)
             self._model.eval()

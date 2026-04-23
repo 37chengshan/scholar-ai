@@ -28,7 +28,7 @@ Usage:
 from typing import Dict
 from app.core.embedding.base import BaseEmbeddingService
 from app.core.embedding.qwen3vl_embedding import Qwen3VLEmbeddingService
-from app.config import settings
+from app.config import settings, normalize_embedding_model_name
 from app.utils.logger import logger
 
 
@@ -63,7 +63,9 @@ class EmbeddingServiceFactory:
             ValueError: If EMBEDDING_MODEL is unknown
         """
         # Get configuration (with defaults for backward compatibility)
-        model_type = getattr(settings, "EMBEDDING_MODEL", "qwen3-vl-2b")
+        model_type = normalize_embedding_model_name(
+            getattr(settings, "EMBEDDING_MODEL", "qwen3-vl-2b")
+        )
         quantization = getattr(settings, "EMBEDDING_QUANTIZATION", "int4")
         device = "auto"  # Auto-detect device
 

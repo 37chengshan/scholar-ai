@@ -86,7 +86,7 @@ function getStatusLabel(status: ToolCall['status'], isZh: boolean): string {
 /**
  * ToolCallCard Props
  */
-interface ToolCallCardProps {
+export interface ToolCallCardProps {
   toolCall: ToolCall;
   className?: string;
 }
@@ -147,9 +147,11 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
       )}
     >
       {/* Compact row */}
-      <div
-        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-primary/5 transition-colors"
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left cursor-pointer hover:bg-primary/5 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
       >
         {/* Icon */}
         <div className={clsx('flex-shrink-0', statusColors[toolCall.status])}>
@@ -183,7 +185,7 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
             isExpanded && 'rotate-180'
           )}
         />
-      </div>
+      </button>
 
       {/* Expanded content */}
       <AnimatePresence>
@@ -235,3 +237,5 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
     </div>
   );
 }
+
+export type { ToolCallCardProps as ToolCallCardPropsType };

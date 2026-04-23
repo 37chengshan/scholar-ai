@@ -30,3 +30,22 @@ async def test_graph_retrieval_service_respects_feature_flag(monkeypatch: pytest
     )
 
     assert results == []
+
+
+@pytest.mark.asyncio
+async def test_graph_retrieval_service_reason_citation_context_returns_structured_expansion() -> None:
+    service = GraphRetrievalService()
+
+    report = await service.reason_citation_context(
+        query="compare method A and B",
+        query_family="compare",
+        paper_ids=["paper-1", "paper-2", "paper-3"],
+        top_k=6,
+    )
+
+    assert "foundational" in report
+    assert "follow_up" in report
+    assert "competing" in report
+    assert "evolution_chain" in report
+    assert "merged_candidates" in report
+    assert isinstance(report["merged_candidates"], list)

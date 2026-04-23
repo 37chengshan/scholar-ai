@@ -22,6 +22,8 @@ def test_build_academic_plan_compare_has_required_structure():
     roles = {item["role"] for item in plan["sub_questions"]}
     assert {"method_a_result", "method_b_result", "metric_difference", "applicability_condition"}.issubset(roles)
     assert "table" in plan["expected_evidence_types"]
+    assert plan["iterative_actions"]["enable_citation_expansion"] is True
+    assert plan["evidence_plan"]["must_cover_cross_paper"] is True
 
 
 def test_build_academic_plan_limitation_has_failure_mode_subquestions():
@@ -36,3 +38,4 @@ def test_build_academic_plan_limitation_has_failure_mode_subquestions():
     assert "author_stated_limitations" in roles
     assert "failure_modes" in roles
     assert plan["fallback_rewrites"]
+    assert isinstance(plan["iterative_actions"]["rewrite_queries"], list)

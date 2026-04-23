@@ -28,6 +28,7 @@ from app.core.section_normalizer import (
     serialize_section_path,
 )
 from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.contextual_chunk_builder import enrich_chunk, build_section_summary_text
 from app.utils.logger import logger
 
 
@@ -479,7 +480,21 @@ class StorageManager:
             chunk_text = self._sanitize_text(chunk.get("text", "")) or ""
             if not chunk_text or not chunk_text.strip():
                 chunk_text = "NULL"
-            chunk_texts.append(chunk_text)
+
+            # Iteration 2: build contextual chunk text for richer embedding
+            paper_title = (ctx.metadata or {}).get("title") if ctx.metadata else None
+            enriched = enrich_chunk(
+                chunk=chunk,
+                paper_title=paper_title,
+                all_page_items=parse_items,
+                chunk_index=None,  # window expansion done at section level below
+                window_size=1,
+            )
+            contextual_text = self._sanitize_text(enriched.get("content_data") or chunk_text) or chunk_text
+            chunk_texts.append(contextual_text)
+            # Store raw text for quality scoring / BM25
+            chunk["raw_text"] = chunk_text
+            chunk["context_window"] = enriched.get("context_window", "")
 
         # Batch generate embeddings (much faster than one-by-one)
         logger.info(
@@ -544,10 +559,11 @@ class StorageManager:
             # Fix: Handle None values in section field
             # When section is None, use empty string instead
             section = chunk.get("normalized_section_leaf") or chunk.get("section") or ""
+            raw_text = chunk.get("raw_text") or chunk_text
 
             quality_score = calculate_chunk_quality(
                 {
-                    "text": chunk_text,
+                    "text": raw_text,
                     "section": section,
                     "has_equations": chunk.get("has_equations", False),
                     "has_figures": chunk.get("has_figures", False),
@@ -559,7 +575,7 @@ class StorageManager:
                 skipped_low_quality += 1
                 continue
 
-            raw_data = self._build_evidence_metadata(chunk, chunk_text, parse_metadata)
+            raw_data = self._build_evidence_metadata(chunk, raw_text, parse_metadata)
 
             text_record = {
                 "chunk_id": chunk_id,
@@ -576,8 +592,11 @@ class StorageManager:
                 "section_level": section_level,
                 "parent_section_path": parent_path,
                 "section": section,
-                "text": chunk_text,
+                "text": raw_text,
+                # Iteration 2: use contextual chunk text for embedding + BM25
                 "content_data": chunk_text[:8000],
+                "context_window": chunk.get("context_window", ""),
+                "subsection": chunk.get("normalized_section_leaf", ""),
                 "raw_data": raw_data,
                 "embedding": embedding,
             }
@@ -621,6 +640,9 @@ class StorageManager:
                 tables=len(ctx.table_results or []),
             )
 
+            # 5. Iteration 2: build and store section-level summary index
+            await self._store_summary_index(ctx, text_contents)
+
             ctx.chunk_results = text_contents
             # Keep text chunk ids for graph linking, but preserve ids for image/table-only inserts.
             if text_contents:
@@ -628,6 +650,96 @@ class StorageManager:
             return chunk_ids
 
         return []
+
+    async def _store_summary_index(
+        self,
+        ctx: PipelineContext,
+        text_contents: List[Dict[str, Any]],
+    ) -> None:
+        """Build section-level summary index entries from text chunks (Iteration 2).
+
+        Groups chunks by their section label, concatenates them into a summary
+        document, and embeds + stores each summary in the paper_summaries collection.
+        """
+        if not text_contents:
+            return
+
+        paper_title = (ctx.metadata or {}).get("title") if ctx.metadata else None
+
+        # Group chunks by section
+        section_groups: Dict[str, List[Dict[str, Any]]] = {}
+        for rec in text_contents:
+            key = rec.get("section") or rec.get("normalized_section_path") or "unknown"
+            section_groups.setdefault(key, []).append(rec)
+
+        summary_entries: List[Dict[str, Any]] = []
+        summary_texts: List[str] = []
+
+        for section_name, section_chunks in section_groups.items():
+            # Skip trivially short sections
+            combined_len = sum(len(c.get("text", "")) for c in section_chunks)
+            if combined_len < 100:
+                continue
+
+            summary_text = build_section_summary_text(
+                section_name=section_name,
+                chunks=section_chunks,
+                paper_title=paper_title,
+            )
+            summary_texts.append(summary_text)
+            summary_entries.append({
+                "paper_id": ctx.paper_id,
+                "user_id": ctx.user_id,
+                "summary_type": "section_summary",
+                "section_name": section_name,
+                "content_data": summary_text,
+            })
+
+        # Also add a paper-level summary using all chunks combined
+        if text_contents:
+            all_text = " ".join(
+                (c.get("text") or "")[:300] for c in text_contents[:30]
+            )
+            paper_summary_text = (
+                f"[Paper Summary: {paper_title or 'unknown'}]\n{all_text}"
+            )
+            summary_texts.append(paper_summary_text)
+            summary_entries.append({
+                "paper_id": ctx.paper_id,
+                "user_id": ctx.user_id,
+                "summary_type": "paper_summary",
+                "section_name": "_paper",
+                "content_data": paper_summary_text,
+            })
+
+        if not summary_texts:
+            return
+
+        try:
+            # Embed summaries in batches
+            BATCH_SIZE = 8
+            all_embeddings = []
+            for i in range(0, len(summary_texts), BATCH_SIZE):
+                batch = summary_texts[i:i + BATCH_SIZE]
+                batch_embs = self.qwen3vl_service.encode_text(batch)
+                all_embeddings.extend(batch_embs)
+
+            for entry, emb in zip(summary_entries, all_embeddings):
+                entry["embedding"] = emb
+
+            self.milvus.insert_summaries_batched(summary_entries)
+            logger.info(
+                "Summary index stored",
+                task_id=ctx.task_id,
+                sections=len(summary_entries),
+            )
+        except Exception as exc:
+            # Summary index failure is non-critical — degrade gracefully
+            logger.warning(
+                "Summary index storage failed, continuing",
+                task_id=ctx.task_id,
+                error=str(exc),
+            )
 
     async def _store_graph_nodes(
         self, ctx: PipelineContext, chunk_ids: List[int]

@@ -33,6 +33,7 @@ from app.core.graph_query_compiler import get_graph_query_compiler
 from app.core.graph_retrieval_service import get_graph_retrieval_service
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.citation_verifier import get_citation_verifier
+from app.core.retrieval_evaluator import RetrievalEvaluator
 
 
 class AgenticRetrievalOrchestrator:
@@ -68,6 +69,7 @@ class AgenticRetrievalOrchestrator:
         self.abstention_policy = get_abstention_policy()
         self.graph_query_compiler = get_graph_query_compiler()
         self.graph_retrieval_service = get_graph_retrieval_service()
+        self.retrieval_evaluator = RetrievalEvaluator()
 
     async def retrieve(
         self,
@@ -145,6 +147,29 @@ class AgenticRetrievalOrchestrator:
         previous_synthesis = ""
         converged = False
         rounds_executed = 0
+        iterative_retrieval_triggered = False
+        iterative_actions: List[Dict[str, Any]] = []
+        citation_reasoning_report: Dict[str, List[Dict[str, Any]]] = {
+            "foundational": [],
+            "follow_up": [],
+            "competing": [],
+            "evolution_chain": [],
+            "merged_candidates": list(graph_candidates or []),
+        }
+        retrieval_evaluation: Dict[str, Any] = {
+            "is_weak": False,
+            "weak_reasons": [],
+            "trigger_citation_expansion": False,
+            "missing_expected_evidence_types": [],
+            "metrics": {},
+        }
+        retrieval_trace: Dict[str, Any] = {
+            "mode": "orchestrator_v2",
+            "iterative_triggered": False,
+            "iterative_actions": [],
+            "first_pass_evaluation": None,
+            "rounds": [],
+        }
 
         for round_num in range(1, self.max_rounds + 1):
             logger.info(
@@ -170,7 +195,49 @@ class AgenticRetrievalOrchestrator:
                 }
             )
 
+            round_chunk_count = sum(len(item.get("chunks", [])) for item in round_results)
+            retrieval_trace["rounds"].append(
+                {
+                    "round": round_num,
+                    "subquestion_count": len(sub_questions),
+                    "success_count": len([item for item in round_results if item.get("success", True)]),
+                    "chunk_count": round_chunk_count,
+                }
+            )
+
             rounds_executed = round_num
+
+            if round_num == 1:
+                first_pass_chunks = self._flatten_round_chunks(round_results)
+                retrieval_evaluation = self.retrieval_evaluator.evaluate(
+                    query_family=str(academic_plan.get("query_family") or effective_query_type),
+                    chunks=first_pass_chunks,
+                    expected_evidence_types=expected_evidence_types,
+                    paper_ids=paper_ids or [],
+                    graph_candidates=graph_candidates or [],
+                    top_k=max(top_k_per_subquestion, 6),
+                )
+                retrieval_trace["first_pass_evaluation"] = retrieval_evaluation
+
+                if retrieval_evaluation.get("is_weak") and round_num < self.max_rounds:
+                    iterative_retrieval_triggered = True
+                    retrieval_trace["iterative_triggered"] = True
+                    iterative_actions = self._plan_iterative_actions(
+                        query=query,
+                        query_family=str(academic_plan.get("query_family") or effective_query_type),
+                        academic_plan=academic_plan,
+                        retrieval_evaluation=retrieval_evaluation,
+                    )
+                    retrieval_trace["iterative_actions"] = iterative_actions
+                    sub_questions, graph_candidates, citation_reasoning_report = await self._apply_iterative_actions(
+                        sub_questions=sub_questions,
+                        iterative_actions=iterative_actions,
+                        query=query,
+                        query_family=str(academic_plan.get("query_family") or effective_query_type),
+                        paper_ids=paper_ids or [],
+                        top_k=top_k_per_subquestion,
+                        graph_candidates=graph_candidates,
+                    )
 
             # Check convergence after first round
             if round_num > 1:
@@ -211,11 +278,18 @@ class AgenticRetrievalOrchestrator:
                 )
 
         # Step 3: Final synthesis
+        answer_outline = self._build_answer_outline(
+            query=query,
+            query_type=str(effective_query_type),
+            all_results=all_results,
+        )
         final_answer = await self._final_synthesis(
             query=query,
             query_type=effective_query_type,
             all_results=all_results,
+            answer_outline=answer_outline,
         )
+        final_answer = self._validate_and_fix_citations(final_answer, all_results, query)
 
         # Collect all sources
         all_sources = self._collect_sources(all_results)
@@ -246,7 +320,18 @@ class AgenticRetrievalOrchestrator:
             converged=converged,
             sources=len(all_sources),
             citation_coverage=citation_report.get("citation_coverage"),
+            iterative_triggered=iterative_retrieval_triggered,
         )
+
+        citation_faithfulness = float(citation_report.get("citation_coverage") or 0.0)
+        unsupported_claim_rate = float(claim_report.get("unsupportedClaimRate") or 0.0)
+        cross_paper_synthesis_quality = float(retrieval_evaluation.get("metrics", {}).get("cross_paper_coverage") or 0.0)
+        if abstain_decision.answer_mode.value == "partial":
+            partial_abstain_quality = round(max(0.0, 1.0 - unsupported_claim_rate), 4)
+        elif abstain_decision.answer_mode.value == "abstain":
+            partial_abstain_quality = 1.0
+        else:
+            partial_abstain_quality = 1.0
 
         return {
             "answer": verified_answer,
@@ -262,6 +347,18 @@ class AgenticRetrievalOrchestrator:
                 "query_family": academic_plan.get("query_family"),
                 "decontextualized_query": academic_plan.get("decontextualized_query"),
                 "expected_evidence_types": expected_evidence_types,
+                "retrieval_evaluator": retrieval_evaluation,
+                "iterative_retrieval_triggered": iterative_retrieval_triggered,
+                "iterative_actions": iterative_actions,
+                "retrieval_trace": retrieval_trace,
+                "answer_outline": answer_outline,
+                "citation_aware_metadata": {
+                    "citation_expansion_applied": bool(iterative_retrieval_triggered and citation_reasoning_report.get("merged_candidates")),
+                    "foundational_count": len(citation_reasoning_report.get("foundational") or []),
+                    "follow_up_count": len(citation_reasoning_report.get("follow_up") or []),
+                    "competing_count": len(citation_reasoning_report.get("competing") or []),
+                    "evolution_chain_count": len(citation_reasoning_report.get("evolution_chain") or []),
+                },
                 "rewrite_count": len(academic_plan.get("fallback_rewrites") or []),
                 "paper_count": len(paper_ids) if paper_ids else 0,
                 "subquestion_count": len(sub_questions) if sub_questions else 0,
@@ -279,6 +376,12 @@ class AgenticRetrievalOrchestrator:
                 "graph_retrieval_used": bool(graph_candidates),
                 "graph_candidate_count": len(graph_candidates),
                 "graph_vector_merged_evidence": len(all_sources),
+                "scientific_synthesis_metrics": {
+                    "citation_faithfulness": round(citation_faithfulness, 4),
+                    "unsupported_claim_rate": round(unsupported_claim_rate, 4),
+                    "cross_paper_synthesis_quality": round(cross_paper_synthesis_quality, 4),
+                    "partial_abstain_quality": round(partial_abstain_quality, 4),
+                },
                 "benchmarkMetrics": {
                     "unsupported_claim_rate": abstain_decision.unsupported_claim_rate,
                     "citation_coverage": abstain_decision.citation_coverage,
@@ -311,9 +414,151 @@ class AgenticRetrievalOrchestrator:
                     "graph_assisted_recall_at_5": round(min(len(graph_candidates) / 5.0, 1.0), 4),
                     "graph_assisted_latency_ms": 0.0,
                     "graph_vector_merge_gain": round(min(len(graph_candidates) / max(len(all_sources), 1), 1.0), 4),
+                    "citation_faithfulness": round(citation_faithfulness, 4),
+                    "cross_paper_synthesis_quality": round(cross_paper_synthesis_quality, 4),
+                    "partial_abstain_quality": round(partial_abstain_quality, 4),
                 },
             },
         }
+
+    @staticmethod
+    def _flatten_round_chunks(round_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        flattened: List[Dict[str, Any]] = []
+        for result in round_results:
+            flattened.extend(result.get("chunks", []))
+        return flattened
+
+    def _plan_iterative_actions(
+        self,
+        *,
+        query: str,
+        query_family: str,
+        academic_plan: Dict[str, Any],
+        retrieval_evaluation: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        actions: List[Dict[str, Any]] = []
+        iterative_plan = academic_plan.get("iterative_actions") or {}
+        rewrites = list(iterative_plan.get("rewrite_queries") or [])[:3]
+
+        if rewrites:
+            actions.append({"action": "query_rewrite", "queries": rewrites})
+
+        if retrieval_evaluation.get("trigger_citation_expansion") and iterative_plan.get("enable_citation_expansion", False):
+            actions.append({"action": "citation_expansion", "query_family": query_family})
+
+        if iterative_plan.get("enable_summary_fallback", False):
+            actions.append({"action": "summary_fallback", "query": f"summary overview for {query}"})
+
+        if iterative_plan.get("enable_relation_aware_expansion", False):
+            actions.append({"action": "relation_aware_candidate_expansion"})
+
+        if iterative_plan.get("enable_multi_subquestion_retrieval", False):
+            actions.append({"action": "multi_subquestion_retrieval"})
+
+        return actions
+
+    async def _apply_iterative_actions(
+        self,
+        *,
+        sub_questions: List[Dict[str, Any]],
+        iterative_actions: List[Dict[str, Any]],
+        query: str,
+        query_family: str,
+        paper_ids: List[str],
+        top_k: int,
+        graph_candidates: Optional[List[Dict[str, Any]]],
+    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
+        expanded_sub_questions = list(sub_questions)
+        merged_graph_candidates = list(graph_candidates or [])
+        citation_reasoning_report: Dict[str, List[Dict[str, Any]]] = {
+            "foundational": [],
+            "follow_up": [],
+            "competing": [],
+            "evolution_chain": [],
+            "merged_candidates": merged_graph_candidates,
+        }
+
+        for action in iterative_actions:
+            action_name = action.get("action")
+            if action_name == "query_rewrite":
+                for rewritten_query in action.get("queries") or []:
+                    expanded_sub_questions.append(
+                        {
+                            "question": rewritten_query,
+                            "query_type": query_family,
+                            "target_papers": paper_ids,
+                            "rationale": "iterative_rewrite",
+                        }
+                    )
+            elif action_name == "summary_fallback":
+                expanded_sub_questions.append(
+                    {
+                        "question": str(action.get("query") or f"summary for {query}"),
+                        "query_type": "summary",
+                        "target_papers": paper_ids,
+                        "rationale": "summary_fallback",
+                    }
+                )
+            elif action_name == "multi_subquestion_retrieval":
+                expanded_sub_questions = await self._refine_subquestions(
+                    sub_questions=expanded_sub_questions,
+                    results=[],
+                    query=query,
+                )
+            elif action_name in {"citation_expansion", "relation_aware_candidate_expansion"}:
+                citation_reasoning_report = await self.graph_retrieval_service.reason_citation_context(
+                    query=query,
+                    query_family=query_family,
+                    paper_ids=paper_ids,
+                    top_k=max(top_k * 2, 8),
+                )
+                merged_graph_candidates = list(citation_reasoning_report.get("merged_candidates") or merged_graph_candidates)
+
+        deduped: List[Dict[str, Any]] = []
+        seen = set()
+        for item in expanded_sub_questions:
+            question = str(item.get("question") or "").strip()
+            if not question or question in seen:
+                continue
+            seen.add(question)
+            deduped.append(item)
+
+        return deduped[:10], merged_graph_candidates, citation_reasoning_report
+
+    def _build_answer_outline(
+        self,
+        *,
+        query: str,
+        query_type: str,
+        all_results: List[Dict[str, Any]],
+    ) -> List[Dict[str, str]]:
+        sections: List[Dict[str, str]] = []
+        normalized_type = (query_type or "fact").lower()
+        sections.append({"title": "Question Scope", "goal": f"Frame the question: {query}"})
+
+        if normalized_type in {"compare", "cross_paper"}:
+            sections.extend(
+                [
+                    {"title": "Method Comparison", "goal": "Compare major claims across papers."},
+                    {"title": "Evidence Differences", "goal": "Highlight metric or evidence contrasts."},
+                ]
+            )
+        elif normalized_type == "evolution":
+            sections.extend(
+                [
+                    {"title": "Evolution Timeline", "goal": "Summarize chronological progression."},
+                    {"title": "Key Turning Points", "goal": "Identify pivotal changes and evidence."},
+                ]
+            )
+        else:
+            sections.append({"title": "Core Findings", "goal": "Summarize strongest supporting evidence."})
+
+        sections.append({"title": "Evidence Limits", "goal": "State uncertainty, gaps, and unresolved claims."})
+
+        if not all_results:
+            return sections
+
+        return sections[:5]
 
     def _normalize_chunk_for_synthesis(self, chunk: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize a chunk into unified retrieval contract fields.
@@ -746,6 +991,7 @@ Provide a concise synthesis that:
         query: str,
         query_type: QueryType,
         all_results: List[Dict[str, Any]],
+        answer_outline: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         """Generate final synthesis across all rounds using evidence blocks.
 
@@ -788,6 +1034,13 @@ Provide a concise synthesis that:
                 citation = f"[{paper_title[:30]}, {section or page_display}]"
                 blocks_text += f"- {text_preview} {citation} (score: {score:.2f})\n"
 
+        outline_lines = []
+        for idx, section in enumerate(answer_outline or [], start=1):
+            title = section.get("title") or f"Section {idx}"
+            goal = section.get("goal") or ""
+            outline_lines.append(f"{idx}. {title} - {goal}")
+        outline_text = "\n".join(outline_lines) if outline_lines else "1. Core Findings - Answer with strongest evidence."
+
         # Call LLM for final synthesis with structured evidence
         try:
             from app.utils.zhipu_client import get_llm_client
@@ -815,12 +1068,15 @@ Provide a concise synthesis that:
 Query: {query}
 Query type: {query_type}
 
+ANSWER OUTLINE (must follow this structure):
+{outline_text}
+
 EVIDENCE BLOCKS:
 {blocks_text}
 
 REQUIREMENTS:
 1. Every factual statement MUST cite evidence using [Paper Title, Section] format
-2. Use evidence blocks - each block is a coherent claim with supporting sources
+2. Follow the answer outline section-by-section and attach evidence per section
 3. Minimum citation density: one citation per 2-3 sentences
 4. If evidence is insufficient, state what is missing
 

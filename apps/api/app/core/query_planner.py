@@ -42,6 +42,7 @@ QUERY_FAMILIES = {
     "fact",
     "compare",
     "evolution",
+    "survey",
     "critique",
     "limitation",
     "numeric",
@@ -61,6 +62,8 @@ def classify_query_family(query: str, query_intent: str = "") -> str:
         return "compare"
     if intent == "evolution" or any(tok in text for tok in ["evolution", "timeline", "trend", "演化", "发展", "迭代"]):
         return "evolution"
+    if intent == "summary" or any(tok in text for tok in ["survey", "overview", "综述", "总结", "review of"]):
+        return "survey"
     if any(tok in text for tok in ["figure", "fig.", "图", "caption"]):
         return "figure"
     if any(tok in text for tok in ["table", "tab.", "表"]):
@@ -138,6 +141,12 @@ def _sub_questions(query_family: str, decontextualized: str) -> List[Dict[str, s
             {"role": "key_changes", "question": f"What key changes happened over time in: {decontextualized}?"},
             {"role": "trend_summary", "question": f"Summarize the trend for: {decontextualized}."},
         ]
+    if query_family == "survey":
+        return [
+            {"role": "topic_overview", "question": f"What is the broad overview of: {decontextualized}?"},
+            {"role": "method_clusters", "question": f"What major method families appear in: {decontextualized}?"},
+            {"role": "benchmark_summary", "question": f"What benchmark evidence supports: {decontextualized}?"},
+        ]
     if query_family in {"critique", "limitation"}:
         return [
             {"role": "author_stated_limitations", "question": f"What limitations are explicitly stated for: {decontextualized}?"},
@@ -155,6 +164,8 @@ def _fallback_rewrites(query_family: str, decontextualized: str) -> List[str]:
     ]
     if query_family in {"numeric", "compare"}:
         seeds.append(f"{decontextualized} metric value table")
+    if query_family == "survey":
+        seeds.append(f"{decontextualized} overview summary benchmark")
     if query_family == "figure":
         seeds.append(f"{decontextualized} figure caption visualization")
     if query_family == "table":
@@ -180,8 +191,23 @@ def build_academic_query_plan(
         expected_evidence_types = ["text", "table"]
     if family == "figure":
         expected_evidence_types = ["text", "image"]
+    if family == "survey":
+        expected_evidence_types = ["text", "table", "image"]
 
     planner_queries = plan_queries(raw, family)
+    evidence_plan = {
+        "primary_types": expected_evidence_types,
+        "must_cover_cross_paper": family in {"compare", "evolution", "survey"},
+        "must_hit_numeric_or_table": family in {"numeric", "table", "compare"},
+        "must_hit_figure": family == "figure",
+    }
+    iterative_actions = {
+        "rewrite_queries": rewrites,
+        "enable_citation_expansion": family in {"compare", "evolution", "survey", "numeric"},
+        "enable_summary_fallback": family in {"survey", "evolution", "compare"},
+        "enable_relation_aware_expansion": family in {"compare", "evolution", "numeric"},
+        "enable_multi_subquestion_retrieval": family in {"compare", "evolution", "survey"},
+    }
 
     return {
         "query_type": family,
@@ -195,6 +221,8 @@ def build_academic_query_plan(
         },
         "sub_questions": subqs,
         "fallback_rewrites": rewrites,
+        "evidence_plan": evidence_plan,
+        "iterative_actions": iterative_actions,
         "expected_evidence_types": expected_evidence_types,
         "planner_queries": planner_queries,
         "planner_query_count": len(planner_queries),
@@ -242,7 +270,7 @@ def plan_queries(query: str, query_intent: str) -> List[str]:
         planned.append(f"{raw} 对比 差异 指标")
     elif intent == "evolution":
         planned.append(f"{raw} 时间线 演化 变化")
-    elif intent in {"fact", "summary"}:
+    elif intent in {"fact", "summary", "survey"}:
         planned.append(f"{raw} 关键结论 方法 结果")
     elif intent == "critique":
         planned.append(f"{raw} limitation weakness failure")
