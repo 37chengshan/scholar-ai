@@ -13,12 +13,12 @@ interface RunHeaderProps {
 }
 
 const BADGE_COLORS: Record<string, string> = {
-  gray: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  yellow: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  red: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  gray: 'bg-muted text-muted-foreground',
+  blue: 'bg-primary/12 text-primary',
+  yellow: 'bg-secondary/20 text-secondary-foreground',
+  green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  red: 'bg-destructive/15 text-destructive',
+  orange: 'bg-accent text-accent-foreground',
 };
 
 export function RunHeader({ run }: RunHeaderProps) {
@@ -32,7 +32,7 @@ export function RunHeader({ run }: RunHeaderProps) {
     <motion.div
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm"
+      className="flex items-center gap-3 border-b border-border/40 bg-background/70 px-4 py-2 backdrop-blur-sm"
     >
       {/* Phase badge */}
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass}`}>
@@ -47,10 +47,10 @@ export function RunHeader({ run }: RunHeaderProps) {
 
       {/* Step progress */}
       {progress.total > 0 && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <div className="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
             <motion.div
-              className="h-full bg-blue-500 rounded-full"
+              className="h-full rounded-full bg-primary"
               initial={{ width: 0 }}
               animate={{ width: `${progress.percentage}%` }}
               transition={{ duration: 0.3 }}
@@ -62,7 +62,7 @@ export function RunHeader({ run }: RunHeaderProps) {
 
       {/* Objective */}
       {run.objective && (
-        <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[200px]">
+        <span className="max-w-[200px] truncate text-xs text-muted-foreground">
           {run.objective}
         </span>
       )}

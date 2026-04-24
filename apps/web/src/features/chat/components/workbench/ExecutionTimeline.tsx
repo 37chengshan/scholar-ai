@@ -6,6 +6,7 @@
 
 import { motion, AnimatePresence } from 'motion/react';
 import { memo, useMemo } from 'react';
+import { AlertCircle, CheckCircle2, Circle, Cog, RotateCcw, Route, Timer } from 'lucide-react';
 import type { RunTimelineItem } from '@/features/chat/types/run';
 
 interface ExecutionTimelineProps {
@@ -13,22 +14,22 @@ interface ExecutionTimelineProps {
   collapsed?: boolean;
 }
 
-const TYPE_ICONS: Record<string, string> = {
-  phase: '◆',
-  step: '▸',
-  tool: '⚙',
-  confirmation: '⚠',
-  done: '✓',
-  error: '✕',
-  recovery: '↺',
+const TYPE_ICON: Record<string, typeof Circle> = {
+  phase: Route,
+  step: Circle,
+  tool: Cog,
+  confirmation: AlertCircle,
+  done: CheckCircle2,
+  error: AlertCircle,
+  recovery: RotateCcw,
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  running: 'text-blue-500',
-  completed: 'text-emerald-500',
-  failed: 'text-red-500',
-  waiting: 'text-amber-500',
-  success: 'text-emerald-500',
+const STATUS_CLASS: Record<string, string> = {
+  running: 'text-primary',
+  completed: 'text-emerald-600',
+  failed: 'text-destructive',
+  waiting: 'text-secondary',
+  success: 'text-emerald-600',
 };
 
 function ExecutionTimelineBase({ items, collapsed = false }: ExecutionTimelineProps) {
@@ -36,40 +37,12 @@ function ExecutionTimelineBase({ items, collapsed = false }: ExecutionTimelinePr
 
   const visibleItems = useMemo(() => (collapsed ? items.slice(-5) : items), [collapsed, items]);
 
-  if (collapsed) {
-    return (
-      <div className="px-3 py-2">
-        {visibleItems.map((item) => {
-          const icon = TYPE_ICONS[item.type] || '•';
-          const colorClass = STATUS_COLORS[item.status || ''] || 'text-gray-400';
-
-          return (
-            <div key={item.id} className="flex items-center gap-2 py-0.5 text-xs">
-              <span className={`font-mono ${colorClass}`}>{icon}</span>
-              <span className="text-gray-600 dark:text-gray-400 truncate">{item.label}</span>
-              {item.status === 'running' && (
-                <span className="ml-auto">
-                  <span className="animate-pulse text-blue-400">●</span>
-                </span>
-              )}
-            </div>
-          );
-        })}
-        {items.length > 5 && (
-          <div className="text-xs text-gray-400 mt-1">
-            +{items.length - 5} more steps
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="px-3 py-2">
+    <div className="space-y-1">
       <AnimatePresence mode="popLayout">
         {visibleItems.map((item) => {
-          const icon = TYPE_ICONS[item.type] || '•';
-          const colorClass = STATUS_COLORS[item.status || ''] || 'text-gray-400';
+          const Icon = TYPE_ICON[item.type] || Circle;
+          const colorClass = STATUS_CLASS[item.status || ''] || 'text-muted-foreground';
 
           return (
             <motion.div
@@ -77,19 +50,20 @@ function ExecutionTimelineBase({ items, collapsed = false }: ExecutionTimelinePr
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2 py-0.5 text-xs"
+              className="flex items-center gap-2 rounded-sm px-1 py-1 text-xs"
             >
-              <span className={`font-mono ${colorClass}`}>{icon}</span>
-              <span className="text-gray-600 dark:text-gray-400 truncate">{item.label}</span>
-              {item.status === 'running' && (
-                <span className="ml-auto">
-                  <span className="animate-pulse text-blue-400">●</span>
-                </span>
-              )}
+              <Icon className={`h-3.5 w-3.5 ${colorClass}`} />
+              <span className="truncate text-foreground/82">{item.label}</span>
+              {item.status === 'running' ? (
+                <Timer className="ml-auto h-3.5 w-3.5 animate-pulse text-primary/80" />
+              ) : null}
             </motion.div>
           );
         })}
       </AnimatePresence>
+      {collapsed && items.length > 5 ? (
+        <div className="text-xs text-muted-foreground">+{items.length - 5} more steps</div>
+      ) : null}
     </div>
   );
 }

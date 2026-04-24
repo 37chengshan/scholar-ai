@@ -117,7 +117,7 @@ export function ComposerInput({
                           opt.value === 'auto' ? 'bg-primary/70' : opt.value === 'rag' ? 'bg-secondary' : 'bg-muted-foreground'
                         )} />
                         <span>{opt.label}</span>
-                        <span className="text-[10px] text-muted-foreground ml-auto">{opt.desc}</span>
+                        <span className="text-[10px] text-muted-foreground ml-auto hidden md:inline">{opt.desc}</span>
                       </button>
                     ))}
                   </div>
@@ -127,7 +127,7 @@ export function ComposerInput({
 
             {/* Right: send/stop button */}
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground font-mono hidden sm:inline">{labels.sendKeyHint}</span>
+              <span className="text-[10px] text-muted-foreground hidden sm:inline">{labels.sendKeyHint}</span>
               {streaming && onStop ? (
                 <button
                   onClick={onStop}

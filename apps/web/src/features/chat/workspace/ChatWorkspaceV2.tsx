@@ -507,12 +507,12 @@ export function ChatWorkspaceV2() {
   return (
     <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
       <div className="flex min-w-0 flex-1 flex-col bg-background">
-        <div className="shrink-0 border-b border-border/30 bg-white/30 backdrop-blur-sm">
+        <div className="shrink-0 border-b border-border/30 bg-background/60 backdrop-blur-sm">
           <WorkflowShell />
         </div>
 
         {uiScope.type && (
-          <div className="shrink-0 border-b border-blue-200/50 bg-blue-50/40">
+          <div className="shrink-0 border-b border-border/40 bg-muted/25">
             <ScopeBanner
               type={uiScope.type}
               title={uiScope.title}
@@ -523,14 +523,14 @@ export function ChatWorkspaceV2() {
         )}
 
         {runtime.run && (
-          <div className="shrink-0 border-b border-amber-200/50 bg-amber-50/30">
+          <div className="shrink-0 border-b border-border/40 bg-muted/20">
             <RunHeader run={runtime.run} />
           </div>
         )}
 
         <div className="min-w-0 flex-1 flex flex-col overflow-hidden bg-background">
-          <div className="px-6 py-3 border-b border-border/30 bg-white/20 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
-            📬 对话历史
+          <div className="px-6 py-2.5 border-b border-border/30 bg-background/40 text-[11px] font-semibold text-muted-foreground">
+            {isZh ? '对话' : 'Conversation'}
           </div>
           <MessageFeed
             renderMessages={renderMessages}
@@ -555,10 +555,7 @@ export function ChatWorkspaceV2() {
           />
         </div>
 
-        <div className="shrink-0 border-t border-border/30 bg-white/40 backdrop-blur-sm">
-          <div className="px-6 py-3 border-b border-border/30 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
-            ✏️ 输入
-          </div>
+        <div className="shrink-0 border-t border-border/30 bg-background/40 backdrop-blur-sm">
           <ComposerInput
             scopeType={uiScope.type}
             isZh={isZh}

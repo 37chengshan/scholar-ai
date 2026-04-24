@@ -65,7 +65,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="p-1 rounded hover:bg-zinc-100 transition-colors text-zinc-400 hover:text-zinc-600"
+      className="p-1 rounded transition-colors text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       title="Copy"
     >
       {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -207,7 +207,7 @@ export function MessageFeed({
                           <CopyButton text={message.displayContent} />
                           {tokenCount !== undefined && tokenCount > 0 && (
                             <span
-                              className="text-[10px] text-zinc-400 font-mono"
+                              className="text-[10px] text-muted-foreground"
                               title={costValue > 0 ? `Token: ${tokenCount.toLocaleString()} · ¥${costValue.toFixed(4)}` : undefined}
                             >
                               {tokenCount.toLocaleString()} tokens
@@ -234,7 +234,7 @@ export function MessageFeed({
                       </div>
                     </div>
                     <div className="text-right mt-0.5">
-                      <span className="text-[10px] text-zinc-400 font-mono">{formatTime(message.created_at)}</span>
+                      <span className="text-[10px] text-muted-foreground">{formatTime(message.created_at)}</span>
                     </div>
                   </div>
                 </div>

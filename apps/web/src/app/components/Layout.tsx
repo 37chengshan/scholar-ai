@@ -191,7 +191,7 @@ export function Layout() {
   };
 
   const SidebarContent = (
-    <div className="flex h-full flex-col bg-gradient-to-b from-slate-50 to-background border-r-2 border-border/70 shadow-2xl z-20">
+    <div className="z-20 flex h-full flex-col border-r-2 border-border/70 bg-gradient-to-b from-muted/40 to-background shadow-2xl">
       <div className={clsx("shrink-0 border-b border-border/50", leftCollapsed ? "px-3 pt-5 pb-4" : "px-5 pt-6 pb-4")}>
         {leftCollapsed ? (
           <div className="flex justify-center">
@@ -218,7 +218,7 @@ export function Layout() {
               <Logo
                 className="min-w-0 gap-2.5"
                 markSize={34}
-                textClassName="text-[2rem] leading-none"
+                textClassName="text-[1.65rem] leading-none"
               />
               <div className="ml-auto flex items-center gap-1.5">
                 <span className="relative flex h-2.5 w-2.5">
@@ -261,7 +261,7 @@ export function Layout() {
 
       <div className={clsx("shrink-0 border-b border-border/60", leftCollapsed ? "px-2 py-3" : "px-5 py-4")}>
         {!leftCollapsed ? (
-          <div className="mb-3 text-[9px] font-bold uppercase tracking-[0.28em] text-muted-foreground/70">
+          <div className="mb-3 text-[10px] font-semibold text-muted-foreground/80">
             {isZh ? "工作区" : "Workspace"}
           </div>
         ) : null}
@@ -337,7 +337,7 @@ export function Layout() {
               {dateGroups.slice(0, 2).map((group) => (
                 <div key={group.label}>
                   {!leftCollapsed ? (
-                    <div className="mb-1 border-b border-border/60 px-0 pb-1 text-[8.5px] font-bold uppercase tracking-[0.22em] text-muted-foreground/60">
+                    <div className="mb-1 border-b border-border/60 px-0 pb-1 text-[9px] font-semibold text-muted-foreground/70">
                       {group.label}
                     </div>
                   ) : null}
@@ -468,7 +468,7 @@ export function Layout() {
               <div className="text-[8.5px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
                 {isZh ? "账号" : "Profile"}
               </div>
-              <div className="truncate font-serif text-[12.5px] leading-tight text-foreground/90">
+              <div className="truncate text-[12.5px] font-semibold leading-tight text-foreground/90">
                 {user?.name || (isZh ? "研究者" : "Scholar")}
               </div>
             </div>
@@ -502,7 +502,7 @@ export function Layout() {
   return (
     <div className="relative flex h-screen overflow-hidden bg-background text-foreground antialiased">
       <aside className={clsx(
-        "hidden shrink-0 border-r-2 border-border/70 bg-gradient-to-b from-slate-50 to-background shadow-2xl transition-[width] duration-200 md:block",
+        "hidden shrink-0 border-r-2 border-border/70 bg-gradient-to-b from-muted/40 to-background shadow-2xl transition-[width] duration-200 md:block",
         leftCollapsed ? "w-[68px]" : "w-[288px]",
       )}>
         {SidebarContent}
