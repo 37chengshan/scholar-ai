@@ -30,8 +30,12 @@ interface MessageFeedProps {
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
   onCitationClick: (citation: CitationItem | undefined) => void;
   onStop: () => void;
+  onRetry?: () => void;
   formatTime: (date: string) => string;
   onSuggest?: (text: string) => void;
+  errorStage?: string;
+  recoverable?: boolean;
+  partialAnswerAvailable?: boolean;
 }
 
 const safeToolTimeline = (timeline?: ToolTimelineItem[]) => (timeline || []).filter(Boolean);
@@ -84,8 +88,12 @@ export function MessageFeed({
   scrollContainerRef,
   onCitationClick,
   onStop,
+  onRetry,
   formatTime,
   onSuggest,
+  errorStage,
+  recoverable,
+  partialAnswerAvailable,
 }: MessageFeedProps) {
   return (
     <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
@@ -197,7 +205,7 @@ export function MessageFeed({
                       )}
 
                       <CitationPanel
-                        visible={messageCitations.length > 0}
+                        visible={messageCitations.length > 0 || isStreaming}
                         citations={safeCitations(messageCitations)}
                       />
 
@@ -248,10 +256,10 @@ export function MessageFeed({
       {streamState.error && (
         <div className="max-w-2xl mx-auto mt-6 px-4">
           <UnifiedErrorState
-            title="对话流中断"
-            description={streamState.error.message}
-            retryLabel={labels.stop}
-            onRetry={onStop}
+            title={errorStage ? `对话流中断（${errorStage}）` : '对话流中断'}
+            description={`${streamState.error.message}${partialAnswerAvailable ? '（已保留部分结果）' : ''}${recoverable ? '，可继续恢复。' : ''}`}
+            retryLabel={recoverable ? '重试' : labels.stop}
+            onRetry={recoverable && onRetry ? onRetry : onStop}
           />
         </div>
       )}

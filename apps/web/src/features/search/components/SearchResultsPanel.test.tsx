@@ -32,6 +32,11 @@ const labels = {
   authorResults: 'Authors',
   yourLibrary: 'Library',
   externalSources: 'External',
+  authorMinChars: 'Enter at least 3 characters',
+  externalDegraded: 'External sources degraded',
+  emptyLibrary: 'No library results',
+  emptyExternal: 'No external results',
+  emptyAll: 'No results',
 };
 
 describe('SearchResultsPanel', () => {

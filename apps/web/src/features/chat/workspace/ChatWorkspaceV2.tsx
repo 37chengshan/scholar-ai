@@ -491,10 +491,42 @@ export function ChatWorkspaceV2() {
       }
 
       const page = citation.page_num || citation.page || 1;
-      navigate(`/read/${citation.paper_id}?page=${page}`);
+      if (!citation.page_num && !citation.page) {
+        toast.warning(isZh ? '引用缺少页码，已跳转到第一页' : 'Citation has no page; opening first page');
+      }
+      navigate(`/read/${citation.paper_id}?page=${page}&source=chat&source_id=${citation.source_id || ''}`);
     },
     [navigate, isZh],
   );
+
+  const scopeHint = useMemo(() => {
+    const scopeLabel = uiScope.type === 'single_paper'
+      ? (isZh ? '当前论文' : 'Current paper')
+      : uiScope.type === 'full_kb'
+        ? (isZh ? '当前知识库' : 'Current KB')
+        : (isZh ? '全局' : 'Global');
+    const modeLabel = mode === 'auto'
+      ? (isZh ? '自动' : 'Auto')
+      : mode === 'rag'
+        ? (isZh ? '快速问答' : 'Fast RAG')
+        : (isZh ? '深度分析' : 'Deep Agent');
+    return `${isZh ? '范围' : 'Scope'}：${scopeLabel} · ${isZh ? '模式' : 'Mode'}：${modeLabel}`;
+  }, [isZh, mode, uiScope.type]);
+
+  const errorStage = useMemo(() => {
+    if (streamState.streamStatus !== 'error') {
+      return undefined;
+    }
+    const phase = runtime.run.phase || runtime.run.currentPhase || 'unknown';
+    if (!isZh) {
+      return phase;
+    }
+    if (phase === 'planning') return '规划';
+    if (phase === 'executing') return '检索/执行';
+    if (phase === 'verifying') return '验证';
+    if (phase === 'failed') return '失败';
+    return String(phase);
+  }, [isZh, runtime.run.currentPhase, runtime.run.phase, streamState.streamStatus]);
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -548,14 +580,21 @@ export function ChatWorkspaceV2() {
             scrollContainerRef={messageListRef}
             onCitationClick={handleCitationClick}
             onStop={handleStop}
+            onRetry={handleSend}
             formatTime={formatTime}
             onSuggest={(text) => {
               setInput(text);
             }}
+            errorStage={errorStage}
+            recoverable={runtime.run.recoverable}
+            partialAnswerAvailable={Boolean(streamState.contentBuffer)}
           />
         </div>
 
         <div className="shrink-0 border-t border-border/30 bg-background/40 backdrop-blur-sm">
+          <div className="px-6 pt-2 text-[11px] text-muted-foreground" aria-live="polite">
+            {scopeHint}
+          </div>
           <ComposerInput
             scopeType={uiScope.type}
             isZh={isZh}

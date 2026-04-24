@@ -82,6 +82,18 @@ export function SearchWorkspace() {
     loading: isZh ? '加载中...' : 'Loading...',
     noKB: isZh ? '暂无知识库，请先创建知识库' : 'No knowledge bases available',
     paperUnit: isZh ? '篇论文' : 'papers',
+    authorMinChars: isZh ? '输入至少 3 个字符搜索作者' : 'Enter at least 3 characters to search authors',
+    externalDegraded: isZh ? '部分外部来源暂时失败，已展示可用结果。' : 'Some external sources are degraded; showing available results.',
+    emptyLibrary: isZh ? '本地库无结果，可尝试外部来源。' : 'No local results. Try external sources.',
+    emptyExternal: isZh ? '外部来源无结果或暂不可用。' : 'No external results or source unavailable.',
+    emptyAll: isZh ? '没有找到相关论文，试试更短关键词。' : 'No papers found. Try a shorter query.',
+    process: isZh ? '检索过程' : 'Retrieval Process',
+    queryType: isZh ? '查询类型' : 'Query type',
+    rewriteCount: isZh ? '检索改写数' : 'Rewrite count',
+    rewrittenQuery: isZh ? '改写后查询' : 'Rewritten query',
+    secondPass: isZh ? '是否二次检索' : 'Second pass',
+    secondPassGain: isZh ? '二次检索收益' : 'Second-pass gain',
+    evidenceHits: isZh ? '命中证据数' : 'Evidence hits',
   };
 
   useEffect(() => {
@@ -130,14 +142,36 @@ export function SearchWorkspace() {
       return [];
     }
     return [
-      { label: 'query_family', value: metadata.query_family },
-      { label: 'planner_query_count', value: metadata.planner_query_count },
-      { label: 'decontextualized_query', value: metadata.decontextualized_query },
-      { label: 'second_pass_used', value: metadata.second_pass_used },
-      { label: 'second_pass_gain', value: metadata.second_pass_gain },
-      { label: 'evidence_bundle_hit_count', value: metadata.evidence_bundle_hit_count },
+      { label: labels.queryType, value: metadata.query_family },
+      { label: labels.rewriteCount, value: metadata.planner_query_count },
+      { label: labels.rewrittenQuery, value: metadata.decontextualized_query },
+      { label: labels.secondPass, value: metadata.second_pass_used !== undefined ? (metadata.second_pass_used ? (isZh ? '是' : 'Yes') : (isZh ? '否' : 'No')) : undefined },
+      { label: labels.secondPassGain, value: metadata.second_pass_gain },
+      { label: labels.evidenceHits, value: metadata.evidence_bundle_hit_count },
     ].filter((row) => row.value !== undefined && row.value !== null && row.value !== '');
-  }, [results?.metadata]);
+  }, [isZh, labels.evidenceHits, labels.queryType, labels.rewriteCount, labels.rewrittenQuery, labels.secondPass, labels.secondPassGain, results?.metadata]);
+
+  const statusLine = useMemo(() => {
+    const sourceLabel = workspace.activeSource === 'authors'
+      ? (isZh ? '作者来源' : 'Author source')
+      : workspace.activeSource === 'arxiv'
+        ? 'arXiv'
+        : workspace.activeSource === 's2'
+          ? 'Semantic Scholar'
+          : (isZh ? 'arXiv + Semantic Scholar + 本地库' : 'arXiv + Semantic Scholar + Library');
+    if (isInitialLoading) {
+      return isZh ? `正在搜索 ${sourceLabel} · 第 1 页` : `Searching ${sourceLabel} · page 1`;
+    }
+    if (isPageFetching) {
+      return isZh ? `正在获取第 ${page + 1} 页...` : `Fetching page ${page + 1}...`;
+    }
+    if (error && results) {
+      return labels.externalDegraded;
+    }
+    return isZh
+      ? `来源：${sourceLabel} · 排序：${workspace.sortBy === 'date' ? '时间' : '相关度'}`
+      : `Source: ${sourceLabel} · Sort: ${workspace.sortBy === 'date' ? 'Date' : 'Relevance'}`;
+  }, [error, isInitialLoading, isPageFetching, isZh, labels.externalDegraded, page, results, workspace.activeSource, workspace.sortBy]);
 
   const visibleResults = useMemo(
     () => (results ? [...results.internal, ...results.external] : []),
@@ -217,6 +251,7 @@ export function SearchWorkspace() {
           isZh={isZh}
           inspectorOpen={showInspector}
           onToggleInspector={() => setShowInspector((value) => !value)}
+          statusLine={statusLine}
         />
 
         <div className="flex-1 overflow-y-auto bg-paper-2/35 p-5">
@@ -236,8 +271,13 @@ export function SearchWorkspace() {
               authorResults: labels.authorResults,
               yourLibrary: labels.yourLibrary,
               externalSources: labels.externalSources,
+              authorMinChars: labels.authorMinChars,
+              externalDegraded: labels.externalDegraded,
+              emptyLibrary: labels.emptyLibrary,
+              emptyExternal: labels.emptyExternal,
+              emptyAll: labels.emptyAll,
             }}
-            onViewPaper={(paperId) => navigate(`/read/${paperId}`)}
+            onViewPaper={(paperId) => navigate(`/read/${paperId}?source=search`)}
             onAddToLibrary={handleAddToLibrary}
             onAuthorClick={handleOpenAuthor}
           />
@@ -368,10 +408,10 @@ export function SearchWorkspace() {
             )}
           </section>
 
-          <section className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">
-              Planner / Evidence
-            </h3>
+          <details className="flex flex-col gap-3" open={false}>
+            <summary className="cursor-pointer text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">
+              {labels.process}
+            </summary>
             {plannerMetaRows.length > 0 ? (
               <dl className="mt-1 space-y-2 text-[11px]">
                 {plannerMetaRows.map((row) => (
@@ -383,10 +423,10 @@ export function SearchWorkspace() {
               </dl>
             ) : (
               <p className="text-[11px] text-muted-foreground">
-                {isZh ? '当前结果暂无 planner/evidence 元数据' : 'Planner/evidence metadata is not available for this result set'}
+                {isZh ? '当前结果暂无检索过程元数据' : 'Retrieval process metadata is not available for this result set'}
               </p>
             )}
-          </section>
+          </details>
         </div>
 
       </motion.aside>

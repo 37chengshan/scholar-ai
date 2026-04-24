@@ -63,6 +63,7 @@ import {
 function ReadContent() {
   const MIN_PANEL_WIDTH = 320;
   const MAX_PANEL_WIDTH = 620;
+  const PANEL_WIDTH_STORAGE_KEY = 'scholarai-read-panel-width';
 
   const { id } = useParams<{ id?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -93,6 +94,9 @@ function ReadContent() {
   const [linkedNoteId, setLinkedNoteId] = useState<string | null>(null);
   const [linkedNoteTitle, setLinkedNoteTitle] = useState<string>("");
   const [linkedNoteContent, setLinkedNoteContent] = useState<any>(createEmptyEditorDocument());
+  const [noteSaveStatus, setNoteSaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
+  const [noteLastSaved, setNoteLastSaved] = useState<Date | null>(null);
+  const [pageInputValue, setPageInputValue] = useState('1');
 
   const clampPage = useCallback(
     (page: number) => {
@@ -128,21 +132,34 @@ function ReadContent() {
       const existingNotes = await notesApi.getNotesByPaper(paperId);
       const userNote = getPrimaryUserNoteForPaper(existingNotes, paperId);
 
-      const targetNote =
-        userNote ||
-        (await notesApi.createNote({
-          title: noteTitle,
-          content: JSON.stringify(createEmptyEditorDocument()),
-          tags: ["read-note"],
-          paperIds: [paperId],
-        }));
+      if (!userNote) {
+        setLinkedNoteId(null);
+        setLinkedNoteTitle(noteTitle);
+        setLinkedNoteContent(createEmptyEditorDocument());
+        return;
+      }
 
-      setLinkedNoteId(targetNote.id);
-      setLinkedNoteTitle(targetNote.title || noteTitle);
-      setLinkedNoteContent(parseNoteJson(targetNote.content));
+      setLinkedNoteId(userNote.id);
+      setLinkedNoteTitle(userNote.title || noteTitle);
+      setLinkedNoteContent(parseNoteJson(userNote.content));
     },
     [isZh, parseNoteJson],
   );
+
+  useEffect(() => {
+    const savedWidth = localStorage.getItem(PANEL_WIDTH_STORAGE_KEY);
+    if (!savedWidth) {
+      return;
+    }
+    const parsed = Number(savedWidth);
+    if (!Number.isNaN(parsed)) {
+      setPanelWidth(Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, parsed)));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(panelWidth));
+  }, [panelWidth]);
 
   // Handle ?page= URL parameter for PDF reference jumps from notes
   useEffect(() => {
@@ -151,13 +168,29 @@ function ReadContent() {
       const page = parseInt(targetPage, 10);
       if (!isNaN(page) && page >= 1) {
         setCurrentPage(clampPage(page));
-        // Clear the ?page= parameter after navigating to avoid re-triggering
-        const newParams = new URLSearchParams(searchParams);
-        newParams.delete("page");
-        setSearchParams(newParams, { replace: true });
       }
     }
-  }, [clampPage, searchParams, setSearchParams]);
+  }, [clampPage, searchParams]);
+
+  useEffect(() => {
+    setPageInputValue(String(currentPage));
+  }, [currentPage]);
+
+  useEffect(() => {
+    const panel = searchParams.get('panel');
+    if (panel === 'notes' || panel === 'summary' || panel === 'annotations') {
+      setRightTab(panel);
+      return;
+    }
+    const source = searchParams.get('source');
+    if (source === 'chat') {
+      setRightTab('annotations');
+    } else if (source === 'search') {
+      setRightTab('summary');
+    } else {
+      setRightTab('notes');
+    }
+  }, [searchParams]);
 
   // Load paper data
   useEffect(() => {
@@ -194,10 +227,17 @@ function ReadContent() {
   }, [id, isZh, initializeLinkedNote]);
 
   // Handle page change from PDF viewer
-  const handlePageChange = useCallback(
-    async (page: number) => {
+  const goToPage = useCallback(
+    async (page: number, _reason: 'toolbar' | 'thumbnail' | 'section' | 'citation' | 'annotation' | 'url' = 'toolbar') => {
       const nextPage = clampPage(page);
       setCurrentPage(nextPage);
+      setPageInputValue(String(nextPage));
+
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('page', String(nextPage));
+      nextParams.set('source', nextParams.get('source') || 'read');
+      setSearchParams(nextParams, { replace: true });
+
       if (!id) {
         return;
       }
@@ -211,7 +251,7 @@ function ReadContent() {
         );
       }
     },
-    [clampPage, id, isZh],
+    [clampPage, id, isZh, searchParams, setSearchParams],
   );
 
   const handleAnnotationCreated = async () => {
@@ -257,16 +297,38 @@ function ReadContent() {
 
   const handleNotesSave = useCallback(
     async (content: any) => {
-      if (!id || !linkedNoteId) return;
+      if (!id) return;
       try {
-        await notesApi.updateNote(linkedNoteId, {
-          title:
-            linkedNoteTitle ||
-            buildReadingNoteTitle(paper?.title, isZh),
-          content: JSON.stringify(content),
-          paperIds: [id],
-        });
+        setNoteSaveStatus('saving');
+        const contentJson = JSON.stringify(content || createEmptyEditorDocument());
+        const existingText = contentJson.replace(/[\s"{}\[\],:]/g, '');
+        if (!existingText) {
+          setNoteSaveStatus('idle');
+          return;
+        }
+
+        if (!linkedNoteId) {
+          const created = await notesApi.createNote({
+            title: linkedNoteTitle || buildReadingNoteTitle(paper?.title, isZh),
+            content: contentJson,
+            tags: ['read-note'],
+            paperIds: [id],
+          });
+          setLinkedNoteId(created.id);
+          setLinkedNoteTitle(created.title || linkedNoteTitle);
+        } else {
+          await notesApi.updateNote(linkedNoteId, {
+            title:
+              linkedNoteTitle ||
+              buildReadingNoteTitle(paper?.title, isZh),
+            content: contentJson,
+            paperIds: [id],
+          });
+        }
+        setNoteSaveStatus('saved');
+        setNoteLastSaved(new Date());
       } catch (error: any) {
+        setNoteSaveStatus('error');
         toast.error(isZh ? "笔记保存失败" : "Failed to save notes");
       }
     },
@@ -274,10 +336,6 @@ function ReadContent() {
   );
 
   useEffect(() => {
-    if (!linkedNoteId) {
-      return;
-    }
-
     const timer = window.setTimeout(() => {
       handleNotesSave(linkedNoteContent);
     }, 800);
@@ -285,7 +343,19 @@ function ReadContent() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [handleNotesSave, linkedNoteContent, linkedNoteId]);
+  }, [handleNotesSave, linkedNoteContent]);
+
+  useEffect(() => {
+    if (noteSaveStatus !== 'saved') {
+      return;
+    }
+    const timer = window.setTimeout(() => setNoteSaveStatus('idle'), 1500);
+    return () => window.clearTimeout(timer);
+  }, [noteSaveStatus]);
+
+  useEffect(() => {
+    setNoteSaveStatus('pending');
+  }, [linkedNoteContent]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -378,11 +448,32 @@ function ReadContent() {
             variant="ghost"
             size="sm"
             className="h-7 w-7 p-0"
-            onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+            onClick={() => {
+              void goToPage(Math.max(1, currentPage - 1), 'toolbar');
+            }}
             disabled={currentPage <= 1}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
+          <input
+            value={pageInputValue}
+            onChange={(event) => setPageInputValue(event.target.value.replace(/[^0-9]/g, ''))}
+            onBlur={() => {
+              const next = Number(pageInputValue || '1');
+              if (Number.isNaN(next)) {
+                setPageInputValue(String(currentPage));
+                return;
+              }
+              void goToPage(next, 'toolbar');
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.currentTarget.blur();
+              }
+            }}
+            className="h-7 w-12 rounded border border-border/60 bg-background px-1 text-center text-xs tabular-nums text-foreground"
+            aria-label={isZh ? '输入页码' : 'Input page number'}
+          />
           <span className="min-w-[72px] text-center text-xs tabular-nums text-muted-foreground">
             {currentPage} / {totalPages ?? (isZh ? "加载中" : "...")}
           </span>
@@ -390,7 +481,9 @@ function ReadContent() {
             variant="ghost"
             size="sm"
             className="h-7 w-7 p-0"
-            onClick={() => handlePageChange(clampPage(currentPage + 1))}
+            onClick={() => {
+              void goToPage(clampPage(currentPage + 1), 'toolbar');
+            }}
             disabled={totalPages !== null && currentPage >= totalPages}
           >
             <ChevronRight className="h-4 w-4" />
@@ -498,8 +591,7 @@ function ReadContent() {
             <SectionTree
               imrad={paper.imradJson}
               onPageSelect={(page) => {
-                setCurrentPage(clampPage(page));
-                handlePageChange(clampPage(page));
+                void goToPage(clampPage(page), 'section');
               }}
               currentPage={currentPage}
               isZh={isZh}
@@ -513,7 +605,9 @@ function ReadContent() {
             <PDFViewer
               paperId={id!}
               currentPage={currentPage}
-              onPageChange={handlePageChange}
+              onPageChange={(page) => {
+                void goToPage(page, 'url');
+              }}
               onNumPagesChange={handleNumPagesChange}
               annotations={annotations}
               activeAnnotationId={activeAnnotationId}
@@ -535,8 +629,7 @@ function ReadContent() {
               currentPage={currentPage}
               onPageClick={(page) => {
                 const nextPage = clampPage(page);
-                setCurrentPage(nextPage);
-                handlePageChange(nextPage);
+                void goToPage(nextPage, 'thumbnail');
               }}
               thumbnailWidth={60}
             />
@@ -564,11 +657,11 @@ function ReadContent() {
               className="h-full flex flex-col"
             >
               <div className="border-b border-border/50 bg-background/80 backdrop-blur-md px-5 py-4">
-                <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                  {isZh ? "Reading Inspector" : "Reading Inspector"}
+                <div className="text-[10px] font-semibold text-muted-foreground">
+                  {isZh ? "阅读辅助" : "Reading Assistant"}
                 </div>
-                <div className="mt-2 font-serif text-[1.35rem] font-bold text-foreground">
-                  {isZh ? "批注与笔记" : "Notes & Annotations"}
+                <div className="mt-1 text-sm font-semibold text-foreground">
+                  {isZh ? "笔记 / 批注 / 摘要" : "Notes / Annotations / Summary"}
                 </div>
               </div>
               <TabsList className="px-3 pt-3 justify-start shrink-0 bg-transparent">
@@ -607,8 +700,7 @@ function ReadContent() {
                             key={ann.id}
                             className="cursor-pointer rounded-2xl border border-border/60 bg-background p-3 text-xs transition-colors hover:bg-primary/[0.04]"
                             onClick={() => {
-                              setCurrentPage(clampPage(ann.pageNumber));
-                              handlePageChange(clampPage(ann.pageNumber));
+                              void goToPage(clampPage(ann.pageNumber), 'annotation');
                               setActiveAnnotationId(ann.id);
                               setRightTab("annotations");
                             }}
@@ -649,14 +741,45 @@ function ReadContent() {
                     <span className="text-xs font-medium text-muted-foreground">
                       {isZh ? "阅读笔记" : "Reading Notes"}
                     </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground">
+                        {noteSaveStatus === 'saving' && (isZh ? '保存中' : 'Saving...')}
+                        {noteSaveStatus === 'pending' && (isZh ? '有未保存修改' : 'Unsaved changes')}
+                        {noteSaveStatus === 'saved' && noteLastSaved && `${isZh ? '已保存' : 'Saved'} ${noteLastSaved.toLocaleTimeString(isZh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`}
+                        {noteSaveStatus === 'error' && (isZh ? '保存失败，稍后重试' : 'Save failed, retry later')}
+                        {noteSaveStatus === 'idle' && ''}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-full border-border/70 bg-background px-3 text-[10px]"
+                        onClick={() => navigate(`/notes?paperId=${id}${linkedNoteId ? `&noteId=${linkedNoteId}` : ""}`)}
+                      >
+                        <FileText className="w-3 h-3 mr-1" />
+                        {isZh ? "在笔记页编辑" : "Open full notes"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="px-3 py-2 border-b border-border/50 bg-background/80">
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      className="h-8 rounded-full border-border/70 bg-background px-3 text-[10px]"
-                      onClick={() => navigate(`/notes?paperId=${id}${linkedNoteId ? `&noteId=${linkedNoteId}` : ""}`)}
+                      className="h-7 text-[10px]"
+                      onClick={() => {
+                        const refText = `[[pdf:${id}:page:${currentPage}]]`;
+                        const current = linkedNoteContent || createEmptyEditorDocument();
+                        const next = {
+                          ...current,
+                          content: [
+                            ...((current.content as any[]) || []),
+                            { type: 'paragraph', content: [{ type: 'text', text: refText }] },
+                          ],
+                        };
+                        setLinkedNoteContent(next);
+                        toast.success(isZh ? '已插入当前页引用' : 'Inserted current page reference');
+                      }}
                     >
-                      <FileText className="w-3 h-3 mr-1" />
-                      {isZh ? "在侧边栏编辑笔记" : "Edit in sidebar"}
+                      {isZh ? '插入当前页引用' : 'Insert current page reference'}
                     </Button>
                   </div>
                   <div className="flex-1 overflow-hidden">

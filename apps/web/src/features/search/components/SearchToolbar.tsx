@@ -10,6 +10,7 @@ interface SearchToolbarProps {
   isZh: boolean;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
+  statusLine?: string;
 }
 
 export function SearchToolbar({
@@ -22,6 +23,7 @@ export function SearchToolbar({
   isZh,
   inspectorOpen,
   onToggleInspector,
+  statusLine,
 }: SearchToolbarProps) {
   return (
     <div className="px-5 py-4 border-b border-border/50 bg-background/90 backdrop-blur-md sticky top-0 z-10 flex flex-col gap-3 shadow-sm">
@@ -85,6 +87,11 @@ export function SearchToolbar({
           {inspectorOpen ? (isZh ? '收起侧注' : 'Hide Notes') : (isZh ? '展开侧注' : 'Show Notes')}
         </button>
       </div>
+      {statusLine ? (
+        <div className="text-[11px] text-muted-foreground" aria-live="polite">
+          {statusLine}
+        </div>
+      ) : null}
     </div>
   );
 }

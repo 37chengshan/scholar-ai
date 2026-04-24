@@ -22,6 +22,11 @@ interface SearchResultsPanelProps {
     authorResults: string;
     yourLibrary: string;
     externalSources: string;
+    authorMinChars: string;
+    externalDegraded: string;
+    emptyLibrary: string;
+    emptyExternal: string;
+    emptyAll: string;
   };
   onViewPaper: (paperId: string) => void;
   onAddToLibrary: (result: any) => void;
@@ -53,7 +58,7 @@ export function SearchResultsPanel({
     );
   }
 
-  if (error) {
+  if (error && !results) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-sm text-red-500">{error}</div>
@@ -95,6 +100,9 @@ export function SearchResultsPanel({
           <h2 className="font-semibold mb-4 text-lg">
             {labels.authorResults} ({authorResults.length})
           </h2>
+          {query.trim().length < 3 && (
+            <p className="mb-3 text-xs text-muted-foreground">{labels.authorMinChars}</p>
+          )}
           {authorLoading ? (
             <div className="flex items-center justify-center h-32">
               <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -143,8 +151,19 @@ export function SearchResultsPanel({
         </div>
       )}
 
+      {activeSource !== 'authors' && error && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {labels.externalDegraded}
+        </div>
+      )}
+
       {activeSource !== 'authors' && results.internal.length === 0 && results.external.length === 0 && (
-        <NoSearchResultsState query={query} />
+        <div>
+          <NoSearchResultsState query={query} />
+          <p className="mt-3 text-xs text-muted-foreground">
+            {activeSource === 'library' ? labels.emptyLibrary : activeSource === 'external' ? labels.emptyExternal : labels.emptyAll}
+          </p>
+        </div>
       )}
       </motion.div>
     </div>
