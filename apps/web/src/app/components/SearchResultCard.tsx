@@ -11,6 +11,7 @@
 
 import { Plus, ExternalLink as ExternalLinkIcon } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Link } from 'react-router';
 
 export interface SearchResultCardProps {
   result: {
@@ -31,10 +32,11 @@ export interface SearchResultCardProps {
 
 export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: SearchResultCardProps) {
   const isInternal = result.source === 'internal';
+  const paperHref = isInternal && result.paperId ? `/read/${result.paperId}` : null;
 
   return (
     <div
-      className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all duration-300 relative overflow-hidden"
+      className="group relative flex flex-col gap-3 overflow-hidden rounded-sm border border-border/50 bg-card p-5 transition-[border-color,box-shadow] duration-300 hover:border-primary/50 hover:shadow-md"
       data-testid="search-result-card"
     >
       <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500" />
@@ -60,12 +62,18 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: Search
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <h3
-          className="font-serif font-black text-xl leading-tight group-hover:text-primary transition-colors tracking-tight line-clamp-2 cursor-pointer"
-          onClick={() => isInternal && result.paperId && onViewPaper?.(result.paperId)}
-        >
-          {result.title}
-        </h3>
+        {paperHref ? (
+          <Link
+            to={paperHref}
+            className="line-clamp-2 font-serif text-xl font-black leading-tight tracking-tight transition-colors hover:text-primary focus-visible:text-primary"
+          >
+            {result.title}
+          </Link>
+        ) : (
+          <h3 className="line-clamp-2 font-serif text-xl font-black leading-tight tracking-tight">
+            {result.title}
+          </h3>
+        )}
         {result.authors && result.authors.length > 0 && (
           <p className="font-sans text-[11px] font-medium text-foreground/80 line-clamp-1 truncate">
             {result.authors.join(', ')}
@@ -81,19 +89,30 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: Search
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border/30 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border/30 pt-3">
         {!isInternal && onAddToLibrary && (
           <button
+            type="button"
             onClick={() => onAddToLibrary(result)}
             className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest bg-primary text-primary-foreground px-3 py-1.5 rounded-sm hover:bg-secondary transition-colors shadow-sm"
+            aria-label="Import paper into library"
           >
             <Plus className="w-3 h-3" /> Import
           </button>
         )}
-        {isInternal && result.paperId && onViewPaper && (
+        {paperHref && (
+          <Link
+            to={paperHref}
+            className="flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-primary-foreground shadow-sm transition-colors hover:bg-secondary"
+          >
+            View
+          </Link>
+        )}
+        {!paperHref && isInternal && result.paperId && onViewPaper && (
           <button
+            type="button"
             onClick={() => onViewPaper(result.paperId!)}
-            className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest bg-primary text-primary-foreground px-3 py-1.5 rounded-sm hover:bg-secondary transition-colors shadow-sm"
+            className="flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-primary-foreground shadow-sm transition-colors hover:bg-secondary"
           >
             View
           </button>

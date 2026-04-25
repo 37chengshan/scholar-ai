@@ -55,6 +55,7 @@ async def test_mock_eval_uses_paper_ids_for_single_paper_queries(tmp_path: Path)
     assert report["paper_hit_rate_avg"] == pytest.approx(1.0)
     assert report["recall_at_5_avg"] == pytest.approx(1.0)
     assert report["mrr_avg"] == pytest.approx(1.0)
+    assert "ndcg_at_10_avg" in report
     assert "chunk_hit_rate_avg" in report
     assert "latency_p95_ms" in report
 
@@ -88,6 +89,7 @@ async def test_mock_eval_uses_paper_ids_for_cross_paper_queries(tmp_path: Path):
     assert report["paper_hit_rate_avg"] == pytest.approx(0.5)
     assert report["recall_at_5_avg"] == pytest.approx(0.5)
     assert report["mrr_avg"] == pytest.approx(1.0)
+    assert "query_family_breakdown" in report
 
 
 @pytest.mark.asyncio

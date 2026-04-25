@@ -189,6 +189,11 @@ export function useSearch(options: UseSearchOptions = {}) {
     setPage(0);
   }, [normalizedFilters.yearFrom, normalizedFilters.yearTo, normalizedFilters.sortBy, normalizedFilters.sources]);
 
+  const submitSearch = useCallback(() => {
+    setDebouncedQuery(query);
+    setPage(0);
+  }, [query]);
+
   const searchQuery = useQuery({
     queryKey: [SEARCH_QUERY_KEY, debouncedQuery, page, normalizedFilters],
     enabled: queryEnabled,
@@ -281,6 +286,7 @@ export function useSearch(options: UseSearchOptions = {}) {
   return {
     query,
     setQuery,
+    submitSearch,
     results,
     loading,
     isInitialLoading,

@@ -253,16 +253,16 @@ class Qwen3VLMultimodalEmbedding:
                 model_path = str(local_path)
                 logger.info("Using local Qwen3-VL-Embedding model", path=model_path)
 
-            # FP16 on CPU is significantly slower and can appear hung under load.
-            # Force FP32 on CPU for predictable throughput during long document imports.
-            if self.device == "cpu":
+            # Non-CUDA paths can silently execute on CPU kernels where FP16 is much slower.
+            # Keep FP16 only on CUDA and use FP32 on MPS/CPU for predictable long-run throughput.
+            if self.device == "cuda":
+                torch_dtype = torch.float16 if self.quantization == "fp16" else torch.float32
+            else:
                 if self.quantization == "fp16":
                     logger.warning(
-                        "FP16 quantization requested on CPU; falling back to FP32 for stability/performance"
+                        "FP16 quantization requested on non-CUDA device; falling back to FP32 for stability/performance"
                     )
                 torch_dtype = torch.float32
-            else:
-                torch_dtype = torch.float16 if self.quantization == "fp16" else torch.float32
 
             # Use Flash Attention 2 for better acceleration (CUDA only)
             # Flash Attention 2 is not supported on MPS/CPU

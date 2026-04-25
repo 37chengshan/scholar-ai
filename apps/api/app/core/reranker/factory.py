@@ -26,7 +26,7 @@ Usage:
 from typing import Dict, Any
 from app.core.reranker.base import BaseRerankerService
 from app.core.reranker.qwen3vl_reranker import Qwen3VLRerankerService
-from app.config import settings
+from app.config import settings, normalize_reranker_model_name
 from app.utils.logger import logger
 
 
@@ -64,7 +64,9 @@ class RerankerServiceFactory:
             ValueError: If RERANKER_MODEL is unknown
         """
         # Get configuration (with defaults for backward compatibility)
-        resolved_model_type = model_type or getattr(settings, "RERANKER_MODEL", "bge-reranker")
+        resolved_model_type = normalize_reranker_model_name(
+            model_type or getattr(settings, "RERANKER_MODEL", "bge-reranker")
+        )
         resolved_quantization = quantization or getattr(settings, "RERANKER_QUANTIZATION", "fp16")
         device = "auto"  # Auto-detect device
 

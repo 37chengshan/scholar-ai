@@ -89,7 +89,8 @@ export function ComposerInput({
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setModeMenuOpen(v => !v)}
-                  disabled={disabled && !streaming}
+                  disabled={streaming || (disabled && !streaming)}
+                  title={streaming ? (isZh ? '生成中不可切换模式' : 'Mode cannot change while streaming') : undefined}
                   className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-sm hover:bg-muted"
                 >
                   <span className={clsx(
@@ -105,11 +106,13 @@ export function ComposerInput({
                       <button
                         key={opt.value}
                         onClick={() => handleModeSelect(opt.value)}
+                        disabled={streaming}
                         className={clsx(
                           'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2',
                           mode === opt.value
                             ? 'bg-primary/8 text-primary font-semibold'
-                            : 'hover:bg-muted text-foreground/80'
+                            : 'hover:bg-muted text-foreground/80',
+                          streaming && 'opacity-60 cursor-not-allowed'
                         )}
                       >
                         <span className={clsx(
@@ -117,7 +120,7 @@ export function ComposerInput({
                           opt.value === 'auto' ? 'bg-primary/70' : opt.value === 'rag' ? 'bg-secondary' : 'bg-muted-foreground'
                         )} />
                         <span>{opt.label}</span>
-                        <span className="text-[10px] text-muted-foreground ml-auto">{opt.desc}</span>
+                        <span className="text-[10px] text-muted-foreground ml-auto hidden md:inline">{opt.desc}</span>
                       </button>
                     ))}
                   </div>
@@ -127,7 +130,7 @@ export function ComposerInput({
 
             {/* Right: send/stop button */}
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground font-mono hidden sm:inline">{labels.sendKeyHint}</span>
+              <span className="text-[10px] text-muted-foreground hidden sm:inline">{labels.sendKeyHint}</span>
               {streaming && onStop ? (
                 <button
                   onClick={onStop}
@@ -140,6 +143,7 @@ export function ComposerInput({
                 <button
                   onClick={onSend}
                   disabled={!input.trim() || disabled}
+                  title={!input.trim() ? (isZh ? '请输入问题' : 'Type a message first') : disabled ? (isZh ? '当前不可发送' : 'Cannot send right now') : undefined}
                   aria-label={isZh ? '发送消息' : 'Send message'}
                   className={clsx(
                     'w-8 h-8 flex items-center justify-center rounded-full transition-all flex-shrink-0',

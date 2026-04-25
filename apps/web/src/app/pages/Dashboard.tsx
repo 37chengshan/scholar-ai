@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { Link } from "react-router";
 import {
   MessageSquare,
   Search,
@@ -68,7 +68,6 @@ const navCards: NavCard[] = [
 export function Dashboard() {
   const { language } = useLanguage();
   const { user } = useAuth();
-  const navigate = useNavigate();
   const isZh = language === "zh";
 
   const { sessions } = useSessions();
@@ -122,13 +121,12 @@ export function Dashboard() {
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {navCards.map((card) => (
-              <button
+              <Link
                 key={card.to}
-                type="button"
-                onClick={() => navigate(card.to)}
+                to={card.to}
                 className={clsx(
                   "group relative flex flex-col gap-3 overflow-hidden rounded-lg border border-foreground/10 bg-card p-5 text-left",
-                  "transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md",
+                  "transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md",
                 )}
               >
                 <div className={clsx("absolute inset-0 bg-gradient-to-br opacity-0 transition-opacity duration-200 group-hover:opacity-100", card.accent)} />
@@ -136,7 +134,7 @@ export function Dashboard() {
                   <div className="flex h-9 w-9 items-center justify-center rounded-md border border-foreground/8 bg-muted">
                     <card.icon className="h-4 w-4 text-foreground/60" />
                   </div>
-                  <ArrowRight className="h-4 w-4 translate-x-1 text-transparent opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:text-primary group-hover:opacity-100" />
+                  <ArrowRight className="h-4 w-4 translate-x-1 text-transparent opacity-0 transition-[transform,opacity,color] duration-200 group-hover:translate-x-0 group-hover:text-primary group-hover:opacity-100" />
                 </div>
                 <div className="relative">
                   <div className="font-serif text-base font-semibold text-foreground">
@@ -146,23 +144,22 @@ export function Dashboard() {
                     {isZh ? card.descZh : card.descEn}
                   </p>
                 </div>
-              </button>
+              </Link>
             ))}
 
             {/* Quick new chat card */}
-            <button
-              type="button"
-              onClick={() => navigate("/chat?new=1")}
+            <Link
+              to="/chat?new=1"
               className={clsx(
                 "group relative flex flex-col gap-3 overflow-hidden rounded-lg border border-dashed border-primary/30 bg-primary/[0.03] p-5 text-left",
-                "transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/[0.06]",
+                "transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/[0.06]",
               )}
             >
               <div className="flex items-start justify-between">
                 <div className="flex h-9 w-9 items-center justify-center rounded-md border border-primary/20 bg-primary/10">
                   <Sparkles className="h-4 w-4 text-primary" />
                 </div>
-                <ArrowRight className="h-4 w-4 translate-x-1 text-transparent opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:text-primary group-hover:opacity-100" />
+                <ArrowRight className="h-4 w-4 translate-x-1 text-transparent opacity-0 transition-[transform,opacity,color] duration-200 group-hover:translate-x-0 group-hover:text-primary group-hover:opacity-100" />
               </div>
               <div>
                 <div className="font-serif text-base font-semibold text-primary">
@@ -172,7 +169,7 @@ export function Dashboard() {
                   {isZh ? "立即开启一次全新的 AI 研究对话" : "Start a fresh AI research conversation"}
                 </p>
               </div>
-            </button>
+            </Link>
           </div>
         </section>
 
@@ -189,21 +186,19 @@ export function Dashboard() {
                     {isZh ? "最近对话" : "Recent Chats"}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => navigate("/chat")}
+                <Link
+                  to="/chat"
                   className="flex items-center gap-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-primary"
                 >
                   {isZh ? "全部" : "All"}
                   <ArrowRight className="h-3 w-3" />
-                </button>
+                </Link>
               </div>
               <div className="space-y-1.5">
                 {recentSessions.map((session) => (
-                  <button
+                  <Link
                     key={session.id}
-                    type="button"
-                    onClick={() => navigate(`/chat?session=${session.id}`)}
+                    to={`/chat?session=${session.id}`}
                     className="group flex w-full items-center gap-3 rounded-md border border-foreground/8 bg-card px-3.5 py-3 text-left transition-colors hover:border-primary/20 hover:bg-muted/30"
                   >
                     <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
@@ -216,7 +211,7 @@ export function Dashboard() {
                       </div>
                     </div>
                     <ArrowRight className="h-3.5 w-3.5 shrink-0 text-transparent transition-colors group-hover:text-primary/50" />
-                  </button>
+                  </Link>
                 ))}
               </div>
             </section>
@@ -232,21 +227,19 @@ export function Dashboard() {
                     {isZh ? "知识库" : "Collections"}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => navigate("/knowledge-bases")}
+                <Link
+                  to="/knowledge-bases"
                   className="flex items-center gap-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-primary"
                 >
                   {isZh ? "全部" : "All"}
                   <ArrowRight className="h-3 w-3" />
-                </button>
+                </Link>
               </div>
               <div className="space-y-1.5">
                 {knowledgeBases.map((kb) => (
-                  <button
+                  <Link
                     key={kb.id}
-                    type="button"
-                    onClick={() => navigate(`/knowledge-bases/${kb.id}`)}
+                    to={`/knowledge-bases/${kb.id}`}
                     className="group flex w-full items-center gap-3 rounded-md border border-foreground/8 bg-card px-3.5 py-3 text-left transition-colors hover:border-primary/20 hover:bg-muted/30"
                   >
                     <LibraryBig className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
@@ -259,7 +252,7 @@ export function Dashboard() {
                       </div>
                     </div>
                     <ArrowRight className="h-3.5 w-3.5 shrink-0 text-transparent transition-colors group-hover:text-primary/50" />
-                  </button>
+                  </Link>
                 ))}
               </div>
             </section>

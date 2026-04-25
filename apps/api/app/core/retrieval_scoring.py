@@ -69,6 +69,22 @@ class RetrievalScoringService:
             f"text: {text}"
         )
 
+    @staticmethod
+    def build_compact_reranker_document(hit: Dict[str, Any]) -> str:
+        """Backward-compatible compact document format used by older reranker flows."""
+        text = hit.get("text") or hit.get("content_data") or hit.get("content") or ""
+        paper_title = hit.get("paper_title") or hit.get("title") or ""
+        section = hit.get("section") or ""
+        page_num = hit.get("page_num") or hit.get("page") or ""
+        content_type = hit.get("content_type") or "text"
+        return (
+            f"title: {paper_title}\n"
+            f"section: {section}\n"
+            f"page_num: {page_num}\n"
+            f"content_type: {content_type}\n"
+            f"text: {text}"
+        )
+
     def score_candidate(
         self,
         *,
@@ -98,6 +114,46 @@ class RetrievalScoringService:
             result["sparse_score"] = scored.sparse_score
             result["hybrid_score"] = scored.hybrid_score
 
+    @staticmethod
+    def fuse_branch_results(
+        branch_results: Dict[str, List[Dict[str, Any]]],
+        branch_weights: Dict[str, float],
+        *,
+        rrf_k: int = 60,
+    ) -> List[Dict[str, Any]]:
+        """Fuse heterogeneous branch results with weighted RRF.
+
+        This is branch-agnostic and can combine dense/sparse/scientific branches.
+        """
+        fused: Dict[str, Dict[str, Any]] = {}
+
+        for branch, results in branch_results.items():
+            weight = float(branch_weights.get(branch, 0.0))
+            if weight <= 0.0:
+                continue
+
+            for rank, result in enumerate(results, start=1):
+                result_key = (
+                    f"{result.get('paper_id', '')}:"
+                    f"{result.get('content_type', 'text')}:"
+                    f"{result.get('source_id') or result.get('id') or result.get('page_num') or rank}"
+                )
+                score = weight / (rrf_k + rank)
+
+                if result_key not in fused:
+                    fused[result_key] = {
+                        **result,
+                        "rrf_score": 0.0,
+                        "branch_ranks": {},
+                    }
+
+                fused[result_key]["rrf_score"] += score
+                fused[result_key]["branch_ranks"][branch] = rank
+
+        merged = list(fused.values())
+        merged.sort(key=lambda item: float(item.get("rrf_score", 0.0)), reverse=True)
+        return merged
+
     def apply_reranker_scores(
         self,
         results: List[Dict[str, Any]],
@@ -120,10 +176,11 @@ class RetrievalScoringService:
 
         for result in results:
             structured = self.build_structured_reranker_document(result)
+            compact = self.build_compact_reranker_document(result)
             plain_text = result.get("text") or result.get("content_data") or result.get("content") or ""
             result["reranker_score"] = content_to_score.get(
                 structured,
-                content_to_score.get(plain_text, 0.0),
+                content_to_score.get(compact, content_to_score.get(plain_text, 0.0)),
             )
 
         results.sort(key=lambda item: item.get("reranker_score", 0.0), reverse=True)

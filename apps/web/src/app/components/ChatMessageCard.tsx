@@ -158,7 +158,7 @@ function MessageAvatar({ role }: { role: 'user' | 'assistant' }) {
         'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center',
         isAssistant
           ? 'bg-primary/10 text-primary'
-          : 'bg-slate-100 text-slate-600'
+          : 'bg-muted text-muted-foreground'
       )}
     >
       {isAssistant ? (
@@ -247,19 +247,19 @@ export function ChatMessageCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        'flex flex-col gap-2 rounded-xl border bg-white p-4 shadow-sm',
-        'border-slate-200/50',
+        'flex flex-col gap-2 rounded-xl border bg-card p-4 shadow-sm',
+        'border-border/60',
         className
       )}
     >
       {/* Role Header */}
       <div className="flex items-center gap-2">
         <MessageAvatar role={message.role} />
-        <span className="text-sm font-medium text-slate-700">
+        <span className="text-sm font-medium text-foreground/85">
           {isAssistant ? t.ai : t.user}
         </span>
         {message.timestamp && (
-          <div className="flex items-center gap-1 text-xs text-slate-400 ml-auto">
+          <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="w-3 h-3" />
             <span>{formatTime(message.timestamp, isZh)}</span>
           </div>
@@ -321,7 +321,7 @@ export function ChatMessageCard({
             className="text-sm leading-relaxed"
           />
         ) : effectiveIsStreaming ? (
-          <div className="text-sm text-slate-500 italic">
+          <div className="text-sm italic text-muted-foreground">
             {isZh ? '正在生成回答...' : 'Generating response...'}
             <StreamingCursor />
           </div>

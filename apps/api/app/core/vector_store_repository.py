@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from app.config import settings
+from app.core.bm25_service import SparseRecallService, get_sparse_recall_service
 from app.core.milvus_service import MilvusService, get_milvus_service
 from app.core.qdrant_service import QdrantService, get_qdrant_service
 from app.models.retrieval import RetrievedChunk, SearchConstraints
@@ -30,12 +31,42 @@ class VectorStoreRepository(ABC):
     ) -> List[RetrievedChunk]:
         """Search the underlying vector store and return canonical chunks."""
 
+    @abstractmethod
+    def search_sparse(
+        self,
+        *,
+        query: str,
+        user_id: str,
+        content_type: str,
+        top_k: int,
+        constraints: SearchConstraints,
+        prefetch_limit: int = 300,
+    ) -> List[RetrievedChunk]:
+        """Run sparse lexical recall and return canonical chunks."""
+
+    def search_summary_index(
+        self,
+        *,
+        embedding: List[float],
+        user_id: str,
+        top_k: int,
+        constraints: SearchConstraints,
+        summary_type: Optional[str] = None,
+    ) -> List[RetrievedChunk]:
+        """Search the summary index for global / survey queries.
+
+        Default implementation returns empty list (backends that don't support
+        the summary index gracefully degrade).
+        """
+        return []
+
 
 class MilvusVectorStoreRepository(VectorStoreRepository):
     """Milvus-backed repository for canonical retrieval results."""
 
     def __init__(self, milvus_service: Optional[MilvusService] = None):
         self.milvus_service = milvus_service or get_milvus_service()
+        self.sparse_service: SparseRecallService = get_sparse_recall_service()
 
     @staticmethod
     def _normalize_hit(hit: dict) -> RetrievedChunk:
@@ -107,6 +138,79 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
         )
         return [self._normalize_hit(hit) for hit in hits]
 
+    def search_sparse(
+        self,
+        *,
+        query: str,
+        user_id: str,
+        content_type: str,
+        top_k: int,
+        constraints: SearchConstraints,
+        prefetch_limit: int = 300,
+    ) -> List[RetrievedChunk]:
+        collection = self.milvus_service.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+        effective_constraints = constraints.model_copy(update={"content_types": [content_type]})
+        expr = self.milvus_service._build_expr_from_constraints(effective_constraints)
+
+        rows = collection.query(
+            expr=expr,
+            output_fields=[
+                "id",
+                "paper_id",
+                "page_num",
+                "content_type",
+                "section",
+                "content_data",
+                "quality_score",
+            ],
+            limit=max(top_k, prefetch_limit),
+        )
+
+        scored: List[dict] = []
+        for row in rows:
+            text = row.get("content_data") or ""
+            sparse_score = self.sparse_service.score(query, text)
+            if sparse_score <= 0.0:
+                continue
+            scored.append(
+                {
+                    "id": row.get("id"),
+                    "paper_id": row.get("paper_id"),
+                    "page_num": row.get("page_num"),
+                    "content_type": row.get("content_type") or content_type,
+                    "section": row.get("section"),
+                    "content_data": text,
+                    "quality_score": row.get("quality_score"),
+                    "score": sparse_score,
+                    "sparse_score": sparse_score,
+                    "backend": "milvus",
+                    "raw_data": {},
+                }
+            )
+
+        scored.sort(key=lambda item: float(item.get("sparse_score") or 0.0), reverse=True)
+        return [self._normalize_hit(hit) for hit in scored[:top_k]]
+
+    def search_summary_index(
+        self,
+        *,
+        embedding: List[float],
+        user_id: str,
+        top_k: int,
+        constraints: SearchConstraints,
+        summary_type: Optional[str] = None,
+    ) -> List[RetrievedChunk]:
+        """Search the Iteration 2 summary index (paper_summaries collection)."""
+        paper_ids = list(constraints.paper_ids) if constraints.paper_ids else None
+        hits = self.milvus_service.search_summaries(
+            embedding=embedding,
+            user_id=user_id,
+            top_k=top_k,
+            paper_ids=paper_ids,
+            summary_type=summary_type,
+        )
+        return [self._normalize_hit(hit) for hit in hits]
+
 
 class QdrantVectorStoreRepository(VectorStoreRepository):
     """Qdrant-backed repository for retrieval experiment parity."""
@@ -140,6 +244,19 @@ class QdrantVectorStoreRepository(VectorStoreRepository):
             )
             for hit in hits
         ]
+
+    def search_sparse(
+        self,
+        *,
+        query: str,
+        user_id: str,
+        content_type: str,
+        top_k: int,
+        constraints: SearchConstraints,
+        prefetch_limit: int = 300,
+    ) -> List[RetrievedChunk]:
+        # Qdrant sparse recall can be added later with BM25/keyword index integration.
+        return []
 
 
 _vector_store_repository: Optional[VectorStoreRepository] = None

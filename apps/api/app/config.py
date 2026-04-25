@@ -185,11 +185,22 @@ class Settings(BaseSettings):
     RERANKER_VARIANT: str = "2b"
     VECTOR_STORE_BACKEND: Literal["milvus", "qdrant"] = "milvus"
     RETRIEVAL_BENCH_PROFILE: str = "dev"
-    RETRIEVAL_MODEL_STACK: Literal["bge_dual", "qwen_dual", "manual"] = "qwen_dual"
+    RETRIEVAL_MODEL_STACK: Literal["bge_dual", "qwen_dual", "manual", "academic_hybrid"] = "qwen_dual"
     RETRIEVAL_TRACE_ENABLED: bool = False
     RETRIEVAL_TRACE_INCLUDE_RESULTS: bool = False
     RETRIEVAL_VECTOR_WEIGHT: float = 0.75
     RETRIEVAL_SPARSE_WEIGHT: float = 0.25
+    RETRIEVAL_FUSION_RRF_K: int = 60
+    QWEN_MULTIMODAL_BRANCH_WEIGHT: float = 0.55
+    SCIENTIFIC_TEXT_BRANCH_WEIGHT: float = 0.25
+    SPARSE_BRANCH_WEIGHT: float = 0.20
+    SCIENTIFIC_TEXT_BRANCH_ENABLED: bool = True
+    SCIENTIFIC_TEXT_EMBEDDING_BACKEND: str = "specter2"
+    SCIENTIFIC_TEXT_SPECTER_ADAPTER: str = "adhoc_query"
+    SCIENTIFIC_TEXT_TOP_K: int = 18
+    SCIENTIFIC_TEXT_MAX_QUERIES: int = 2
+    SPARSE_RECALL_TOP_K: int = 18
+    SPARSE_RECALL_PREFETCH_LIMIT: int = 320
     GRAPH_RETRIEVAL_ENABLED: bool = True
     GRAPH_RETRIEVAL_TOP_K: int = 8
     GRAPH_EXTRACTION_ON_INGEST: bool = False
@@ -402,7 +413,7 @@ def resolve_model_stack(
 ) -> str:
     """Resolve explicit stack label from stack_name or model pair."""
     normalized_stack = (stack_name or "").strip().lower()
-    if normalized_stack in {"bge_dual", "qwen_dual"}:
+    if normalized_stack in {"bge_dual", "qwen_dual", "academic_hybrid"}:
         return normalized_stack
 
     embedding = normalize_embedding_model_name(embedding_model)

@@ -180,6 +180,9 @@ class MilvusService:
             self.create_collection_v2()
             logger.info("Created paper_contents_v2 collection on startup")
 
+        # Iteration 2: Create summary index collection
+        self.create_summary_index_collection()
+
         # Delete old paper_contents collection per D-08, D-10
         if self.has_collection(settings.MILVUS_COLLECTION_CONTENTS):  # "paper_contents"
             logger.warning(
@@ -666,6 +669,171 @@ class MilvusService:
             "Created paper_contents_v2 collection", embedding_dim=self.embedding_dim
         )
 
+    # ------------------------------------------------------------------
+    # Iteration 2: Summary Index Collection
+    # ------------------------------------------------------------------
+
+    SUMMARY_COLLECTION_NAME = "paper_summaries"
+
+    def create_summary_index_collection(self) -> None:
+        """Create paper_summaries collection for section / paper / topic summaries.
+
+        Iteration 2 Summary Index stores section-level and paper-level summary
+        documents that are retrieved for global / survey queries instead of
+        individual fragment chunks.
+
+        Schema fields:
+            - paper_id, user_id: ownership
+            - summary_type: 'section_summary' | 'paper_summary' | 'topic_summary'
+            - section_name: Section label (e.g. 'Methods/Experimental Setup')
+            - content_data: The summary text (up to 8000 chars)
+            - embedding: Dense vector (same dim as paper_contents_v2)
+        """
+        if self.has_collection(self.SUMMARY_COLLECTION_NAME):
+            logger.info("paper_summaries collection already exists")
+            return
+
+        fields = [
+            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+            FieldSchema(name="paper_id", dtype=DataType.VARCHAR, max_length=64),
+            FieldSchema(name="user_id", dtype=DataType.VARCHAR, max_length=64),
+            FieldSchema(name="summary_type", dtype=DataType.VARCHAR, max_length=32),
+            FieldSchema(name="section_name", dtype=DataType.VARCHAR, max_length=200),
+            FieldSchema(name="content_data", dtype=DataType.VARCHAR, max_length=8000),
+            FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim),
+        ]
+
+        schema = CollectionSchema(fields, "Section and paper summaries for global retrieval")
+        collection = Collection(self.SUMMARY_COLLECTION_NAME, schema, using=self._alias)
+
+        index_params = {
+            "metric_type": "COSINE",
+            "index_type": "IVF_FLAT",
+            "params": {"nlist": 100},
+        }
+        collection.create_index("embedding", index_params)
+        collection.load()
+
+        logger.info("Created paper_summaries collection", embedding_dim=self.embedding_dim)
+
+    def insert_summaries_batched(
+        self,
+        data: List[Dict[str, Any]],
+        batch_size: int = 50,
+    ) -> List[int]:
+        """Insert section/paper summary entries into paper_summaries collection.
+
+        Args:
+            data: List of summary items, each containing:
+                - paper_id: Paper UUID
+                - user_id: User UUID
+                - summary_type: 'section_summary' | 'paper_summary' | 'topic_summary'
+                - section_name: Section label
+                - content_data: Summary text
+                - embedding: Dense vector
+            batch_size: Insert batch size.
+
+        Returns:
+            List of inserted IDs.
+        """
+        if not self.has_collection(self.SUMMARY_COLLECTION_NAME):
+            self.create_summary_index_collection()
+
+        collection = Collection(self.SUMMARY_COLLECTION_NAME, using=self._alias)
+        all_ids: List[int] = []
+
+        for i in range(0, len(data), batch_size):
+            batch = data[i:i + batch_size]
+            entities = []
+            for item in batch:
+                embedding = item.get("embedding")
+                if not embedding or all(v == 0.0 for v in embedding):
+                    continue
+                entities.append({
+                    "paper_id": str(item.get("paper_id", "")),
+                    "user_id": str(item.get("user_id", "")),
+                    "summary_type": str(item.get("summary_type", "section_summary"))[:32],
+                    "section_name": str(item.get("section_name", ""))[:200],
+                    "content_data": str(item.get("content_data", ""))[:8000],
+                    "embedding": embedding,
+                })
+            if entities:
+                result = collection.insert(entities)
+                all_ids.extend(result.primary_keys)
+
+        if all_ids:
+            collection.flush()
+            logger.info("Inserted summaries", count=len(all_ids))
+
+        return all_ids
+
+    def search_summaries(
+        self,
+        embedding: List[float],
+        user_id: str,
+        top_k: int = 10,
+        paper_ids: Optional[List[str]] = None,
+        summary_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Search the summary index.
+
+        Args:
+            embedding: Query embedding vector.
+            user_id: User UUID for ownership filtering.
+            top_k: Number of results to return.
+            paper_ids: Optional paper ID filter.
+            summary_type: Optional summary_type filter.
+
+        Returns:
+            List of raw hit dicts.
+        """
+        if not self.has_collection(self.SUMMARY_COLLECTION_NAME):
+            return []
+
+        collection = Collection(self.SUMMARY_COLLECTION_NAME, using=self._alias)
+
+        # Build filter expression
+        exprs: List[str] = [f'user_id == "{user_id}"']
+        if paper_ids:
+            ids_str = ", ".join(f'"{pid}"' for pid in paper_ids[:50])
+            exprs.append(f"paper_id in [{ids_str}]")
+        if summary_type:
+            exprs.append(f'summary_type == "{summary_type}"')
+
+        expr = " && ".join(exprs)
+
+        search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+        try:
+            results = collection.search(
+                data=[embedding],
+                anns_field="embedding",
+                param=search_params,
+                limit=top_k,
+                expr=expr,
+                output_fields=["paper_id", "user_id", "summary_type", "section_name", "content_data"],
+            )
+        except Exception as exc:
+            logger.warning("Summary index search failed", error=str(exc))
+            return []
+
+        hits: List[Dict[str, Any]] = []
+        for batch in results:
+            for hit in batch:
+                hits.append({
+                    "id": hit.id,
+                    "score": max(0.0, min(float(hit.score), 1.0)),
+                    "paper_id": hit.entity.get("paper_id", ""),
+                    "user_id": hit.entity.get("user_id", ""),
+                    "summary_type": hit.entity.get("summary_type", ""),
+                    "section_name": hit.entity.get("section_name", ""),
+                    "content_type": "text",
+                    "content_data": hit.entity.get("content_data", ""),
+                    "section": hit.entity.get("section_name", ""),
+                    "index_type": "summary",
+                    "backend": "milvus",
+                })
+        return hits
+
     def create_paper_contents_collection(self) -> Collection:
         """Create unified paper_contents collection with enhanced schema (per D-06).
 
@@ -858,6 +1026,10 @@ class MilvusService:
             while retries < max_retries:
                 try:
                     collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+                    schema_fields = {
+                        getattr(field, "name", "")
+                        for field in getattr(collection.schema, "fields", [])
+                    }
 
                     # Prepare entities with quality scoring
                     entities = []
@@ -875,6 +1047,17 @@ class MilvusService:
                             )
                             skipped_count += 1
                             continue  # Don't insert
+
+                        if len(embedding) != self.embedding_dim:
+                            logger.warning(
+                                "Skipping item with invalid embedding dimension",
+                                paper_id=item.get("paper_id"),
+                                content_type=item.get("content_type"),
+                                expected_dim=self.embedding_dim,
+                                actual_dim=len(embedding),
+                            )
+                            skipped_count += 1
+                            continue
 
                         quality_score = calculate_chunk_quality(item)
 
@@ -902,9 +1085,21 @@ class MilvusService:
                             )[:8000],
                             "raw_data": item.get("raw_data", {}),
                             "embedding": embedding,
-                            "indexable": True,  # Per D-09: New field
-                            "embedding_status": "success",  # Per D-09: New field
                         }
+
+                        # Backward compatibility: older collections may not include
+                        # indexable / embedding_status dynamic fields.
+                        if "indexable" in schema_fields:
+                            entity["indexable"] = True
+                        if "embedding_status" in schema_fields:
+                            entity["embedding_status"] = "success"
+
+                        if schema_fields:
+                            entity = {
+                                key: value
+                                for key, value in entity.items()
+                                if key in schema_fields
+                            }
                         entities.append(entity)
 
                     logger.debug(
@@ -922,8 +1117,42 @@ class MilvusService:
                         )
                         break
 
-                    ids = collection.insert(entities)
-                    all_ids.extend(ids.primary_keys)
+                    try:
+                        ids = collection.insert(entities)
+                        all_ids.extend(ids.primary_keys)
+                    except Exception as batch_insert_error:
+                        # Some legacy clusters intermittently fail row-batch parsing.
+                        # Fallback to single-row inserts to maximize successful ingestion.
+                        logger.warning(
+                            "Milvus batch insert failed, fallback to per-row insert",
+                            batch=f"{batch_num}/{total_batches}",
+                            count=len(entities),
+                            error=str(batch_insert_error),
+                        )
+                        fallback_inserted = 0
+                        for entity in entities:
+                            try:
+                                single = collection.insert([entity])
+                                all_ids.extend(single.primary_keys)
+                                fallback_inserted += 1
+                            except Exception as single_error:
+                                logger.warning(
+                                    "Milvus single-row fallback insert failed",
+                                    batch=f"{batch_num}/{total_batches}",
+                                    paper_id=entity.get("paper_id"),
+                                    content_type=entity.get("content_type"),
+                                    error=str(single_error),
+                                )
+
+                        if fallback_inserted <= 0:
+                            raise
+
+                        logger.info(
+                            "Milvus per-row fallback insert complete",
+                            batch=f"{batch_num}/{total_batches}",
+                            inserted=fallback_inserted,
+                            attempted=len(entities),
+                        )
 
                     logger.debug(
                         "Milvus batch inserted",
@@ -1099,7 +1328,17 @@ class MilvusService:
             conditions.append(f"quality_score >= {constraints.min_quality_score}")
 
         # Per D-09: Default to indexable content
-        conditions.append("indexable == true")
+        # Per D-09: Prefer indexable content when schema supports the field.
+        try:
+            collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+            has_indexable = any(
+                getattr(field, "name", "") == "indexable"
+                for field in getattr(collection.schema, "fields", [])
+            )
+        except Exception:
+            has_indexable = False
+        if has_indexable:
+            conditions.append("indexable == true")
 
         expr = " and ".join(conditions)
         logger.debug(f"Milvus expr built: {expr[:200]}...")

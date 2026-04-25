@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import re
 import time
 from datetime import datetime, timezone
@@ -54,6 +55,26 @@ def calculate_mrr(retrieved_ids: List[str], expected_ids: List[str]) -> float:
         if item in expected:
             return 1.0 / idx
     return 0.0
+
+
+def calculate_ndcg_at_k(retrieved_ids: List[str], expected_ids: List[str], k: int = 10) -> float:
+    if not expected_ids:
+        return 0.0
+
+    expected = set(expected_ids)
+    dcg = 0.0
+    credited: set[str] = set()
+    for idx, item in enumerate(retrieved_ids[:k], start=1):
+        rel = 1.0 if item in expected and item not in credited else 0.0
+        if rel > 0:
+            dcg += rel / (math.log2(idx + 1))
+            credited.add(item)
+
+    ideal_hits = min(len(expected), k)
+    if ideal_hits <= 0:
+        return 0.0
+    idcg = sum(1.0 / math.log2(idx + 1) for idx in range(1, ideal_hits + 1))
+    return (dcg / idcg) if idcg > 0 else 0.0
 
 
 def _to_int(value: object, default: int = 0) -> int:
@@ -487,6 +508,7 @@ async def evaluate_retrieval(
     metrics: Dict[str, List[float]] = {
         "recall_at_5": [],
         "recall_at_10": [],
+        "ndcg_at_10": [],
         "mrr": [],
         "section_hit_rate": [],
         "multimodal_hit_rate": [],
@@ -518,6 +540,7 @@ async def evaluate_retrieval(
         "section_hit_but_chunk_miss": 0,
         "evaluation_mapping_error": 0,
     }
+    family_metrics: Dict[str, Dict[str, List[float]]] = {}
 
     async def evaluate_case(query_data: Dict[str, Any], paper_ids: List[str], default_type: str) -> None:
         started_at = time.perf_counter()
@@ -552,6 +575,7 @@ async def evaluate_retrieval(
         recall_5 = calculate_recall_at_k(retrieved_ids, expected_ids, 5)
         recall_10 = calculate_recall_at_k(retrieved_ids, expected_ids, 10)
         mrr = calculate_mrr(retrieved_ids, expected_ids)
+        ndcg_10 = calculate_ndcg_at_k(retrieved_ids, expected_ids, 10)
         section_hit = calculate_section_hit_rate(results, expected_sections)
         paper_hit = calculate_paper_hit_rate(results, expected_papers)
         cross_paper_top5 = calculate_top5_cross_paper_completeness(results, expected_papers)
@@ -585,6 +609,7 @@ async def evaluate_retrieval(
         metrics["recall_at_5"].append(recall_5)
         metrics["recall_at_10"].append(recall_10)
         metrics["mrr"].append(mrr)
+        metrics["ndcg_at_10"].append(ndcg_10)
         metrics["section_hit_rate"].append(section_hit)
         metrics["paper_hit_rate"].append(paper_hit)
         metrics["planner_query_count"].append(float(result.get("planner_query_count") or 0.0))
@@ -609,6 +634,20 @@ async def evaluate_retrieval(
         if query_type == "hard":
             metrics["hard_query_hit_rate"].append(1.0 if paper_hit >= 1.0 else 0.0)
 
+        family_bucket = family_metrics.setdefault(
+            str(query_family),
+            {
+                "recall_at_10": [],
+                "ndcg_at_10": [],
+                "paper_hit_rate": [],
+                "chunk_hit_rate": [],
+            },
+        )
+        family_bucket["recall_at_10"].append(recall_10)
+        family_bucket["ndcg_at_10"].append(ndcg_10)
+        family_bucket["paper_hit_rate"].append(paper_hit)
+        family_bucket["chunk_hit_rate"].append(chunk_hit)
+
         query_details.append(
             {
                 "query_id": query_data.get("id"),
@@ -626,6 +665,7 @@ async def evaluate_retrieval(
                 "recall_at_5": recall_5,
                 "recall_at_10": recall_10,
                 "mrr": mrr,
+                "ndcg_at_10": ndcg_10,
                 "paper_hit_rate": paper_hit,
                 "section_hit_rate": section_hit,
                 "chunk_hit_rate": chunk_hit,
@@ -686,10 +726,22 @@ async def evaluate_retrieval(
             }
         )
 
+    family_breakdown = {
+        family: {
+            "query_count": len(values["recall_at_10"]),
+            "recall_at_10_avg": _avg(values["recall_at_10"]),
+            "ndcg_at_10_avg": _avg(values["ndcg_at_10"]),
+            "paper_hit_rate_avg": _avg(values["paper_hit_rate"]),
+            "chunk_hit_rate_avg": _avg(values["chunk_hit_rate"]),
+        }
+        for family, values in family_metrics.items()
+    }
+
     report = {
         "total_queries": len(metrics["recall_at_5"]),
         "recall_at_5_avg": _avg(metrics["recall_at_5"]),
         "recall_at_10_avg": _avg(metrics["recall_at_10"]),
+        "ndcg_at_10_avg": _avg(metrics["ndcg_at_10"]),
         "mrr_avg": _avg(metrics["mrr"]),
         "section_hit_rate_avg": _avg(metrics["section_hit_rate"]),
         "multimodal_hit_rate_avg": _avg(metrics["multimodal_hit_rate"]),
@@ -714,6 +766,7 @@ async def evaluate_retrieval(
         "latency_avg_ms": _avg(metrics["latency_ms"]),
         "latency_p95_ms": _p95(metrics["latency_ms"]),
         "metrics_raw": metrics,
+        "query_family_breakdown": family_breakdown,
         "failure_buckets": failure_buckets,
         "query_details": query_details,
         "evaluation_mode": "mock" if mock_mode else "real",
@@ -730,12 +783,12 @@ async def evaluate_retrieval(
 def _markdown_summary_table(report: Dict[str, Any]) -> str:
     return "\n".join(
         [
-            "| dataset | model_stack | reranker | run | recall@5 | recall@10 | mrr | paper_hit | section_hit | chunk_hit | cross_paper_r@5 | hard_hit | avg_latency_ms | p95_latency_ms |",
-            "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| dataset | model_stack | reranker | run | recall@5 | recall@10 | ndcg@10 | mrr | paper_hit | section_hit | chunk_hit | cross_paper_r@5 | hard_hit | avg_latency_ms | p95_latency_ms |",
+            "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
             (
                 f"| {report['dataset_label']} | {report['model_stack']} | {'on' if report['use_reranker'] else 'off'} "
                 f"| {report['run_label']} | {report['recall_at_5_avg']:.4f} | {report['recall_at_10_avg']:.4f} "
-                f"| {report['mrr_avg']:.4f} | {report['paper_hit_rate_avg']:.4f} | {report['section_hit_rate_avg']:.4f} "
+                f"| {report['ndcg_at_10_avg']:.4f} | {report['mrr_avg']:.4f} | {report['paper_hit_rate_avg']:.4f} | {report['section_hit_rate_avg']:.4f} "
                 f"| {report['chunk_hit_rate_avg']:.4f} | {report['cross_paper_recall_at_5']:.4f} | {report['hard_query_hit_rate']:.4f} "
                 f"| {report['latency_avg_ms']:.2f} | {report['latency_p95_ms']:.2f} |"
             ),
@@ -783,6 +836,7 @@ def main() -> None:
     print("=" * 60)
     print(f"Total Queries: {report['total_queries']}")
     print(f"Recall@5: {report['recall_at_5_avg']:.2%}")
+    print(f"nDCG@10: {report['ndcg_at_10_avg']:.2%}")
     print(f"MRR: {report['mrr_avg']:.2%}")
     print(f"Paper Hit Rate: {report['paper_hit_rate_avg']:.2%}")
     print(f"Table Hit Rate: {report['table_hit_rate_avg']:.2%}")

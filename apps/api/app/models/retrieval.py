@@ -174,6 +174,22 @@ class RetrievedChunk(BaseModel):
         default=None,
         description="Trace identifier for retrieval debugging",
     )
+    # Iteration 2: multi-index fields
+    index_type: Optional[str] = Field(
+        default=None,
+        description="Index tier that produced this chunk (local_evidence/structural/summary)",
+        max_length=40,
+    )
+    context_window: Optional[str] = Field(
+        default=None,
+        description="Expanded neighbouring context included in contextual chunk",
+        max_length=600,
+    )
+    subsection: Optional[str] = Field(
+        default=None,
+        description="Leaf subsection label within the section path",
+        max_length=120,
+    )
 
 
 class CitationSource(BaseModel):
@@ -268,4 +284,9 @@ class SearchConstraints(BaseModel):
         description="Minimum quality score threshold",
         ge=0.0,
         le=1.0,
+    )
+    index_type: Optional[str] = Field(
+        default=None,
+        description="Index tier to search (local_evidence/structural/summary)",
+        max_length=40,
     )

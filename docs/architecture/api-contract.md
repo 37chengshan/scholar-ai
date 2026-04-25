@@ -244,6 +244,17 @@ RAG 回答验证与图检索字段补充（Phase 3 + 4）：
 - `sources[]` 仍为主证据数组；新增验证/图字段均不得替代已有 `sources[]` 读取路径。
 - cache 语义不变：命中缓存时以上字段应与首次计算结果保持同构。
 - 向后兼容：客户端未消费新增字段时，旧渲染链路必须可继续工作。
+
+RAG Iteration 3 契约补充（Citation-Aware Iterative Retrieval + Outline-Guided Synthesis）：
+
+- `POST /api/v1/rag/query` 在 `RAGQueryResponse` 中新增可选字段：
+  - `retrievalEvaluator`：first-pass retrieval 评估结果，至少包含 `is_weak`、`weak_reasons[]`、`metrics{}`。
+  - `iterativeRetrievalTriggered`：是否触发二次检索编排。
+  - `retrievalTrace`：iterative orchestration trace，至少包含 `mode`、`iterative_triggered`、`rounds[]`。
+  - `citationAwareMetadata`：citation-aware 扩展统计，至少包含 `citation_expansion_applied` 与 relation 计数。
+  - `scientificSynthesisMetrics`：科学综合质量指标，至少包含 `citation_faithfulness`、`unsupported_claim_rate`、`cross_paper_synthesis_quality`、`partial_abstain_quality`。
+- `metadata.answerMode` 仍维持 `full|partial|abstain` 冻结取值，不允许新增第四态。
+- `retrievalTrace` 与 `citationAwareMetadata` 在 cache 命中响应中必须保持结构同构。
 - `POST /api/v1/chat/retry`
   - 请求：`session_id`（必填），可选 `mode` 与 `scope`
   - 语义：重放该会话最后一条 `user` 消息，并复用 `chat/stream` 流式返回。

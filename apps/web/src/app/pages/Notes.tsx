@@ -63,6 +63,7 @@ const MANUAL_FOLDERS_STORAGE_KEY = 'notes-manual-folders-v1';
 const FOLDER_TAG_PREFIX = 'folder:';
 const PAPER_TAG_PREFIX = 'paper:';
 const PAPER_TITLE_TAG_PREFIX = 'paper-title:';
+const UNARCHIVED_FOLDER_ID = '__unarchived__';
 
 type FolderSource = 'kb' | 'manual';
 type FolderSelectionSource = 'auto' | 'manual';
@@ -125,11 +126,12 @@ function extractPreview(content: unknown, maxLength = 80): string {
 
 function highlightText(text: string, query: string): ReactNode {
   if (!query.trim()) return text;
-  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escaped})`, 'gi');
   const parts = text.split(regex);
 
   return parts.map((part, i) =>
-    regex.test(part) ? (
+    i % 2 === 1 ? (
       <mark key={i} className="bg-yellow-200 text-inherit rounded px-0.5">
         {part}
       </mark>
@@ -201,6 +203,10 @@ function NotesContent() {
   const [editorContent, setEditorContent] = useState<any>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [folderSelectionSource, setFolderSelectionSource] = useState<FolderSelectionSource | null>(null);
+  const [pendingCreateAfterFolder, setPendingCreateAfterFolder] = useState(false);
+  const [retryingSave, setRetryingSave] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
 
   const [kbFolders, setKbFolders] = useState<NotesFolder[]>([]);
   const [manualFolders, setManualFolders] = useState<NotesFolder[]>([]);
@@ -228,7 +234,7 @@ function NotesContent() {
     } catch {
       // Ignore malformed local storage data.
     }
-  }, []);
+  }, [selectedNote, updateNote]);
 
   useEffect(() => {
     localStorage.setItem(MANUAL_FOLDERS_STORAGE_KEY, JSON.stringify(manualFolders));
@@ -350,11 +356,22 @@ function NotesContent() {
 
   const folders = useMemo<NotesFolder[]>(() => {
     const merged = [...kbFolders, ...manualFolders];
-    return merged.map((folder) => ({
+    const mapped = merged.map((folder) => ({
       ...folder,
       noteCount: folderCounts.get(folder.id) || 0,
     }));
-  }, [folderCounts, kbFolders, manualFolders]);
+    const unarchivedCount = userNotes.filter((note) => getFolderIdFromTags(note.tags) === null).length;
+    return [
+      {
+        id: UNARCHIVED_FOLDER_ID,
+        name: '未归档',
+        parentId: null,
+        noteCount: unarchivedCount,
+        source: 'manual' as const,
+      },
+      ...mapped,
+    ];
+  }, [folderCounts, kbFolders, manualFolders, userNotes]);
 
   useEffect(() => {
     if (!paperIdFilter || notesLoading || catalogLoading || folderSelectionSource === 'manual') {
@@ -418,7 +435,11 @@ function NotesContent() {
     }
 
     if (selectedFolderId !== null) {
-      result = result.filter((note) => getFolderIdFromTags(note.tags) === selectedFolderId);
+      if (selectedFolderId === UNARCHIVED_FOLDER_ID) {
+        result = result.filter((note) => getFolderIdFromTags(note.tags) === null);
+      } else {
+        result = result.filter((note) => getFolderIdFromTags(note.tags) === selectedFolderId);
+      }
     }
 
     if (tagFilter !== 'all') {
@@ -436,6 +457,16 @@ function NotesContent() {
 
     return result;
   }, [paperIdFilter, searchQuery, selectedFolderId, tagFilter, userNotes]);
+
+  const archivedNotes = useMemo(
+    () => filteredNotes.filter((note) => getFolderIdFromTags(note.tags) !== null),
+    [filteredNotes],
+  );
+
+  const unarchivedNotes = useMemo(
+    () => filteredNotes.filter((note) => getFolderIdFromTags(note.tags) === null),
+    [filteredNotes],
+  );
 
   const handleSave = useCallback(
     async (content: any) => {
@@ -459,12 +490,20 @@ function NotesContent() {
     [selectedFolderId, selectedNoteId, updateNote, userNotes],
   );
 
-  const { status: saveStatus, lastSaved } = useAutoSave({
+  const { status: saveStatus, lastSaved, retrySave } = useAutoSave({
     content: editorContent,
     onSave: handleSave,
     debounceMs: 1000,
     noteId: selectedNoteId || undefined,
   });
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (!selectedNote || !editorContent) {
+      return false;
+    }
+    const currentContent = typeof selectedNote.content === 'string' ? selectedNote.content : JSON.stringify(selectedNote.content);
+    return JSON.stringify(editorContent) !== currentContent;
+  }, [editorContent, selectedNote]);
 
   const handleSelectNote = useCallback((note: Note, selectionSource: FolderSelectionSource | null = 'manual') => {
     setSelectedSummaryPaperId(null);
@@ -557,6 +596,7 @@ function NotesContent() {
 
   const handleCreateNote = useCallback(async () => {
     if (!selectedFolderId) {
+      setPendingCreateAfterFolder(true);
       toast.warning('请先创建或选择文件夹，再创建笔记');
       return;
     }
@@ -567,8 +607,10 @@ function NotesContent() {
         ? [...baseTags, `${PAPER_TAG_PREFIX}${paperIdFilter}`]
         : baseTags;
 
+      const paperTitle = paperIdFilter ? paperTitleMap.get(paperIdFilter) : null;
+      const nextTitle = paperTitle ? `《${paperTitle}》阅读笔记` : '未命名笔记';
       const newNote = await createNote.mutateAsync({
-        title: '未命名笔记',
+        title: nextTitle,
         content: JSON.stringify(createEmptyEditorDocument()),
         tags: payloadTags,
         paperIds: paperIdFilter ? [paperIdFilter] : [],
@@ -583,7 +625,18 @@ function NotesContent() {
     } catch {
       toast.error('创建笔记失败');
     }
-  }, [createNote, handleSelectNote, paperIdFilter, searchParams, selectedFolderId, setSearchParams]);
+  }, [createNote, handleSelectNote, paperIdFilter, paperTitleMap, searchParams, selectedFolderId, setSearchParams]);
+
+  useEffect(() => {
+    if (!pendingCreateAfterFolder) {
+      return;
+    }
+    if (!selectedFolderId) {
+      return;
+    }
+    setPendingCreateAfterFolder(false);
+    void handleCreateNote();
+  }, [handleCreateNote, pendingCreateAfterFolder, selectedFolderId]);
 
   const handleDeleteNote = useCallback(async () => {
     if (!deleteNoteId) return;
@@ -591,14 +644,20 @@ function NotesContent() {
       await deleteNote.mutateAsync(deleteNoteId);
       toast.success('删除成功');
       if (selectedNoteId === deleteNoteId) {
-        setSelectedNoteId(null);
-        setEditorContent(null);
+        const remaining = filteredNotes.filter((note) => note.id !== deleteNoteId);
+        const nextNote = remaining[0];
+        if (nextNote) {
+          handleSelectNote(nextNote);
+        } else {
+          setSelectedNoteId(null);
+          setEditorContent(null);
+        }
       }
       setDeleteNoteId(null);
     } catch {
       toast.error('删除失败');
     }
-  }, [deleteNoteId, selectedNoteId, deleteNote]);
+  }, [deleteNoteId, selectedNoteId, deleteNote, filteredNotes, handleSelectNote]);
 
   const handleCreateFolder = useCallback((name: string, parentId: string | null) => {
     const newFolder: NotesFolder = {
@@ -621,7 +680,144 @@ function NotesContent() {
 
   const handleEditorChange = useCallback((json: any) => {
     setEditorContent(json);
+
+    if (!selectedNote || selectedNote.title !== '未命名笔记') {
+      return;
+    }
+
+    const textParts: string[] = [];
+    const walk = (nodes: any[]) => {
+      nodes.forEach((node) => {
+        if (node?.text) {
+          textParts.push(node.text);
+        }
+        if (Array.isArray(node?.content)) {
+          walk(node.content);
+        }
+      });
+    };
+
+    if (Array.isArray(json?.content)) {
+      walk(json.content);
+    }
+
+    const firstLine = textParts.join(' ').trim().split('\n')[0]?.trim();
+    if (!firstLine) {
+      return;
+    }
+
+    const generatedTitle = firstLine.slice(0, 48) || '未命名笔记';
+    if (generatedTitle === selectedNote.title) {
+      return;
+    }
+
+    void updateNote.mutateAsync({
+      id: selectedNote.id,
+      payload: {
+        title: generatedTitle,
+      },
+    });
   }, []);
+
+  const handleRetrySave = useCallback(async () => {
+    setRetryingSave(true);
+    try {
+      retrySave();
+    } finally {
+      window.setTimeout(() => setRetryingSave(false), 400);
+    }
+  }, [retrySave]);
+
+  const handleSummaryToNote = useCallback(async (summary: ReadingSummaryProjection) => {
+    const targetFolderId = selectedFolderId || summary.folderId;
+    if (!targetFolderId) {
+      setPendingCreateAfterFolder(true);
+      toast.warning('请先选择文件夹，再将系统摘要转为笔记');
+      return;
+    }
+
+    try {
+      const newNote = await createNote.mutateAsync({
+        title: `${summary.title} · 摘要笔记`,
+        content: JSON.stringify({
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: summary.readingNotes }],
+            },
+          ],
+        }),
+        tags: upsertFolderTag([], targetFolderId),
+        paperIds: [summary.paperId],
+      });
+      handleSelectNote(newNote);
+      toast.success('已转为用户笔记');
+    } catch {
+      toast.error('转换失败');
+    }
+  }, [createNote, handleSelectNote, selectedFolderId]);
+
+  const handleSummaryAppendToCurrent = useCallback((summary: ReadingSummaryProjection) => {
+    if (!selectedNoteId || !editorContent) {
+      toast.warning('请先选中一条用户笔记');
+      return;
+    }
+    const next = {
+      ...(editorContent || createEmptyEditorDocument()),
+      content: [
+        ...((editorContent?.content as any[]) || []),
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: `【系统摘要】${summary.title}` }],
+        },
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: summary.readingNotes }],
+        },
+      ],
+    };
+    setEditorContent(next);
+    toast.success('摘要内容已加入当前笔记');
+  }, [editorContent, selectedNoteId]);
+
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onClear: () => void }> = [];
+    if (paperIdFilter) {
+      chips.push({
+        key: 'paper',
+        label: `论文: ${paperTitleMap.get(paperIdFilter) || paperIdFilter}`,
+        onClear: () => {
+          const next = new URLSearchParams(searchParams);
+          next.delete('paperId');
+          setSearchParams(next, { replace: true });
+        },
+      });
+    }
+    if (selectedFolderId) {
+      const folderName = folders.find((folder) => folder.id === selectedFolderId)?.name || selectedFolderId;
+      chips.push({
+        key: 'folder',
+        label: `文件夹: ${folderName}`,
+        onClear: () => handleSelectFolder(null),
+      });
+    }
+    if (tagFilter !== 'all') {
+      chips.push({
+        key: 'tag',
+        label: `标签: ${tagFilter}`,
+        onClear: () => setTagFilter('all'),
+      });
+    }
+    if (searchQuery.trim()) {
+      chips.push({
+        key: 'query',
+        label: `关键词: ${searchQuery.trim()}`,
+        onClear: () => setSearchQuery(''),
+      });
+    }
+    return chips;
+  }, [folders, handleSelectFolder, paperIdFilter, paperTitleMap, searchParams, searchQuery, selectedFolderId, setSearchParams, tagFilter]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -636,6 +832,24 @@ function NotesContent() {
   const SaveIndicator = () => {
     if (!selectedNoteId) return null;
 
+    if (!window.navigator.onLine) {
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-amber-700">
+          <AlertCircle className="w-3 h-3" />
+          <span>离线模式，修改将在联网后保存</span>
+        </div>
+      );
+    }
+
+    if (saveStatus === 'idle' && hasUnsavedChanges) {
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-amber-700">
+          <Clock className="w-3 h-3" />
+          <span>有未保存修改</span>
+        </div>
+      );
+    }
+
     if (saveStatus === 'saving') {
       return (
         <div className="flex items-center gap-1.5 text-xs text-yellow-600">
@@ -647,10 +861,14 @@ function NotesContent() {
 
     if (saveStatus === 'error') {
       return (
-        <div className="flex items-center gap-1.5 text-xs text-destructive">
+        <button
+          type="button"
+          onClick={handleRetrySave}
+          className="flex items-center gap-1.5 text-xs text-destructive hover:underline"
+        >
           <AlertCircle className="w-3 h-3" />
-          <span>保存失败</span>
-        </div>
+          <span>{retryingSave ? '重试中...' : '保存失败，点击重试'}</span>
+        </button>
       );
     }
 
@@ -671,15 +889,10 @@ function NotesContent() {
       <div className="magazine-toolbar sticky top-0 z-10 border-b border-border/50 bg-background/95 backdrop-blur-md">
         <div className="px-6 py-5 flex items-end justify-between gap-4">
           <div>
-            <h1 className="font-serif text-3xl font-bold text-foreground tracking-tight">笔记</h1>
-            <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-muted-foreground mt-1.5 font-sans">Notes</p>
+            <h1 className="text-3xl font-semibold text-foreground tracking-tight">笔记</h1>
+            <p className="text-[11px] font-medium text-muted-foreground mt-1">Notes Workspace</p>
           </div>
           <div className="flex items-center gap-2">
-            {paperIdFilter && (
-              <Badge variant="secondary" className="text-[9px] uppercase tracking-wider font-bold">
-                论文筛选: {paperTitleMap.get(paperIdFilter) || paperIdFilter.slice(0, 8)}
-              </Badge>
-            )}
             {catalogLoading && (
               <Badge variant="outline" className="text-[9px] uppercase tracking-wider font-bold">
                 <Loader2 className="h-3 w-3 animate-spin mr-1" />
@@ -688,18 +901,45 @@ function NotesContent() {
             )}
           </div>
         </div>
+        {paperIdFilter && (
+          <div className="px-6 pb-4 flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">
+              当前筛选：论文《{paperTitleMap.get(paperIdFilter) || paperIdFilter}》
+            </span>
+            <Button asChild size="sm" variant="outline" className="h-7">
+              <Link to={`/read/${paperIdFilter}?source=notes`}>回到阅读页</Link>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete('paperId');
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              清除筛选
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="relative flex h-[calc(100vh-10rem)] bg-background/50">
         <div className="absolute left-4 top-4 bottom-4 w-[300px] bg-white rounded-lg border border-border/40 flex flex-col shadow-2xl z-10">
           <div className="px-5 py-5 border-b border-border/30 space-y-4 bg-gradient-to-b from-white to-slate-50/50">
             <div className="flex items-center justify-between">
-              <h2 className="font-serif text-xs font-bold tracking-widest text-foreground uppercase">笔记库</h2>
+              <h2 className="text-xs font-semibold tracking-wide text-foreground">笔记库</h2>
               <Button variant="outline" size="sm" className="h-6 px-2.5 text-[9px] uppercase font-bold tracking-wider rounded-sm shadow-sm" onClick={handleCreateNote}>
                 <Plus className="w-3 h-3 mr-1" />
                 新建
               </Button>
             </div>
+            {!selectedFolderId && (
+              <p className="rounded border border-amber-200 bg-amber-50/50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                请选择文件夹后再新建笔记。
+              </p>
+            )}
 
             <div className="relative group">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
@@ -730,8 +970,8 @@ function NotesContent() {
           </div>
 
           <div className="border-t border-b border-blue-200/40 bg-blue-50/30 px-4 py-3">
-            <div className="text-[7px] font-bold tracking-[0.35em] uppercase text-blue-700/70 mb-3 px-1 pb-2 flex justify-between items-center border-b border-blue-200/30">
-              <span>📁 文件夹</span>
+            <div className="text-[10px] font-semibold text-blue-700/90 mb-3 px-1 pb-2 flex justify-between items-center border-b border-blue-200/30">
+              <span>文件夹</span>
             </div>
             <NoteFolderTree
               folders={folders}
@@ -742,6 +982,22 @@ function NotesContent() {
           </div>
 
           <div className="flex-1 overflow-y-auto bg-background/40 border-t border-border/30">
+            {activeFilterChips.length > 0 && (
+              <div className="px-3 py-2 border-b border-border/50 flex flex-wrap gap-2 bg-background/60">
+                {activeFilterChips.map((chip) => (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    onClick={chip.onClear}
+                    className="inline-flex items-center gap-1 rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-foreground/80 hover:bg-muted"
+                  >
+                    <span>{chip.label}</span>
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {(notesLoading || catalogLoading) && (
               <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -753,14 +1009,14 @@ function NotesContent() {
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <FileText className="w-10 h-10 mb-3 opacity-40" />
                 <p className="text-xs font-medium">暂无笔记</p>
-                <p className="text-[10px] mt-1">先选择文件夹，再创建您的第一篇笔记</p>
+                <p className="text-[10px] mt-1">你可以：选择已有笔记、查看系统摘要，或先选择文件夹后创建笔记</p>
               </div>
             )}
 
             {!notesLoading && derivedSummaries.length > 0 && (
               <div className="border-b border-border/60 bg-amber-50/30">
-                <div className="px-3 py-2.5 text-[9px] font-bold uppercase tracking-[0.2em] text-amber-700/70 border-b border-amber-200/30">
-                  ▸ 系统摘要
+                <div className="px-3 py-2.5 text-[10px] font-semibold text-amber-700/90 border-b border-amber-200/30">
+                  系统摘要
                 </div>
                 {derivedSummaries.map((summary) => (
                   <button
@@ -774,12 +1030,40 @@ function NotesContent() {
                     )}
                     onClick={() => handleSelectSummary(summary)}
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-amber-950 line-clamp-1">{summary.title}</p>
                         <p className="mt-1 text-[11px] text-amber-900/80 line-clamp-2">
                           {highlightText(extractPreview(summary.readingNotes) || '系统摘要', searchQuery)}
                         </p>
+                        <p className="mt-1 text-[10px] text-amber-800/80">系统生成 · 只读</p>
+                        <div className="mt-2 flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleSummaryAppendToCurrent(summary);
+                            }}
+                          >
+                            加入当前笔记
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleSummaryToNote(summary);
+                            }}
+                          >
+                            转为笔记
+                          </Button>
+                          <Button asChild size="sm" variant="ghost" className="h-6 px-2 text-[10px]">
+                            <Link to={`/read/${summary.paperId}?source=notes`}>打开阅读页</Link>
+                          </Button>
+                        </div>
                       </div>
                       <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[9px]">
                         摘要
@@ -790,9 +1074,9 @@ function NotesContent() {
               </div>
             )}
 
-            {!notesLoading && filteredNotes.length > 0 && (
+            {!notesLoading && (archivedNotes.length > 0 || unarchivedNotes.length > 0) && (
               <div className="divide-y divide-border/50">
-                {filteredNotes.map((note) => {
+                {archivedNotes.map((note) => {
                   const displayTags = getDisplayTags(note.tags);
                   const primaryPaperId = note.paperIds[0] || getPaperIdTag(note.tags);
                   const paperLabel =
@@ -821,6 +1105,8 @@ function NotesContent() {
                               e.stopPropagation();
                               setDeleteNoteId(note.id);
                             }}
+                            aria-label="删除笔记"
+                            title="删除笔记"
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
@@ -850,6 +1136,40 @@ function NotesContent() {
                     </div>
                   );
                 })}
+
+                {unarchivedNotes.length > 0 && (
+                  <div className="border-t border-border/60 bg-muted/20">
+                    <div className="px-3 py-2 text-[10px] font-semibold text-muted-foreground">未归档</div>
+                    {unarchivedNotes.map((note) => (
+                      <div
+                        key={note.id}
+                        className={clsx(
+                          'group p-3 cursor-pointer transition-all duration-150 border-l-2 border-l-transparent',
+                          selectedNoteId === note.id
+                            ? 'bg-primary/[0.03] border-l-primary'
+                            : 'hover:bg-primary/[0.02] hover:border-l-primary/50',
+                        )}
+                        onClick={() => handleSelectNote(note)}
+                      >
+                        <div className="flex items-start justify-between gap-1">
+                          <h4 className="text-sm font-medium line-clamp-1 flex-1">{note.title || '未命名笔记'}</h4>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteNoteId(note.id);
+                            }}
+                            aria-label="删除笔记"
+                            title="删除笔记"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{extractPreview(note.content) || '空笔记'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -860,7 +1180,46 @@ function NotesContent() {
             <>
               <div className="flex items-center justify-between px-5 py-3 border-b border-border/50 bg-background/60 backdrop-blur-sm">
                 <div>
-                  <h3 className="font-semibold text-sm tracking-tight">{selectedNote.title || '未命名笔记'}</h3>
+                  {editingTitle ? (
+                    <Input
+                      value={draftTitle}
+                      onChange={(event) => setDraftTitle(event.target.value)}
+                      className="h-8 w-[320px] text-sm"
+                      onBlur={() => {
+                        const nextTitle = draftTitle.trim() || '未命名笔记';
+                        setEditingTitle(false);
+                        if (nextTitle === selectedNote.title) {
+                          return;
+                        }
+                        void updateNote.mutateAsync({
+                          id: selectedNote.id,
+                          payload: {
+                            title: nextTitle,
+                          },
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.currentTarget.blur();
+                        }
+                        if (event.key === 'Escape') {
+                          setEditingTitle(false);
+                        }
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-left font-semibold text-sm tracking-tight hover:text-primary"
+                      onClick={() => {
+                        setDraftTitle(selectedNote.title || '未命名笔记');
+                        setEditingTitle(true);
+                      }}
+                    >
+                      {selectedNote.title || '未命名笔记'}
+                    </button>
+                  )}
                   <div className="flex items-center gap-2 mt-1">
                     {selectedNote.paperIds.length > 0 && (
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -870,7 +1229,30 @@ function NotesContent() {
                     )}
                   </div>
                 </div>
-                <SaveIndicator />
+                <div className="flex items-center gap-2">
+                  {paperIdFilter && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px]"
+                      onClick={() => {
+                        const refText = `[[pdf:${paperIdFilter}:page:1]]`;
+                        const next = {
+                          ...(editorContent || createEmptyEditorDocument()),
+                          content: [
+                            ...((editorContent?.content as any[]) || []),
+                            { type: 'paragraph', content: [{ type: 'text', text: refText }] },
+                          ],
+                        };
+                        setEditorContent(next);
+                        toast.success('已插入论文引用');
+                      }}
+                    >
+                      插入论文引用
+                    </Button>
+                  )}
+                  <SaveIndicator />
+                </div>
               </div>
 
               <div className="flex-1 p-6 overflow-auto bg-background">
@@ -904,7 +1286,7 @@ function NotesContent() {
               <div className="flex-1 overflow-auto px-6 py-5 bg-background">
                 <div className="mx-auto max-w-3xl rounded-xl border border-amber-200/60 bg-amber-50/30 p-6 shadow-xs">
                   <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                    📖 系统摘要 - 只读视图
+                    系统摘要 - 只读视图
                   </p>
                   <div className="whitespace-pre-wrap text-sm leading-7 text-foreground/85">
                     {selectedSummary.readingNotes}
@@ -915,8 +1297,8 @@ function NotesContent() {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-gradient-to-b from-background to-slate-50/30">
               <FileText className="w-12 h-12 mb-3 opacity-30" />
-              <p className="text-sm font-medium">选择笔记开始编辑</p>
-              <p className="text-xs mt-2 text-muted-foreground/60">从左侧面板选择或创建新笔记</p>
+              <p className="text-sm font-medium">选择内容开始编辑</p>
+              <p className="text-xs mt-2 text-muted-foreground/60">你可以选择用户笔记、打开系统摘要，或先选择文件夹后新建笔记</p>
             </div>
           )}
         </div>

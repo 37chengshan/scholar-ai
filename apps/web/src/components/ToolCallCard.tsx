@@ -1,22 +1,14 @@
 /**
- * ToolCallCard Component
+ * Deprecated compatibility component.
  *
- * Displays tool execution status with name, icon, parameters, result preview,
- * duration, and fallback indicator.
- *
- * Part of Agent-Native Chat architecture
+ * Keep the legacy API stable for older callers and tests.
+ * New product work should land in `src/app/components/ToolCallCard.tsx`.
  */
 
 import { clsx } from 'clsx';
 
-/**
- * Tool execution status
- */
 export type ToolStatus = 'pending' | 'running' | 'success' | 'error';
 
-/**
- * Tool display configuration
- */
 const TOOL_DISPLAY: Record<string, { name: string; icon: string }> = {
   rag_search: { name: 'RAG搜索', icon: '🔍' },
   external_search: { name: '外部搜索', icon: '🌐' },
@@ -26,41 +18,24 @@ const TOOL_DISPLAY: Record<string, { name: string; icon: string }> = {
   extract_references: { name: '提取引用', icon: '📑' },
 };
 
-/**
- * Status configuration with indicator and color
- */
 const STATUS_CONFIG: Record<ToolStatus, { indicator: string; color: string }> = {
-  pending: { indicator: '○', color: 'text-gray-400' },
-  running: { indicator: '◐', color: 'text-blue-500 animate-spin' },
-  success: { indicator: '●', color: 'text-green-500' },
-  error: { indicator: '✕', color: 'text-red-500' },
+  pending: { indicator: '○', color: 'text-gray-400 pending' },
+  running: { indicator: '◐', color: 'text-blue-500 animate-spin running' },
+  success: { indicator: '●', color: 'text-green-500 success' },
+  error: { indicator: '✕', color: 'text-red-500 error' },
 };
 
-/**
- * ToolCallCard props
- */
 export interface ToolCallCardProps {
-  /** Tool name identifier */
   tool: string;
-  /** Tool parameters */
   parameters: Record<string, unknown>;
-  /** Execution status */
   status: ToolStatus;
-  /** Result data (when status is success) */
   result?: unknown;
-  /** Error message (when status is error) */
   error?: string;
-  /** Duration in milliseconds */
   duration?: number;
-  /** Whether fallback tool was used */
   usedFallback?: boolean;
-  /** The fallback tool that was used */
   fallbackTool?: string;
 }
 
-/**
- * Format duration in milliseconds to human-readable string
- */
 function formatDuration(ms: number): string {
   const seconds = ms / 1000;
   if (seconds < 60) {
@@ -71,33 +46,24 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-/**
- * Format parameters as compact display
- */
 function formatParameters(params: Record<string, unknown>): string {
   const entries = Object.entries(params);
   if (entries.length === 0) return '';
 
   return entries
     .map(([key, value]) => {
-      const displayValue =
-        typeof value === 'string' ? value : JSON.stringify(value);
-      const truncated =
-        displayValue.length > 20 ? `${displayValue.slice(0, 20)}...` : displayValue;
+      const displayValue = typeof value === 'string' ? value : JSON.stringify(value);
+      const truncated = displayValue.length > 20 ? `${displayValue.slice(0, 20)}...` : displayValue;
       return `${key}: ${truncated}`;
     })
     .join(', ');
 }
 
-/**
- * Format result preview
- */
 function formatResultPreview(result: unknown): string {
   if (result === null || result === undefined) return '';
 
   if (typeof result === 'object') {
     const obj = result as Record<string, unknown>;
-    // Show key summary metrics
     if ('total' in obj) {
       return `total: ${obj.total}`;
     }
@@ -107,7 +73,6 @@ function formatResultPreview(result: unknown): string {
     if ('count' in obj) {
       return `count: ${obj.count}`;
     }
-    // Fallback: show keys
     const keys = Object.keys(obj);
     return keys.length > 0 ? keys.join(', ') : '';
   }
@@ -115,18 +80,6 @@ function formatResultPreview(result: unknown): string {
   return String(result).slice(0, 30);
 }
 
-/**
- * ToolCallCard Component
- *
- * Visual elements:
- * 1. Tool Name + Icon - from TOOL_DISPLAY config
- * 2. Parameters Display - compact format
- * 3. Status Indicator - color-coded
- * 4. Duration Timer - when available
- * 5. Fallback Indicator - when used
- * 6. Result Preview - when success
- * 7. Error Message - when error
- */
 export function ToolCallCard({
   tool,
   parameters,
@@ -151,20 +104,15 @@ export function ToolCallCard({
         'text-xs transition-all duration-200'
       )}
     >
-      {/* Tool Icon */}
       <span className="flex-shrink-0">{toolConfig.icon}</span>
-
-      {/* Tool Name */}
       <span className="flex-shrink-0 font-medium">{toolConfig.name}</span>
 
-      {/* Parameters */}
       {paramsDisplay && (
         <span className="flex-1 min-w-0 text-muted-foreground truncate">
           [{paramsDisplay}]
         </span>
       )}
 
-      {/* Status Indicator */}
       <span
         role="status"
         aria-label={`Tool status: ${status}`}
@@ -173,14 +121,12 @@ export function ToolCallCard({
         {statusConfig.indicator}
       </span>
 
-      {/* Duration */}
       {duration !== undefined && duration > 0 && (
         <span className="flex-shrink-0 text-muted-foreground tabular-nums">
           {formatDuration(duration)}
         </span>
       )}
 
-      {/* Fallback Indicator */}
       {usedFallback && fallbackTool && (
         <span
           className={clsx(
@@ -193,14 +139,12 @@ export function ToolCallCard({
         </span>
       )}
 
-      {/* Result Preview */}
       {resultPreview && (
         <span className="flex-shrink-0 text-green-600 dark:text-green-400">
           → {resultPreview}
         </span>
       )}
 
-      {/* Error Message */}
       {status === 'error' && error && (
         <span className="flex-shrink-0 text-red-600 dark:text-red-400 truncate max-w-[150px]">
           {error}

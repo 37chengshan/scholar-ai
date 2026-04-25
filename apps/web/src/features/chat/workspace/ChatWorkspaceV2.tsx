@@ -491,10 +491,42 @@ export function ChatWorkspaceV2() {
       }
 
       const page = citation.page_num || citation.page || 1;
-      navigate(`/read/${citation.paper_id}?page=${page}`);
+      if (!citation.page_num && !citation.page) {
+        toast.warning(isZh ? '引用缺少页码，已跳转到第一页' : 'Citation has no page; opening first page');
+      }
+      navigate(`/read/${citation.paper_id}?page=${page}&source=chat&source_id=${citation.source_id || ''}`);
     },
     [navigate, isZh],
   );
+
+  const scopeHint = useMemo(() => {
+    const scopeLabel = uiScope.type === 'single_paper'
+      ? (isZh ? '当前论文' : 'Current paper')
+      : uiScope.type === 'full_kb'
+        ? (isZh ? '当前知识库' : 'Current KB')
+        : (isZh ? '全局' : 'Global');
+    const modeLabel = mode === 'auto'
+      ? (isZh ? '自动' : 'Auto')
+      : mode === 'rag'
+        ? (isZh ? '快速问答' : 'Fast RAG')
+        : (isZh ? '深度分析' : 'Deep Agent');
+    return `${isZh ? '范围' : 'Scope'}：${scopeLabel} · ${isZh ? '模式' : 'Mode'}：${modeLabel}`;
+  }, [isZh, mode, uiScope.type]);
+
+  const errorStage = useMemo(() => {
+    if (streamState.streamStatus !== 'error') {
+      return undefined;
+    }
+    const phase = runtime.run.phase || runtime.run.currentPhase || 'unknown';
+    if (!isZh) {
+      return phase;
+    }
+    if (phase === 'planning') return '规划';
+    if (phase === 'executing') return '检索/执行';
+    if (phase === 'verifying') return '验证';
+    if (phase === 'failed') return '失败';
+    return String(phase);
+  }, [isZh, runtime.run.currentPhase, runtime.run.phase, streamState.streamStatus]);
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -507,12 +539,12 @@ export function ChatWorkspaceV2() {
   return (
     <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
       <div className="flex min-w-0 flex-1 flex-col bg-background">
-        <div className="shrink-0 border-b border-border/30 bg-white/30 backdrop-blur-sm">
+        <div className="shrink-0 border-b border-border/30 bg-background/60 backdrop-blur-sm">
           <WorkflowShell />
         </div>
 
         {uiScope.type && (
-          <div className="shrink-0 border-b border-blue-200/50 bg-blue-50/40">
+          <div className="shrink-0 border-b border-border/40 bg-muted/25">
             <ScopeBanner
               type={uiScope.type}
               title={uiScope.title}
@@ -523,14 +555,14 @@ export function ChatWorkspaceV2() {
         )}
 
         {runtime.run && (
-          <div className="shrink-0 border-b border-amber-200/50 bg-amber-50/30">
+          <div className="shrink-0 border-b border-border/40 bg-muted/20">
             <RunHeader run={runtime.run} />
           </div>
         )}
 
         <div className="min-w-0 flex-1 flex flex-col overflow-hidden bg-background">
-          <div className="px-6 py-3 border-b border-border/30 bg-white/20 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
-            📬 对话历史
+          <div className="px-6 py-2.5 border-b border-border/30 bg-background/40 text-[11px] font-semibold text-muted-foreground">
+            {isZh ? '对话' : 'Conversation'}
           </div>
           <MessageFeed
             renderMessages={renderMessages}
@@ -548,16 +580,20 @@ export function ChatWorkspaceV2() {
             scrollContainerRef={messageListRef}
             onCitationClick={handleCitationClick}
             onStop={handleStop}
+            onRetry={handleSend}
             formatTime={formatTime}
             onSuggest={(text) => {
               setInput(text);
             }}
+            errorStage={errorStage}
+            recoverable={runtime.run.recoverable}
+            partialAnswerAvailable={Boolean(streamState.contentBuffer)}
           />
         </div>
 
-        <div className="shrink-0 border-t border-border/30 bg-white/40 backdrop-blur-sm">
-          <div className="px-6 py-3 border-b border-border/30 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
-            ✏️ 输入
+        <div className="shrink-0 border-t border-border/30 bg-background/40 backdrop-blur-sm">
+          <div className="px-6 pt-2 text-[11px] text-muted-foreground" aria-live="polite">
+            {scopeHint}
           </div>
           <ComposerInput
             scopeType={uiScope.type}

@@ -11,7 +11,7 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 API_ROOT = ROOT / "apps" / "api"
@@ -19,8 +19,10 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
 from pypdf import PdfReader
+from zhipuai import ZhipuAI
 
 from app.config import settings
+from app.core.contextual_chunk_builder import enrich_chunk
 from app.core.embedding.factory import get_embedding_service
 from app.core.milvus_service import get_milvus_service
 from app.core.qdrant_service import get_qdrant_service
@@ -41,6 +43,11 @@ QUERY_DISTRIBUTION = {
     "cross_paper": 0.20,
     "hard": 0.10,
 }
+
+_HIGH_VALUE_PATTERN = re.compile(
+    r"\b(table|figure|fig\.?|ablation|benchmark|accuracy|recall|precision|f1|ndcg|mrr|\d+\.\d+|\d+%)\b",
+    re.IGNORECASE,
+)
 
 SECTION_PATTERNS = [
     ("Abstract", re.compile(r"\babstract\b", re.IGNORECASE)),
@@ -103,6 +110,47 @@ def chunk_page_text(text: str, max_chars: int = 1400, overlap: int = 200) -> lis
             break
         start = max(end - overlap, start + 1)
     return [chunk for chunk in chunks if chunk]
+
+
+def _is_high_value_chunk(chunk_text: str) -> bool:
+    return bool(_HIGH_VALUE_PATTERN.search(chunk_text or ""))
+
+
+def _llm_contextual_prefix(
+    client: Optional[ZhipuAI],
+    raw_text: str,
+    paper_title: str,
+    section: str,
+    page_num: int,
+    max_chars: int,
+) -> Optional[str]:
+    if client is None:
+        return None
+
+    prompt = (
+        "You are enriching an academic retrieval chunk. "
+        "Generate a concise contextual prefix in English with factual metadata hints only. "
+        "Do not copy sentences verbatim. No markdown. No bullet list. "
+        f"Limit to {max_chars} characters.\\n\\n"
+        f"Paper: {paper_title}\\n"
+        f"Section: {section}\\n"
+        f"Page: {page_num}\\n"
+        f"Raw chunk:\\n{raw_text[:1400]}"
+    )
+
+    response = client.chat.completions.create(
+        model=settings.LLM_MODEL,
+        messages=[
+            {"role": "system", "content": "Produce short retrieval prefix text only."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.1,
+        max_tokens=180,
+    )
+    content = ((response.choices or [])[0].message.content or "").strip()
+    if not content:
+        return None
+    return content[:max_chars]
 
 
 def _safe_entries_and_texts(entries: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
@@ -230,18 +278,68 @@ def build_dataset_entries(
     pages_per_paper: int,
     dataset_profile: str,
     model_stack: str,
+    contextual_mode: str,
+    llm_client: Optional[ZhipuAI],
+    llm_max_prefixes_per_paper: int,
+    llm_prefix_max_chars: int,
 ) -> list[dict[str, Any]]:
     pdf_path = ROOT / spec["source"]
     reader = PdfReader(str(pdf_path))
     entries: list[dict[str, Any]] = []
 
-    for page_index, page in enumerate(reader.pages[:pages_per_paper], start=1):
+    pages = list(reader.pages)
+    selected_pages = pages if pages_per_paper <= 0 else pages[:pages_per_paper]
+    llm_prefix_count = 0
+
+    for page_index, page in enumerate(selected_pages, start=1):
         text = normalize_text(page.extract_text() or "")
         if not text:
             continue
 
         section = detect_section(text, page_index)
-        for chunk_index, chunk_text in enumerate(chunk_page_text(text), start=1):
+        raw_chunks = chunk_page_text(text)
+        page_items = [{"text": c, "page_num": page_index, "section": section} for c in raw_chunks]
+
+        for chunk_index, chunk_text in enumerate(raw_chunks, start=1):
+            raw_text = chunk_text
+            contextual_prefix = ""
+            content_data = raw_text
+
+            if contextual_mode in {"rule", "llm"}:
+                enriched = enrich_chunk(
+                    chunk={
+                        "text": raw_text,
+                        "page_num": page_index,
+                        "section": section,
+                        "subsection": section,
+                    },
+                    paper_title=spec["title"],
+                    all_page_items=page_items,
+                    chunk_index=chunk_index - 1,
+                    window_size=1,
+                )
+                contextual_prefix = str(enriched.get("contextual_prefix") or "")
+                content_data = str(enriched.get("content_data") or raw_text)
+
+            if contextual_mode == "llm" and _is_high_value_chunk(raw_text):
+                if llm_prefix_count < llm_max_prefixes_per_paper:
+                    try:
+                        llm_prefix = _llm_contextual_prefix(
+                            client=llm_client,
+                            raw_text=raw_text,
+                            paper_title=spec["title"],
+                            section=section,
+                            page_num=page_index,
+                            max_chars=llm_prefix_max_chars,
+                        )
+                        if llm_prefix:
+                            contextual_prefix = llm_prefix
+                            content_data = f"{llm_prefix}\\n{raw_text}"
+                            llm_prefix_count += 1
+                    except Exception:
+                        # Silent fallback to rule-based contextual prefix.
+                        pass
+
             entries.append(
                 {
                     "paper_id": spec["paper_id"],
@@ -249,13 +347,17 @@ def build_dataset_entries(
                     "content_type": "text",
                     "page_num": page_index,
                     "section": section,
-                    "text": chunk_text,
-                    "content_data": chunk_text,
+                    "text": raw_text,
+                    "raw_text": raw_text,
+                    "contextual_prefix": contextual_prefix,
+                    "content_data": content_data,
                     "raw_data": {
                         "source_pdf": spec["source"],
                         "chunk_index": chunk_index,
                         "dataset_profile": dataset_profile,
                         "model_stack": model_stack,
+                        "contextual_mode": contextual_mode,
+                        "contextual_prefix": contextual_prefix,
                     },
                 }
             )
@@ -339,6 +441,19 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--pages-per-paper", type=int, default=4)
     parser.add_argument(
+        "--all-pages",
+        action="store_true",
+        help="Index all pages in each paper",
+    )
+    parser.add_argument(
+        "--contextual-mode",
+        choices=["raw", "rule", "llm"],
+        default="rule",
+    )
+    parser.add_argument("--llm-max-prefixes-per-paper", type=int, default=10)
+    parser.add_argument("--llm-prefix-max-chars", type=int, default=360)
+    parser.add_argument("--embedding-batch-size", type=int, default=12)
+    parser.add_argument(
         "--output-dir",
         default=str(ROOT / "artifacts" / "benchmarks"),
     )
@@ -348,12 +463,17 @@ def main() -> int:
     query_count = args.query_count or QUERY_TARGET_BY_PROFILE[args.dataset_profile]
     specs = _build_paper_specs(args.dataset_profile, paper_count)
 
+    effective_pages_per_paper = 0 if args.all_pages else args.pages_per_paper
+
     output_dir = Path(args.output_dir)
     profile_dir = output_dir / args.dataset_profile / args.model_stack
     profile_dir.mkdir(parents=True, exist_ok=True)
 
     embedding_service = get_embedding_service()
     embedding_service.load_model()
+    llm_client: Optional[ZhipuAI] = None
+    if args.contextual_mode == "llm" and settings.ZHIPU_API_KEY:
+        llm_client = ZhipuAI(api_key=settings.ZHIPU_API_KEY)
     if settings.VECTOR_STORE_BACKEND == "qdrant":
         qdrant = get_qdrant_service()
         qdrant.ensure_collection(vector_size=settings.EMBEDDING_DIMENSION)
@@ -366,41 +486,73 @@ def main() -> int:
     delete_existing_records(paper_ids, args.user_id)
 
     manifest_papers: list[dict[str, Any]] = []
-    for spec in specs:
+    for index, spec in enumerate(specs, start=1):
+        print(f"[prepare] ({index}/{len(specs)}) building entries for {spec['paper_id']}")
         entries = build_dataset_entries(
             spec,
             args.user_id,
-            args.pages_per_paper,
+            effective_pages_per_paper,
             args.dataset_profile,
             args.model_stack,
+            args.contextual_mode,
+            llm_client,
+            args.llm_max_prefixes_per_paper,
+            args.llm_prefix_max_chars,
         )
         if not entries:
             continue
 
         safe_entries, texts = _safe_entries_and_texts(entries)
         if not texts:
-            continue
-        embeddings = embedding_service.encode_text(texts)
-        for entry, embedding in zip(safe_entries, embeddings):
-            entry["embedding"] = embedding
-
-        entries = [entry for entry in safe_entries if "embedding" in entry]
-        if not entries:
+            print(f"[prepare] skip {spec['paper_id']} (no text chunks)")
             continue
 
-        if settings.VECTOR_STORE_BACKEND == "qdrant":
-            inserted_ids = qdrant.upsert_contents_batched(entries)
-        else:
-            inserted_ids = milvus.insert_contents_batched(entries)
+        total_batches = math.ceil(len(texts) / args.embedding_batch_size)
+        inserted_total = 0
+        chunk_total = 0
+        for batch_index, batch_start in enumerate(range(0, len(texts), args.embedding_batch_size), start=1):
+            batch_entries = safe_entries[batch_start : batch_start + args.embedding_batch_size]
+            batch_texts = texts[batch_start : batch_start + args.embedding_batch_size]
+            batch_embeddings = embedding_service.encode_text(batch_texts)
+            encoded_entries = [
+                {**entry, "embedding": embedding}
+                for entry, embedding in zip(batch_entries, batch_embeddings)
+            ]
+            if not encoded_entries:
+                continue
+
+            if settings.VECTOR_STORE_BACKEND == "qdrant":
+                inserted_ids = qdrant.upsert_contents_batched(encoded_entries)
+            else:
+                inserted_ids = milvus.insert_contents_batched(encoded_entries)
+
+            chunk_total += len(encoded_entries)
+            inserted_total += len(inserted_ids)
+            print(
+                f"[prepare] {spec['paper_id']} batch {batch_index}/{total_batches} "
+                f"chunks={len(encoded_entries)} inserted_total={inserted_total}"
+            )
+
+        if chunk_total == 0:
+            continue
+
+        print(
+            f"[prepare] inserted {spec['paper_id']} chunks={chunk_total} ids={inserted_total}"
+        )
         manifest_papers.append(
             {
                 "paper_id": spec["paper_id"],
                 "title": spec["title"],
                 "source_pdf": spec["source"],
                 "user_id": args.user_id,
-                "pages_indexed": args.pages_per_paper,
-                "chunk_count": len(entries),
-                "inserted_count": len(inserted_ids),
+                "pages_indexed": (
+                    len(PdfReader(str(ROOT / spec["source"])).pages)
+                    if effective_pages_per_paper <= 0
+                    else effective_pages_per_paper
+                ),
+                "chunk_count": chunk_total,
+                "inserted_count": inserted_total,
+                "contextual_mode": args.contextual_mode,
             }
         )
 
@@ -412,6 +564,8 @@ def main() -> int:
         "embedding_dimension": settings.EMBEDDING_DIMENSION,
         "paper_count": len(specs),
         "query_count_target": query_count,
+        "pages_per_paper": effective_pages_per_paper,
+        "contextual_mode": args.contextual_mode,
         "papers": manifest_papers,
     }
     manifest_path = profile_dir / f"dataset_manifest_{args.dataset_profile}.json"

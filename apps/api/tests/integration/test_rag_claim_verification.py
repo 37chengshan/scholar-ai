@@ -67,6 +67,20 @@ async def test_rag_query_exposes_claim_verification_fields() -> None:
             "graph_retrieval_used": False,
             "graph_candidate_count": 0,
             "graph_vector_merged_evidence": 1,
+            "retrieval_evaluator": {
+                "is_weak": False,
+                "weak_reasons": [],
+                "metrics": {"score_coverage": 0.88},
+            },
+            "iterative_retrieval_triggered": False,
+            "retrieval_trace": {"mode": "orchestrator_v2", "iterative_triggered": False, "rounds": []},
+            "citation_aware_metadata": {"citation_expansion_applied": False},
+            "scientific_synthesis_metrics": {
+                "citation_faithfulness": 1.0,
+                "unsupported_claim_rate": 0.0,
+                "cross_paper_synthesis_quality": 0.9,
+                "partial_abstain_quality": 1.0,
+            },
         },
     }
 
@@ -86,3 +100,7 @@ async def test_rag_query_exposes_claim_verification_fields() -> None:
     assert response.unsupportedClaimCount == 0
     assert response.abstained is False
     assert response.answerMode == "full"
+    assert response.retrievalEvaluator["is_weak"] is False
+    assert response.iterativeRetrievalTriggered is False
+    assert response.retrievalTrace["mode"] == "orchestrator_v2"
+    assert response.citationAwareMetadata["citation_expansion_applied"] is False
