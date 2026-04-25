@@ -20,6 +20,7 @@ from typing import Optional
 
 from sqlalchemy import select, update
 
+from app.config import settings
 from app.core.celery_config import celery_app
 from app.core.worker_async import run_async_in_worker_loop
 from app.database import AsyncSessionLocal
@@ -237,7 +238,7 @@ def process_import_job(self, job_id: str):
 
                         # Generate storage key
                         storage_key = f"uploads/{job.user_id}/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}/{job_id}.pdf"
-                        local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+                        local_storage_path = settings.LOCAL_STORAGE_PATH
                         file_path = os.path.join(local_storage_path, storage_key)
                         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
@@ -263,7 +264,7 @@ def process_import_job(self, job_id: str):
 
                     # Validate magic bytes %PDF-
                     if job.storage_key:
-                        local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+                        local_storage_path = settings.LOCAL_STORAGE_PATH
                         file_path = os.path.join(local_storage_path, job.storage_key)
                         if os.path.exists(file_path):
                             with open(file_path, "rb") as f:

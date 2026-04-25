@@ -16,6 +16,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.config import settings
+
 from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
@@ -420,7 +422,7 @@ async def upload_batch_local_files(
                 storage_key = (
                     f"uploads/{user_id}/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}/{item.importJobId}.pdf"
                 )
-                local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+                local_storage_path = settings.LOCAL_STORAGE_PATH
                 file_path = os.path.join(local_storage_path, storage_key)
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
 

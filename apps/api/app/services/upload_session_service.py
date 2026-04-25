@@ -13,10 +13,12 @@ import aiofiles
 from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.import_job import ImportJob
 from app.models.upload_history import UploadHistory
 from app.models.upload_session import UploadSession
 from app.schemas.upload_session import CreateUploadSessionRequest
+from app.services.import_file_service import build_upload_storage_key
 from app.services.import_job_service import ImportJobService
 from app.utils.logger import logger
 from app.workers.import_worker import process_import_job
@@ -29,7 +31,7 @@ class UploadSessionService:
         self._import_job_service = ImportJobService()
 
     def _local_storage_root(self) -> Path:
-        return Path(os.getenv("LOCAL_STORAGE_PATH", "./uploads"))
+        return Path(settings.LOCAL_STORAGE_PATH).resolve()
 
     def _parts_dir(self, session_id: str) -> Path:
         return self._local_storage_root() / "sessions" / session_id / "parts"
@@ -38,8 +40,7 @@ class UploadSessionService:
         return self._parts_dir(session_id) / f"{part_number}.part"
 
     def _upload_storage_key(self, user_id: str, import_job_id: str) -> str:
-        now = datetime.now(timezone.utc)
-        return f"{user_id}/{now.strftime('%Y/%m/%d')}/{import_job_id}.pdf"
+        return build_upload_storage_key(user_id, import_job_id)
 
     async def create_session(
         self,

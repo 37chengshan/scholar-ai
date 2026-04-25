@@ -17,6 +17,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Tuple, List
 
+from app.config import settings
+
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from pydantic import BaseModel, Field
@@ -115,7 +117,7 @@ def _build_storage_key(user_id: str, import_job_id: str) -> str:
 
 
 async def _save_pdf(storage_key: str, content: bytes) -> None:
-    local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+    local_storage_path = settings.LOCAL_STORAGE_PATH
     file_path = os.path.join(local_storage_path, storage_key)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
 

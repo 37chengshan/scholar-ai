@@ -16,6 +16,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
+from app.config import settings
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi import status as http_status
 from pydantic import BaseModel, Field
@@ -219,7 +221,7 @@ async def upload_file_to_job(
         )
 
         # Write to local storage
-        local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+        local_storage_path = settings.LOCAL_STORAGE_PATH
         file_path = os.path.join(local_storage_path, storage_key)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 

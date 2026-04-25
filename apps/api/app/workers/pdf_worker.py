@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import tempfile
+import warnings
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -218,24 +219,17 @@ class PDFProcessor:
     ) -> str:
         """Execute main chain: must complete for paper to be searchable.
 
-        Per D-13: Fast path to basic indexability. Core stages:
-        - Validate PDF
-        - Parse with Docling
-        - Chunk content
-        - Embed text chunks
-        - Store basic index
-
-        Args:
-            task_id: UUID of the processing task
-            temp_path: Local path to downloaded PDF
-            user_id: UUID of the paper owner
-
-        Returns:
-            paper_id if successful
-
-        Raises:
-            PipelineError: If critical stage fails
+        .. deprecated::
+            Use ``process_pdf_task(task_id)`` which delegates to
+            ``PDFCoordinator.process(task_id)``.  This method is retained for
+            backward compatibility only and is not called by the official pipeline.
         """
+        warnings.warn(
+            "process_pdf_main_chain is deprecated; use process_pdf_task() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         await self.init_db()
 
         async with self.db_pool.acquire() as conn:
@@ -298,17 +292,16 @@ class PDFProcessor:
     ) -> None:
         """Execute enhancement chain: async quality improvements.
 
-        Per D-13: Degradation-friendly, doesn't block main chain.
-        Enhancement stages:
-        - Metadata enrichment via S2 API
-        - Figure/table semantic summary
-        - Graph relation update
-        - Advanced quality scoring
-
-        Args:
-            task_id: UUID of the processing task
-            paper_id: UUID of the processed paper
+        .. deprecated::
+            Use ``process_pdf_task(task_id)`` which delegates to
+            ``PDFCoordinator.process(task_id)``.  This method is retained for
+            backward compatibility only and is not called by the official pipeline.
         """
+        warnings.warn(
+            "process_pdf_enhancement_chain is deprecated; use process_pdf_task() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         try:
             await self.init_db()
 
@@ -355,7 +348,11 @@ class PDFProcessor:
         logger.debug("PDF validated", temp_path=temp_path, size_mb=file_size / (1024*1024))
 
     async def _parse_pdf(self, temp_path: str) -> Dict[str, Any]:
-        """Parse PDF with Docling."""
+        """Parse PDF with Docling.
+
+        .. deprecated:: Use ``PDFCoordinator.process()`` instead.
+        """
+        warnings.warn("_parse_pdf is deprecated; pipeline stages are handled by PDFCoordinator.", DeprecationWarning, stacklevel=2)
         parser = DoclingParser()
         result = await asyncio.wait_for(
             parser.parse_pdf(temp_path),
@@ -365,7 +362,11 @@ class PDFProcessor:
         return result
 
     async def _chunk_content(self, parse_result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Chunk parsed content."""
+        """Chunk parsed content.
+
+        .. deprecated:: Use ``PDFCoordinator.process()`` instead.
+        """
+        warnings.warn("_chunk_content is deprecated; pipeline stages are handled by PDFCoordinator.", DeprecationWarning, stacklevel=2)
         parser = DoclingParser()
         chunks = parser.chunk_by_semantic(
             parse_result["items"],
@@ -376,7 +377,11 @@ class PDFProcessor:
         return chunks
 
     async def _embed_text_chunks(self, chunks: List[Dict[str, Any]]) -> List[List[float]]:
-        """Embed text chunks with Qwen3VL."""
+        """Embed text chunks with Qwen3VL.
+
+        .. deprecated:: Use ``PDFCoordinator.process()`` instead.
+        """
+        warnings.warn("_embed_text_chunks is deprecated; pipeline stages are handled by PDFCoordinator.", DeprecationWarning, stacklevel=2)
         qwen3vl = get_qwen3vl_service()
         texts = [chunk.get("text", "") for chunk in chunks]
         embeddings = qwen3vl.encode_text(texts)
@@ -390,7 +395,11 @@ class PDFProcessor:
         user_id: str,
         paper_id: str,
     ) -> None:
-        """Store chunks in Milvus."""
+        """Store chunks in Milvus.
+
+        .. deprecated:: Use ``PDFCoordinator.process()`` instead.
+        """
+        warnings.warn("_store_chunks is deprecated; pipeline stages are handled by PDFCoordinator.", DeprecationWarning, stacklevel=2)
         milvus = get_milvus_service()
         contents = []
         for i, chunk in enumerate(chunks):
