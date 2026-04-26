@@ -55,6 +55,10 @@ import {
   PanelRightOpen,
   FileText,
 } from "lucide-react";
+import { useSourceNavigation } from '@/features/read/hooks/useSourceNavigation';
+import { useChunkHighlight } from '@/features/read/hooks/useChunkHighlight';
+import { SourceChunkHighlight } from '@/features/read/components/SourceChunkHighlight';
+import { EvidenceSideNote } from '@/features/read/components/EvidenceSideNote';
 
 /**
  * Internal Read component that uses Router hooks
@@ -70,6 +74,8 @@ function ReadContent() {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const isZh = language === "zh";
+  const sourceNav = useSourceNavigation();
+  const chunkHighlight = useChunkHighlight(sourceNav.sourceId);
 
   const [paper, setPaper] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -663,6 +669,12 @@ function ReadContent() {
                 <div className="mt-1 text-sm font-semibold text-foreground">
                   {isZh ? "笔记 / 批注 / 摘要" : "Notes / Annotations / Summary"}
                 </div>
+                {chunkHighlight.hasHighlight ? (
+                  <div className="mt-3 space-y-2">
+                    <SourceChunkHighlight sourceChunkId={chunkHighlight.highlightedSourceChunkId} />
+                    <EvidenceSideNote source={sourceNav.source} sourceId={sourceNav.sourceId} page={sourceNav.page} />
+                  </div>
+                ) : null}
               </div>
               <TabsList className="px-3 pt-3 justify-start shrink-0 bg-transparent">
                 <TabsTrigger value="notes" className="text-xs">

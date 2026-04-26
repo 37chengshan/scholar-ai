@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage as SessionChatMessage } from '@/app/hooks/useSessions';
 import type { ChatStreamState } from '@/app/hooks/useChatStream';
-import type { CitationItem, ExtendedChatMessage, ToolTimelineItem } from '@/features/chat/components/workspaceTypes';
+import type { AnswerContractPayload, CitationItem, ExtendedChatMessage, ToolTimelineItem } from '@/features/chat/components/workspaceTypes';
 
 export interface ChatRenderMessage extends ExtendedChatMessage {
   displayContent: string;
@@ -22,6 +22,7 @@ interface CompleteStreamingPayload {
   cost: number;
   toolTimeline: ToolTimelineItem[];
   citations: CitationItem[];
+  answerContract?: AnswerContractPayload;
 }
 
 interface UseChatMessagesViewModelOptions {
@@ -143,6 +144,7 @@ export function useChatMessagesViewModel({
           cost: payload.cost,
           toolTimeline: payload.toolTimeline,
           citations: payload.citations,
+          answerContract: payload.answerContract,
         };
       });
 
@@ -168,6 +170,7 @@ export function useChatMessagesViewModel({
           cost: payload.cost,
           toolTimeline: payload.toolTimeline,
           citations: payload.citations,
+          answerContract: payload.answerContract,
         },
       ];
     });
