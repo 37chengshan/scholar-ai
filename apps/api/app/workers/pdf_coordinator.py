@@ -10,9 +10,11 @@ Per D-01: Complete refactor from serial to parallel architecture.
 """
 
 import asyncio
+import json
 import os
 import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import asyncpg
@@ -20,6 +22,7 @@ import asyncpg
 from app.workers.pipeline_context import PipelineContext, PipelineStage
 from app.workers.extraction_pipeline import ExtractionPipeline, PipelineError
 from app.workers.storage_manager import StorageManager
+from app.contracts.parse_artifact import build_parse_artifact
 from app.core.storage import ObjectStorage
 from app.core.docling_service import DoclingParser
 from app.core.qwen3vl_service import get_qwen3vl_service
@@ -139,6 +142,28 @@ class PDFCoordinator:
                     parse_mode=parse_metadata.get("parse_mode", "unknown"),
                     ocr_used=parse_metadata.get("ocr_used", False),
                 )
+
+                parse_artifact = build_parse_artifact(
+                    paper_id=ctx.paper_id,
+                    source_uri=ctx.storage_key,
+                    parse_result=ctx.parse_result,
+                    parser_name="docling",
+                    parser_version=parse_metadata.get("parser_version"),
+                )
+                parse_artifact_path = self._build_paper_artifact_dir(ctx.paper_id) / "parse_artifact.json"
+                parse_artifact_path.write_text(
+                    json.dumps(parse_artifact.model_dump(mode="json"), ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                ctx.parse_artifact = parse_artifact.model_dump(mode="json")
+                logger.info(
+                    "ParseArtifact generated",
+                    task_id=ctx.task_id,
+                    paper_id=ctx.paper_id,
+                    parse_id=parse_artifact.parse_id,
+                    parse_mode=parse_artifact.parse_mode.value,
+                    path=str(parse_artifact_path),
+                )
             except Exception as e:
                 ctx.errors.append(f"Parsing failed: {str(e)}")
                 await self._update_status(ctx, PipelineStage.FAILED.value, error=str(e))
@@ -239,6 +264,11 @@ class PDFCoordinator:
                 )
 
         logger.info("Task status updated", task_id=ctx.task_id, status=status)
+
+    def _build_paper_artifact_dir(self, paper_id: str) -> Path:
+        artifact_dir = Path("artifacts") / "papers" / paper_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        return artifact_dir
 
 
 def get_pdf_coordinator() -> PDFCoordinator:

@@ -17,6 +17,7 @@ Usage:
 
 import asyncio
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from app.utils.logger import logger
@@ -70,6 +71,7 @@ class AgenticRetrievalOrchestrator:
         self.graph_query_compiler = get_graph_query_compiler()
         self.graph_retrieval_service = get_graph_retrieval_service()
         self.retrieval_evaluator = RetrievalEvaluator()
+        self._last_evidence_build_latency_ms: float = 0.0
 
     async def retrieve(
         self,
@@ -78,6 +80,7 @@ class AgenticRetrievalOrchestrator:
         paper_ids: Optional[List[str]] = None,
         user_id: str = None,
         top_k_per_subquestion: int = 5,
+        max_subquestions: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Execute agentic retrieval with multi-round support.
 
@@ -96,6 +99,8 @@ class AgenticRetrievalOrchestrator:
         """
         if user_id is None:
             raise ValueError("user_id is required for agentic retrieval")
+        total_started_at = time.perf_counter()
+        retrieval_started_at = time.perf_counter()
         # Step 1: Decompose query into sub-questions
         logger.info(
             "Starting agentic retrieval",
@@ -106,6 +111,23 @@ class AgenticRetrievalOrchestrator:
         academic_plan = build_academic_query_plan(query, query_type or "", paper_ids=paper_ids)
         effective_query_type = (query_type or academic_plan.get("query_family") or "single")
         expected_evidence_types = academic_plan.get("expected_evidence_types") or ["text"]
+        normalized_family = str(academic_plan.get("query_family") or effective_query_type or "fact").lower()
+
+        if normalized_family in {"fact", "method"}:
+            subquestion_cap = 1
+            effective_top_k = min(max(top_k_per_subquestion, 1), 20)
+            evidence_cap = 10
+        elif normalized_family == "compare":
+            subquestion_cap = 2
+            effective_top_k = min(max(top_k_per_subquestion, 1), 20)
+            evidence_cap = 20
+        else:
+            subquestion_cap = 3
+            effective_top_k = min(max(top_k_per_subquestion, 1), 20)
+            evidence_cap = 20
+
+        if max_subquestions is not None:
+            subquestion_cap = max(1, min(subquestion_cap, int(max_subquestions)))
         graph_hint = self.graph_query_compiler.compile(query, str(effective_query_type))
         graph_candidates = await self.graph_retrieval_service.expand_graph_context(
             graph_hint=graph_hint,
@@ -131,6 +153,8 @@ class AgenticRetrievalOrchestrator:
                 for item in planned_sub_questions
                 if item.get("question")
             ]
+
+        sub_questions = sub_questions[:subquestion_cap]
 
         if not sub_questions:
             return {
@@ -182,7 +206,7 @@ class AgenticRetrievalOrchestrator:
                 sub_questions=sub_questions,
                 paper_ids=paper_ids or [],
                 user_id=user_id,
-                top_k=top_k_per_subquestion,
+                top_k=effective_top_k,
                 content_types=expected_evidence_types,
                 graph_hint=graph_hint,
                 graph_candidates=graph_candidates,
@@ -196,12 +220,21 @@ class AgenticRetrievalOrchestrator:
             )
 
             round_chunk_count = sum(len(item.get("chunks", [])) for item in round_results)
+            round_fallback_count = sum(
+                1 for item in round_results if item.get("milvus_fallback_used")
+            )
+            round_unsupported_count = sum(
+                int(item.get("milvus_unsupported_field_type_count") or 0)
+                for item in round_results
+            )
             retrieval_trace["rounds"].append(
                 {
                     "round": round_num,
                     "subquestion_count": len(sub_questions),
                     "success_count": len([item for item in round_results if item.get("success", True)]),
                     "chunk_count": round_chunk_count,
+                    "milvus_fallback_count": round_fallback_count,
+                    "milvus_unsupported_field_type_count": round_unsupported_count,
                 }
             )
 
@@ -215,7 +248,7 @@ class AgenticRetrievalOrchestrator:
                     expected_evidence_types=expected_evidence_types,
                     paper_ids=paper_ids or [],
                     graph_candidates=graph_candidates or [],
-                    top_k=max(top_k_per_subquestion, 6),
+                    top_k=max(effective_top_k, 6),
                 )
                 retrieval_trace["first_pass_evaluation"] = retrieval_evaluation
 
@@ -235,9 +268,10 @@ class AgenticRetrievalOrchestrator:
                         query=query,
                         query_family=str(academic_plan.get("query_family") or effective_query_type),
                         paper_ids=paper_ids or [],
-                        top_k=top_k_per_subquestion,
+                        top_k=effective_top_k,
                         graph_candidates=graph_candidates,
                     )
+                    sub_questions = sub_questions[:subquestion_cap]
 
             # Check convergence after first round
             if round_num > 1:
@@ -278,6 +312,8 @@ class AgenticRetrievalOrchestrator:
                 )
 
         # Step 3: Final synthesis
+        retrieval_latency_ms = round((time.perf_counter() - retrieval_started_at) * 1000.0, 3)
+        synthesis_started_at = time.perf_counter()
         answer_outline = self._build_answer_outline(
             query=query,
             query_type=str(effective_query_type),
@@ -289,10 +325,17 @@ class AgenticRetrievalOrchestrator:
             all_results=all_results,
             answer_outline=answer_outline,
         )
+        llm_synthesis_latency_ms = round((time.perf_counter() - synthesis_started_at) * 1000.0, 3)
         final_answer = self._validate_and_fix_citations(final_answer, all_results, query)
 
         # Collect all sources
         all_sources = self._collect_sources(all_results)
+        if len(all_sources) > evidence_cap:
+            all_sources = sorted(
+                all_sources,
+                key=lambda item: float(item.get("score") or 0.0),
+                reverse=True,
+            )[:evidence_cap]
 
         citation_checked_answer, citation_report = (
             self.citation_verifier.prune_unsupported_claims(final_answer, all_sources)
@@ -301,6 +344,28 @@ class AgenticRetrievalOrchestrator:
         claim_results = self.claim_verifier.verify(extracted_claims, all_sources)
         claim_report = self.claim_verifier.build_report(claim_results)
         consistency_score = self._compute_answer_evidence_consistency(citation_checked_answer, all_sources)
+        flattened_results = [item for round_data in all_results for item in (round_data.get("results") or [])]
+        milvus_fallback_used = any(bool(item.get("milvus_fallback_used")) for item in flattened_results)
+        milvus_unsupported_field_type_count = sum(
+            int(item.get("milvus_unsupported_field_type_count") or 0)
+            for item in flattened_results
+        )
+        milvus_search_paths = sorted(
+            {
+                path
+                for item in flattened_results
+                for path in (item.get("milvus_search_paths") or [])
+                if isinstance(path, str) and path
+            }
+        )
+        milvus_output_fields_seen = sorted(
+            {
+                field
+                for item in flattened_results
+                for field in (item.get("milvus_output_fields_seen") or [])
+                if isinstance(field, str) and field
+            }
+        )
         abstain_decision = self.abstention_policy.decide(
             claim_report=claim_report,
             citation_report=citation_report,
@@ -362,6 +427,9 @@ class AgenticRetrievalOrchestrator:
                 "rewrite_count": len(academic_plan.get("fallback_rewrites") or []),
                 "paper_count": len(paper_ids) if paper_ids else 0,
                 "subquestion_count": len(sub_questions) if sub_questions else 0,
+                "subquestion_limit": subquestion_cap,
+                "top_k_per_subquestion": effective_top_k,
+                "evidence_chunk_limit": evidence_cap,
                 "citation_verification": citation_report,
                 "claimVerification": claim_report,
                 "unsupported_claim_rate": abstain_decision.unsupported_claim_rate,
@@ -373,9 +441,21 @@ class AgenticRetrievalOrchestrator:
                 "abstained": abstain_decision.abstained,
                 "abstainReason": abstain_decision.abstain_reason,
                 "answerMode": abstain_decision.answer_mode.value,
+                "milvus_live_diagnostics": {
+                    "fallback_used": milvus_fallback_used,
+                    "unsupported_field_type_count": milvus_unsupported_field_type_count,
+                    "search_paths": milvus_search_paths,
+                    "output_fields_seen": milvus_output_fields_seen,
+                },
                 "graph_retrieval_used": bool(graph_candidates),
                 "graph_candidate_count": len(graph_candidates),
                 "graph_vector_merged_evidence": len(all_sources),
+                "latency_breakdown_ms": {
+                    "retrieval_latency_ms": retrieval_latency_ms,
+                    "evidence_build_latency_ms": self._last_evidence_build_latency_ms,
+                    "llm_synthesis_latency_ms": llm_synthesis_latency_ms,
+                    "total_latency_ms": round((time.perf_counter() - total_started_at) * 1000.0, 3),
+                },
                 "scientific_synthesis_metrics": {
                     "citation_faithfulness": round(citation_faithfulness, 4),
                     "unsupported_claim_rate": round(unsupported_claim_rate, 4),
@@ -766,6 +846,20 @@ class AgenticRetrievalOrchestrator:
                     "summary": summary,
                     "rationale": sub_q.get("rationale", ""),
                     "intent": result.get("intent"),
+                    "candidate_fusion": result.get("candidate_fusion") or {},
+                    "latency_breakdown_ms": result.get("latency_breakdown_ms") or {},
+                    "milvus_fallback_used": bool(
+                        ((result.get("milvus_live_diagnostics") or {}).get("fallback_used"))
+                    ),
+                    "milvus_unsupported_field_type_count": int(
+                        ((result.get("milvus_live_diagnostics") or {}).get("unsupported_field_type_count")) or 0
+                    ),
+                    "milvus_search_paths": list(
+                        ((result.get("milvus_live_diagnostics") or {}).get("search_paths")) or []
+                    ),
+                    "milvus_output_fields_seen": list(
+                        ((result.get("milvus_live_diagnostics") or {}).get("output_fields_seen")) or []
+                    ),
                     "success": True,
                 }
 
@@ -1014,7 +1108,9 @@ Provide a concise synthesis that:
                     chunks = result.get("chunks", [])
                     all_chunks.extend(chunks)
 
+        evidence_started_at = time.perf_counter()
         evidence_blocks = self._build_evidence_blocks(all_chunks, query)
+        self._last_evidence_build_latency_ms = round((time.perf_counter() - evidence_started_at) * 1000.0, 3)
 
         if not evidence_blocks:
             return "No relevant information found across all retrieval rounds."

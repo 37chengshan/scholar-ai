@@ -304,7 +304,7 @@ def _mock_answer_generation(
     """
     # Generate mock answer with citations
     if not expected_chunks:
-        answer = f"I could not find specific evidence for '{query[:30]...' in the paper."
+        answer = f"I could not find specific evidence for '{query[:30]}...' in the paper."
         sources = []
     else:
         # Create a mock answer with proper citations

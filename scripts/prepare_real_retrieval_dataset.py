@@ -29,11 +29,15 @@ from app.core.qdrant_service import get_qdrant_service
 
 DATASET_PROFILE_TO_COUNT = {
     "large-baseline": 12,
+    "v2": 20,
+    "v2.1": 20,
     "xlarge-main": 50,
 }
 
 QUERY_TARGET_BY_PROFILE = {
     "large-baseline": 48,
+    "v2": 80,
+    "v2.1": 80,
     "xlarge-main": 120,
 }
 
@@ -182,13 +186,21 @@ def _to_title(path: Path) -> str:
     return stem.replace("_", " ")
 
 
+def _paper_prefix(profile: str) -> str:
+    if profile == "large-baseline":
+        return "large"
+    if profile in {"v2", "v2.1"}:
+        return "v2"
+    return "xlarge"
+
+
 def _build_paper_specs(dataset_profile: str, paper_count: int) -> list[dict[str, Any]]:
     pdf_files = _list_pdf_files()
     if len(pdf_files) < paper_count:
         raise ValueError(f"Not enough fixture PDFs: required={paper_count}, found={len(pdf_files)}")
 
     selected = pdf_files[:paper_count]
-    prefix = "large" if dataset_profile == "large-baseline" else "xlarge"
+    prefix = _paper_prefix(dataset_profile)
     specs: list[dict[str, Any]] = []
     for index, pdf_path in enumerate(selected, start=1):
         specs.append(
@@ -457,6 +469,11 @@ def main() -> int:
         "--output-dir",
         default=str(ROOT / "artifacts" / "benchmarks"),
     )
+    parser.add_argument(
+        "--queries-only",
+        action="store_true",
+        help="Only generate golden queries/stat files; do not delete or insert vector records",
+    )
     args = parser.parse_args()
 
     paper_count = args.paper_count or DATASET_PROFILE_TO_COUNT[args.dataset_profile]
@@ -469,92 +486,112 @@ def main() -> int:
     profile_dir = output_dir / args.dataset_profile / args.model_stack
     profile_dir.mkdir(parents=True, exist_ok=True)
 
-    embedding_service = get_embedding_service()
-    embedding_service.load_model()
-    llm_client: Optional[ZhipuAI] = None
-    if args.contextual_mode == "llm" and settings.ZHIPU_API_KEY:
-        llm_client = ZhipuAI(api_key=settings.ZHIPU_API_KEY)
-    if settings.VECTOR_STORE_BACKEND == "qdrant":
-        qdrant = get_qdrant_service()
-        qdrant.ensure_collection(vector_size=settings.EMBEDDING_DIMENSION)
-    else:
-        milvus = get_milvus_service()
-        milvus.connect()
-        milvus.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
-
-    paper_ids = [spec["paper_id"] for spec in specs]
-    delete_existing_records(paper_ids, args.user_id)
-
     manifest_papers: list[dict[str, Any]] = []
-    for index, spec in enumerate(specs, start=1):
-        print(f"[prepare] ({index}/{len(specs)}) building entries for {spec['paper_id']}")
-        entries = build_dataset_entries(
-            spec,
-            args.user_id,
-            effective_pages_per_paper,
-            args.dataset_profile,
-            args.model_stack,
-            args.contextual_mode,
-            llm_client,
-            args.llm_max_prefixes_per_paper,
-            args.llm_prefix_max_chars,
-        )
-        if not entries:
-            continue
+    if args.queries_only:
+        print("[prepare] queries-only mode enabled, skip vector write")
+        for spec in specs:
+            manifest_papers.append(
+                {
+                    "paper_id": spec["paper_id"],
+                    "title": spec["title"],
+                    "source_pdf": spec["source"],
+                    "user_id": args.user_id,
+                    "pages_indexed": (
+                        len(PdfReader(str(ROOT / spec["source"])).pages)
+                        if effective_pages_per_paper <= 0
+                        else effective_pages_per_paper
+                    ),
+                    "chunk_count": 0,
+                    "inserted_count": 0,
+                    "contextual_mode": args.contextual_mode,
+                }
+            )
+    else:
+        embedding_service = get_embedding_service()
+        embedding_service.load_model()
+        llm_client: Optional[ZhipuAI] = None
+        if args.contextual_mode == "llm" and settings.ZHIPU_API_KEY:
+            llm_client = ZhipuAI(api_key=settings.ZHIPU_API_KEY)
+        if settings.VECTOR_STORE_BACKEND == "qdrant":
+            qdrant = get_qdrant_service()
+            qdrant.ensure_collection(vector_size=settings.EMBEDDING_DIMENSION)
+        else:
+            milvus = get_milvus_service()
+            milvus.connect()
+            milvus.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
 
-        safe_entries, texts = _safe_entries_and_texts(entries)
-        if not texts:
-            print(f"[prepare] skip {spec['paper_id']} (no text chunks)")
-            continue
+        paper_ids = [spec["paper_id"] for spec in specs]
+        delete_existing_records(paper_ids, args.user_id)
 
-        total_batches = math.ceil(len(texts) / args.embedding_batch_size)
-        inserted_total = 0
-        chunk_total = 0
-        for batch_index, batch_start in enumerate(range(0, len(texts), args.embedding_batch_size), start=1):
-            batch_entries = safe_entries[batch_start : batch_start + args.embedding_batch_size]
-            batch_texts = texts[batch_start : batch_start + args.embedding_batch_size]
-            batch_embeddings = embedding_service.encode_text(batch_texts)
-            encoded_entries = [
-                {**entry, "embedding": embedding}
-                for entry, embedding in zip(batch_entries, batch_embeddings)
-            ]
-            if not encoded_entries:
+        for index, spec in enumerate(specs, start=1):
+            print(f"[prepare] ({index}/{len(specs)}) building entries for {spec['paper_id']}")
+            entries = build_dataset_entries(
+                spec,
+                args.user_id,
+                effective_pages_per_paper,
+                args.dataset_profile,
+                args.model_stack,
+                args.contextual_mode,
+                llm_client,
+                args.llm_max_prefixes_per_paper,
+                args.llm_prefix_max_chars,
+            )
+            if not entries:
                 continue
 
-            if settings.VECTOR_STORE_BACKEND == "qdrant":
-                inserted_ids = qdrant.upsert_contents_batched(encoded_entries)
-            else:
-                inserted_ids = milvus.insert_contents_batched(encoded_entries)
+            safe_entries, texts = _safe_entries_and_texts(entries)
+            if not texts:
+                print(f"[prepare] skip {spec['paper_id']} (no text chunks)")
+                continue
 
-            chunk_total += len(encoded_entries)
-            inserted_total += len(inserted_ids)
+            total_batches = math.ceil(len(texts) / args.embedding_batch_size)
+            inserted_total = 0
+            chunk_total = 0
+            for batch_index, batch_start in enumerate(range(0, len(texts), args.embedding_batch_size), start=1):
+                batch_entries = safe_entries[batch_start : batch_start + args.embedding_batch_size]
+                batch_texts = texts[batch_start : batch_start + args.embedding_batch_size]
+                batch_embeddings = embedding_service.encode_text(batch_texts)
+                encoded_entries = [
+                    {**entry, "embedding": embedding}
+                    for entry, embedding in zip(batch_entries, batch_embeddings)
+                ]
+                if not encoded_entries:
+                    continue
+
+                if settings.VECTOR_STORE_BACKEND == "qdrant":
+                    inserted_ids = qdrant.upsert_contents_batched(encoded_entries)
+                else:
+                    inserted_ids = milvus.insert_contents_batched(encoded_entries)
+
+                chunk_total += len(encoded_entries)
+                inserted_total += len(inserted_ids)
+                print(
+                    f"[prepare] {spec['paper_id']} batch {batch_index}/{total_batches} "
+                    f"chunks={len(encoded_entries)} inserted_total={inserted_total}"
+                )
+
+            if chunk_total == 0:
+                continue
+
             print(
-                f"[prepare] {spec['paper_id']} batch {batch_index}/{total_batches} "
-                f"chunks={len(encoded_entries)} inserted_total={inserted_total}"
+                f"[prepare] inserted {spec['paper_id']} chunks={chunk_total} ids={inserted_total}"
             )
-
-        if chunk_total == 0:
-            continue
-
-        print(
-            f"[prepare] inserted {spec['paper_id']} chunks={chunk_total} ids={inserted_total}"
-        )
-        manifest_papers.append(
-            {
-                "paper_id": spec["paper_id"],
-                "title": spec["title"],
-                "source_pdf": spec["source"],
-                "user_id": args.user_id,
-                "pages_indexed": (
-                    len(PdfReader(str(ROOT / spec["source"])).pages)
-                    if effective_pages_per_paper <= 0
-                    else effective_pages_per_paper
-                ),
-                "chunk_count": chunk_total,
-                "inserted_count": inserted_total,
-                "contextual_mode": args.contextual_mode,
-            }
-        )
+            manifest_papers.append(
+                {
+                    "paper_id": spec["paper_id"],
+                    "title": spec["title"],
+                    "source_pdf": spec["source"],
+                    "user_id": args.user_id,
+                    "pages_indexed": (
+                        len(PdfReader(str(ROOT / spec["source"])).pages)
+                        if effective_pages_per_paper <= 0
+                        else effective_pages_per_paper
+                    ),
+                    "chunk_count": chunk_total,
+                    "inserted_count": inserted_total,
+                    "contextual_mode": args.contextual_mode,
+                }
+            )
 
     manifest = {
         "dataset_profile": args.dataset_profile,

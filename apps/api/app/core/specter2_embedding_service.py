@@ -124,20 +124,21 @@ class Specter2EmbeddingService:
                 # Load base model with adapter support
                 self._model = AutoAdapterModel.from_pretrained(base_ref)
 
-                # Load and activate adapter
+                # Resolve adapter source path
                 adapter_path = self.ADAPTERS.get(
                     self.adapter_name,
                     self.ADAPTERS["proximity"],
                 )
                 if local_adapter and os.path.isdir(local_adapter):
                     adapter_path = local_adapter
-                self._model.load_adapter(
+                loaded_name = self._model.load_adapter(
                     adapter_path,
                     source="hf" if adapter_path.startswith("allenai/") else "local",
-                    set_active=True,
                 )
+                # adapters >= 1.x requires explicit activation after load
+                self._model.set_active_adapters(loaded_name)
             else:
-                # Fallback path for environments where adapters cannot be installed
+                # Fallback: no adapters library
                 self._model = AutoModel.from_pretrained(base_ref)
 
             self._model.to(self.device)
@@ -433,49 +434,54 @@ class SmartEmbeddingService:
         language = self._detect_language(text)
         tokens = self._estimate_tokens(text)
 
-        reason = f"Language: {language}, Tokens: ~{tokens}"
-        if backend == "bge-m3":
-            if language == "non-english":
-                recommendation = "Use BGE-M3 for non-English papers"
-            else:
-                recommendation = "Use BGE-M3 for long documents (>512 tokens)"
-        else:
-            recommendation = "Use SPECTER 2 for English academic papers (best quality)"
+        def _load_model(self):
+            """Lazy load model, tokenizer, and adapter."""
+            if self._model is None:
+                local_root = os.getenv("SPECTER2_MODEL_DIR", "").strip()
+                local_base = os.path.join(local_root, "specter2_base") if local_root else ""
+                adapter_dir_map = {
+                    "proximity": "specter2_proximity_adapter",
+                    "adhoc_query": "specter2_adhoc_query_adapter",
+                }
+                local_adapter = ""
+                if local_root and self.adapter_name in adapter_dir_map:
+                    local_adapter = os.path.join(local_root, adapter_dir_map[self.adapter_name])
 
-        return {
-            "backend": backend,
-            "language": language,
-            "estimated_tokens": tokens,
-            "reason": reason,
-            "recommendation": recommendation,
-        }
+                base_ref = local_base if local_base and os.path.isdir(local_base) else self.BASE_MODEL
 
+                logger.info("Loading SPECTER 2 model...", base_model=base_ref)
 
-# Convenience functions
-def create_embedding_service(
-    backend: Optional[str] = None,
-    **kwargs
-) -> Any:
-    """Factory function to create appropriate embedding service.
+                # Load tokenizer
+                self._tokenizer = AutoTokenizer.from_pretrained(base_ref)
 
-    Args:
-        backend: "auto", "bge-m3", "specter2", "sentence-transformers"
-        **kwargs: Additional arguments for specific services
+                if self._adapters_enabled:
+                    # Load base model with adapter support
+                    self._model = AutoAdapterModel.from_pretrained(base_ref)
 
-    Returns:
-        Embedding service instance
-    """
-    backend = backend or os.getenv("EMBEDDING_BACKEND", "auto")
+                    # Resolve adapter source path
+                    adapter_path = self.ADAPTERS.get(
+                        self.adapter_name,
+                        self.ADAPTERS["proximity"],
+                    )
+                    if local_adapter and os.path.isdir(local_adapter):
+                        adapter_path = local_adapter
+                    loaded_name = self._model.load_adapter(
+                        adapter_path,
+                        source="hf" if adapter_path.startswith("allenai/") else "local",
+                    )
+                    # adapters >= 1.x requires explicit activation after load
+                    self._model.set_active_adapters(loaded_name)
+                else:
+                    # Fallback: no adapters library
+                    self._model = AutoModel.from_pretrained(base_ref)
 
-    if backend == "auto":
-        return SmartEmbeddingService(**kwargs)
-    elif backend in ["bge-m3", "bge_m3"]:
-        from app.core.bge_embedding_service import BGEM3EmbeddingService
-        return BGEM3EmbeddingService(**kwargs)
-    elif backend == "specter2":
-        return Specter2EmbeddingService(**kwargs)
-    elif backend == "sentence-transformers":
-        from app.core.qwen3vl_service import get_qwen3vl_service
-        return get_qwen3vl_service()
-    else:
-        raise ValueError(f"Unknown backend: {backend}")
+                self._model.to(self.device)
+                self._model.eval()
+
+                logger.info(
+                    "SPECTER 2 model loaded",
+                    device=self.device,
+                    adapter=self.adapter_name,
+                    adapters_enabled=self._adapters_enabled,
+                    parameters=sum(p.numel() for p in self._model.parameters()),
+                )

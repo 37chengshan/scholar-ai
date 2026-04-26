@@ -12,12 +12,23 @@ Usage:
 """
 
 import os
-from typing import Dict, Literal
+from typing import Any, Dict, Literal
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.rag_runtime_profile import (
+    OFFICIAL_EMBEDDING_MODEL,
+    OFFICIAL_EMBEDDING_PROVIDER,
+    OFFICIAL_LLM_MODEL,
+    OFFICIAL_LLM_PROVIDER,
+    OFFICIAL_RERANKER_MODEL,
+    OFFICIAL_RERANKER_PROVIDER,
+    OFFICIAL_RUNTIME_PROFILE,
+    validate_runtime_contract,
+)
 
 
 API_ROOT = Path(__file__).resolve().parent.parent
@@ -69,6 +80,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "info"
     PORT: int = 8000
     ENVIRONMENT: str = "development"  # development | staging | production
+    RAG_RUNTIME_PROFILE: str = OFFICIAL_RUNTIME_PROFILE
     RUNTIME_PROFILE: Optional[str] = None  # dev-lite | dev-full | prod
     AI_STARTUP_MODE: Optional[str] = None  # eager | lazy | off
     PREFLIGHT_ON_STARTUP: bool = False
@@ -179,13 +191,14 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"
-    EMBEDDING_PROVIDER: str = "qwen3vl"
+    EMBEDDING_PROVIDER: str = OFFICIAL_EMBEDDING_PROVIDER
     EMBEDDING_VARIANT: str = "2b"
-    RERANKER_PROVIDER: str = "qwen3vl"
+    RERANKER_PROVIDER: str = OFFICIAL_RERANKER_PROVIDER
     RERANKER_VARIANT: str = "2b"
     VECTOR_STORE_BACKEND: Literal["milvus", "qdrant"] = "milvus"
     RETRIEVAL_BENCH_PROFILE: str = "dev"
-    RETRIEVAL_MODEL_STACK: Literal["bge_dual", "qwen_dual", "manual", "academic_hybrid"] = "qwen_dual"
+    # Deprecated runtime selector. Kept for backward compatibility only.
+    RETRIEVAL_MODEL_STACK: Literal["bge_dual", "qwen_dual", "manual", "academic_hybrid"] = "manual"
     RETRIEVAL_TRACE_ENABLED: bool = False
     RETRIEVAL_TRACE_INCLUDE_RESULTS: bool = False
     RETRIEVAL_VECTOR_WEIGHT: float = 0.75
@@ -194,14 +207,16 @@ class Settings(BaseSettings):
     QWEN_MULTIMODAL_BRANCH_WEIGHT: float = 0.55
     SCIENTIFIC_TEXT_BRANCH_WEIGHT: float = 0.25
     SPARSE_BRANCH_WEIGHT: float = 0.20
-    SCIENTIFIC_TEXT_BRANCH_ENABLED: bool = True
-    SCIENTIFIC_TEXT_EMBEDDING_BACKEND: str = "specter2"
+    SCIENTIFIC_TEXT_BRANCH_ENABLED: bool = False
+    # Deprecated scientific branch settings. Official runtime must not use these.
+    SCIENTIFIC_TEXT_EMBEDDING_BACKEND: str = "none"
     SCIENTIFIC_TEXT_SPECTER_ADAPTER: str = "adhoc_query"
     SCIENTIFIC_TEXT_TOP_K: int = 18
     SCIENTIFIC_TEXT_MAX_QUERIES: int = 2
     SPARSE_RECALL_TOP_K: int = 18
     SPARSE_RECALL_PREFETCH_LIMIT: int = 320
-    GRAPH_RETRIEVAL_ENABLED: bool = True
+    # Deprecated graph branch switch. Official runtime keeps it off.
+    GRAPH_RETRIEVAL_ENABLED: bool = False
     GRAPH_RETRIEVAL_TOP_K: int = 8
     GRAPH_EXTRACTION_ON_INGEST: bool = False
 
@@ -252,7 +267,8 @@ class Settings(BaseSettings):
     ZHIPU_TEMPERATURE: float = 0.3
 
     # LLM Configuration
-    LLM_MODEL: str = "glm-4.5-air"
+    LLM_PROVIDER: str = OFFICIAL_LLM_PROVIDER
+    LLM_MODEL: str = OFFICIAL_LLM_MODEL
     LLM_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.7
@@ -260,18 +276,18 @@ class Settings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4o-mini"
 
     # Embedding Model Configuration
-    EMBEDDING_MODEL: str = "qwen3-vl-2b"
+    EMBEDDING_MODEL: str = OFFICIAL_EMBEDDING_MODEL
     EMBEDDING_QUANTIZATION: str = "int4"
-    EMBEDDING_DIMENSION: int = 2048
+    EMBEDDING_DIMENSION: int = 1024
     EMBEDDING_DEVICE: str = "auto"  # auto | cpu | cuda | mps
 
     # Reranker Configuration
-    RERANKER_MODEL: str = "bge-reranker"
+    RERANKER_MODEL: str = OFFICIAL_RERANKER_MODEL
     RERANKER_QUANTIZATION: str = "fp16"
     BGE_DUAL_EMBEDDING_MODEL: str = "bge-m3"
     BGE_DUAL_RERANKER_MODEL: str = "bge-reranker"
     QWEN_DUAL_EMBEDDING_MODEL: str = "qwen3-vl-2b"
-    QWEN_DUAL_RERANKER_MODEL: str = "qwen3-vl-reranker"
+    QWEN_DUAL_RERANKER_MODEL: str = "qwen3-vl-rerank"
 
     # Local Model Paths
     QWEN3VL_EMBEDDING_MODEL_PATH: str = "./Qwen/Qwen3-VL-Embedding-2B"
@@ -338,6 +354,10 @@ class Settings(BaseSettings):
                 # Need to set on the instance, not class
                 object.__setattr__(self, "JWT_INTERNAL_PUBLIC_KEY", f.read())
 
+    def validate_rag_runtime_settings(self) -> dict[str, Any]:
+        """Validate runtime contract for active RAG chain."""
+        return validate_rag_runtime_settings(self)
+
     def _default_runtime_profile(self) -> str:
         env_to_profile: Dict[str, str] = {
             "development": "dev-lite",
@@ -379,6 +399,7 @@ def normalize_embedding_model_name(model_name: str) -> str:
         "qwen/qwen3-vl-embedding-2b": "qwen3-vl-2b",
         "qwen3-vl-embedding-2b": "qwen3-vl-2b",
         "qwen3-vl-2b": "qwen3-vl-2b",
+        "tongyi-embedding-vision-flash-2026-03-06": "tongyi-embedding-vision-flash-2026-03-06",
     }
     return alias_map.get(normalized, normalized)
 
@@ -389,9 +410,10 @@ def normalize_reranker_model_name(model_name: str) -> str:
     alias_map = {
         "baai/bge-reranker-large": "bge-reranker",
         "bge-reranker": "bge-reranker",
-        "qwen/qwen3-vl-reranker-2b": "qwen3-vl-reranker",
-        "qwen3-vl-reranker-2b": "qwen3-vl-reranker",
-        "qwen3-vl-reranker": "qwen3-vl-reranker",
+        "qwen/qwen3-vl-reranker-2b": "qwen3-vl-rerank",
+        "qwen3-vl-reranker-2b": "qwen3-vl-rerank",
+        "qwen3-vl-reranker": "qwen3-vl-rerank",
+        "qwen3-vl-rerank": "qwen3-vl-rerank",
     }
     return alias_map.get(normalized, normalized)
 
@@ -402,6 +424,7 @@ def canonical_embedding_dimension(model_name: str, fallback_dimension: int) -> i
     canonical_map = {
         "bge-m3": 1024,
         "qwen3-vl-2b": 2048,
+        "tongyi-embedding-vision-flash-2026-03-06": 1024,
     }
     return canonical_map.get(canonical, fallback_dimension)
 
@@ -420,6 +443,33 @@ def resolve_model_stack(
     reranker = normalize_reranker_model_name(reranker_model)
     if embedding == "bge-m3" and reranker == "bge-reranker":
         return "bge_dual"
-    if embedding == "qwen3-vl-2b" and reranker == "qwen3-vl-reranker":
+    if embedding == "qwen3-vl-2b" and reranker in {"qwen3-vl-reranker", "qwen3-vl-rerank"}:
         return "qwen_dual"
     return "manual"
+
+
+def validate_rag_runtime_settings(settings_obj: Settings) -> dict[str, Any]:
+    """Validate RAG runtime contract from Settings.
+
+    Official runtime is fixed to api_flash_qwen_rerank_glm. Deprecated branch
+    selectors remain in schema for compatibility but cannot drive active runtime.
+    """
+    additional_values: dict[str, Any] = {
+        "RETRIEVAL_MODEL_STACK": settings_obj.RETRIEVAL_MODEL_STACK,
+        "SCIENTIFIC_TEXT_EMBEDDING_BACKEND": settings_obj.SCIENTIFIC_TEXT_EMBEDDING_BACKEND,
+    }
+    if settings_obj.GRAPH_RETRIEVAL_ENABLED:
+        additional_values["GRAPH_RETRIEVAL_ENABLED"] = "graph_branch"
+    if settings_obj.SCIENTIFIC_TEXT_BRANCH_ENABLED:
+        additional_values["SCIENTIFIC_TEXT_BRANCH_ENABLED"] = "specter2"
+
+    return validate_runtime_contract(
+        runtime_profile=settings_obj.RAG_RUNTIME_PROFILE,
+        embedding_provider=settings_obj.EMBEDDING_PROVIDER,
+        embedding_model=settings_obj.EMBEDDING_MODEL,
+        reranker_provider=settings_obj.RERANKER_PROVIDER,
+        reranker_model=settings_obj.RERANKER_MODEL,
+        llm_provider=settings_obj.LLM_PROVIDER,
+        llm_model=settings_obj.LLM_MODEL,
+        additional_values=additional_values,
+    )

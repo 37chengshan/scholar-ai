@@ -300,6 +300,7 @@ export function Login() {
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-serif focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
                   placeholder={t.enterCreds}
                   required
+                  autoComplete="email"
                 />
               </div>
 
@@ -325,6 +326,7 @@ export function Login() {
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-mono tracking-[0.3em] focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
                   placeholder={t.enterKey}
                   required
+                  autoComplete="current-password"
                 />
               </div>
             </div>

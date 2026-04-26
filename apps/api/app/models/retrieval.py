@@ -174,6 +174,34 @@ class RetrievedChunk(BaseModel):
         default=None,
         description="Trace identifier for retrieval debugging",
     )
+    milvus_collection: Optional[str] = Field(
+        default=None,
+        description="Milvus collection used by live search",
+        max_length=200,
+    )
+    milvus_stage: Optional[str] = Field(
+        default=None,
+        description="Collection stage inferred from live retrieval (raw/rule/llm)",
+        max_length=20,
+    )
+    milvus_search_path: Optional[str] = Field(
+        default=None,
+        description="Live search path (primary/minimal_retry/query_fallback)",
+        max_length=64,
+    )
+    milvus_output_fields: List[str] = Field(
+        default_factory=list,
+        description="output_fields used in Milvus search",
+    )
+    milvus_fallback_used: bool = Field(
+        default=False,
+        description="Whether Milvus retrieval fell back to query-based cosine path",
+    )
+    milvus_unsupported_field_type_count: int = Field(
+        default=0,
+        description="Unsupported field type errors seen in this retrieval path",
+        ge=0,
+    )
     # Iteration 2: multi-index fields
     index_type: Optional[str] = Field(
         default=None,

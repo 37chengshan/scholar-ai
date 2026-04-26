@@ -24,6 +24,7 @@ Requirements:
 - RAG-06: Query understanding integration (per D-15)
 """
 
+import time
 from typing import Any, Dict, List, Optional
 
 from app.core.embedding.factory import get_embedding_service
@@ -35,7 +36,6 @@ from app.core.query_metadata_extractor import extract_metadata_filters
 from app.core.query_planner import build_academic_query_plan
 from app.core.retrieval_scoring import RetrievalScoringService
 from app.core.retrieval_trace import RetrievalTraceService
-from app.core.specter2_embedding_service import create_embedding_service as create_scientific_embedding_service
 from app.core.vector_store_repository import get_vector_store_repository
 from app.core.multi_index_router import route_query, uses_summary_index
 from app.core.citation_hints import build_all_hints
@@ -63,11 +63,9 @@ class MultimodalSearchService:
         self.reranker = get_reranker_service()
         self.scientific_embedding_service = None
         if settings.SCIENTIFIC_TEXT_BRANCH_ENABLED:
-            scientific_backend = settings.SCIENTIFIC_TEXT_EMBEDDING_BACKEND
-            scientific_kwargs: Dict[str, Any] = {"backend": scientific_backend}
-            if scientific_backend == "specter2":
-                scientific_kwargs["adapter"] = settings.SCIENTIFIC_TEXT_SPECTER_ADAPTER
-            self.scientific_embedding_service = create_scientific_embedding_service(**scientific_kwargs)
+            logger.warning(
+                "Scientific/specter2 retrieval branch is disabled in api_flash_qwen_rerank_glm runtime"
+            )
         self.scoring = RetrievalScoringService(
             vector_weight=settings.RETRIEVAL_VECTOR_WEIGHT,
             sparse_weight=settings.RETRIEVAL_SPARSE_WEIGHT,
@@ -76,6 +74,21 @@ class MultimodalSearchService:
             enabled=settings.RETRIEVAL_TRACE_ENABLED
             or settings.RETRIEVAL_TRACE_INCLUDE_RESULTS
         )
+        self._query_embedding_cache: Dict[str, List[float]] = {}
+        self._scientific_query_embedding_cache: Dict[str, List[float]] = {}
+
+    @staticmethod
+    def _cache_key(query: str) -> str:
+        return " ".join((query or "").strip().split())
+
+    def _encode_query_cached(self, query: str) -> List[float]:
+        key = self._cache_key(query)
+        cached = self._query_embedding_cache.get(key)
+        if cached is not None:
+            return cached
+        vector = self.embedding_service.encode_text(query)
+        self._query_embedding_cache[key] = vector
+        return vector
 
     @staticmethod
     def _ensure_service_loaded(service: Any) -> None:
@@ -91,6 +104,16 @@ class MultimodalSearchService:
     def _encode_scientific_query(self, query: str) -> Optional[List[float]]:
         if self.scientific_embedding_service is None:
             return None
+
+    def _encode_scientific_query_cached(self, query: str) -> Optional[List[float]]:
+        key = self._cache_key(query)
+        cached = self._scientific_query_embedding_cache.get(key)
+        if cached is not None:
+            return cached
+        vector = self._encode_scientific_query(query)
+        if vector is not None:
+            self._scientific_query_embedding_cache[key] = vector
+        return vector
 
         try:
             if hasattr(self.scientific_embedding_service, "generate_embedding"):
@@ -159,12 +182,18 @@ class MultimodalSearchService:
             evidence_types=hit.get("evidence_types") if isinstance(hit.get("evidence_types"), list) else [],
             content_type=hit.get("content_type", "text"),
             quality_score=hit.get("quality_score"),
-            raw_data=hit.get("raw_data"),
+            raw_data={},
             vector_score=hit.get("vector_score"),
             sparse_score=hit.get("sparse_score"),
             hybrid_score=hit.get("hybrid_score"),
             reranker_score=hit.get("reranker_score"),
             retrieval_trace_id=hit.get("retrieval_trace_id"),
+            milvus_collection=hit.get("milvus_collection"),
+            milvus_stage=hit.get("milvus_stage"),
+            milvus_search_path=hit.get("milvus_search_path"),
+            milvus_output_fields=hit.get("milvus_output_fields") or [],
+            milvus_fallback_used=bool(hit.get("milvus_fallback_used") or False),
+            milvus_unsupported_field_type_count=int(hit.get("milvus_unsupported_field_type_count") or 0),
         )
 
     @staticmethod
@@ -321,6 +350,10 @@ class MultimodalSearchService:
         Returns:
             Dictionary with query, intent, expanded_query, metadata_filters, weights, results, and metadata
         """
+        total_started_at = time.perf_counter()
+        retrieval_started_at = time.perf_counter()
+        rerank_latency_ms = 0.0
+
         graph_used = bool(graph_hint and graph_hint.get("requires_graph"))
         graph_candidate_count = len(graph_candidates or [])
         graph_paper_ids = {
@@ -372,9 +405,9 @@ class MultimodalSearchService:
 
         # Step 5: Encode planned queries for dense retrieval
         self._ensure_service_loaded(self.embedding_service)
-        query_embeddings = [self.embedding_service.encode_text(q) for q in expanded_queries]
+        query_embeddings = [self._encode_query_cached(q) for q in expanded_queries]
         scientific_query_embeddings = [
-            self._encode_scientific_query(q)
+            self._encode_scientific_query_cached(q)
             for q in expanded_queries
         ]
         scientific_query_embeddings = [emb for emb in scientific_query_embeddings if emb]
@@ -400,6 +433,8 @@ class MultimodalSearchService:
                         content_type=content_type,
                         top_k=20,
                         constraints=constraints,
+                        branch="qwen",
+                        model_name=settings.EMBEDDING_MODEL,
                     )
                     for result in results:
                         hit = result.model_dump()
@@ -429,7 +464,13 @@ class MultimodalSearchService:
             branch_results["qwen_multimodal_dense"].extend(multimodal_results.get(modality, []))
 
         # Scientific text dense branch (prefer text chunks; safe fallback on failure)
-        if scientific_query_embeddings:
+        specter2_allowed_families = {"cross_paper", "survey", "related-work", "evolution", "compare"}
+        query_family = str(academic_plan.get("query_family") or "fact").lower()
+        specter2_family_allowed = query_family in specter2_allowed_families
+        specter2_candidates: List[Dict[str, Any]] = []
+        specter2_scope_type = "none"
+
+        if scientific_query_embeddings and specter2_family_allowed:
             scientific_hits: List[Dict[str, Any]] = []
             for scientific_embedding in scientific_query_embeddings[: settings.SCIENTIFIC_TEXT_MAX_QUERIES]:
                 try:
@@ -439,6 +480,8 @@ class MultimodalSearchService:
                         content_type="text",
                         top_k=settings.SCIENTIFIC_TEXT_TOP_K,
                         constraints=constraints,
+                        branch="specter2",
+                        model_name=settings.SCIENTIFIC_TEXT_EMBEDDING_BACKEND,
                     )
                 except Exception as e:
                     logger.warning("Scientific text dense branch skipped", error=str(e))
@@ -454,6 +497,18 @@ class MultimodalSearchService:
                 scientific_hits,
                 limit=settings.SCIENTIFIC_TEXT_TOP_K,
             )
+            for hit in branch_results["scientific_text_dense"]:
+                if not hit.get("paper_id"):
+                    continue
+                specter2_candidates.append(
+                    {
+                        "paper_id": str(hit.get("paper_id") or ""),
+                        "section": str(hit.get("section") or ""),
+                        "score": float(hit.get("score") or 0.0),
+                    }
+                )
+            if specter2_candidates:
+                specter2_scope_type = "paper"
 
         # Sparse BM25 independent recall branch
         sparse_hits: List[Dict[str, Any]] = []
@@ -484,13 +539,35 @@ class MultimodalSearchService:
             dense_modality_fused,
             limit=max(top_k * 3, 40),
         )
+
+        qwen_search_scope_before = {
+            "candidate_count": len(branch_results["qwen_multimodal_dense"]),
+            "paper_count": len({str(item.get("paper_id") or "") for item in branch_results["qwen_multimodal_dense"] if item.get("paper_id")}),
+        }
+        if specter2_candidates:
+            candidate_papers = {item["paper_id"] for item in specter2_candidates if item.get("paper_id")}
+            scoped_qwen_hits = [
+                item
+                for item in branch_results["qwen_multimodal_dense"]
+                if str(item.get("paper_id") or "") in candidate_papers
+            ]
+            if scoped_qwen_hits:
+                branch_results["qwen_multimodal_dense"] = scoped_qwen_hits
+
+        qwen_search_scope_after = {
+            "candidate_count": len(branch_results["qwen_multimodal_dense"]),
+            "paper_count": len({str(item.get("paper_id") or "") for item in branch_results["qwen_multimodal_dense"] if item.get("paper_id")}),
+        }
+
         branch_weights = {
             "qwen_multimodal_dense": settings.QWEN_MULTIMODAL_BRANCH_WEIGHT,
-            "scientific_text_dense": settings.SCIENTIFIC_TEXT_BRANCH_WEIGHT,
             "sparse_bm25": settings.SPARSE_BRANCH_WEIGHT,
         }
         fused = self.scoring.fuse_branch_results(
-            branch_results,
+            {
+                "qwen_multimodal_dense": branch_results["qwen_multimodal_dense"],
+                "sparse_bm25": branch_results["sparse_bm25"],
+            },
             branch_weights,
             rrf_k=settings.RETRIEVAL_FUSION_RRF_K,
         )
@@ -527,6 +604,8 @@ class MultimodalSearchService:
                                 content_type=content_type,
                                 top_k=12,
                                 constraints=constraints,
+                                branch="qwen",
+                                model_name=settings.EMBEDDING_MODEL,
                             )
                         except Exception as e:
                             logger.warning(
@@ -563,15 +642,42 @@ class MultimodalSearchService:
             fused = preferred + others
 
         # Step 6: Structured ReRanker (optional)
+        reranker_used = False
+        rerank_input_count = 0
+        rerank_output_count = 0
+        pre_rerank_top_ids: List[str] = []
+        post_rerank_top_ids: List[str] = []
+        rerank_changed_order = False
+        reranker_scores_present = False
+        retrieval_latency_ms = round((time.perf_counter() - retrieval_started_at) * 1000.0, 3)
+
         if use_reranker and len(fused) > 10:
             try:
+                rerank_started_at = time.perf_counter()
                 self._ensure_service_loaded(self.reranker)
+                reranker_used = True
+                pre_rerank_top_ids = [
+                    str(item.get("source_id") or item.get("id") or "")
+                    for item in fused[:top_k]
+                ]
                 # Build structured payload for reranking.
                 documents = [self.scoring.build_structured_reranker_document(r) for r in fused[:20]]
+                rerank_input_count = len(documents)
                 reranked = self.reranker.rerank(query, documents, top_k=top_k)
+                rerank_output_count = len(reranked)
+                rerank_latency_ms = round((time.perf_counter() - rerank_started_at) * 1000.0, 3)
 
                 # Reorder fused results by reranked scores
                 fused = self.scoring.apply_reranker_scores(fused, reranked)
+                post_rerank_top_ids = [
+                    str(item.get("source_id") or item.get("id") or "")
+                    for item in fused[:top_k]
+                ]
+                rerank_changed_order = pre_rerank_top_ids != post_rerank_top_ids
+                reranker_scores_present = any(
+                    item.get("reranker_score") is not None
+                    for item in fused[:top_k]
+                )
 
                 logger.info(
                     "Reranking completed",
@@ -657,6 +763,26 @@ class MultimodalSearchService:
         # Normalize fused results to unified schema per D-02
         normalized_fused = [self._normalize_hit(r).model_dump() for r in fused]
         final_results = normalized_fused[:top_k]
+        fallback_used = any(bool(item.get("milvus_fallback_used")) for item in normalized_fused)
+        unsupported_field_type_count = sum(
+            int(item.get("milvus_unsupported_field_type_count") or 0)
+            for item in normalized_fused
+        )
+        search_paths = sorted(
+            {
+                str(item.get("milvus_search_path"))
+                for item in normalized_fused
+                if item.get("milvus_search_path")
+            }
+        )
+        output_fields_seen = sorted(
+            {
+                field
+                for item in normalized_fused
+                for field in (item.get("milvus_output_fields") or [])
+                if isinstance(field, str)
+            }
+        )
         additional_fields = {}
         
         if query_intent == "compare":
@@ -690,6 +816,29 @@ class MultimodalSearchService:
                 "scientific_text_dense": len(branch_results["scientific_text_dense"]),
                 "sparse_bm25": len(branch_results["sparse_bm25"]),
             },
+            "candidate_fusion": {
+                "specter2_used": bool(specter2_candidates),
+                "specter2_scope_type": specter2_scope_type,
+                "specter2_candidates": specter2_candidates[:20],
+                "qwen_search_scope_before": qwen_search_scope_before,
+                "qwen_search_scope_after": qwen_search_scope_after,
+                "fusion_gain": {
+                    "scoped_candidate_reduction": max(
+                        qwen_search_scope_before["candidate_count"] - qwen_search_scope_after["candidate_count"],
+                        0,
+                    ),
+                },
+                "pollution_detected": False,
+            },
+            "reranker_diagnostics": {
+                "reranker_used": reranker_used,
+                "rerank_input_count": rerank_input_count,
+                "rerank_output_count": rerank_output_count,
+                "pre_rerank_top_ids": pre_rerank_top_ids,
+                "post_rerank_top_ids": post_rerank_top_ids,
+                "rerank_changed_order": rerank_changed_order,
+                "reranker_scores_present": reranker_scores_present,
+            },
             "metadata_filters": metadata_filters,
             "weights": weights,
             "results": final_results,
@@ -707,9 +856,20 @@ class MultimodalSearchService:
             "graph_candidate_count": graph_candidate_count,
             "graph_vector_merged_evidence": len(final_results),
             "graph_narrowed_paper_ids": narrowed_paper_ids,
+            "milvus_live_diagnostics": {
+                "fallback_used": fallback_used,
+                "unsupported_field_type_count": unsupported_field_type_count,
+                "search_paths": search_paths,
+                "output_fields_seen": output_fields_seen,
+            },
             # Iteration 2 fields
             "summary_index_results": len(summary_index_results),
             "citation_hints": citation_hints,
+            "latency_breakdown_ms": {
+                "retrieval_latency_ms": retrieval_latency_ms,
+                "rerank_latency_ms": rerank_latency_ms,
+                "total_latency_ms": round((time.perf_counter() - total_started_at) * 1000.0, 3),
+            },
         }
 
         if trace_payload is not None:

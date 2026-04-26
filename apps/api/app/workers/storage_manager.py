@@ -11,12 +11,18 @@ Per D-06: Batch storage reduces database round trips.
 import json
 import re
 import asyncio
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import asyncpg
 
 from app.workers.pipeline_context import PipelineContext
-from app.core.chunk_identity import build_stable_chunk_id
+from app.contracts.chunk_artifact import (
+    ChunkArtifact,
+    ChunkStage,
+    build_chunk_artifacts,
+    derive_stage_chunk_artifacts,
+)
 from app.core.milvus_service import get_milvus_service, calculate_chunk_quality
 from app.core.neo4j_service import Neo4jService
 from app.core.notes_generator import NotesGenerator
@@ -173,8 +179,8 @@ class StorageManager:
         parse_metadata: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Build evidence-level metadata for downstream retrieval/verifier stages."""
-        section = chunk.get("section") or ""
-        page_num = chunk.get("page_start") or 0
+        section = chunk.get("section") or chunk.get("section_path") or ""
+        page_num = chunk.get("page_num")
         snippet = chunk_text.replace("\n", " ").strip()
         anchor_text = str(chunk.get("anchor_text") or snippet[:200])
         raw_section_path = str(chunk.get("raw_section_path") or section)
@@ -190,18 +196,10 @@ class StorageManager:
             chunk.get("parent_section_path")
             or section_parent_path(normalize_section_path(raw_section_path))
         )
-        char_start = int(chunk.get("char_start") or 0)
-        char_end = int(chunk.get("char_end") or max(len(chunk_text), 1))
-        chunk_id = str(
-            chunk.get("chunk_id")
-            or build_stable_chunk_id(
-                paper_id=str(chunk.get("paper_id") or ""),
-                page_num=int(page_num),
-                normalized_section_path=normalized_section_path,
-                char_start=char_start,
-                char_end=char_end,
-            )
-        )
+        char_start = chunk.get("char_start")
+        char_end = chunk.get("char_end")
+        chunk_id = str(chunk.get("chunk_id") or "")
+        source_chunk_id = str(chunk.get("source_chunk_id") or "")
 
         figure_match = re.search(r"\b(?:figure|fig\.)\s*(\d+)\b", snippet, re.IGNORECASE)
         table_match = re.search(r"\btable\s*(\d+)\b", snippet, re.IGNORECASE)
@@ -239,6 +237,7 @@ class StorageManager:
             "anchor_text": anchor_text,
             "source_span": source_span,
             "chunk_id": chunk_id,
+            "source_chunk_id": source_chunk_id,
             "char_start": char_start,
             "char_end": char_end,
             "figure_id": figure_id,
@@ -251,6 +250,67 @@ class StorageManager:
             "chunk_strategy": parse_metadata.get("chunk_strategy", {}),
             "page_num": page_num,
         }
+
+    @staticmethod
+    def _build_text_record_from_chunk_artifact(
+        *,
+        chunk_artifact: Dict[str, Any],
+        paper_id: str,
+        user_id: str,
+        chunk_text: str,
+        raw_text: str,
+        embedding: List[float],
+        section: str,
+        raw_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return {
+            "chunk_id": chunk_artifact.get("chunk_id", ""),
+            "source_chunk_id": chunk_artifact.get("source_chunk_id", ""),
+            "stage": chunk_artifact.get("stage", ChunkStage.RAW.value),
+            "parent_source_chunk_id": chunk_artifact.get("parent_source_chunk_id"),
+            "paper_id": paper_id,
+            "user_id": user_id,
+            "content_type": "text",
+            "page_num": chunk_artifact.get("page_num") if chunk_artifact.get("page_num") is not None else 0,
+            "char_start": chunk_artifact.get("char_start"),
+            "char_end": chunk_artifact.get("char_end"),
+            "anchor_text": chunk_artifact.get("anchor_text"),
+            "raw_section_path": chunk_artifact.get("section_path", ""),
+            "normalized_section_path": chunk_artifact.get("normalized_section_path", ""),
+            "normalized_section_leaf": chunk_artifact.get("section_leaf", ""),
+            "section_level": len(normalize_section_path(str(chunk_artifact.get("section_path") or ""))),
+            "parent_section_path": section_parent_path(
+                normalize_section_path(str(chunk_artifact.get("section_path") or ""))
+            ),
+            "section": section,
+            "text": raw_text,
+            "content_data": chunk_text[:8000],
+            "context_window": chunk_artifact.get("context_window", ""),
+            "subsection": chunk_artifact.get("section_leaf", ""),
+            "raw_data": raw_data,
+            "embedding": embedding,
+        }
+
+    @staticmethod
+    def _paper_artifact_dir(paper_id: str) -> Path:
+        path = Path("artifacts") / "papers" / paper_id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @classmethod
+    def _write_chunk_artifacts(
+        cls,
+        *,
+        paper_id: str,
+        stage: ChunkStage,
+        chunks: List[ChunkArtifact],
+    ) -> None:
+        artifact_path = cls._paper_artifact_dir(paper_id) / f"chunks_{stage.value}.json"
+        payload = [item.model_dump(mode="json") for item in chunks]
+        artifact_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     async def store(self, ctx: PipelineContext) -> PipelineContext:
         """Store all extraction results in batch.
@@ -395,7 +455,16 @@ class StorageManager:
         all_contents = []
         text_contents = []
         parse_metadata = (ctx.parse_result or {}).get("metadata", {})
-        parse_items = (ctx.parse_result or {}).get("items")
+        parse_artifact = ctx.parse_artifact or {}
+        parse_items = parse_artifact.get("items")
+        parse_id = str(parse_artifact.get("parse_id") or "")
+
+        if not parse_id:
+            logger.warning(
+                "Missing ParseArtifact parse_id, skipping vector storage",
+                task_id=ctx.task_id,
+            )
+            return []
 
         if not isinstance(parse_items, list):
             logger.warning(
@@ -424,10 +493,40 @@ class StorageManager:
             imrad_structure=ctx.imrad,
         )
 
+        raw_chunk_artifacts = build_chunk_artifacts(
+            parse_id=parse_id,
+            paper_id=ctx.paper_id,
+            semantic_chunks=chunks,
+        )
+        rule_chunk_artifacts = derive_stage_chunk_artifacts(raw_chunk_artifacts, ChunkStage.RULE)
+        llm_chunk_artifacts = derive_stage_chunk_artifacts(raw_chunk_artifacts, ChunkStage.LLM)
+
+        self._write_chunk_artifacts(
+            paper_id=ctx.paper_id,
+            stage=ChunkStage.RAW,
+            chunks=raw_chunk_artifacts,
+        )
+        self._write_chunk_artifacts(
+            paper_id=ctx.paper_id,
+            stage=ChunkStage.RULE,
+            chunks=rule_chunk_artifacts,
+        )
+        self._write_chunk_artifacts(
+            paper_id=ctx.paper_id,
+            stage=ChunkStage.LLM,
+            chunks=llm_chunk_artifacts,
+        )
+
+        ctx.chunk_artifacts = {
+            "raw": [chunk.model_dump(mode="json") for chunk in raw_chunk_artifacts],
+            "rule": [chunk.model_dump(mode="json") for chunk in rule_chunk_artifacts],
+            "llm": [chunk.model_dump(mode="json") for chunk in llm_chunk_artifacts],
+        }
+
         # Assign sections based on IMRaD
         chunk_texts = []
-        for chunk in chunks:
-            page = chunk.get("page_start")
+        for chunk in raw_chunk_artifacts:
+            page = chunk.page_num
             if page and ctx.imrad:
                 for section_name, section_data in ctx.imrad.items():
                     if section_name.startswith("_"):
@@ -436,55 +535,25 @@ class StorageManager:
                         start = section_data.get("page_start", 0)
                         end = section_data.get("page_end", 999)
                         if start and end and start <= page <= end:
-                            chunk["section"] = (
-                                section_name or ""
-                            )  # Fix: Ensure non-None
+                            chunk.section_path = section_name or ""
+                            normalized_path_tokens = normalize_section_path(chunk.section_path)
+                            chunk.normalized_section_path = serialize_section_path(normalized_path_tokens)
+                            chunk.section_leaf = section_leaf(normalized_path_tokens)
                             break
 
-            # Fix: Ensure section is never None after assignment attempts
-            if chunk.get("section") is None:
-                chunk["section"] = ""
-
-            raw_section_path = str(chunk.get("raw_section_path") or chunk.get("section") or "")
-            normalized_path_tokens = normalize_section_path(raw_section_path)
-            normalized_section_path = serialize_section_path(normalized_path_tokens)
-            normalized_leaf = section_leaf(normalized_path_tokens)
-            section_level = len(normalized_path_tokens)
-            parent_path = section_parent_path(normalized_path_tokens)
-
-            page_num = int(chunk.get("page_start") or 0)
-            char_start = int(chunk.get("char_start") or 0)
-            chunk_text_raw = str(chunk.get("text") or "")
-            char_end = int(chunk.get("char_end") or max(char_start + len(chunk_text_raw), char_start + 1))
-            anchor_text = str(chunk.get("anchor_text") or chunk_text_raw.replace("\n", " ").strip()[:200])
-
-            chunk_id = build_stable_chunk_id(
-                paper_id=ctx.paper_id,
-                page_num=page_num,
-                normalized_section_path=normalized_section_path,
-                char_start=char_start,
-                char_end=char_end,
-            )
-            chunk["raw_section_path"] = raw_section_path
-            chunk["normalized_section_path"] = normalized_section_path
-            chunk["normalized_section_leaf"] = normalized_leaf
-            chunk["section_level"] = section_level
-            chunk["parent_section_path"] = parent_path
-            chunk["page_num"] = page_num
-            chunk["char_start"] = char_start
-            chunk["char_end"] = char_end
-            chunk["anchor_text"] = anchor_text
-            chunk["chunk_id"] = chunk_id
-            chunk["paper_id"] = ctx.paper_id
-
-            chunk_text = self._sanitize_text(chunk.get("text", "")) or ""
+            chunk_text = self._sanitize_text(chunk.content_data) or ""
             if not chunk_text or not chunk_text.strip():
                 chunk_text = "NULL"
 
             # Iteration 2: build contextual chunk text for richer embedding
             paper_title = (ctx.metadata or {}).get("title") if ctx.metadata else None
             enriched = enrich_chunk(
-                chunk=chunk,
+                chunk={
+                    "text": chunk.content_data,
+                    "section": chunk.section_path,
+                    "page_start": chunk.page_num,
+                    "anchor_text": chunk.anchor_text,
+                },
                 paper_title=paper_title,
                 all_page_items=parse_items,
                 chunk_index=None,  # window expansion done at section level below
@@ -493,8 +562,11 @@ class StorageManager:
             contextual_text = self._sanitize_text(enriched.get("content_data") or chunk_text) or chunk_text
             chunk_texts.append(contextual_text)
             # Store raw text for quality scoring / BM25
-            chunk["raw_text"] = chunk_text
-            chunk["context_window"] = enriched.get("context_window", "")
+            chunk.content_data = chunk_text
+            chunk.warnings = list(chunk.warnings)
+            context_window = str(enriched.get("context_window", ""))
+            if context_window:
+                chunk.warnings.append("context_window_applied")
 
         # Batch generate embeddings (much faster than one-by-one)
         logger.info(
@@ -552,21 +624,19 @@ class StorageManager:
 
         # Add chunks with embeddings
         skipped_low_quality = 0
-        for i, chunk in enumerate(chunks):
+        for i, chunk in enumerate(raw_chunk_artifacts):
             chunk_text = chunk_texts[i]
             embedding = embeddings[i]
 
-            # Fix: Handle None values in section field
-            # When section is None, use empty string instead
-            section = chunk.get("normalized_section_leaf") or chunk.get("section") or ""
-            raw_text = chunk.get("raw_text") or chunk_text
+            section = chunk.section_leaf or chunk.section_path or ""
+            raw_text = chunk.content_data or chunk_text
 
             quality_score = calculate_chunk_quality(
                 {
                     "text": raw_text,
                     "section": section,
-                    "has_equations": chunk.get("has_equations", False),
-                    "has_figures": chunk.get("has_figures", False),
+                    "has_equations": False,
+                    "has_figures": False,
                 }
             )
 
@@ -575,37 +645,24 @@ class StorageManager:
                 skipped_low_quality += 1
                 continue
 
-            raw_data = self._build_evidence_metadata(chunk, raw_text, parse_metadata)
+            raw_data = self._build_evidence_metadata(chunk.model_dump(mode="json"), raw_text, parse_metadata)
 
-            text_record = {
-                "chunk_id": chunk_id,
-                "paper_id": ctx.paper_id,
-                "user_id": ctx.user_id,
-                "content_type": "text",
-                "page_num": page_num,
-                "char_start": char_start,
-                "char_end": char_end,
-                "anchor_text": anchor_text,
-                "raw_section_path": raw_section_path,
-                "normalized_section_path": normalized_section_path,
-                "normalized_section_leaf": normalized_leaf,
-                "section_level": section_level,
-                "parent_section_path": parent_path,
-                "section": section,
-                "text": raw_text,
-                # Iteration 2: use contextual chunk text for embedding + BM25
-                "content_data": chunk_text[:8000],
-                "context_window": chunk.get("context_window", ""),
-                "subsection": chunk.get("normalized_section_leaf", ""),
-                "raw_data": raw_data,
-                "embedding": embedding,
-            }
+            text_record = self._build_text_record_from_chunk_artifact(
+                chunk_artifact=chunk.model_dump(mode="json"),
+                paper_id=ctx.paper_id,
+                user_id=ctx.user_id,
+                chunk_text=chunk_text,
+                raw_text=raw_text,
+                embedding=embedding,
+                section=section,
+                raw_data=raw_data,
+            )
             text_contents.append(text_record)
             all_contents.append(text_record)
 
         quality_gate = {
             "threshold": self.MIN_CHUNK_QUALITY,
-            "input_chunks": len(chunks),
+            "input_chunks": len(raw_chunk_artifacts),
             "indexed_chunks": len(text_contents),
             "skipped_chunks": skipped_low_quality,
             "image_records": len(ctx.image_results or []),
@@ -633,7 +690,7 @@ class StorageManager:
                 "Vectors stored in Milvus",
                 task_id=ctx.task_id,
                 total=len(all_contents),
-                chunks=len(chunks),
+                chunks=len(raw_chunk_artifacts),
                 indexed_chunks=len(text_contents),
                 skipped_low_quality=skipped_low_quality,
                 images=len(ctx.image_results or []),

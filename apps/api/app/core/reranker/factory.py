@@ -26,7 +26,12 @@ Usage:
 from typing import Dict, Any
 from app.core.reranker.base import BaseRerankerService
 from app.core.reranker.qwen3vl_reranker import Qwen3VLRerankerService
+from app.core.reranker.qwen_api_reranker import QwenApiRerankerService
 from app.config import settings, normalize_reranker_model_name
+from app.core.rag_runtime_profile import (
+    OFFICIAL_RERANKER_MODEL,
+    OFFICIAL_RUNTIME_PROFILE,
+)
 from app.utils.logger import logger
 
 
@@ -90,7 +95,18 @@ class RerankerServiceFactory:
             quantization=resolved_quantization,
         )
 
-        if resolved_model_type == "bge-reranker":
+        if (
+            getattr(settings, "RAG_RUNTIME_PROFILE", "") == OFFICIAL_RUNTIME_PROFILE
+            and resolved_model_type != OFFICIAL_RERANKER_MODEL
+        ):
+            raise ValueError(
+                "Deprecated reranker model is not allowed in "
+                "api_flash_qwen_rerank_glm runtime"
+            )
+
+        if resolved_model_type == OFFICIAL_RERANKER_MODEL:
+            service = QwenApiRerankerService()
+        elif resolved_model_type == "bge-reranker":
             from app.core.reranker.bge_reranker import BGERerankerService
             service = BGERerankerService()
         elif resolved_model_type == "qwen3-vl-reranker":
@@ -101,7 +117,7 @@ class RerankerServiceFactory:
         else:
             raise ValueError(
                 f"Unknown reranker model: {resolved_model_type}. "
-                f"Supported models: bge-reranker, qwen3-vl-reranker"
+                f"Supported models: {OFFICIAL_RERANKER_MODEL}, bge-reranker, qwen3-vl-reranker"
             )
 
         # Cache instance

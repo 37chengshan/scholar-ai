@@ -42,12 +42,14 @@ class PipelineContext:
         trace_id: UUID for full-pipeline log tracing (auto-generated)
 
         local_path: Local filesystem path after download
-        parse_result: Docling parse result (markdown, items, page_count)
+        parse_result: Raw parser output (markdown, items, page_count)
+        parse_artifact: Canonical ParseArtifact payload
         imrad: IMRaD structure extraction result
         metadata: Paper metadata (title, authors, abstract, etc.)
         image_results: Image extraction and embedding results
         table_results: Table extraction and embedding results
         chunk_results: Text chunking and embedding results
+        chunk_artifacts: Canonical chunk artifacts grouped by stage
         notes: Generated reading notes
 
         current_stage: Current processing stage
@@ -64,11 +66,13 @@ class PipelineContext:
     # Stage results (populated during processing)
     local_path: Optional[str] = None
     parse_result: Optional[Dict[str, Any]] = None
+    parse_artifact: Optional[Dict[str, Any]] = None
     imrad: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     image_results: Optional[List[Dict[str, Any]]] = None
     table_results: Optional[List[Dict[str, Any]]] = None
     chunk_results: Optional[List[Dict[str, Any]]] = None
+    chunk_artifacts: Optional[Dict[str, List[Dict[str, Any]]]] = None
     notes: Optional[str] = None
 
     # Status tracking

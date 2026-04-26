@@ -106,6 +106,8 @@ export function ProfileForm() {
               <img
                 src={profile.avatar}
                 alt="Avatar"
+                width={80}
+                height={80}
                 className="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-all duration-700"
               />
             ) : (

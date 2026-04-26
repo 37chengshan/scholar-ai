@@ -27,8 +27,13 @@ Usage:
 
 from typing import Dict
 from app.core.embedding.base import BaseEmbeddingService
+from app.core.embedding.tongyi_flash_embedding import TongyiFlashEmbeddingService
 from app.core.embedding.qwen3vl_embedding import Qwen3VLEmbeddingService
 from app.config import settings, normalize_embedding_model_name
+from app.core.rag_runtime_profile import (
+    OFFICIAL_EMBEDDING_MODEL,
+    OFFICIAL_RUNTIME_PROFILE,
+)
 from app.utils.logger import logger
 
 
@@ -89,7 +94,18 @@ class EmbeddingServiceFactory:
             quantization=quantization,
         )
 
-        if model_type == "bge-m3":
+        if (
+            getattr(settings, "RAG_RUNTIME_PROFILE", "") == OFFICIAL_RUNTIME_PROFILE
+            and model_type != OFFICIAL_EMBEDDING_MODEL
+        ):
+            raise ValueError(
+                "Deprecated embedding model is not allowed in "
+                "api_flash_qwen_rerank_glm runtime"
+            )
+
+        if model_type == OFFICIAL_EMBEDDING_MODEL:
+            service = TongyiFlashEmbeddingService()
+        elif model_type == "bge-m3":
             from app.core.embedding.bge_embedding import BGEEmbeddingService
             service = BGEEmbeddingService()
         elif model_type == "qwen3-vl-2b":
@@ -100,7 +116,7 @@ class EmbeddingServiceFactory:
         else:
             raise ValueError(
                 f"Unknown embedding model: {model_type}. "
-                f"Supported models: bge-m3, qwen3-vl-2b"
+                f"Supported models: {OFFICIAL_EMBEDDING_MODEL}, bge-m3, qwen3-vl-2b"
             )
 
         # Cache instance

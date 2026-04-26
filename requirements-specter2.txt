@@ -1,0 +1,48 @@
+# SPECTER2 Isolated Environment Requirements
+# Purpose: Run SPECTER2 embedding generation in isolation from the main API venv.
+# The main API venv requires transformers>=4.57.0 for Qwen3-VL, which conflicts with
+# the `adapters` library (removes BERT_INPUTS_DOCSTRING in >=4.50).
+#
+# This venv uses transformers==4.44.x which is the last version
+# compatible with adapters==0.2.x.
+#
+# Usage:
+#   python -m venv .venv-specter2
+#   .venv-specter2/bin/pip install -r requirements-specter2.txt
+#   .venv-specter2/bin/python scripts/evals/specter2_embed_worker.py --help
+
+# SPECTER2 Isolated Environment Requirements
+# Purpose: Run SPECTER2 embedding generation in isolation from the main API venv.
+# The main API venv requires transformers>=4.57.0 for Qwen3-VL, which conflicts with
+# the `adapters` library. This venv uses the adapters-compatible range.
+#
+# Verified compatible set:
+#   adapters==0.2.1  -> pulls transformers~=4.39.3
+#   huggingface_hub==0.19.4  (url_to_filename removed in >=0.20)
+#   setuptools<71    (pkg_resources removed in setuptools>=71)
+#
+# Usage:
+#   python -m venv .venv-specter2
+#   .venv-specter2/bin/pip install -r requirements-specter2.txt
+#   .venv-specter2/bin/python scripts/evals/specter2_embed_worker.py --help
+
+# Core model dependencies
+adapters==0.2.1
+# adapters==0.2.1 requires transformers~=4.39.3 (auto-resolved)
+# huggingface_hub: must stay <0.20 to preserve url_to_filename used by adapters 0.2.1
+huggingface_hub==0.19.4
+# setuptools: must stay <71 to preserve pkg_resources used by older pymilvus
+setuptools<71
+
+# Torch - CPU only (sufficient for embedding generation)
+torch>=2.0.0,<2.4.0
+
+# Utility
+numpy>=1.24,<2.1
+
+# Milvus client (2.4.x, no longer uses pkg_resources itself)
+pymilvus>=2.4.0,<2.5.0
+
+# HTTP
+requests>=2.28
+tqdm>=4.60

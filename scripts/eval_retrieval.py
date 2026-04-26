@@ -648,6 +648,8 @@ async def evaluate_retrieval(
         family_bucket["paper_hit_rate"].append(paper_hit)
         family_bucket["chunk_hit_rate"].append(chunk_hit)
 
+        reranker_diag = result.get("reranker_diagnostics") or {}
+
         query_details.append(
             {
                 "query_id": query_data.get("id"),
@@ -676,6 +678,13 @@ async def evaluate_retrieval(
                 "latency_ms": latency_ms,
                 "query_type": query_type,
                 "failure_bucket": failure_bucket,
+                "reranker_used": bool(reranker_diag.get("reranker_used", False)),
+                "rerank_input_count": int(reranker_diag.get("rerank_input_count") or 0),
+                "rerank_output_count": int(reranker_diag.get("rerank_output_count") or 0),
+                "pre_rerank_top_ids": reranker_diag.get("pre_rerank_top_ids") or [],
+                "post_rerank_top_ids": reranker_diag.get("post_rerank_top_ids") or [],
+                "rerank_changed_order": bool(reranker_diag.get("rerank_changed_order", False)),
+                "reranker_scores_present": bool(reranker_diag.get("reranker_scores_present", False)),
             }
         )
 
@@ -723,6 +732,13 @@ async def evaluate_retrieval(
                         if item.get("evidence_bundle_id")
                     }
                 ),
+                "reranker_used": bool((result.get("reranker_diagnostics") or {}).get("reranker_used", False)),
+                "rerank_input_count": int((result.get("reranker_diagnostics") or {}).get("rerank_input_count") or 0),
+                "rerank_output_count": int((result.get("reranker_diagnostics") or {}).get("rerank_output_count") or 0),
+                "pre_rerank_top_ids": (result.get("reranker_diagnostics") or {}).get("pre_rerank_top_ids") or [],
+                "post_rerank_top_ids": (result.get("reranker_diagnostics") or {}).get("post_rerank_top_ids") or [],
+                "rerank_changed_order": bool((result.get("reranker_diagnostics") or {}).get("rerank_changed_order", False)),
+                "reranker_scores_present": bool((result.get("reranker_diagnostics") or {}).get("reranker_scores_present", False)),
             }
         )
 

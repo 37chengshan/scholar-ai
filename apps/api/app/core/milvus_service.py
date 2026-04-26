@@ -13,13 +13,38 @@ import re
 import time
 import os
 import math
+import json
 from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from app.config import settings
+from app.core.retrieval_branch_registry import (
+    RetrievalPreflightError,
+    assert_dim_match,
+    ensure_branch_collection_allowed,
+    infer_stage_from_collection,
+)
 from app.utils.logger import logger
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
 from pymilvus.exceptions import MilvusException
+
+
+SAFE_OUTPUT_FIELDS = [
+    "paper_id",
+    "page_num",
+    "content_type",
+    "section",
+    "content_data",
+    "quality_score",
+]
+
+SAFE_OUTPUT_FIELDS_MINIMAL = [
+    "paper_id",
+    "page_num",
+    "content_type",
+    "section",
+    "content_data",
+]
 
 
 def _is_missing_collection_error(error: Exception) -> bool:
@@ -52,6 +77,11 @@ def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
 def _should_force_query_fallback() -> bool:
     """Enable direct query fallback when benchmark explicitly requests it."""
     return os.getenv("MILVUS_FORCE_QUERY_FALLBACK", "0") == "1"
+
+
+def _should_use_id_only_search() -> bool:
+    """Enable Milvus search with PK/distance only (no entity decode)."""
+    return os.getenv("MILVUS_ID_ONLY_SEARCH", "0") == "1"
 
 
 def retry_with_backoff(max_retries: int = 5, base_delay: float = 1.0):
@@ -162,6 +192,8 @@ class MilvusService:
         # Use embedding dimension from config (per Phase 18)
         # Supports: Qwen3-VL (2048), BGE-M3 (1024), or other models
         self.embedding_dim = settings.EMBEDDING_DIMENSION
+        self._hydration_store_cache_path: str = ""
+        self._hydration_store_cache_payload: Dict[str, Any] = {}
 
         # Create paper_contents_v2 collection if not exists per D-09
         # This happens on first use, not on instantiation
@@ -282,6 +314,27 @@ class MilvusService:
             collection=collection.name,
             field=field_name,
             index_type="IVF_FLAT",
+        )
+
+    def _log_live_search_entry(
+        self,
+        *,
+        collection: str,
+        stage: str,
+        search_path: str,
+        output_fields: List[str],
+        expr: Optional[str] = None,
+        top_k: Optional[int] = None,
+    ) -> None:
+        """Structured diagnostics for Milvus live search entrypoints."""
+        logger.info(
+            "Milvus live search entry",
+            collection=collection,
+            stage=stage,
+            search_path=search_path,
+            output_fields=output_fields,
+            expr_preview=(expr[:200] if expr else ""),
+            top_k=top_k,
         )
 
     def create_paper_images_collection(self) -> Collection:
@@ -464,6 +517,15 @@ class MilvusService:
 
         # Build expression for user filtering
         expr = f"user_id == '{user_id}'" if user_id else None
+        output_fields = ["paper_id", "page_num", "caption", "image_type", "bbox"]
+        self._log_live_search_entry(
+            collection=collection.name,
+            stage="image",
+            search_path="image_dense_search",
+            output_fields=output_fields,
+            expr=expr,
+            top_k=top_k,
+        )
 
         results = collection.search(
             data=[embedding],
@@ -471,7 +533,7 @@ class MilvusService:
             param=search_params,
             limit=top_k,
             expr=expr,
-            output_fields=["paper_id", "page_num", "caption", "image_type", "bbox"],
+            output_fields=output_fields,
         )
 
         # Format results
@@ -501,6 +563,15 @@ class MilvusService:
 
         # Build expression for user filtering
         expr = f"user_id == '{user_id}'" if user_id else None
+        output_fields = ["paper_id", "page_num", "table_data", "description"]
+        self._log_live_search_entry(
+            collection=collection.name,
+            stage="table",
+            search_path="table_dense_search",
+            output_fields=output_fields,
+            expr=expr,
+            top_k=top_k,
+        )
 
         results = collection.search(
             data=[embedding],
@@ -508,7 +579,7 @@ class MilvusService:
             param=search_params,
             limit=top_k,
             expr=expr,
-            output_fields=["paper_id", "page_num", "table_data", "description"],
+            output_fields=output_fields,
         )
 
         # Format results
@@ -803,6 +874,15 @@ class MilvusService:
         expr = " && ".join(exprs)
 
         search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+        output_fields = ["paper_id", "user_id", "summary_type", "section_name", "content_data"]
+        self._log_live_search_entry(
+            collection=collection.name,
+            stage="summary",
+            search_path="summary_dense_search",
+            output_fields=output_fields,
+            expr=expr,
+            top_k=top_k,
+        )
         try:
             results = collection.search(
                 data=[embedding],
@@ -810,7 +890,7 @@ class MilvusService:
                 param=search_params,
                 limit=top_k,
                 expr=expr,
-                output_fields=["paper_id", "user_id", "summary_type", "section_name", "content_data"],
+                output_fields=output_fields,
             )
         except Exception as exc:
             logger.warning("Summary index search failed", error=str(exc))
@@ -1240,6 +1320,21 @@ class MilvusService:
             conditions.append(f"content_type == '{content_type}'")
 
         expr = " and ".join(conditions) if conditions else None
+        output_fields = [
+            "paper_id",
+            "page_num",
+            "content_type",
+            "section",
+            "content_data",
+        ]
+        self._log_live_search_entry(
+            collection=collection.name,
+            stage="legacy",
+            search_path="legacy_dense_search",
+            output_fields=output_fields,
+            expr=expr,
+            top_k=top_k,
+        )
 
         results = collection.search(
             data=[embedding],
@@ -1247,13 +1342,7 @@ class MilvusService:
             param=search_params,
             limit=top_k,
             expr=expr,
-            output_fields=[
-                "paper_id",
-                "page_num",
-                "content_type",
-                "content_data",
-                "raw_data",
-            ],
+            output_fields=output_fields,
         )
 
         # Format results
@@ -1267,8 +1356,9 @@ class MilvusService:
                         "paper_id": hit.entity.get("paper_id"),
                         "page_num": hit.entity.get("page_num"),
                         "content_type": hit.entity.get("content_type"),
+                        "section": hit.entity.get("section"),
                         "content_data": hit.entity.get("content_data"),
-                        "raw_data": hit.entity.get("raw_data"),
+                        "raw_data": {},
                     }
                 )
         return formatted
@@ -1351,6 +1441,9 @@ class MilvusService:
         content_type: Optional[str] = None,
         top_k: int = 10,
         constraints: Optional[Any] = None,
+        branch: str = "api_flash_dense",
+        model_name: Optional[str] = None,
+        vector_field: str = "embedding",
     ) -> List[Dict[str, Any]]:
         """Search paper_contents_v2 collection with 2048-dim embeddings.
 
@@ -1364,9 +1457,26 @@ class MilvusService:
         Returns:
             List of content items with distance scores
         """
-        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+        collection_name = settings.MILVUS_COLLECTION_CONTENTS_V2
+        ensure_branch_collection_allowed(branch, collection_name)
+        collection = self.get_collection(collection_name)
+
+        query_dim = len(embedding or [])
+        collection_dim = self.inspect_collection_vector_dim(collection, vector_field=vector_field)
+        assert_dim_match(
+            branch=branch, 
+            model=(model_name or settings.EMBEDDING_MODEL),
+            collection=collection_name,
+            vector_field=vector_field,
+            query_dim=query_dim,
+            collection_dim=collection_dim,
+        )
 
         search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+        id_only_mode = _should_use_id_only_search()
+        output_fields = [] if id_only_mode else self.resolve_safe_output_fields(collection)
+        stage = infer_stage_from_collection(collection_name) or "unknown"
+        unsupported_field_type_count = 0
 
         # Build expr from constraints if provided
         if constraints:
@@ -1381,6 +1491,23 @@ class MilvusService:
             expr = " and ".join(conditions)
 
         def _query_fallback() -> List[Dict[str, Any]]:
+            self._log_live_search_entry(
+                collection=collection_name,
+                stage=stage,
+                search_path="query_cosine_fallback",
+                output_fields=[
+                    "id",
+                    "paper_id",
+                    "page_num",
+                    "content_type",
+                    "section",
+                    "content_data",
+                    "quality_score",
+                    "embedding",
+                ],
+                expr=expr,
+                top_k=top_k,
+            )
             rows = collection.query(
                 expr=expr,
                 output_fields=[
@@ -1411,6 +1538,12 @@ class MilvusService:
                         "content_data": row.get("content_data"),
                         "raw_data": {},
                         "quality_score": row.get("quality_score"),
+                        "milvus_collection": collection_name,
+                        "milvus_stage": stage,
+                        "milvus_search_path": "query_cosine_fallback",
+                        "milvus_output_fields": output_fields,
+                        "milvus_fallback_used": True,
+                        "milvus_unsupported_field_type_count": unsupported_field_type_count,
                     }
                 )
             scored_rows.sort(key=lambda item: item.get("score", 0.0), reverse=True)
@@ -1419,29 +1552,55 @@ class MilvusService:
         if _should_force_query_fallback():
             return _query_fallback()
 
-        try:
+        def _search_with_fields(search_output_fields: List[str], search_path: str) -> List[Dict[str, Any]]:
+            local_id_only_mode = id_only_mode or len(search_output_fields) == 0
+            self._log_live_search_entry(
+                collection=collection_name,
+                stage=stage,
+                search_path=search_path,
+                output_fields=search_output_fields,
+                expr=expr,
+                top_k=top_k,
+            )
             results = collection.search(
                 data=[embedding],
-                anns_field="embedding",
+                anns_field=vector_field,
                 param=search_params,
                 limit=top_k,
                 expr=expr,
-                output_fields=[
-                    "paper_id",
-                    "page_num",
-                    "content_type",
-                    "section",
-                    "content_data",
-                    "quality_score",
-                ],
+                output_fields=search_output_fields,
             )
 
             formatted = []
             for hits in results:
                 for hit in hits:
+                    if local_id_only_mode:
+                        formatted.append(
+                            {
+                                "id": hit.id,
+                                "source_id": str(hit.id),
+                                "distance": hit.distance,
+                                "score": 1 - hit.distance,
+                                "paper_id": "",
+                                "page_num": None,
+                                "content_type": "",
+                                "section": "",
+                                "content_data": "",
+                                "raw_data": {},
+                                "quality_score": None,
+                                "milvus_collection": collection_name,
+                                "milvus_stage": stage,
+                                "milvus_search_path": search_path,
+                                "milvus_output_fields": search_output_fields,
+                                "milvus_fallback_used": False,
+                                "milvus_unsupported_field_type_count": unsupported_field_type_count,
+                            }
+                        )
+                        continue
                     formatted.append(
                         {
                             "id": hit.id,
+                            "source_id": str(hit.id),
                             "distance": hit.distance,
                             "score": 1 - hit.distance,
                             "paper_id": hit.entity.get("paper_id"),
@@ -1451,17 +1610,142 @@ class MilvusService:
                             "content_data": hit.entity.get("content_data"),
                             "raw_data": {},
                             "quality_score": hit.entity.get("quality_score"),
+                            "milvus_collection": collection_name,
+                            "milvus_stage": stage,
+                            "milvus_search_path": search_path,
+                            "milvus_output_fields": search_output_fields,
+                            "milvus_fallback_used": False,
+                            "milvus_unsupported_field_type_count": unsupported_field_type_count,
                         }
                     )
+            if local_id_only_mode:
+                return self._hydrate_hits_from_metadata_store(formatted, collection_name)
             return formatted
+
+        try:
+            return _search_with_fields(output_fields, "dense_search_primary")
         except Exception as e:
             if not _is_unsupported_field_type_error(e):
                 raise
+            unsupported_field_type_count += 1
             logger.warning(
-                "Milvus search failed with unsupported field type, falling back to python cosine search",
+                "Milvus search failed with unsupported field type, retrying with minimal output fields",
                 error=str(e),
             )
-            return _query_fallback()
+            minimal_fields = self.resolve_safe_output_fields(collection)
+            try:
+                return _search_with_fields(minimal_fields, "dense_search_minimal_retry")
+            except Exception as e2:
+                if not _is_unsupported_field_type_error(e2):
+                    raise
+                unsupported_field_type_count += 1
+                logger.warning(
+                    "Milvus minimal-field search still unsupported, falling back to python cosine search",
+                    error=str(e2),
+                )
+                return _query_fallback()
+
+    def _hydrate_hits_from_metadata_store(
+        self,
+        hits: List[Dict[str, Any]],
+        collection_name: str,
+    ) -> List[Dict[str, Any]]:
+        """Hydrate ID-only Milvus hits using artifact metadata store.
+
+        The store is loaded from env `MILVUS_ENTITY_HYDRATION_STORE`.
+        Supported JSON formats:
+        1) {"123": {"paper_id": ..., ...}}
+        2) {"collections": {"<collection>": {"123": {...}}}}
+        """
+        if not hits:
+            return []
+
+        store_path = os.getenv("MILVUS_ENTITY_HYDRATION_STORE", "").strip()
+        if not store_path:
+            return hits
+
+        if self._hydration_store_cache_path != store_path:
+            try:
+                with open(store_path, "r", encoding="utf-8") as handle:
+                    self._hydration_store_cache_payload = json.load(handle)
+                self._hydration_store_cache_path = store_path
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load Milvus hydration store",
+                    store_path=store_path,
+                    error=str(exc),
+                )
+                self._hydration_store_cache_payload = {}
+                self._hydration_store_cache_path = ""
+                return hits
+
+        store_payload = self._hydration_store_cache_payload
+
+        collection_store: Dict[str, Dict[str, Any]]
+        if isinstance(store_payload, dict) and isinstance(store_payload.get("collections"), dict):
+            scoped = store_payload.get("collections", {}).get(collection_name, {})
+            collection_store = scoped if isinstance(scoped, dict) else {}
+        else:
+            collection_store = store_payload if isinstance(store_payload, dict) else {}
+
+        hydrated: List[Dict[str, Any]] = []
+        for item in hits:
+            key = str(item.get("id"))
+            metadata = collection_store.get(key)
+            if not isinstance(metadata, dict):
+                hydrated.append(item)
+                continue
+
+            hydrated_item = {
+                **item,
+                "source_id": str(metadata.get("source_chunk_id") or item.get("source_id") or item.get("id") or ""),
+                "paper_id": str(metadata.get("paper_id") or item.get("paper_id") or ""),
+                "page_num": metadata.get("page_num", item.get("page_num")),
+                "content_type": str(metadata.get("content_type") or item.get("content_type") or ""),
+                "section": str(metadata.get("section") or item.get("section") or ""),
+                "content_data": str(metadata.get("content_data") or item.get("content_data") or ""),
+                "quality_score": metadata.get("quality_score", item.get("quality_score")),
+            }
+            hydrated.append(hydrated_item)
+        return hydrated
+
+    def resolve_safe_output_fields(self, collection: Collection, allow_raw_data: bool = False) -> List[str]:
+        """Filter safe output fields by collection schema.
+
+        Live retrieval defaults to minimal field set; full safe set is opt-in.
+        """
+        schema_names = {
+            getattr(field, "name", "")
+            for field in getattr(collection.schema, "fields", [])
+            if getattr(field, "name", "")
+        }
+
+        candidates = SAFE_OUTPUT_FIELDS if allow_raw_data else SAFE_OUTPUT_FIELDS_MINIMAL
+        filtered = [name for name in candidates if name in schema_names]
+        if not filtered:
+            filtered = [name for name in SAFE_OUTPUT_FIELDS_MINIMAL if name in schema_names]
+        return filtered
+
+    def inspect_collection_vector_dim(self, collection: Collection, vector_field: str = "embedding") -> int:
+        """Inspect vector field dim from collection schema."""
+        for field in getattr(collection.schema, "fields", []):
+            if getattr(field, "name", "") != vector_field:
+                continue
+            params = getattr(field, "params", None) or {}
+            dim = params.get("dim") if isinstance(params, dict) else None
+            if dim is None:
+                raise RetrievalPreflightError(
+                    f"Vector field dim missing: collection={collection.name}, vector_field={vector_field}"
+                )
+            try:
+                return int(dim)
+            except (TypeError, ValueError) as exc:
+                raise RetrievalPreflightError(
+                    f"Invalid vector dim: collection={collection.name}, vector_field={vector_field}, dim={dim}"
+                ) from exc
+        raise RetrievalPreflightError(
+            f"Vector field not found: collection={collection.name}, vector_field={vector_field}"
+        )
 
     def delete_by_paper_contents(self, paper_id: str) -> None:
         """Delete all content entries for a paper.

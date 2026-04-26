@@ -28,6 +28,8 @@ class VectorStoreRepository(ABC):
         content_type: str,
         top_k: int,
         constraints: SearchConstraints,
+        branch: str = "qwen",
+        model_name: Optional[str] = None,
     ) -> List[RetrievedChunk]:
         """Search the underlying vector store and return canonical chunks."""
 
@@ -76,7 +78,9 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
         if score is None:
             score = 1 - float(hit.get("distance", 0.5))
 
-        raw_data = hit.get("raw_data") or {}
+        # v2.1.2: raw_data is intentionally not returned from Milvus live search.
+        # If needed, hydrate by source_id from PostgreSQL / artifact metadata store.
+        raw_data = {}
 
         evidence_types = hit.get("evidence_types") or raw_data.get("evidence_types")
         if isinstance(evidence_types, str):
@@ -112,12 +116,18 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
             evidence_types=evidence_types,
             content_type=hit.get("content_type", "text"),
             quality_score=hit.get("quality_score"),
-            raw_data=hit.get("raw_data"),
+            raw_data=raw_data,
             vector_score=hit.get("vector_score"),
             sparse_score=hit.get("sparse_score"),
             hybrid_score=hit.get("hybrid_score"),
             reranker_score=hit.get("reranker_score"),
             retrieval_trace_id=hit.get("retrieval_trace_id"),
+            milvus_collection=hit.get("milvus_collection"),
+            milvus_stage=hit.get("milvus_stage"),
+            milvus_search_path=hit.get("milvus_search_path"),
+            milvus_output_fields=hit.get("milvus_output_fields") or [],
+            milvus_fallback_used=bool(hit.get("milvus_fallback_used") or False),
+            milvus_unsupported_field_type_count=int(hit.get("milvus_unsupported_field_type_count") or 0),
         )
 
     def search(
@@ -128,6 +138,8 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
         content_type: str,
         top_k: int,
         constraints: SearchConstraints,
+        branch: str = "qwen",
+        model_name: Optional[str] = None,
     ) -> List[RetrievedChunk]:
         hits = self.milvus_service.search_contents_v2(
             embedding=embedding,
@@ -135,6 +147,8 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
             content_type=content_type,
             top_k=top_k,
             constraints=constraints,
+            branch=branch,
+            model_name=model_name,
         )
         return [self._normalize_hit(hit) for hit in hits]
 
@@ -226,6 +240,8 @@ class QdrantVectorStoreRepository(VectorStoreRepository):
         content_type: str,
         top_k: int,
         constraints: SearchConstraints,
+        branch: str = "qwen",
+        model_name: Optional[str] = None,
     ) -> List[RetrievedChunk]:
         hits = self.qdrant_service.search(
             embedding=embedding,

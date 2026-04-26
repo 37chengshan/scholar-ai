@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Parse all 50 PDFs and rebuild v2.3 collection."""
+"""Rebuild v2.3 collection from standardized chunk artifacts."""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
-import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -14,11 +14,8 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
-import pypdf
 
 try:
-    import os
-    os.environ.setdefault('DASHSCOPE_API_KEY', 'sk-e293fe03554943a490843478c82b2e6a')
     from app.core.model_gateway import create_embedding_provider
 except Exception as e:
     print(f"Warning: Could not import embedding provider: {e}")
@@ -36,44 +33,50 @@ def load_manifest() -> Dict[str, Any]:
     return json.loads(MANIFEST_PATH.read_text())
 
 
-def parse_pdfs(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Parse all PDFs and create chunks."""
+def load_chunk_artifacts(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Load standardized chunk artifacts instead of re-parsing PDFs."""
     papers = manifest.get("papers", [])
     all_chunks = []
-    
+
     for paper in papers:
-        pdf_path = PAPER_DIR / paper["source_pdf"]
-        if not pdf_path.exists():
-            print(f"  Skipping {pdf_path.name} - not found")
+        paper_id = str(paper.get("paper_id") or "")
+        chunk_path = ROOT / "artifacts" / "papers" / paper_id / "chunks_raw.json"
+        if not chunk_path.exists():
+            print(f"  Skipping {paper_id} - missing {chunk_path}")
             continue
-        
-        print(f"  Parsing {paper['paper_id']}: {paper.get('title', '')}")
-        
+
+        print(f"  Loading {paper_id} chunks from artifacts")
+
         try:
-            reader = pypdf.PdfReader(str(pdf_path))
-            for i, page in enumerate(reader.pages):
-                text = page.extract_text()
-                if not text or len(text.strip()) < 50:
+            artifact_chunks = json.loads(chunk_path.read_text(encoding="utf-8"))
+            for chunk in artifact_chunks:
+                text = str(chunk.get("content_data") or "")
+                if not text.strip():
                     continue
-                chunk = {
-                    "source_chunk_id": f"{paper['paper_id']}-{i+1}",
-                    "paper_id": paper["paper_id"],
-                    "page_num": i + 1,
-                    "section": "content",
+                all_chunks.append(
+                    {
+                    "source_chunk_id": chunk.get("source_chunk_id") or chunk.get("chunk_id") or "",
+                    "paper_id": paper_id,
+                    "page_num": int(chunk.get("page_num") or 0),
+                    "section": chunk.get("section_path") or chunk.get("section") or "",
                     "content_type": "text",
                     "content_data": text[:4000],  # Truncate very long text
                     "raw_text": text[:4000],
-                }
-                all_chunks.append(chunk)
+                    }
+                )
         except Exception as e:
             print(f"    Error: {e}")
-    
+
     return all_chunks
 
 
-def ensure_collection(dim: int, alias: str) -> Collection:
+def ensure_collection(dim: int, alias: str, *, allow_drop_collection: bool) -> Collection:
     """Ensure collection exists with correct schema."""
     if utility.has_collection(COLLECTION_NAME, using=alias):
+        if not allow_drop_collection:
+            raise RuntimeError(
+                "Refusing to drop existing collection without --allow-drop-collection"
+            )
         print(f"Dropping existing collection: {COLLECTION_NAME}")
         utility.drop_collection(COLLECTION_NAME, using=alias)
     
@@ -146,8 +149,12 @@ def insert_chunks(col: Collection, chunks: List[Dict[str, Any]], provider, alias
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Rebuild v2.3 collection from chunk artifacts")
+    parser.add_argument("--allow-drop-collection", action="store_true")
+    args = parser.parse_args()
+
     print("=" * 50)
-    print("Parse PDFs and Rebuild v2.3 Collection")
+    print("Rebuild v2.3 Collection From Artifacts")
     print("=" * 50)
     
     # Load manifest
@@ -155,9 +162,9 @@ def main() -> int:
     manifest = load_manifest()
     print(f"  Papers: {len(manifest.get('papers', []))}")
     
-    # Parse PDFs
-    print("\n[2/4] Parsing PDFs...")
-    chunks = parse_pdfs(manifest)
+    # Load chunk artifacts
+    print("\n[2/4] Loading chunk artifacts...")
+    chunks = load_chunk_artifacts(manifest)
     print(f"  Total chunks: {len(chunks)}")
     
     # Clean text to remove problematic Unicode
@@ -187,7 +194,7 @@ def main() -> int:
     print(f"  Embedding dimension: {dim}")
     
     # Ensure collection and insert
-    col = ensure_collection(dim, alias)
+    col = ensure_collection(dim, alias, allow_drop_collection=args.allow_drop_collection)
     
     if create_embedding_provider and chunks:
         insert_chunks(col, chunks, provider, alias, dim)

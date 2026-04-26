@@ -69,6 +69,7 @@ from app.api import (
 from app.api.papers import router as papers_router
 
 from app.config import settings
+from app.core.rag_runtime_guard import validate_active_rag_runtime
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
 from app.database import (
@@ -155,6 +156,12 @@ async def lifespan(app: FastAPI):
         raise
 
     logger.info("🤖 ScholarAI AI Service starting...")
+    runtime_report = validate_active_rag_runtime(settings, strict=True)
+    logger.info(f"RAG runtime profile: {runtime_report['runtime_profile']}")
+    logger.info(f"Embedding: {runtime_report['embedding_model']}")
+    logger.info(f"Reranker: {runtime_report['reranker_model']}")
+    logger.info(f"LLM: {runtime_report['llm_model']}")
+    logger.info("Deprecated branches active: 0")
     logger.info(f"🧭 Runtime profile: {settings.RUNTIME_PROFILE}")
     logger.info(f"⚙️ AI startup mode: {settings.AI_STARTUP_MODE}")
     logger.info(f"📚 Log level: {settings.LOG_LEVEL}")
@@ -190,6 +197,14 @@ async def lifespan(app: FastAPI):
     await init_databases()
 
     if settings.PREFLIGHT_ON_STARTUP:
+        runtime_preflight_report = validate_active_rag_runtime(settings, strict=True)
+        logger.info(
+            "✅ RAG runtime preflight passed",
+            runtime_profile=runtime_preflight_report.get("runtime_profile"),
+            embedding_model=runtime_preflight_report.get("embedding_model"),
+            reranker_model=runtime_preflight_report.get("reranker_model"),
+            llm_model=runtime_preflight_report.get("llm_model"),
+        )
         preflight_report = run_preflight(strict=True)
         logger.info(
             "✅ Startup preflight passed",
