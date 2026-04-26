@@ -60,6 +60,16 @@ export interface UpdateNotePayload {
   paperIds?: string[];
 }
 
+export interface SaveEvidenceNotePayload {
+  claim: string;
+  source_chunk_id: string;
+  paper_id: string;
+  page_num?: number;
+  section_path?: string;
+  content?: string;
+  citation?: Record<string, unknown>;
+}
+
 /**
  * Get notes list with optional filtering
  *
@@ -160,4 +170,20 @@ export async function getNotesByPaper(paperId: string): Promise<Note[]> {
     total: number;
   }>(`/api/v1/notes/paper/${paperId}`);
   return response.data.notes || [];
+}
+
+/**
+ * Save evidence block into note system.
+ */
+export async function saveEvidenceNote(payload: SaveEvidenceNotePayload): Promise<Note> {
+  const response = await apiClient.post<{ success: boolean; data: Note }>('/api/v1/notes/evidence', {
+    claim: payload.claim,
+    source_chunk_id: payload.source_chunk_id,
+    paper_id: payload.paper_id,
+    page_num: payload.page_num,
+    section_path: payload.section_path,
+    content: payload.content || '',
+    citation: payload.citation,
+  });
+  return response.data.data;
 }

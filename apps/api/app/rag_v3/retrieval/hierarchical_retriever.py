@@ -147,6 +147,9 @@ class HierarchicalRetriever:
                 "section_index_size": float(len(self._section_index)),
                 "query_paper_ids_count": float(len(query_paper_ids)),
                 "paper_filter_applied": float(1 if effective_paper_ids else 0),
+                "dense_fallback_used": float(1 if self._dense_retriever.last_trace.get("fallback_used") else 0),
+                "dense_unsupported_field_type_count": float(self._dense_retriever.unsupported_field_type_count),
+                "dense_fallback_used_count": float(self._dense_retriever.fallback_used_count),
             },
         )
 

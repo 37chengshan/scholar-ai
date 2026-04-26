@@ -94,7 +94,7 @@ backend-python/venv_new/
 dist/
 build/
 *.spec
-
+.venv-specter2/
 # Docker
 .dockerignore
 

@@ -212,6 +212,37 @@ export async function unified(
   return response.data;
 }
 
+export interface LayeredEvidenceSearchResult {
+  paper_results: string[];
+  section_matches: string[];
+  evidence_matches: Array<{
+    source_chunk_id: string;
+    paper_id: string;
+    page_num?: number;
+    section_path?: string;
+    content_type?: string;
+    content?: string;
+    quality_score?: number;
+  }>;
+  relation_matches: unknown[];
+  answer_mode?: 'full' | 'partial' | 'abstain';
+  retrieval_trace_id?: string;
+  quality?: Record<string, unknown>;
+}
+
+export async function searchEvidenceV3(
+  query: string,
+  queryFamily: string = 'fact',
+  topK: number = 10,
+): Promise<LayeredEvidenceSearchResult> {
+  const response = await apiClient.post<LayeredEvidenceSearchResult>('/api/v1/search/evidence', {
+    query,
+    query_family: queryFamily,
+    top_k: topK,
+  });
+  return response.data;
+}
+
 /**
  * External paper import is handled by kbApi, not searchApi.
  *

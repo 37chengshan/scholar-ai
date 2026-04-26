@@ -6,6 +6,7 @@ import { SSEService, SSEEventEnvelope } from '@/services/sseService';
 import type { ChatSession } from '@/app/hooks/useSessions';
 import type { ChatStreamState, TaskType } from '@/app/hooks/useChatStream';
 import type {
+  AnswerContractPayload,
   CitationItem,
   ExtendedChatMessage,
   ToolTimelineItem,
@@ -58,6 +59,7 @@ interface UseChatSendOptions {
     cost: number;
     toolTimeline: ToolTimelineItem[];
     citations: CitationItem[];
+    answerContract?: AnswerContractPayload;
   }) => void;
   removePlaceholderMessage: () => void;
   clearPlaceholder: () => void;
@@ -94,6 +96,78 @@ export function useChatSend({
   removePlaceholderMessage,
   clearPlaceholder,
 }: UseChatSendOptions) {
+  const normalizeAnswerContract = useCallback((payload: Record<string, unknown> | undefined, fallbackContent: string, fallbackCitations: CitationItem[]): AnswerContractPayload | undefined => {
+    if (!payload) {
+      return undefined;
+    }
+
+    const citationsRaw = Array.isArray(payload.citations) ? payload.citations : fallbackCitations;
+    const citations = citationsRaw.map((item) => {
+      const row = item as Record<string, unknown>;
+      return {
+        paper_id: String(row.paper_id || ''),
+        source_chunk_id: row.source_chunk_id ? String(row.source_chunk_id) : undefined,
+        source_id: row.source_id ? String(row.source_id) : undefined,
+        page_num: typeof row.page_num === 'number' ? row.page_num : undefined,
+        section_path: row.section_path ? String(row.section_path) : undefined,
+        anchor_text: row.anchor_text ? String(row.anchor_text) : undefined,
+        text_preview: row.text_preview ? String(row.text_preview) : undefined,
+        title: String(row.title || row.paper_title || 'source'),
+        authors: Array.isArray(row.authors) ? row.authors.map((a) => String(a)) : undefined,
+        year: typeof row.year === 'number' ? row.year : undefined,
+        snippet: row.snippet ? String(row.snippet) : undefined,
+        page: typeof row.page === 'number' ? row.page : undefined,
+        score: typeof row.score === 'number' ? row.score : undefined,
+        content_type: (row.content_type as CitationItem['content_type']) || 'text',
+        chunk_id: row.chunk_id ? String(row.chunk_id) : undefined,
+      } as CitationItem;
+    });
+
+    const claimsRaw = Array.isArray(payload.claims) ? payload.claims : [];
+    const evidenceRaw = Array.isArray(payload.evidence_blocks) ? payload.evidence_blocks : [];
+    const quality = (payload.quality as Record<string, unknown> | undefined) || {};
+    const answerMode = (payload.answer_mode as 'full' | 'partial' | 'abstain' | undefined) || 'partial';
+
+    return {
+      answer_mode: answerMode,
+      answer: String(payload.answer || fallbackContent || ''),
+      claims: claimsRaw.map((item) => {
+        const row = item as Record<string, unknown>;
+        return {
+          claim: String(row.claim || ''),
+          support_status: (row.support_status as 'supported' | 'partially_supported' | 'unsupported') || 'unsupported',
+          supporting_source_chunk_ids: Array.isArray(row.supporting_source_chunk_ids)
+            ? row.supporting_source_chunk_ids.map((id) => String(id))
+            : [],
+        };
+      }),
+      citations,
+      evidence_blocks: evidenceRaw.map((item) => {
+        const row = item as Record<string, unknown>;
+        return {
+          source_chunk_id: String(row.source_chunk_id || ''),
+          paper_id: String(row.paper_id || ''),
+          page_num: typeof row.page_num === 'number' ? row.page_num : null,
+          section_path: row.section_path ? String(row.section_path) : null,
+          content_type: String(row.content_type || 'text'),
+          content: String(row.content || ''),
+          quality_score: typeof row.quality_score === 'number' ? row.quality_score : undefined,
+        };
+      }),
+      quality: {
+        citation_coverage: typeof quality.citation_coverage === 'number' ? quality.citation_coverage : undefined,
+        unsupported_claim_rate: typeof quality.unsupported_claim_rate === 'number' ? quality.unsupported_claim_rate : undefined,
+        answer_evidence_consistency:
+          typeof quality.answer_evidence_consistency === 'number' ? quality.answer_evidence_consistency : undefined,
+        fallback_used: Boolean(quality.fallback_used),
+        fallback_reason: quality.fallback_reason ? String(quality.fallback_reason) : null,
+      },
+      retrieval_trace_id: payload.retrieval_trace_id ? String(payload.retrieval_trace_id) : undefined,
+      error_state: payload.error_state ? String(payload.error_state) : null,
+      trace: (payload.trace as Record<string, unknown> | undefined) || undefined,
+    };
+  }, []);
+
   const handleSend = useCallback(async () => {
     if (
       !input.trim()
@@ -271,6 +345,11 @@ export function useChatSend({
             const doneMsgId = currentMessageIdRef.current || streamApi.currentMessageId || '';
             const finalContent = finalBuffered.content || latestState.contentBuffer;
             const finalReasoning = finalBuffered.reasoning || latestState.reasoningBuffer;
+            const answerContract = normalizeAnswerContract(
+              data as unknown as Record<string, unknown>,
+              finalContent,
+              latestState.citations,
+            );
 
             completeStreamingMessage({
               doneMessageId: doneMsgId,
@@ -282,6 +361,7 @@ export function useChatSend({
               cost,
               toolTimeline: latestState.toolTimeline,
               citations: latestState.citations,
+              answerContract,
             });
 
             setSessionTokens((prev) => prev + tokensUsed);
@@ -334,6 +414,7 @@ export function useChatSend({
     setSessionCost,
     removePlaceholderMessage,
     clearPlaceholder,
+    normalizeAnswerContract,
   ]);
 
   const handleStop = useCallback(() => {

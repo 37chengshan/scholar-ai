@@ -147,6 +147,16 @@ class GeneratedNotesResponse(BaseModel):
     data: dict
 
 
+class EvidenceNoteCreate(BaseModel):
+    claim: str = Field(..., min_length=1)
+    source_chunk_id: str = Field(..., min_length=1)
+    paper_id: str = Field(..., min_length=1)
+    page_num: Optional[int] = None
+    section_path: Optional[str] = None
+    content: str = Field(default="")
+    citation: Optional[dict] = None
+
+
 # =============================================================================
 # CRUD Endpoints
 # =============================================================================
@@ -586,4 +596,50 @@ async def export_notes(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Errors.internal(f"Failed to export notes: {str(e)}"),
+        )
+
+
+@router.post("/evidence", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+async def save_evidence_note(
+    request: EvidenceNoteCreate,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Save evidence block as a first-class note with source backlink."""
+    try:
+        content = (
+            f"Claim: {request.claim}\n"
+            f"Source Chunk: {request.source_chunk_id}\n"
+            f"Paper: {request.paper_id}\n"
+            f"Page: {request.page_num or 'N/A'}\n"
+            f"Section: {request.section_path or 'N/A'}\n\n"
+            f"Evidence:\n{request.content}"
+        )
+        if request.citation:
+            content += f"\n\nCitation:\n{json.dumps(request.citation, ensure_ascii=False)}"
+
+        note = Note(
+            user_id=user_id,
+            title=f"Evidence: {request.claim[:80]}",
+            content=content,
+            tags=["evidence", "citation"],
+            paper_ids=[request.paper_id],
+        )
+
+        db.add(note)
+        await db.flush()
+        await db.refresh(note)
+
+        logger.info(
+            "Evidence note saved",
+            note_id=note.id,
+            source_chunk_id=request.source_chunk_id,
+            user_id=user_id,
+        )
+        return NoteResponse(success=True, data=_format_note_response(note))
+    except Exception as e:
+        logger.error("Failed to save evidence note", error=str(e), user_id=user_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to save evidence note: {str(e)}"),
         )

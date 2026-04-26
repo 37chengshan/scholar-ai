@@ -8,6 +8,7 @@ import { useSearchWorkspace } from '@/features/search/hooks/useSearchWorkspace';
 import { useUnifiedSearch } from '@/features/search/hooks/useUnifiedSearch';
 import { useAuthorSearch } from '@/features/search/hooks/useAuthorSearch';
 import { useSearchImportFlow } from '@/features/search/hooks/useSearchImportFlow';
+import { searchEvidenceV3, type LayeredEvidenceSearchResult } from '@/services/searchApi';
 import { SearchSidebar } from '@/features/search/components/SearchSidebar';
 import { SearchToolbar } from '@/features/search/components/SearchToolbar';
 import { SearchPagination } from '@/features/search/components/SearchPagination';
@@ -20,6 +21,7 @@ export function SearchWorkspace() {
   const isZh = language === 'zh';
   const navigate = useNavigate();
   const [showInspector, setShowInspector] = useState(true);
+  const [layeredEvidence, setLayeredEvidence] = useState<LayeredEvidenceSearchResult | null>(null);
 
   const workspace = useSearchWorkspace();
   const {
@@ -105,6 +107,30 @@ export function SearchWorkspace() {
       authorSearch.searchAuthors('');
     }
   }, [authorSearch.searchAuthors, query, workspace.activeSource]);
+
+  useEffect(() => {
+    if (!query.trim() || workspace.activeSource === 'authors') {
+      setLayeredEvidence(null);
+      return;
+    }
+
+    let cancelled = false;
+    void searchEvidenceV3(query.trim(), 'fact', 10)
+      .then((data) => {
+        if (!cancelled) {
+          setLayeredEvidence(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLayeredEvidence(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [query, workspace.activeSource]);
 
   const sources = useMemo(() => [
     {
@@ -367,6 +393,34 @@ export function SearchWorkspace() {
               <p className="text-[11px] text-muted-foreground">{labels.noSummaryData}</p>
             )}
           </section>
+
+          {layeredEvidence ? (
+            <section className="flex flex-col gap-3">
+              <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">
+                {isZh ? '证据分层结果' : 'Layered Evidence'}
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="rounded-md border border-border/60 bg-muted/20 px-2 py-1">paper {layeredEvidence.paper_results.length}</div>
+                <div className="rounded-md border border-border/60 bg-muted/20 px-2 py-1">section {layeredEvidence.section_matches.length}</div>
+                <div className="rounded-md border border-border/60 bg-muted/20 px-2 py-1">evidence {layeredEvidence.evidence_matches.length}</div>
+                <div className="rounded-md border border-border/60 bg-muted/20 px-2 py-1">relation {layeredEvidence.relation_matches.length}</div>
+              </div>
+
+              <div className="space-y-2">
+                {layeredEvidence.evidence_matches.slice(0, 3).map((item) => (
+                  <button
+                    key={`${item.paper_id}-${item.source_chunk_id}`}
+                    type="button"
+                    className="w-full rounded-md border border-border/60 bg-background px-2 py-2 text-left text-[11px] hover:border-primary/50"
+                    onClick={() => navigate(`/read/${item.paper_id}?page=${item.page_num || 1}&source=search&source_id=${item.source_chunk_id}`)}
+                  >
+                    <div className="font-medium text-foreground">{item.paper_id} · {item.section_path || 'section'}</div>
+                    <div className="mt-1 line-clamp-2 text-muted-foreground">{item.content || item.source_chunk_id}</div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="flex flex-col gap-3">
             <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">

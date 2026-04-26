@@ -11,6 +11,10 @@ import { ToolTimelinePanel } from '@/features/chat/components/tool-timeline/Tool
 import { CitationPanel } from '@/features/chat/components/citation-panel/CitationPanel';
 import type { CitationItem, ToolTimelineItem } from '@/features/chat/components/workspaceTypes';
 import type { ChatRenderMessage } from '@/features/chat/hooks/useChatMessagesViewModel';
+import { useMeasuredMessages } from '@/features/chat/hooks/useMeasuredMessages';
+import { useAnswerContract } from '@/features/chat/hooks/useAnswerContract';
+import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
+import { EvidencePanel } from '@/features/chat/components/evidence/EvidencePanel';
 
 interface MessageFeedCopy {
   noMessages: string;
@@ -77,6 +81,32 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function AssistantEvidenceSection({ message, isZh, onCitationClick }: {
+  message: ChatRenderMessage;
+  isZh: boolean;
+  onCitationClick: (citation: CitationItem | undefined) => void;
+}) {
+  const contract = useAnswerContract(message);
+  const { jumpToSource, saveEvidence } = useEvidenceNavigation(isZh);
+
+  if (!contract) {
+    return null;
+  }
+
+  return (
+    <EvidencePanel
+      contract={contract}
+      onJumpCitation={(citation) => onCitationClick(citation)}
+      onOpenSource={(sourceChunkId, paperId, pageNum) => {
+        void jumpToSource(sourceChunkId, paperId, pageNum || undefined);
+      }}
+      onSaveEvidence={(claim, block) => {
+        void saveEvidence(claim, block);
+      }}
+    />
+  );
+}
+
 export function MessageFeed({
   renderMessages,
   streamState,
@@ -95,6 +125,8 @@ export function MessageFeed({
   recoverable,
   partialAnswerAvailable,
 }: MessageFeedProps) {
+  const measuredHeights = useMeasuredMessages(renderMessages);
+
   return (
     <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
       {renderMessages.length === 0 ? (
@@ -136,6 +168,7 @@ export function MessageFeed({
                   <div
                     key={message.id}
                     className={clsx('group', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
+                    style={{ minHeight: measuredHeights[message.id] ? `${measuredHeights[message.id]}px` : undefined }}
                   >
                     {/* Avatar + role label row - only on role change */}
                     {roleChanged && (
@@ -209,6 +242,14 @@ export function MessageFeed({
                         citations={safeCitations(messageCitations)}
                       />
 
+                      {!isStreaming && (
+                        <AssistantEvidenceSection
+                          message={message}
+                          isZh={isZh}
+                          onCitationClick={onCitationClick}
+                        />
+                      )}
+
                       {/* Action bar: copy, token info */}
                       {!isStreaming && message.displayContent && (
                         <div className="flex items-center gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -234,6 +275,7 @@ export function MessageFeed({
                 <div
                   key={message.id}
                   className={clsx('flex justify-end', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
+                  style={{ minHeight: measuredHeights[message.id] ? `${measuredHeights[message.id]}px` : undefined }}
                 >
                   <div className="max-w-[75%]">
                     <div className="rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-2.5 shadow-sm">

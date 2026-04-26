@@ -30,6 +30,8 @@
 - IndexArtifact：索引或检索产物
 - ImportBatch：批量导入会话
 - EvidenceBundle：面向学术检索的证据包聚合资源（跨 text/table/figure/caption）
+- EvidenceSourceView：按 `source_chunk_id` 回查证据原文与定位信息的只读资源视图
+- EvidenceNote：由 claim+citation 落盘生成的用户可编辑笔记资源（归属 Note 主模型）
 - ClaimVerificationReport：RAG 回答阶段的 claim 级验证结果资源（支持/弱支持/不支持）
 - GraphRetrievalResult：图增强检索候选与融合统计资源（compare/evolution/numeric 场景）
 
@@ -41,6 +43,8 @@
 - Task 作用于 Paper、Collection 或 IndexArtifact。
 - UploadHistory 是 ImportJob、UploadSession、ProcessingTask 的状态投影视图，不应成为并行真源。
 - EvidenceBundle 由 Chunk 聚合而成，可关联 table/figure/caption 与指标证据槽位。
+- EvidenceSourceView 由 Chunk/索引产物投影生成，必须可回跳到 Read 页面定位参数（`paper_id`、`page_num`、`source_chunk_id`）。
+- EvidenceNote 是 Note 的受控创建路径之一，必须绑定 `paper_id` 与 `source_chunk_id`，不得创建并行笔记模型。
 - ClaimVerificationReport 绑定单次 RAG 响应，引用 EvidenceBundle/Chunk 作为 claim 证据来源。
 - GraphRetrievalResult 绑定单次检索计划，作为 vector 检索的约束与重排辅助，不独立替代 Chunk。
 

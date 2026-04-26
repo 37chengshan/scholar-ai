@@ -30,6 +30,7 @@ import json
 import re
 import time
 from typing import Any, AsyncIterator, Dict
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -47,6 +48,7 @@ from app.utils.sse_manager import sse_manager
 from app.utils.logger import logger
 from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
+from app.rag_v3.main_path_service import build_answer_contract_payload
 
 # Task 1.4: Import new modules for dual-layer routing
 from app.core.complexity_router import ComplexityRouter
@@ -60,6 +62,30 @@ complexity_router = ComplexityRouter()
 _FAST_PATH_MAX_CHARS = 40
 _COMPARE_HINT_PATTERN = re.compile(r"比较|对比|差异|区别|演进|综述|优缺点|研究现状", re.IGNORECASE)
 _SMALLTALK_HINT_PATTERN = re.compile(r"^(你好|您好|hi|hello|hey|在吗|你是谁|你能做什么)[!?！。\s]*$", re.IGNORECASE)
+
+
+@router.post("")
+async def chat_v3_query(request: ChatStreamRequest, user_id: str = CurrentUserId):
+    """Blocking chat endpoint backed by v3 hierarchical retriever contract."""
+    trace_id = str(uuid4())
+    try:
+        payload = build_answer_contract_payload(
+            query=request.message,
+            user_id=user_id,
+            query_family="fact",
+            stage="rule",
+            trace_id=trace_id,
+        )
+        return {
+            "success": True,
+            "data": payload,
+        }
+    except Exception as e:
+        logger.error("chat_v3_query_failed", error=str(e), trace_id=trace_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal("Failed to process v3 chat query"),
+        )
 
 
 def _is_general_scope(scope: Dict[str, Any] | None) -> bool:

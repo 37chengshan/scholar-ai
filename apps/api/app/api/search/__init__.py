@@ -8,6 +8,9 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+from app.rag_v3.main_path_service import build_answer_contract_payload
 
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.page_clustering import cluster_pages
@@ -51,6 +54,37 @@ router = APIRouter()
 router.include_router(external_router)
 router.include_router(library_router)
 router.include_router(multimodal_router)
+
+
+class V3SearchRequest(BaseModel):
+	query: str = Field(..., min_length=1)
+	query_family: str = "fact"
+	top_k: int = Field(default=10, ge=1, le=50)
+
+
+@router.post("/evidence")
+async def search_evidence_v3(request: V3SearchRequest):
+	payload = build_answer_contract_payload(
+		query=request.query,
+		user_id="search-system",
+		query_family=request.query_family,
+		stage="rule",
+	)
+
+	citations = payload.get("citations", [])[: request.top_k]
+	evidence = payload.get("evidence_blocks", [])[: request.top_k]
+	papers = sorted({c.get("paper_id") for c in citations if c.get("paper_id")})
+	sections = sorted({c.get("section_path") for c in citations if c.get("section_path")})
+
+	return {
+		"paper_results": papers,
+		"section_matches": sections,
+		"evidence_matches": evidence,
+		"relation_matches": [],
+		"answer_mode": payload.get("answer_mode"),
+		"retrieval_trace_id": payload.get("retrieval_trace_id"),
+		"quality": payload.get("quality", {}),
+	}
 
 
 def _extract_data(result: Any) -> Dict[str, Any]:

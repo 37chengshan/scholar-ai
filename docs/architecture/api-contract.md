@@ -301,6 +301,29 @@ Search API 契约补充：
   - `data.vectorBackend` 表示本次检索实际使用的后端，允许值仅为 `milvus | qdrant`；默认主线仍为 `milvus`
   - `data.trace` 为可选调试字段，仅在显式开启检索追踪时返回，至少包含 `trace_id`、`planner_queries[]`、`metadata_filters`、`weights` 与结果级分数快照
 
+- `POST /api/v1/search/evidence`：v3 分层证据搜索接口
+  - 请求体：`query`、`query_family`、`top_k`
+  - 响应字段：`paper_results[]`、`section_matches[]`、`evidence_matches[]`、`relation_matches[]`
+  - 同步返回：`answer_mode`、`retrieval_trace_id`、`quality`，用于前端 Evidence-first 结果面板
+
+Evidence/Notes 扩展契约补充（v3.4-v3.5）：
+
+- `GET /api/v1/evidence/source/{source_chunk_id}`
+  - 用途：按 `source_chunk_id` 回查证据原文与落地位置信息
+  - 响应至少包含：`source_chunk_id`、`paper_id`、`page_num`、`section_path`、`content`、`read_url`
+- `POST /api/v1/notes/evidence`
+  - 用途：将 claim+citation 证据保存为用户 Note（可编辑资源）
+  - 请求体至少包含：`claim`、`source_chunk_id`、`paper_id`、`content`，可选 `page_num`、`section_path`、`citation`
+  - 响应为标准 `NoteResponse` envelope，不得返回裸对象
+
+Chat v3 Done 事件契约补充（Frontend Evidence UI）：
+
+- `chat/stream` 的 `done` 事件在既有字段基础上允许返回：
+  - `answer_mode`、`claims[]`、`evidence_blocks[]`、`quality`、`retrieval_trace_id`
+  - `trace{}`（包含 `runtime_profile`、`spans[]`、`fallback`、`cost_estimate`）
+  - `cost_estimate`、`error_state`（取值允许 `fallback_used|partial_answer|abstain`）
+- SSE `done` 字段扩展必须向后兼容：老客户端仅消费 `answer`/`citations` 时不可崩溃。
+
 Plan C 契约治理约束：
 
 - 契约表面改动（apps/api/app/api, apps/api/app/models, apps/web/src/services, packages/types, packages/sdk）必须同步更新本文件与 `docs/domain/resources.md`。

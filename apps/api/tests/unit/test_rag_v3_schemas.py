@@ -1,7 +1,16 @@
+import os
+
+import pytest
+
 from app.rag_v3.evaluation.answer_policy import build_answer_contract
 from app.rag_v3.evaluation.retrieval_evaluator import evaluate_evidence_pack
 from app.rag_v3.retrieval.hierarchical_retriever import retrieve_evidence
 from app.rag_v3.schemas import EvidenceCandidate, EvidencePack, RelationArtifact, RelationNode
+
+
+def _require_milvus() -> None:
+    if not os.getenv("MILVUS_HOST"):
+        pytest.skip("requires live Milvus")
 
 
 def test_relation_artifact_schema() -> None:
@@ -19,7 +28,10 @@ def test_relation_artifact_schema() -> None:
     assert relation.subject.type == "paper"
 
 
+@pytest.mark.integration
+@pytest.mark.requires_milvus
 def test_retrieve_evidence_contract() -> None:
+    _require_milvus()
     pack = retrieve_evidence(
         query="Compare retrieval performance across papers",
         query_family="compare",

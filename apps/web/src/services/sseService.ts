@@ -192,6 +192,14 @@ export interface DoneEventData {
   tokens_used?: number;
   cost?: number;
   total_time_ms?: number;
+  answer_mode?: 'full' | 'partial' | 'abstain';
+  claims?: unknown[];
+  citations?: unknown[];
+  evidence_blocks?: unknown[];
+  quality?: Record<string, unknown>;
+  retrieval_trace_id?: string;
+  error_state?: string | null;
+  trace?: Record<string, unknown>;
 }
 
 /**
@@ -263,7 +271,7 @@ export interface SSEHandlers {
   /** Handler for errors */
   onError: (error: Error) => void;
   /** Handler for stream completion */
-  onDone: (data?: DoneEventData & { iterations?: number; citations?: any[] }) => void;
+  onDone: (data?: DoneEventData & { iterations?: number }) => void;
 }
 
 /**
@@ -532,11 +540,18 @@ export class SSEService {
           tokens_used: (payload as any)?.tokens_used || 0,
           cost: (payload as any)?.cost || 0,
           total_time_ms: (payload as any)?.total_time_ms || 0,
+          answer_mode: (payload as any)?.answer_mode,
+          claims: (payload as any)?.claims,
+          citations: (payload as any)?.citations,
+          evidence_blocks: (payload as any)?.evidence_blocks,
+          quality: (payload as any)?.quality,
+          retrieval_trace_id: (payload as any)?.retrieval_trace_id,
+          error_state: (payload as any)?.error_state,
+          trace: (payload as any)?.trace,
         };
         this.currentHandlers.onDone({
           ...doneData,
           iterations: (payload as any)?.iterations || 0,
-          citations: (payload as any)?.citations,
         });
         this.disconnect();
       } else if (eventType === 'error') {

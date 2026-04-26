@@ -57,6 +57,7 @@ from app.api import (
     entities,
     graph,
     compare,
+    evidence,
     system,
     # Legacy/Python-specific routes
     health,
@@ -341,6 +342,7 @@ app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(entities.router, prefix="/api/v1/entities", tags=["entities"])
 app.include_router(graph.router, prefix="/api/v1/graph", tags=["graph"])
 app.include_router(compare.router, prefix="/api/v1/compare", tags=["compare"])
+app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["evidence"])
 
 # ============================================================================
 # Legacy/Python-specific Routes (keep for backward compatibility)

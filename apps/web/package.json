@@ -15,6 +15,7 @@
     "test:e2e:ci": "playwright test e2e/chat-critical.spec.ts e2e/kb-critical.spec.ts e2e/retrieval-critical.spec.ts e2e/search-pagination-stability.spec.ts e2e/chat-session-search.spec.ts --reporter=line"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.6",
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
     "@mui/icons-material": "7.3.5",
