@@ -5,13 +5,13 @@ state transitions and task coordination.
 """
 
 import hashlib
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import select
 
+from app.config import settings
 from app.models.paper import Paper
 from app.models.upload_history import UploadHistory
 from app.services.source_adapters import (
@@ -75,7 +75,7 @@ async def set_metadata(service, job, metadata, db):
 
 async def compute_hash(storage_key: str) -> str:
     """Compute SHA256 hash of file."""
-    base_path = Path(os.getenv("LOCAL_STORAGE_PATH", "./uploads")).resolve()
+    base_path = Path(settings.LOCAL_STORAGE_PATH).resolve()
     file_path = (base_path / storage_key).resolve()
     file_path.relative_to(base_path)
 

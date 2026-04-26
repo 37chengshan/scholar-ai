@@ -14,6 +14,7 @@ from io import BytesIO
 from minio import Minio
 from minio.error import S3Error
 
+from app.config import settings
 from app.utils.logger import logger
 
 
@@ -49,9 +50,7 @@ class ObjectStorage:
 
         # Check if using local storage mode
         self.use_local_storage = self.endpoint == "local"
-        self.local_storage_path = Path(
-            os.getenv("LOCAL_STORAGE_PATH", "./uploads")
-        ).resolve()
+        self.local_storage_path = Path(settings.LOCAL_STORAGE_PATH).resolve()
 
         if not self.use_local_storage:
             self.client = Minio(

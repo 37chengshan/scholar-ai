@@ -19,6 +19,10 @@ from httpx import AsyncClient
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_PUBLIC_KEY", "test-public-key")
 os.environ.setdefault("ZHIPU_API_KEY", "sk-test-zhipu")
+# Point LOCAL_STORAGE_PATH at a writable temp dir so ObjectStorage.__init__ does not
+# try to mkdir /app/uploads (read-only in local dev / CI).
+_TEST_STORAGE_TMP = tempfile.mkdtemp(prefix="scholar_test_uploads_")
+os.environ.setdefault("LOCAL_STORAGE_PATH", _TEST_STORAGE_TMP)
 
 # Set correct Qwen model path (absolute path from project root)
 # The model is at /Users/cc/scholar-ai-deploy/schlar ai/Qwen/Qwen3-VL-Embedding-2B

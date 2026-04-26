@@ -3,24 +3,31 @@
 Split from papers.py per D-11: 按 CRUD/业务域/外部集成划分.
 
 Endpoints:
-- POST /api/v1/papers/webhook - Confirm upload completion
-- POST /api/v1/papers/upload - Direct file upload
+- POST /api/v1/papers/webhook - Confirm upload completion (compat shim → ImportJob-first)
+- POST /api/v1/papers/upload - Direct file upload (compat shim → ImportJob-first)
 - POST /api/v1/papers/upload/local/{storage_key} - Local storage file upload
+
+NOTE: Both /webhook and /upload are legacy compatibility endpoints.
+Internally they now delegate to create_import_job_from_uploaded_file() so that
+all uploads go through the canonical ImportJob-first pipeline.
 """
 
-import os
 import aiofiles
 
 from fastapi import APIRouter, Depends, Request, UploadFile, File, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import Paper, ProcessingTask, UploadHistory
+from app.models import Paper, ImportJob
 from app.services.auth_service import User
+from app.services.import_file_service import (
+    create_import_job_from_uploaded_file,
+    read_uploaded_pdf,
+)
 from app.utils.problem_detail import ErrorTypes
-from app.config import settings
 
 from .paper_shared import (
     PaperCreateResponse,
@@ -37,7 +44,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/webhook", response_model=PaperCreateResponse, status_code=status.HTTP_201_CREATED
+    "/webhook", response_model=PaperCreateResponse, status_code=status.HTTP_200_OK
 )
 async def upload_webhook(
     request: Request,
@@ -45,7 +52,12 @@ async def upload_webhook(
     current_user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    """Confirm file upload and create processing task."""
+    """Legacy compatibility shim: confirm file upload.
+
+    Previously created ProcessingTask directly.  Now finds the ImportJob that
+    owns this paper and returns its current state.  Does NOT create any new
+    database records.
+    """
     instance = str(request.url.path)
     user_id = current_user.id
 
@@ -61,69 +73,46 @@ async def upload_webhook(
             instance=instance,
         )
 
-    paper_query = select(Paper).where(
-        Paper.id == paper_id,
-        Paper.user_id == user_id,
+    # Find the ImportJob that materialised this paper
+    job_result = await db.execute(
+        select(ImportJob).where(
+            ImportJob.paper_id == paper_id,
+            ImportJob.user_id == user_id,
+        )
     )
-    paper_result = await db.execute(paper_query)
-    paper = paper_result.scalar_one_or_none()
+    job = job_result.scalar_one_or_none()
 
-    if not paper:
+    if not job:
         raise create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
             title="Not Found",
-            detail="Paper not found",
+            detail="No ImportJob found for this paper",
             instance=instance,
         )
 
-    existing_task_query = select(ProcessingTask).where(
-        ProcessingTask.paper_id == paper_id,
-    )
-    existing_task_result = await db.execute(existing_task_query)
-    existing_task = existing_task_result.scalar_one_or_none()
-
-    if existing_task:
-        raise create_error_response(
-            status_code=status.HTTP_409_CONFLICT,
-            error_type=ErrorTypes.CONFLICT,
-            title="Conflict",
-            detail="Processing task already exists for this paper",
-            instance=instance,
-        )
-
-    task_id = str(uuid4())
-    now = datetime.now(timezone.utc)
-
-    task = ProcessingTask(
-        id=task_id,
+    logger.info(
+        "Webhook compat shim: returning ImportJob state",
+        import_job_id=job.id,
         paper_id=paper_id,
-        status="pending",
-        storage_key=storage_key,
-        created_at=now,
-        updated_at=now,
+        status=job.status,
     )
-    db.add(task)
-
-    paper.status = "processing"
-    paper.upload_status = "completed"
-    paper.upload_progress = 100
-    paper.uploaded_at = now
-    paper.updated_at = now
 
     return PaperCreateResponse(
         success=True,
         data={
-            "taskId": task_id,
             "paperId": paper_id,
-            "status": "pending",
-            "progress": 0,
+            "taskId": job.id,
+            "importJobId": job.id,
+            "status": job.status,
+            "stage": job.stage,
+            "progress": job.progress or 0,
         },
     )
 
 
 @router.post(
-    "/upload", response_model=PaperCreateResponse, status_code=status.HTTP_201_CREATED
+    "/upload", response_model=PaperCreateResponse, status_code=status.HTTP_202_ACCEPTED
 )
 async def direct_upload(
     request: Request,
@@ -131,117 +120,51 @@ async def direct_upload(
     current_user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    """Direct file upload endpoint."""
+    """Legacy compatibility shim: direct file upload.
+
+    Previously created Paper + ProcessingTask directly.  Now delegates to the
+    unified ImportJob-first helper so all uploads go through the canonical
+    pipeline: Upload → ImportJob → ProcessingTask → PDFCoordinator.
+
+    Response shape is backward-compatible: paperId is null until ImportJob
+    materialises the Paper; callers should poll /import-jobs/{importJobId}.
+    """
     instance = str(request.url.path)
     user_id = current_user.id
 
-    if not file:
+    try:
+        content, filename = await read_uploaded_pdf(file)
+    except ValueError as exc:
         raise create_error_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             error_type=ErrorTypes.VALIDATION_ERROR,
             title="Validation Error",
-            detail="No file uploaded",
+            detail=str(exc),
             instance=instance,
         )
 
-    filename = file.filename or "untitled.pdf"
-
-    if not filename.lower().endswith(".pdf"):
-        raise create_error_response(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            error_type=ErrorTypes.VALIDATION_ERROR,
-            title="Validation Error",
-            detail="Only PDF files are accepted",
-            instance=instance,
-        )
-
-    content = await file.read()
-    file_size = len(content)
-
-    max_size = 50 * 1024 * 1024
-    if file_size > max_size:
-        raise create_error_response(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            error_type=ErrorTypes.FILE_TOO_LARGE,
-            title="File Too Large",
-            detail="File size exceeds 50MB limit",
-            instance=instance,
-        )
-
-    if not content.startswith(b"%PDF-"):
-        raise create_error_response(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            error_type=ErrorTypes.INVALID_FILE_FORMAT,
-            title="Invalid File Format",
-            detail="File is not a valid PDF",
-            instance=instance,
-        )
-
-    title = filename.replace(".pdf", "").replace(".PDF", "")
-
-    existing_query = select(Paper).where(
-        Paper.user_id == user_id,
-        Paper.title == title,
-    )
-    existing_result = await db.execute(existing_query)
-    existing = existing_result.scalar_one_or_none()
-
-    if existing:
-        raise create_error_response(
-            status_code=status.HTTP_409_CONFLICT,
-            error_type=ErrorTypes.CONFLICT,
-            title="Duplicate Paper",
-            detail=f'A paper with title "{title}" already exists',
-            instance=instance,
-        )
-
-    storage_key = f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid4()}.pdf"
-    local_storage_path = settings.LOCAL_STORAGE_PATH
-    file_path = f"{local_storage_path}/{storage_key}"
-
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-    async with aiofiles.open(file_path, "wb") as f:
-        await f.write(content)
-
-    paper_id = str(uuid4())
-    now = datetime.now(timezone.utc)
-
-    paper = Paper(
-        id=paper_id,
-        title=title,
-        authors=[],
-        status="processing",
+    result = await create_import_job_from_uploaded_file(
         user_id=user_id,
-        storage_key=storage_key,
-        file_size=file_size,
-        keywords=[],
-        upload_status="completed",
-        upload_progress=100,
-        uploaded_at=now,
-        created_at=now,
-        updated_at=now,
+        filename=filename,
+        content=content,
+        db=db,
     )
-    db.add(paper)
 
-    task_id = str(uuid4())
-
-    task = ProcessingTask(
-        id=task_id,
-        paper_id=paper_id,
-        status="pending",
-        storage_key=storage_key,
-        created_at=now,
-        updated_at=now,
+    logger.info(
+        "Legacy /papers/upload routed to ImportJob-first",
+        import_job_id=result["importJobId"],
+        user_id=user_id,
     )
-    db.add(task)
 
     return PaperCreateResponse(
         success=True,
         data={
-            "paperId": paper_id,
-            "taskId": task_id,
-            "status": "processing",
+            "paperId": None,
+            "taskId": result["importJobId"],
+            "importJobId": result["importJobId"],
+            "status": result["status"],
+            "stage": result["stage"],
+            "progress": result["progress"],
         },
     )
 

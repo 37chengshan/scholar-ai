@@ -40,12 +40,12 @@ def set_current_concurrency(value: int):
 
 
 _TASK_STAGE_TO_IMPORT_STAGE = {
-    "processing_ocr": ("parsing", 60),
-    "parsing": ("parsing", 65),
-    "extracting_imrad": ("chunking", 75),
-    "generating_notes": ("embedding", 85),
-    "storing_vectors": ("indexing", 92),
-    "indexing_multimodal": ("finalizing", 95),
+    # Real PDFCoordinator stages → ImportJob stages
+    "downloading": ("resolving_source", 20),
+    "parsing": ("parsing", 50),
+    "extracting": ("chunking", 70),
+    "storing": ("indexing", 85),
+    "finalizing": ("finalizing", 95),
 }
 
 
@@ -268,45 +268,15 @@ async def process_single_pdf_async(
 
             await db.commit()
 
-            # Processing stages with progress percentages (per D-05)
-            stages = [
-                ('processing_ocr', 15),
-                ('parsing', 30),
-                ('extracting_imrad', 45),
-                ('generating_notes', 60),
-                ('storing_vectors', 75),
-                ('indexing_multimodal', 90),
-            ]
-
-            # Execute stages
-            for stage_name, progress in stages:
-                # Update Celery state for progress tracking
-                celery_task.update_state(
-                    state='PROGRESS',
-                    meta={
-                        'paper_id': paper_id,
-                        'stage': stage_name,
-                        'progress': progress
-                    }
-                )
-
-                # Update processing_task status
-                await db.execute(
-                    update(ProcessingTask).where(ProcessingTask.id == task_id).values(status=stage_name)
-                )
-                await db.commit()
-                await _sync_import_job_stage(db, task_id, stage_name)
-
-                # Execute stage using PDFProcessor
-                # Note: PDFProcessor.process_pdf_task handles all stages internally
-                # This is a simplified version - actual implementation would call individual stages
-                logger.info(f"Processing paper {paper_id} at stage {stage_name}")
-
-            # Use PDFProcessor to process the PDF
+            # Delegate entirely to PDFProcessor → PDFCoordinator.
+            # ProcessingTask stage updates come from the real pipeline; no fake loop here.
+            celery_task.update_state(
+                state='PROGRESS',
+                meta={'paper_id': paper_id, 'stage': 'processing', 'progress': 10},
+            )
             success = await processor.process_pdf_task(task_id)
 
             if success:
-                # Mark as completed
                 await db.execute(
                     update(ProcessingTask).where(ProcessingTask.id == task_id).values(
                         status='completed',
@@ -331,7 +301,6 @@ async def process_single_pdf_async(
                         error=str(callback_error),
                     )
 
-                # Update Celery state
                 celery_task.update_state(
                     state='COMPLETED',
                     meta={'paper_id': paper_id, 'progress': 100}

@@ -667,7 +667,7 @@ async def upload_batch_file(
 
     # Generate storage key and save
     storage_key = f"{user_id}/{datetime.now().strftime('%Y%m%d')}/{uuid.uuid4()}.pdf"
-    local_storage_path = os.getenv("LOCAL_STORAGE_PATH", "./uploads")
+    local_storage_path = settings.LOCAL_STORAGE_PATH
     file_path = os.path.join(local_storage_path, storage_key)
 
     os.makedirs(os.path.dirname(file_path), exist_ok=True)

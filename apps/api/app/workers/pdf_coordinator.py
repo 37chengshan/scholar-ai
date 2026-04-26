@@ -90,13 +90,17 @@ class PDFCoordinator:
             )
             self._db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=10)
 
-    async def process(self, task_id: str) -> bool:
+    async def process(self, task_id: str, on_stage_change=None) -> bool:
         """Process a PDF task through the parallel pipeline.
 
         Main entry point for PDF processing. Coordinates all stages.
 
         Args:
             task_id: UUID of the processing task
+            on_stage_change: Optional async callable(stage, progress, metadata)
+                             called whenever the pipeline stage changes.  This
+                             allows callers to mirror real stage updates into
+                             ImportJob or other tracking records without polling.
 
         Returns:
             True if successful, False otherwise
@@ -112,9 +116,24 @@ class PDFCoordinator:
         # Initialize context
         ctx = await self._init_context(task_id)
 
+        async def _fire(stage: str, progress: int, metadata: dict | None = None) -> None:
+            """Invoke caller callback if provided; never raises."""
+            if on_stage_change is None:
+                return
+            try:
+                await on_stage_change(stage, progress, metadata or {})
+            except Exception as cb_exc:
+                logger.warning(
+                    "on_stage_change callback raised",
+                    stage=stage,
+                    task_id=task_id,
+                    error=str(cb_exc),
+                )
+
         try:
             # Stage 1: Download
             ctx.current_stage = PipelineStage.DOWNLOAD
+            await _fire("downloading", 15)
             try:
                 # Create temp file for PDF download
                 with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -126,10 +145,12 @@ class PDFCoordinator:
             except Exception as e:
                 ctx.errors.append(f"Download failed: {str(e)}")
                 await self._update_status(ctx, PipelineStage.FAILED.value, error=str(e))
+                await _fire("failed", 0, {"error": str(e)})
                 raise PipelineError(f"Download stage failed: {e}")
 
             # Stage 2: Parsing
             ctx.current_stage = PipelineStage.PARSING
+            await _fire("parsing", 30)
             try:
                 ctx.parse_result = await self.parser.parse_pdf(ctx.local_path)
                 parse_metadata = (ctx.parse_result or {}).get("metadata", {})
@@ -142,26 +163,31 @@ class PDFCoordinator:
             except Exception as e:
                 ctx.errors.append(f"Parsing failed: {str(e)}")
                 await self._update_status(ctx, PipelineStage.FAILED.value, error=str(e))
+                await _fire("failed", 0, {"error": str(e)})
                 raise PipelineError(f"Parsing stage failed: {e}")
 
             # Stage 3: Parallel extraction
             ctx.current_stage = PipelineStage.EXTRACTION
+            await _fire("extracting", 55)
             ctx = await self.extraction_pipeline.extract(ctx)
             logger.info(f"Completed parallel extraction for task {ctx.task_id}")
 
             # Stage 4: Storage
             ctx.current_stage = PipelineStage.STORAGE
+            await _fire("storing", 80)
             ctx = await self.storage_manager.store(ctx)
             logger.info(f"Completed storage for task {ctx.task_id}")
 
             ctx.current_stage = PipelineStage.COMPLETED
             await self._update_status(ctx, "completed")
+            await _fire("completed", 100)
             return True
 
         except Exception as e:
             ctx.add_error(str(e))
             ctx.current_stage = PipelineStage.FAILED
             await self._update_status(ctx, "failed", error=str(e))
+            await _fire("failed", 0, {"error": str(e)})
             logger.error("Pipeline failed", task_id=task_id, error=str(e))
             return False
 
