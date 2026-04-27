@@ -36,7 +36,14 @@ async function createAuthState(page: Page, request: APIRequestContext): Promise<
   await page.goto('/login');
   await page.fill('input[type="email"]', user.email);
   await page.fill('input[type="password"]', user.password);
-  await page.click('button[type="submit"]');
+  const submitButton = page.locator('button[type="submit"]').first();
+  await submitButton.waitFor({ state: 'visible', timeout: 10000 });
+
+  try {
+    await submitButton.click({ timeout: 10000 });
+  } catch {
+    await page.locator('input[type="password"]').press('Enter');
+  }
 
   try {
     await page.waitForURL(/\/dashboard/, { timeout: 20000 });

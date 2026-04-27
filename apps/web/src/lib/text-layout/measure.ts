@@ -1,4 +1,4 @@
-import pretext from '@chenglou/pretext';
+import * as pretextRuntime from '@chenglou/pretext';
 import { textMeasureCache } from './cache';
 import { TextLayoutFont, toCanvasFont } from './font';
 
@@ -77,7 +77,7 @@ function fallbackMeasure(input: TextMeasureInput): TextMeasureResult {
 }
 
 function runPretext(input: TextMeasureInput): TextMeasureResult | null {
-  const runtime = pretext as
+  const runtime = pretextRuntime as
     | {
       prepare?: (...args: unknown[]) => unknown;
       layout?: (...args: unknown[]) => { lines?: Array<{ width?: number }>; height?: number };

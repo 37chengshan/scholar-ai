@@ -10,7 +10,7 @@ test.describe('Critical E2E - Chat', () => {
     await page.waitForURL(/\/dashboard/, { timeout: 20000 });
     await expect(page).toHaveURL(/\/dashboard/);
 
-    await page.getByRole('link', { name: /对话|Chat/i }).click();
+    await page.locator('a[href="/chat"][title]').first().click();
     await expect(page).toHaveURL(/\/chat/);
     const input = page.getByTestId('chat-composer').locator('textarea');
     await expect(input).toBeVisible({ timeout: 10000 });

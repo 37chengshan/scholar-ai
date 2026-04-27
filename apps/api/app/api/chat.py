@@ -59,7 +59,6 @@ router = APIRouter()
 # Task 1.4: Initialize ComplexityRouter (rule-based, no LLM client for now)
 complexity_router = ComplexityRouter()
 
-_FAST_PATH_MAX_CHARS = 40
 _COMPARE_HINT_PATTERN = re.compile(r"比较|对比|差异|区别|演进|综述|优缺点|研究现状", re.IGNORECASE)
 _SMALLTALK_HINT_PATTERN = re.compile(r"^(你好|您好|hi|hello|hey|在吗|你是谁|你能做什么)[!?！。\s]*$", re.IGNORECASE)
 
@@ -104,17 +103,7 @@ def _should_use_simple_fast_path(
     if not _is_general_scope(scope):
         return False
 
-    complexity = str(routing_result.get("complexity", "simple")).lower()
-    if complexity != "simple":
-        return False
-
-    if _COMPARE_HINT_PATTERN.search(query):
-        return False
-
-    if _SMALLTALK_HINT_PATTERN.match(query):
-        return True
-
-    return len(query) <= _FAST_PATH_MAX_CHARS
+    return bool(_SMALLTALK_HINT_PATTERN.match(query))
 
 
 def _build_simple_fast_reply(query: str) -> str:
@@ -170,6 +159,11 @@ async def chat_stream(
             if not session:
                 logger.warning(
                     "Session not found, creating new", session_id=request.session_id
+                )
+            elif session.user_id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=Errors.forbidden("Session belongs to different user"),
                 )
 
         if not session:
@@ -372,6 +366,12 @@ async def chat_stream(
                             "cost": 0.0,
                             "total_time_ms": int((time.perf_counter() - request_received_at) * 1000),
                             "message_id": assistant_message_id,
+                            "response_type": "general",
+                            "answer_mode": None,
+                            "claims": [],
+                            "citations": [],
+                            "evidence_blocks": [],
+                            "quality": None,
                             "diagnostics": {
                                 "request_received_at": request_received_at,
                                 "session_ready_at": session_ready_at,
@@ -381,7 +381,7 @@ async def chat_stream(
                                 "route_decision_latency_ms": int((routing_decision_ready_at - routing_start) * 1000),
                                 "first_token_emit_latency_ms": int((first_message_emitted_at - request_received_at) * 1000),
                                 "total_stream_latency_ms": int((time.perf_counter() - request_received_at) * 1000),
-                                "path": "simple_fast_path",
+                                "path": "smalltalk_fast_path",
                             },
                         }
                         buffered_done = await event_buffer.emit(SSEEventType.DONE, done_payload)
@@ -416,6 +416,19 @@ async def chat_stream(
                                         event_type,
                                         event_data,
                                     )
+
+                                    if event_type == "done":
+                                        has_rag_fields = (
+                                            normalized_payload.get("answer_mode") is not None
+                                            or normalized_payload.get("retrieval_trace_id")
+                                            or bool(normalized_payload.get("citations"))
+                                            or bool(normalized_payload.get("evidence_blocks"))
+                                        )
+                                        normalized_payload["response_type"] = (
+                                            "rag"
+                                            if has_rag_fields
+                                            else normalized_payload.get("response_type", "general")
+                                        )
 
                                     # Buffer normalized event payload
                                     buffered_event = await event_buffer.emit(
