@@ -7,6 +7,7 @@ import type { ChatSession } from '@/app/hooks/useSessions';
 import type { ChatStreamState, TaskType } from '@/app/hooks/useChatStream';
 import type {
   AnswerContractPayload,
+  ChatResponseType,
   CitationItem,
   ExtendedChatMessage,
   ToolTimelineItem,
@@ -29,6 +30,7 @@ interface UseChatSendOptions {
   scope: ChatScope;
   scopeLoading: boolean;
   currentSession: ChatSession | null;
+  forceNewSessionForNextSend?: boolean;
   isZh: boolean;
   setInput: (value: string) => void;
   setSending: (sending: boolean) => void;
@@ -59,10 +61,12 @@ interface UseChatSendOptions {
     cost: number;
     toolTimeline: ToolTimelineItem[];
     citations: CitationItem[];
+    responseType?: ChatResponseType;
     answerContract?: AnswerContractPayload;
   }) => void;
   removePlaceholderMessage: () => void;
   clearPlaceholder: () => void;
+  onSessionCreated?: (sessionId: string) => void;
 }
 
 export function useChatSend({
@@ -72,6 +76,7 @@ export function useChatSend({
   scope,
   scopeLoading,
   currentSession,
+  forceNewSessionForNextSend = false,
   isZh,
   setInput,
   setSending,
@@ -95,13 +100,31 @@ export function useChatSend({
   completeStreamingMessage,
   removePlaceholderMessage,
   clearPlaceholder,
+  onSessionCreated,
 }: UseChatSendOptions) {
   const normalizeAnswerContract = useCallback((payload: Record<string, unknown> | undefined, fallbackContent: string, fallbackCitations: CitationItem[]): AnswerContractPayload | undefined => {
     if (!payload) {
       return undefined;
     }
 
+    const responseType = payload.response_type ? String(payload.response_type) : undefined;
+    if (responseType && responseType !== 'rag') {
+      return undefined;
+    }
+
     const citationsRaw = Array.isArray(payload.citations) ? payload.citations : fallbackCitations;
+    const evidenceRaw = Array.isArray(payload.evidence_blocks) ? payload.evidence_blocks : [];
+    const hasRagSignal = (
+      payload.answer_mode !== undefined
+      || payload.retrieval_trace_id !== undefined
+      || citationsRaw.length > 0
+      || evidenceRaw.length > 0
+    );
+
+    if (!hasRagSignal) {
+      return undefined;
+    }
+
     const citations = citationsRaw.map((item) => {
       const row = item as Record<string, unknown>;
       return {
@@ -124,11 +147,12 @@ export function useChatSend({
     });
 
     const claimsRaw = Array.isArray(payload.claims) ? payload.claims : [];
-    const evidenceRaw = Array.isArray(payload.evidence_blocks) ? payload.evidence_blocks : [];
     const quality = (payload.quality as Record<string, unknown> | undefined) || {};
-    const answerMode = (payload.answer_mode as 'full' | 'partial' | 'abstain' | undefined) || 'partial';
+    const answerMode = (payload.answer_mode as 'full' | 'partial' | 'abstain' | undefined)
+      || (citationsRaw.length > 0 ? 'partial' : 'abstain');
 
     return {
+      response_type: 'rag',
       answer_mode: answerMode,
       answer: String(payload.answer || fallbackContent || ''),
       claims: claimsRaw.map((item) => {
@@ -167,6 +191,29 @@ export function useChatSend({
       trace: (payload.trace as Record<string, unknown> | undefined) || undefined,
     };
   }, []);
+
+  const releaseSendState = useCallback(() => {
+    clearPlaceholder();
+    currentMessageIdRef.current = '';
+    streamApi.setCurrentMessageId(null);
+    setAgentUIState('DONE');
+    setSending(false);
+    sendLockRef.current = false;
+  }, [clearPlaceholder, currentMessageIdRef, sendLockRef, setAgentUIState, setSending, streamApi]);
+
+  const ensureSessionForSend = useCallback(async (title: string): Promise<string | null> => {
+    if (!forceNewSessionForNextSend && currentSession?.id) {
+      return currentSession.id;
+    }
+
+    const newSession = await createSession(title.substring(0, 50));
+    if (!newSession?.id) {
+      return null;
+    }
+
+    onSessionCreated?.(newSession.id);
+    return newSession.id;
+  }, [createSession, currentSession?.id, forceNewSessionForNextSend, onSessionCreated]);
 
   const handleSend = useCallback(async () => {
     if (
@@ -226,18 +273,14 @@ export function useChatSend({
 
       setInput('');
 
-      if (!currentSession?.id) {
-        const newSession = await createSession(input.trim().substring(0, 50));
-        if (!newSession) {
-          removePlaceholderMessage();
-          clearPlaceholder();
-          setSending(false);
-          sendLockRef.current = false;
-          return;
-        }
-        sessionId = newSession.id;
-        rebindSessionId(pendingSessionId, sessionId);
+      const sessionIdFromServer = await ensureSessionForSend(input.trim());
+      if (!sessionIdFromServer) {
+        removePlaceholderMessage();
+        releaseSendState();
+        return;
       }
+      sessionId = sessionIdFromServer;
+      rebindSessionId(pendingSessionId, sessionId);
 
       if (!sseServiceRef.current) {
         sseServiceRef.current = new SSEService();
@@ -350,6 +393,8 @@ export function useChatSend({
               finalContent,
               latestState.citations,
             );
+            const responseType = ((data?.response_type as ChatResponseType | undefined)
+              || (answerContract ? 'rag' : 'general'));
 
             completeStreamingMessage({
               doneMessageId: doneMsgId,
@@ -361,29 +406,21 @@ export function useChatSend({
               cost,
               toolTimeline: latestState.toolTimeline,
               citations: latestState.citations,
+              responseType,
               answerContract,
             });
 
             setSessionTokens((prev) => prev + tokensUsed);
             setSessionCost((prev) => prev + cost);
 
-            clearPlaceholder();
-            currentMessageIdRef.current = '';
-            streamApi.setCurrentMessageId(null);
-            setAgentUIState('DONE');
-            setSending(false);
-            sendLockRef.current = false;
+            releaseSendState();
           },
         },
       });
     } catch (error) {
       toast.error(isZh ? '发送消息失败' : 'Failed to send message');
       removePlaceholderMessage();
-      clearPlaceholder();
-      currentMessageIdRef.current = '';
-      streamApi.setCurrentMessageId(null);
-      setSending(false);
-      sendLockRef.current = false;
+      releaseSendState();
     }
   }, [
     input,
@@ -393,8 +430,6 @@ export function useChatSend({
     scope,
     scopeLoading,
     setSending,
-    currentSession,
-    createSession,
     addUserMessage,
     mode,
     isZh,
@@ -413,8 +448,9 @@ export function useChatSend({
     setSessionTokens,
     setSessionCost,
     removePlaceholderMessage,
-    clearPlaceholder,
     normalizeAnswerContract,
+    ensureSessionForSend,
+    releaseSendState,
   ]);
 
   const handleStop = useCallback(() => {
@@ -432,22 +468,13 @@ export function useChatSend({
     } else {
       removePlaceholderMessage();
     }
-    clearPlaceholder();
-    currentMessageIdRef.current = '';
-    streamApi.setCurrentMessageId(null);
-    setAgentUIState('DONE');
-    setSending(false);
-    sendLockRef.current = false;
+    releaseSendState();
   }, [
     sseServiceRef,
     streamApi,
     markStreamCancelled,
-    currentMessageIdRef,
     removePlaceholderMessage,
-    clearPlaceholder,
-    setAgentUIState,
-    setSending,
-    sendLockRef,
+    releaseSendState,
   ]);
 
   return {
