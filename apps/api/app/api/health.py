@@ -108,6 +108,28 @@ async def deep_health_check():
     )
     return JSONResponse(content=health, status_code=status_code)
 
+@router.get("/degraded", status_code=status.HTTP_200_OK)
+async def degraded_health_check(request: Request):
+    """Degraded probe - service is alive but one or more optional dependencies are down.
+
+    This endpoint is used for production hardening dashboards to distinguish:
+    - live: process alive
+    - ready: can accept critical traffic
+    - degraded: critical path works but optional subsystems are impaired
+    """
+    health = await get_services_health()
+    status_value = health.get("status", "unknown")
+
+    is_degraded = status_value in {"degraded", "partial", "warning"}
+
+    return {
+        "status": "degraded" if is_degraded else "healthy",
+        "service": "scholarai-ai",
+        "profile": getattr(request.app.state, "ai_startup_mode", "lazy"),
+        "dependencies": health.get("services", {}),
+        "ready": not is_degraded,
+    }
+
 
 @router.get("", status_code=status.HTTP_200_OK)
 async def health_check(request: Request):

@@ -4,7 +4,7 @@ import type { ChatRenderMessage } from '@/features/chat/hooks/useChatMessagesVie
 
 export function useAnswerContract(message: ChatRenderMessage): AnswerContractPayload | null {
   return useMemo(() => {
-    if (message.answerContract) {
+    if (message.answerContract?.response_type === 'rag' || message.answerContract?.answer_mode) {
       return message.answerContract;
     }
 
@@ -12,13 +12,18 @@ export function useAnswerContract(message: ChatRenderMessage): AnswerContractPay
       return null;
     }
 
+    if (message.responseType && message.responseType !== 'rag') {
+      return null;
+    }
+
     const citations = message.displayCitations || [];
-    if (!message.displayContent && citations.length === 0) {
+    if (citations.length === 0) {
       return null;
     }
 
     return {
-      answer_mode: citations.length > 0 ? 'partial' : 'abstain',
+      response_type: 'rag',
+      answer_mode: 'partial',
       answer: message.displayContent,
       claims: [],
       citations,
@@ -36,5 +41,5 @@ export function useAnswerContract(message: ChatRenderMessage): AnswerContractPay
       retrieval_trace_id: undefined,
       error_state: null,
     };
-  }, [message.answerContract, message.displayCitations, message.displayContent, message.role]);
+  }, [message.answerContract, message.displayCitations, message.displayContent, message.responseType, message.role]);
 }

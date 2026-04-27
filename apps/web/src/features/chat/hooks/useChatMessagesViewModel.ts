@@ -22,6 +22,7 @@ interface CompleteStreamingPayload {
   cost: number;
   toolTimeline: ToolTimelineItem[];
   citations: CitationItem[];
+  responseType?: ExtendedChatMessage['responseType'];
   answerContract?: AnswerContractPayload;
 }
 
@@ -144,6 +145,7 @@ export function useChatMessagesViewModel({
           cost: payload.cost,
           toolTimeline: payload.toolTimeline,
           citations: payload.citations,
+          responseType: payload.responseType,
           answerContract: payload.answerContract,
         };
       });
@@ -170,6 +172,7 @@ export function useChatMessagesViewModel({
           cost: payload.cost,
           toolTimeline: payload.toolTimeline,
           citations: payload.citations,
+          responseType: payload.responseType,
           answerContract: payload.answerContract,
         },
       ];

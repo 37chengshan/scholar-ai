@@ -28,9 +28,16 @@ interface NotesEditorProps {
   onChange: (json: any) => void;
   placeholder?: string;
   readOnly?: boolean;
+  hideToolbar?: boolean;
 }
 
-export function NotesEditor({ content, onChange, placeholder = '开始写笔记...', readOnly = false }: NotesEditorProps) {
+export function NotesEditor({
+  content,
+  onChange,
+  placeholder = '开始写笔记...',
+  readOnly = false,
+  hideToolbar = false,
+}: NotesEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -102,7 +109,8 @@ export function NotesEditor({ content, onChange, placeholder = '开始写笔记.
     <TooltipProvider>
       <div className="flex flex-col h-full bg-white border border-border rounded-lg overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center gap-1 p-2 border-b border-border bg-muted/30">
+        {!hideToolbar && (
+          <div className="flex items-center gap-1 p-2 border-b border-border bg-muted/30">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -191,7 +199,8 @@ export function NotesEditor({ content, onChange, placeholder = '开始写笔记.
             </TooltipTrigger>
             <TooltipContent>插入链接</TooltipContent>
           </Tooltip>
-        </div>
+          </div>
+        )}
 
         {/* Editor Content */}
         <div className="flex-1 overflow-auto p-4 min-h-[300px]">

@@ -58,6 +58,10 @@ import {
   filterUserEditableNotes,
   type ReadingSummaryProjection,
 } from '@/features/notes/ownership';
+import {
+  extractEditorPlainText,
+  normalizeEditorDocument,
+} from '@/features/notes/content';
 
 const MANUAL_FOLDERS_STORAGE_KEY = 'notes-manual-folders-v1';
 const FOLDER_TAG_PREFIX = 'folder:';
@@ -77,51 +81,6 @@ interface PaperCatalogItem {
   title: string;
   readingNotes: string | null;
   folderId: string | null;
-}
-
-function parseEditorContent(content: unknown): any | null {
-  if (!content) {
-    return null;
-  }
-
-  if (typeof content === 'string') {
-    try {
-      return JSON.parse(content);
-    } catch {
-      return {
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: content }] }],
-      };
-    }
-  }
-
-  if (typeof content === 'object') {
-    return content;
-  }
-
-  return null;
-}
-
-function extractPreview(content: unknown, maxLength = 80): string {
-  const parsed = parseEditorContent(content);
-  if (!parsed || !parsed.content) return '';
-  const texts: string[] = [];
-
-  function walk(nodes: any[]) {
-    for (const node of nodes) {
-      if (node.text) {
-        texts.push(node.text);
-      }
-      if (node.content) {
-        walk(node.content);
-      }
-    }
-  }
-
-  walk(parsed.content);
-  const full = texts.join(' ').trim();
-  const cleaned = full.replace(/\[\[pdf:[^:]+:page:\d+\]\]/g, '');
-  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength)}...` : cleaned;
 }
 
 function highlightText(text: string, query: string): ReactNode {
@@ -451,7 +410,7 @@ function NotesContent() {
       result = result.filter(
         (note) =>
           note.title.toLowerCase().includes(query) ||
-          extractPreview(note.content).toLowerCase().includes(query),
+          extractEditorPlainText(note.content).toLowerCase().includes(query),
       );
     }
 
@@ -501,7 +460,7 @@ function NotesContent() {
     if (!selectedNote || !editorContent) {
       return false;
     }
-    const currentContent = typeof selectedNote.content === 'string' ? selectedNote.content : JSON.stringify(selectedNote.content);
+    const currentContent = JSON.stringify(normalizeEditorDocument(selectedNote.content));
     return JSON.stringify(editorContent) !== currentContent;
   }, [editorContent, selectedNote]);
 
@@ -518,14 +477,7 @@ function NotesContent() {
       setFolderSelectionSource(null);
     }
 
-    try {
-      setEditorContent(JSON.parse(note.content));
-    } catch {
-      setEditorContent({
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: note.content }] }],
-      });
-    }
+    setEditorContent(normalizeEditorDocument(note.content));
   }, []);
 
   const handleSelectSummary = useCallback(
@@ -739,15 +691,7 @@ function NotesContent() {
     try {
       const newNote = await createNote.mutateAsync({
         title: `${summary.title} · 摘要笔记`,
-        content: JSON.stringify({
-          type: 'doc',
-          content: [
-            {
-              type: 'paragraph',
-              content: [{ type: 'text', text: summary.readingNotes }],
-            },
-          ],
-        }),
+        content: JSON.stringify(normalizeEditorDocument(summary.readingNotes)),
         tags: upsertFolderTag([], targetFolderId),
         paperIds: [summary.paperId],
       });
@@ -763,6 +707,7 @@ function NotesContent() {
       toast.warning('请先选中一条用户笔记');
       return;
     }
+    const summaryDoc = normalizeEditorDocument(summary.readingNotes);
     const next = {
       ...(editorContent || createEmptyEditorDocument()),
       content: [
@@ -771,10 +716,7 @@ function NotesContent() {
           type: 'paragraph',
           content: [{ type: 'text', text: `【系统摘要】${summary.title}` }],
         },
-        {
-          type: 'paragraph',
-          content: [{ type: 'text', text: summary.readingNotes }],
-        },
+        ...summaryDoc.content,
       ],
     };
     setEditorContent(next);
@@ -1034,7 +976,7 @@ function NotesContent() {
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-amber-950 line-clamp-1">{summary.title}</p>
                         <p className="mt-1 text-[11px] text-amber-900/80 line-clamp-2">
-                          {highlightText(extractPreview(summary.readingNotes) || '系统摘要', searchQuery)}
+                          {highlightText(extractEditorPlainText(summary.readingNotes, 80) || '系统摘要', searchQuery)}
                         </p>
                         <p className="mt-1 text-[10px] text-amber-800/80">系统生成 · 只读</p>
                         <div className="mt-2 flex items-center gap-1">
@@ -1121,7 +1063,7 @@ function NotesContent() {
                       )}
 
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                        {highlightText(extractPreview(note.content) || '空笔记', searchQuery)}
+                        {highlightText(extractEditorPlainText(note.content, 80) || '空笔记', searchQuery)}
                       </p>
 
                       <div className="flex items-center gap-2 mt-1.5">
@@ -1165,7 +1107,7 @@ function NotesContent() {
                             <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{extractPreview(note.content) || '空笔记'}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{extractEditorPlainText(note.content, 80) || '空笔记'}</p>
                       </div>
                     ))}
                   </div>
@@ -1288,9 +1230,12 @@ function NotesContent() {
                   <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
                     系统摘要 - 只读视图
                   </p>
-                  <div className="whitespace-pre-wrap text-sm leading-7 text-foreground/85">
-                    {selectedSummary.readingNotes}
-                  </div>
+                  <NotesEditor
+                    content={normalizeEditorDocument(selectedSummary.readingNotes)}
+                    onChange={() => {}}
+                    readOnly
+                    hideToolbar
+                  />
                 </div>
               </div>
             </>

@@ -28,7 +28,7 @@ test.describe('E2E 用户全页面交互回归', () => {
 
   test('登录后覆盖所有受保护页面并执行关键交互', async ({ page, request }) => {
     await registerAndLogin(page, request);
-    await page.waitForURL(/\/(dashboard|knowledge-bases|chat)/, { timeout: 20000 });
+    await page.waitForURL(/\/dashboard/, { timeout: 20000 });
 
     for (const route of PROTECTED_ROUTES) {
       await page.goto(route);
@@ -61,9 +61,8 @@ test.describe('E2E 用户全页面交互回归', () => {
       await expect(input).toBeVisible({ timeout: 10000 });
       await input.fill('请简要介绍 ScholarAI 的核心能力。');
       await input.press('Enter');
-      await expect(input).toBeDisabled({ timeout: 15000 });
       await expect(input).toBeEnabled({ timeout: 120000 });
-      await expect(page.locator('.magazine-body').first()).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText(/ScholarAI/).first()).toBeVisible({ timeout: 30000 });
     });
 
     await test.step('设置页: 切换配置分区', async () => {

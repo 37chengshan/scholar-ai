@@ -89,7 +89,7 @@ function AssistantEvidenceSection({ message, isZh, onCitationClick }: {
   const contract = useAnswerContract(message);
   const { jumpToSource, saveEvidence } = useEvidenceNavigation(isZh);
 
-  if (!contract) {
+  if (!contract || contract.response_type !== 'rag') {
     return null;
   }
 
@@ -132,7 +132,7 @@ export function MessageFeed({
       {renderMessages.length === 0 ? (
         <ChatEmptyState isZh={isZh} onSuggest={onSuggest} />
       ) : (
-        <div className="mx-auto max-w-3xl w-full flex flex-col py-6 px-4 sm:px-6">
+        <div data-testid="chat-message-list" className="chat-message-list flex flex-col px-4 py-8 sm:px-6">
           {renderMessages.map((message, index) => {
               const isStreaming = message.isStreaming;
               const isPlaceholder = message.isPlaceholder || message.id === currentMessageId;
@@ -277,7 +277,7 @@ export function MessageFeed({
                   className={clsx('flex justify-end', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
                   style={{ minHeight: measuredHeights[message.id] ? `${measuredHeights[message.id]}px` : undefined }}
                 >
-                  <div className="max-w-[75%]">
+                  <div className="max-w-[min(75%,42rem)]">
                     <div className="rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-2.5 shadow-sm">
                       <div className="text-sm leading-relaxed font-medium whitespace-pre-wrap">
                         {message.displayContent}

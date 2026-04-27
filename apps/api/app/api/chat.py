@@ -144,6 +144,9 @@ async def chat_stream(
     """
     session_id = request.session_id or "unknown-session"
     request_received_at = time.perf_counter()
+    # WP5: per-request trace_id + run_id for full-chain correlation
+    trace_id = str(uuid4())
+    run_id = str(uuid4())
 
     try:
         logger.info(
@@ -151,6 +154,8 @@ async def chat_stream(
             user_id=user_id,
             session_id=request.session_id,
             message=request.message[:100],
+            trace_id=trace_id,
+            run_id=run_id,
         )
 
         session = None
@@ -321,6 +326,8 @@ async def chat_stream(
                             "session_id": session_id,
                             "task_type": "general",
                             "message_id": assistant_message_id,
+                            "run_id": run_id,
+                            "trace_id": trace_id,
                         }
                         buffered_session = await event_buffer.emit(
                             SSEEventType.SESSION_START,
@@ -366,6 +373,8 @@ async def chat_stream(
                             "cost": 0.0,
                             "total_time_ms": int((time.perf_counter() - request_received_at) * 1000),
                             "message_id": assistant_message_id,
+                            "run_id": run_id,
+                            "trace_id": trace_id,
                             "response_type": "general",
                             "answer_mode": None,
                             "claims": [],

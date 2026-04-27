@@ -48,5 +48,33 @@
     background-color: var(--color-background);
     font-weight: 700;
     font-family: var(--font-sans);
+    --font-xs: clamp(0.75rem, 0.72rem + 0.1vw, 0.8125rem);
+    --font-sm: clamp(0.8125rem, 0.78rem + 0.12vw, 0.875rem);
+    --font-md: clamp(0.9375rem, 0.9rem + 0.15vw, 1rem);
+    --font-lg: clamp(1.125rem, 1.05rem + 0.35vw, 1.25rem);
+    --font-xl: clamp(1.375rem, 1.2rem + 0.7vw, 1.75rem);
+    --sidebar-expanded: clamp(15rem, 18vw, 18rem);
+    --sidebar-collapsed: 4.25rem;
+    --right-panel-width: clamp(18rem, 22vw, 24rem);
+    --chat-max-width: 52rem;
+    --composer-max-width: 52rem;
+  }
+
+  html {
+    font-size: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    font-size: var(--font-md);
+    line-height: 1.55;
+  }
+}
+
+@layer components {
+  .chat-message-list {
+    width: min(calc(100% - 2rem), var(--chat-max-width));
+    max-width: 100%;
+    margin-inline: auto;
   }
 }

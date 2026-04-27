@@ -46,6 +46,7 @@ interface UseSessionsReturn {
   deleteSession: (sessionId: string) => Promise<boolean>;
   addMessage: (message: ChatMessage) => void;
   clearMessages: () => void;
+  clearCurrentSession: () => void;
   updateCurrentSession: (updates: Partial<ChatSession>) => Promise<void>;
 }
 
@@ -55,6 +56,7 @@ export function useSessions(): UseSessionsReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const suppressAutoSelectRef = useRef(false);
 
   // Use ref for session-scoped optimistic update guard.
   const lastLocalMessageRef = useRef<{ sessionId: string | null; at: number }>({
@@ -71,6 +73,11 @@ export function useSessions(): UseSessionsReturn {
       const data = await sessionsApi.listSessions(50, 'active');
       const normalized = (data || []).filter((session) => isValidSession(session));
       setSessions(normalized);
+
+      if (suppressAutoSelectRef.current) {
+        setCurrentSession(null);
+        return;
+      }
 
       if (normalized.length > 0) {
         const lastSession = normalized[0];
@@ -107,6 +114,7 @@ export function useSessions(): UseSessionsReturn {
     setError(null);
     try {
       const session = await sessionsApi.createSession(title || '新对话');
+      suppressAutoSelectRef.current = false;
       setSessions(prev => [session, ...prev]);
       setCurrentSession(session);
       setMessages([]); // New session has no messages
@@ -121,6 +129,7 @@ export function useSessions(): UseSessionsReturn {
   const switchSession = useCallback(async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
     if (session) {
+      suppressAutoSelectRef.current = false;
       setCurrentSession(session);
     }
   }, [sessions]);
@@ -164,6 +173,16 @@ export function useSessions(): UseSessionsReturn {
     setMessages([]);
   }, []);
 
+  const clearCurrentSession = useCallback(() => {
+    suppressAutoSelectRef.current = true;
+    lastLocalMessageRef.current = {
+      sessionId: null,
+      at: 0,
+    };
+    setCurrentSession(null);
+    setMessages([]);
+  }, []);
+
   const updateCurrentSession = useCallback(async (updates: Partial<ChatSession>) => {
     if (!currentSession) return;
     
@@ -201,6 +220,7 @@ export function useSessions(): UseSessionsReturn {
     deleteSession,
     addMessage,
     clearMessages,
+    clearCurrentSession,
     updateCurrentSession
   };
 }

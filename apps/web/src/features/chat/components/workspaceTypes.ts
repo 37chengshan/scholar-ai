@@ -6,6 +6,8 @@ import type {
 
 export interface ToolTimelineItem extends StreamToolTimelineItem {}
 
+export type ChatResponseType = 'general' | 'rag' | 'system' | 'error';
+
 export interface CitationItem {
   paper_id: string;
   source_chunk_id?: string;
@@ -49,6 +51,7 @@ export interface AnswerQuality {
 }
 
 export interface AnswerContractPayload {
+  response_type?: ChatResponseType;
   answer_mode: 'full' | 'partial' | 'abstain';
   answer?: string;
   claims: AnswerClaim[];
@@ -62,6 +65,7 @@ export interface AnswerContractPayload {
 
 export interface ExtendedChatMessage extends SessionChatMessage {
   streamStatus?: StreamStatus;
+  responseType?: ChatResponseType;
   reasoningBuffer?: string;
   isThinkingExpanded?: boolean;
   toolTimeline?: ToolTimelineItem[];
