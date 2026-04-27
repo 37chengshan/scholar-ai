@@ -47,12 +47,16 @@ export async function getSessionMessages(sessionId: string, limit = 100): Promis
 }
 
 export async function createSession(title = '新对话'): Promise<SessionRecord> {
-  const response = await apiClient.post<SessionRecord>('/api/v1/sessions', {
+  const response = await apiClient.post<{ success?: boolean; data?: SessionRecord } | SessionRecord>('/api/v1/sessions', {
     title,
     status: 'active',
     metadata: {},
   });
-  return response.data;
+  const payload = response.data;
+  if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
+    return payload.data;
+  }
+  return payload as SessionRecord;
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
@@ -63,7 +67,7 @@ export async function updateSession(
   sessionId: string,
   updates: Partial<Pick<SessionRecord, 'title' | 'status'>>,
 ): Promise<SessionRecord> {
-  if (updates.title) {
+  if (updates.title && updates.status === undefined) {
     const session = await chatApiClient.updateSession(sessionId, updates.title);
     return session as unknown as SessionRecord;
   }

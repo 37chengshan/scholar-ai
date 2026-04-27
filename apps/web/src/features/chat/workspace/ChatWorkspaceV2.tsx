@@ -67,6 +67,7 @@ export function ChatWorkspaceV2() {
   const [sending, setSending] = useState(false); // 防止重复发送
   const [sessionTokens, setSessionTokens] = useState(0); // 当前session的token
   const [sessionCost, setSessionCost] = useState(0); // 当前session的花费
+  const [forceNewSessionForNextSend, setForceNewSessionForNextSend] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<
     RichChatMessage | undefined
   >(undefined); // Phase 4.1: 选中的历史消息
@@ -75,6 +76,7 @@ export function ChatWorkspaceV2() {
   const sseServiceRef = useRef<SSEService | null>(null);
   const currentMessageIdRef = useRef<string>(""); // ref for stale closure fix
   const sendLockRef = useRef(false); // Prevent duplicate send attempts while stream is active
+  const handledNewChatRef = useRef(false);
 
   const {
     mode,
@@ -159,6 +161,7 @@ export function ChatWorkspaceV2() {
     createSession,
     switchSession,
     deleteSession,
+    clearCurrentSession,
   } = useSessions();
   const desiredSessionId = searchParams.get('session');
   const wantsNewSession = searchParams.get('new') === '1';
@@ -259,29 +262,39 @@ export function ChatWorkspaceV2() {
   });
 
   useEffect(() => {
-    if (!wantsNewSession || loading) {
+    if (!wantsNewSession) {
+      handledNewChatRef.current = false;
       return;
     }
 
-    let cancelled = false;
+    if (handledNewChatRef.current) {
+      return;
+    }
+    handledNewChatRef.current = true;
 
-    void handleNewSession().then((session) => {
-      if (cancelled) {
-        return;
-      }
+    setForceNewSessionForNextSend(true);
 
-      const next = new URLSearchParams(searchParams);
-      next.delete('new');
-      if (session?.id) {
-        next.set('session', session.id);
-      }
-      setSearchParams(next, { replace: true });
-    });
+    sseServiceRef.current?.disconnect();
+    sendLockRef.current = false;
+    clearCurrentSession();
+    resetForSessionSwitch();
+    runtime.resetRun();
+    resetRun();
+    setSessionTokens(0);
+    setSessionCost(0);
+    setInput('');
 
-    return () => {
-      cancelled = true;
-    };
-  }, [handleNewSession, loading, searchParams, setSearchParams, wantsNewSession]);
+    const next = new URLSearchParams(searchParams);
+    next.delete('new');
+    next.delete('session');
+    setSearchParams(next, { replace: true });
+  }, [clearCurrentSession, resetForSessionSwitch, resetRun, runtime, searchParams, setInput, setSearchParams, wantsNewSession]);
+
+  useEffect(() => {
+    if (desiredSessionId) {
+      setForceNewSessionForNextSend(false);
+    }
+  }, [desiredSessionId]);
 
   useEffect(() => {
     if (!desiredSessionId || loading) {
@@ -298,6 +311,27 @@ export function ChatWorkspaceV2() {
 
     void handleSwitchSession(desiredSessionId);
   }, [currentSession?.id, desiredSessionId, handleSwitchSession, loading, safeSessions]);
+
+  useEffect(() => {
+    if (wantsNewSession || desiredSessionId || !currentSession?.id) {
+      return;
+    }
+
+    const conversationStarted = renderMessages.length > 0 || sending || streamState.streamStatus === 'streaming';
+    if (!conversationStarted) {
+      return;
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.set('session', currentSession.id);
+    next.delete('new');
+
+    if (next.toString() === searchParams.toString()) {
+      return;
+    }
+
+    setSearchParams(next, { replace: true });
+  }, [currentSession?.id, desiredSessionId, renderMessages.length, searchParams, sending, setSearchParams, streamState.streamStatus, wantsNewSession]);
 
   // ============================================================================
   // Placeholder Message Mechanism (HARD RULE 0.2)
@@ -370,6 +404,7 @@ export function ChatWorkspaceV2() {
     scope: uiScope,
     scopeLoading,
     currentSession,
+    forceNewSessionForNextSend,
     isZh,
     setInput,
     setSending,
@@ -393,6 +428,13 @@ export function ChatWorkspaceV2() {
     completeStreamingMessage,
     removePlaceholderMessage,
     clearPlaceholder,
+    onSessionCreated: (sessionId) => {
+      setForceNewSessionForNextSend(false);
+      const next = new URLSearchParams(searchParams);
+      next.set('session', sessionId);
+      next.delete('new');
+      setSearchParams(next, { replace: true });
+    },
   });
 
   // ============================================================================
@@ -517,7 +559,7 @@ export function ChatWorkspaceV2() {
     if (streamState.streamStatus !== 'error') {
       return undefined;
     }
-    const phase = runtime.run.phase || runtime.run.currentPhase || 'unknown';
+    const phase = runtime.run?.phase || runtime.run?.currentPhase || 'unknown';
     if (!isZh) {
       return phase;
     }
@@ -526,7 +568,7 @@ export function ChatWorkspaceV2() {
     if (phase === 'verifying') return '验证';
     if (phase === 'failed') return '失败';
     return String(phase);
-  }, [isZh, runtime.run.currentPhase, runtime.run.phase, streamState.streamStatus]);
+  }, [isZh, runtime.run?.currentPhase, runtime.run?.phase, streamState.streamStatus]);
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -538,7 +580,7 @@ export function ChatWorkspaceV2() {
 
   return (
     <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
-      <div className="flex min-w-0 flex-1 flex-col bg-background">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <div className="shrink-0 border-b border-border/30 bg-background/60 backdrop-blur-sm">
           <WorkflowShell />
         </div>
@@ -560,8 +602,8 @@ export function ChatWorkspaceV2() {
           </div>
         )}
 
-        <div className="min-w-0 flex-1 flex flex-col overflow-hidden bg-background">
-          <div className="px-6 py-2.5 border-b border-border/30 bg-background/40 text-[11px] font-semibold text-muted-foreground">
+        <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden bg-background">
+          <div className="border-b border-border/30 bg-background/40 px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-6">
             {isZh ? '对话' : 'Conversation'}
           </div>
           <MessageFeed
@@ -586,13 +628,13 @@ export function ChatWorkspaceV2() {
               setInput(text);
             }}
             errorStage={errorStage}
-            recoverable={runtime.run.recoverable}
+            recoverable={runtime.run?.recoverable}
             partialAnswerAvailable={Boolean(streamState.contentBuffer)}
           />
         </div>
 
-        <div className="shrink-0 border-t border-border/30 bg-background/40 backdrop-blur-sm">
-          <div className="px-6 pt-2 text-[11px] text-muted-foreground" aria-live="polite">
+        <div className="shrink-0 bg-background/75 backdrop-blur-md">
+          <div className="px-4 pt-2 text-[11px] text-muted-foreground sm:px-6" aria-live="polite">
             {scopeHint}
           </div>
           <ComposerInput
