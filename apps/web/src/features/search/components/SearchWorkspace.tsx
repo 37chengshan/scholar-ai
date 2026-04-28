@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router';
 import { BarChart2, Calendar, Database, Users } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
+import { Button } from '@/app/components/ui/button';
 import { SearchFilters } from '@/app/components/SearchFilters';
 import { useSearchWorkspace } from '@/features/search/hooks/useSearchWorkspace';
 import { useUnifiedSearch } from '@/features/search/hooks/useUnifiedSearch';
 import { useAuthorSearch } from '@/features/search/hooks/useAuthorSearch';
 import { useSearchImportFlow } from '@/features/search/hooks/useSearchImportFlow';
+import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
 import { searchEvidenceV3, type LayeredEvidenceSearchResult } from '@/services/searchApi';
 import { SearchSidebar } from '@/features/search/components/SearchSidebar';
 import { SearchToolbar } from '@/features/search/components/SearchToolbar';
@@ -22,6 +24,7 @@ export function SearchWorkspace() {
   const navigate = useNavigate();
   const [showInspector, setShowInspector] = useState(true);
   const [layeredEvidence, setLayeredEvidence] = useState<LayeredEvidenceSearchResult | null>(null);
+  const { saveEvidence } = useEvidenceNavigation(isZh);
 
   const workspace = useSearchWorkspace();
   const {
@@ -408,15 +411,47 @@ export function SearchWorkspace() {
 
               <div className="space-y-2">
                 {layeredEvidence.evidence_matches.slice(0, 3).map((item) => (
-                  <button
+                  <div
                     key={`${item.paper_id}-${item.source_chunk_id}`}
-                    type="button"
-                    className="w-full rounded-md border border-border/60 bg-background px-2 py-2 text-left text-[11px] hover:border-primary/50"
-                    onClick={() => navigate(`/read/${item.paper_id}?page=${item.page_num || 1}&source=search&source_id=${item.source_chunk_id}`)}
+                    className="rounded-md border border-border/60 bg-background px-2 py-2 text-[11px]"
                   >
-                    <div className="font-medium text-foreground">{item.paper_id} · {item.section_path || 'section'}</div>
-                    <div className="mt-1 line-clamp-2 text-muted-foreground">{item.content || item.source_chunk_id}</div>
-                  </button>
+                    <button
+                      type="button"
+                      className="w-full text-left hover:text-primary"
+                      onClick={() => navigate(`/read/${item.paper_id}?page=${item.page_num || 1}&source=search&source_id=${item.source_chunk_id}`)}
+                    >
+                      <div className="font-medium text-foreground">{item.paper_id} · {item.section_path || 'section'}</div>
+                      <div className="mt-1 line-clamp-2 text-muted-foreground">{item.content || item.source_chunk_id}</div>
+                    </button>
+                    <div className="mt-2 flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[10px]"
+                        onClick={() => {
+                          void saveEvidence(query.trim() || 'Search evidence', {
+                            evidence_id: item.source_chunk_id,
+                            source_type: 'paper',
+                            paper_id: item.paper_id,
+                            source_chunk_id: item.source_chunk_id,
+                            page_num: item.page_num || null,
+                            section_path: item.section_path || null,
+                            content_type: item.content_type || 'text',
+                            text: item.text || item.content || '',
+                            score: item.quality_score,
+                            rerank_score: item.quality_score,
+                            support_status: 'supported',
+                            citation_jump_url: item.citation_jump_url || '',
+                          }, {
+                            surface: 'search',
+                          });
+                        }}
+                      >
+                        {isZh ? '保存到笔记' : 'Save to notes'}
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </section>

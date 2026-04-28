@@ -26,6 +26,7 @@ from app.models.reading_progress import ReadingProgress
 from app.models.task import ProcessingTask
 from app.models.upload_history import UploadHistory
 from app.repositories.paper_repository import PaperRepository
+from app.services.reading_card_service import ensure_reading_card_doc
 from app.services.storage_service import get_storage_service
 from app.utils.logger import logger
 from app.utils.problem_detail import ErrorTypes, ProblemDetail, create_error
@@ -536,10 +537,19 @@ class PaperService:
         task = task_result.scalar_one_or_none()
 
         chunks: List[PaperChunk] = []
-        if include_chunks:
+        if include_chunks or not paper.reading_card_doc:
             chunks = await PaperRepository.list_chunks(db, paper_id)
 
-        return {"paper": paper, "task": task, "chunks": chunks}
+        if not paper.reading_card_doc:
+            reading_card_doc = ensure_reading_card_doc(paper, records=chunks)
+            if reading_card_doc is not None:
+                await db.flush()
+
+        return {
+            "paper": paper,
+            "task": task,
+            "chunks": chunks if include_chunks else [],
+        }
 
     @staticmethod
     async def create_paper_for_api(

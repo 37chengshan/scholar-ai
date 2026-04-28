@@ -14,7 +14,7 @@ export function EvidenceBlockCard({ block, onOpenSource, onSave }: EvidenceBlock
         <span>{block.paper_id} · {block.section_path || 'unknown-section'}</span>
         <span>{block.content_type}</span>
       </div>
-      <p className="line-clamp-4 text-xs leading-relaxed text-foreground/90">{block.content}</p>
+      <p className="line-clamp-4 text-xs leading-relaxed text-foreground/90">{block.text}</p>
       <div className="mt-2 flex items-center justify-between gap-2">
         <SourceChunkLink
           sourceChunkId={block.source_chunk_id}

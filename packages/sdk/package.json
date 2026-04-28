@@ -9,7 +9,9 @@
     ".": "./src/index.ts",
     "./client/*": "./src/client/*",
     "./chat/*": "./src/chat/*",
+    "./evidence/*": "./src/evidence/*",
     "./kb/*": "./src/kb/*",
+    "./notes/*": "./src/notes/*",
     "./papers/*": "./src/papers/*"
   },
   "scripts": {

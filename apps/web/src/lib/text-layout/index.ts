@@ -1,6 +1,7 @@
 export * from './font';
 export * from './cache';
 export * from './measure';
+export * from './evidence';
 export * from './line-layout';
 export * from './shrinkwrap';
 export * from './rich-inline';

@@ -1,32 +1,12 @@
-/**
- * Notes API Service
- *
- * Notes management API calls:
- * - getNotes(): Get notes with optional filtering
- * - getNote(): Get specific note
- * - createNote(): Create new note
- * - updateNote(): Update existing note
- * - deleteNote(): Delete note
- *
- * Supports cross-paper association via paperIds array.
- * All endpoints require authentication.
- */
-
 import apiClient from '@/utils/apiClient';
+import type {
+  CreateNoteDto,
+  NoteDto,
+  SaveEvidenceNoteRequestDto,
+  UpdateNoteDto,
+} from '@scholar-ai/types';
 
-/**
- * Note type from backend
- */
-export interface Note {
-  id: string;
-  userId: string;
-  title: string;
-  content: string;
-  tags: string[];
-  paperIds: string[];
-  createdAt: string;
-  updatedAt: string;
-}
+export type Note = NoteDto;
 
 /**
  * Get notes query parameters
@@ -43,32 +23,13 @@ export interface GetNotesParams {
 /**
  * Create note payload
  */
-export interface CreateNotePayload {
-  title: string;
-  content: string;
-  tags?: string[];
-  paperIds?: string[];
-}
+export type CreateNotePayload = CreateNoteDto;
 
 /**
  * Update note payload
  */
-export interface UpdateNotePayload {
-  title?: string;
-  content?: string;
-  tags?: string[];
-  paperIds?: string[];
-}
-
-export interface SaveEvidenceNotePayload {
-  claim: string;
-  source_chunk_id: string;
-  paper_id: string;
-  page_num?: number;
-  section_path?: string;
-  content?: string;
-  citation?: Record<string, unknown>;
-}
+export type UpdateNotePayload = UpdateNoteDto;
+export type SaveEvidenceNotePayload = SaveEvidenceNoteRequestDto;
 
 /**
  * Get notes list with optional filtering
@@ -176,14 +137,6 @@ export async function getNotesByPaper(paperId: string): Promise<Note[]> {
  * Save evidence block into note system.
  */
 export async function saveEvidenceNote(payload: SaveEvidenceNotePayload): Promise<Note> {
-  const response = await apiClient.post<{ success: boolean; data: Note }>('/api/v1/notes/evidence', {
-    claim: payload.claim,
-    source_chunk_id: payload.source_chunk_id,
-    paper_id: payload.paper_id,
-    page_num: payload.page_num,
-    section_path: payload.section_path,
-    content: payload.content || '',
-    citation: payload.citation,
-  });
-  return response.data.data;
+  const response = await apiClient.post<Note>('/api/v1/notes/evidence', payload);
+  return response.data;
 }

@@ -9,6 +9,7 @@ import type {
   AnswerContractPayload,
   ChatResponseType,
   CitationItem,
+  EvidenceBlock,
   ExtendedChatMessage,
   ToolTimelineItem,
 } from '@/features/chat/components/workspaceTypes';
@@ -28,6 +29,7 @@ interface UseChatSendOptions {
   sending: boolean;
   mode: 'auto' | 'rag' | 'agent';
   scope: ChatScope;
+  comparePaperIds?: string[];
   scopeLoading: boolean;
   currentSession: ChatSession | null;
   forceNewSessionForNextSend?: boolean;
@@ -74,6 +76,7 @@ export function useChatSend({
   sending,
   mode,
   scope,
+  comparePaperIds,
   scopeLoading,
   currentSession,
   forceNewSessionForNextSend = false,
@@ -107,8 +110,8 @@ export function useChatSend({
       return undefined;
     }
 
-    const responseType = payload.response_type ? String(payload.response_type) : undefined;
-    if (responseType && responseType !== 'rag') {
+    const responseType = payload.response_type ? String(payload.response_type) as ChatResponseType : undefined;
+    if (responseType && !['rag', 'reading', 'compare', 'review', 'abstain'].includes(responseType)) {
       return undefined;
     }
 
@@ -130,7 +133,12 @@ export function useChatSend({
       return {
         paper_id: String(row.paper_id || ''),
         source_chunk_id: row.source_chunk_id ? String(row.source_chunk_id) : undefined,
-        source_id: row.source_id ? String(row.source_id) : undefined,
+        source_id: row.source_id
+          ? String(row.source_id)
+          : row.source_chunk_id
+            ? String(row.source_chunk_id)
+            : undefined,
+        citation_jump_url: row.citation_jump_url ? String(row.citation_jump_url) : undefined,
         page_num: typeof row.page_num === 'number' ? row.page_num : undefined,
         section_path: row.section_path ? String(row.section_path) : undefined,
         anchor_text: row.anchor_text ? String(row.anchor_text) : undefined,
@@ -150,9 +158,12 @@ export function useChatSend({
     const quality = (payload.quality as Record<string, unknown> | undefined) || {};
     const answerMode = (payload.answer_mode as 'full' | 'partial' | 'abstain' | undefined)
       || (citationsRaw.length > 0 ? 'partial' : 'abstain');
+    const compareMatrix = payload.compare_matrix && typeof payload.compare_matrix === 'object'
+      ? payload.compare_matrix as AnswerContractPayload['compare_matrix']
+      : undefined;
 
     return {
-      response_type: 'rag',
+      response_type: responseType || 'rag',
       answer_mode: answerMode,
       answer: String(payload.answer || fallbackContent || ''),
       claims: claimsRaw.map((item) => {
@@ -169,13 +180,21 @@ export function useChatSend({
       evidence_blocks: evidenceRaw.map((item) => {
         const row = item as Record<string, unknown>;
         return {
-          source_chunk_id: String(row.source_chunk_id || ''),
+          evidence_id: String(row.evidence_id || row.source_chunk_id || ''),
+          source_type: String(row.source_type || 'paper') as EvidenceBlock['source_type'],
           paper_id: String(row.paper_id || ''),
+          source_chunk_id: String(row.source_chunk_id || ''),
           page_num: typeof row.page_num === 'number' ? row.page_num : null,
           section_path: row.section_path ? String(row.section_path) : null,
           content_type: String(row.content_type || 'text'),
-          content: String(row.content || ''),
-          quality_score: typeof row.quality_score === 'number' ? row.quality_score : undefined,
+          text: String(row.text || row.content || ''),
+          score: typeof row.score === 'number' ? row.score : undefined,
+          rerank_score: typeof row.rerank_score === 'number' ? row.rerank_score : undefined,
+          support_status: row.support_status
+            ? String(row.support_status) as EvidenceBlock['support_status']
+            : undefined,
+          citation_jump_url: String(row.citation_jump_url || ''),
+          user_comment: row.user_comment ? String(row.user_comment) : undefined,
         };
       }),
       quality: {
@@ -186,9 +205,12 @@ export function useChatSend({
         fallback_used: Boolean(quality.fallback_used),
         fallback_reason: quality.fallback_reason ? String(quality.fallback_reason) : null,
       },
+      trace_id: payload.trace_id ? String(payload.trace_id) : String(payload.retrieval_trace_id || ''),
+      run_id: payload.run_id ? String(payload.run_id) : '',
       retrieval_trace_id: payload.retrieval_trace_id ? String(payload.retrieval_trace_id) : undefined,
       error_state: payload.error_state ? String(payload.error_state) : null,
       trace: (payload.trace as Record<string, unknown> | undefined) || undefined,
+      compare_matrix: compareMatrix,
     };
   }, []);
 
@@ -308,6 +330,9 @@ export function useChatSend({
         scope: streamScope,
         context: {
           auto_confirm: false,
+          ...(comparePaperIds && comparePaperIds.length > 0
+            ? { paper_ids: comparePaperIds }
+            : {}),
         },
         streamService: sseServiceRef.current,
         handlers: {
@@ -428,6 +453,7 @@ export function useChatSend({
     sending,
     sendLockRef,
     scope,
+    comparePaperIds,
     scopeLoading,
     setSending,
     addUserMessage,

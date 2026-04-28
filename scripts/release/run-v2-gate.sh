@@ -36,15 +36,46 @@ run_check "Chat critical (E2E)" bash -c \
 run_check "Chat evidence (E2E)" bash -c \
   "cd '$WEB' && pnpm playwright test e2e/chat-evidence.spec.ts --reporter=line"
 
+run_check "Retrieval critical (E2E)" bash -c \
+  "cd '$WEB' && pnpm playwright test e2e/retrieval-critical.spec.ts --reporter=line"
+
 run_check "Notes rendering (E2E)" bash -c \
   "cd '$WEB' && pnpm playwright test e2e/notes-rendering.spec.ts --reporter=line"
 
 run_check "Chat responsive (E2E)" bash -c \
   "cd '$WEB' && pnpm playwright test e2e/chat-responsive.spec.ts --reporter=line"
 
+run_check "KB critical (E2E)" bash -c \
+  "cd '$WEB' && pnpm playwright test e2e/kb-critical.spec.ts --reporter=line"
+
+run_check "Compare critical (E2E)" bash -c \
+  "cd '$WEB' && pnpm playwright test e2e/compare-critical.spec.ts --reporter=line"
+
 # ─── API checks ─────────────────────────────────────────
 run_check "Backend fast path (unit)" bash -c \
   "cd '$API' && python3 -m pytest tests/unit/test_chat_fast_path.py -q"
+
+run_check "Backend compare/eval units" bash -c \
+  "cd '$API' && python3 -m pytest tests/unit/test_phase4_hybrid_compare.py tests/unit/test_eval_service.py -q"
+
+run_check "Phase 6 offline gate" bash -c \
+  "cd '$REPO_ROOT' && python3 scripts/evals/phase6_gate.py"
+
+# ─── Governance checks ──────────────────────────────────
+run_check "Runtime hygiene" bash -c \
+  "cd '$REPO_ROOT' && bash scripts/check-runtime-hygiene.sh tracked"
+
+run_check "Docs governance" bash -c \
+  "cd '$REPO_ROOT' && bash scripts/check-doc-governance.sh"
+
+run_check "Structure boundaries" bash -c \
+  "cd '$REPO_ROOT' && bash scripts/check-structure-boundaries.sh"
+
+run_check "Code boundaries" bash -c \
+  "cd '$REPO_ROOT' && bash scripts/check-code-boundaries.sh"
+
+run_check "Governance" bash -c \
+  "cd '$REPO_ROOT' && bash scripts/check-governance.sh"
 
 # ─── Summary ────────────────────────────────────────────
 echo ""

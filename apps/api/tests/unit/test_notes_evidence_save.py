@@ -8,6 +8,8 @@ def test_notes_evidence_save() -> None:
     content = file_path.read_text(encoding="utf-8")
 
     assert "class EvidenceNoteCreate" in content
+    assert "class EvidenceBlockPayload" in content
     assert "@router.post(\"/evidence\"" in content
     assert "def save_evidence_note" in content
-    assert "tags=[\"evidence\", \"citation\"]" in content
+    assert "linked_evidence" in content
+    assert "target_note_id" in content

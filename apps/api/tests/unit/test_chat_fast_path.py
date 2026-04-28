@@ -276,6 +276,71 @@ async def test_fast_path_done_event_contains_latency_diagnostics():
 
 
 @pytest.mark.asyncio
+async def test_context_paper_ids_use_scoped_rag_path():
+    chat_api = _load_chat_module()
+
+    mock_execute_with_streaming = AsyncMock()
+    scoped_payload = {
+        "response_type": "rag",
+        "answer_mode": "partial",
+        "answer": "Scoped answer",
+        "claims": [],
+        "citations": [{"paper_id": "paper-1", "source_chunk_id": "chunk-1"}],
+        "evidence_blocks": [{"evidence_id": "chunk-1", "paper_id": "paper-1"}],
+        "quality": {"fallback_used": False, "fallback_reason": None},
+        "trace_id": "trace-1",
+        "run_id": "run-1",
+        "retrieval_trace_id": "trace-1",
+        "error_state": None,
+    }
+
+    with patch.object(chat_api.session_manager, "get_session", AsyncMock(return_value=type("S", (), {"id": "session-1", "user_id": "user-1"})())), patch.object(
+        chat_api.complexity_router,
+        "route_async",
+        AsyncMock(return_value={"complexity": "simple", "method": "rule", "confidence": 0.95}),
+    ), patch.object(chat_api.message_service, "save_message", AsyncMock(return_value="user-msg-id")), patch.object(
+        chat_api.chat_orchestrator,
+        "execute_with_streaming",
+        mock_execute_with_streaming,
+    ), patch.object(
+        chat_api,
+        "build_answer_contract_payload",
+        Mock(return_value=scoped_payload),
+    ) as build_payload_mock, patch.object(
+        chat_api.chat_orchestrator,
+        "_create_assistant_message",
+        AsyncMock(return_value="assistant-scoped-1"),
+    ), patch.object(
+        chat_api.chat_orchestrator,
+        "_safe_update_assistant_message",
+        AsyncMock(),
+    ):
+        response = await chat_api.chat_stream(
+            request=ChatStreamRequest(
+                session_id="session-1",
+                message="compare these findings",
+                mode="rag",
+                context={"paper_ids": ["paper-1", "paper-2"]},
+            ),
+            http_request=_RequestStub(),
+            user_id="user-1",
+        )
+        events = await _collect_sse_events(response)
+
+    done_payload = next(payload for name, payload in events if name == "done")
+    mock_execute_with_streaming.assert_not_called()
+    build_payload_mock.assert_called_once()
+    assert build_payload_mock.call_args.kwargs["query"] == "compare these findings"
+    assert build_payload_mock.call_args.kwargs["user_id"] == "user-1"
+    assert build_payload_mock.call_args.kwargs["paper_scope"] == ["paper-1", "paper-2"]
+    assert build_payload_mock.call_args.kwargs["query_family"] == "compare"
+    assert build_payload_mock.call_args.kwargs["stage"] == "rule"
+    assert done_payload.get("diagnostics", {}).get("path") == "scoped_paper_rag"
+    assert done_payload.get("citations") == scoped_payload["citations"]
+    assert done_payload.get("message_id") == "assistant-scoped-1"
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_rejects_session_from_different_user():
     chat_api = _load_chat_module()
 

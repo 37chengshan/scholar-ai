@@ -192,7 +192,7 @@ export interface DoneEventData {
   tokens_used?: number;
   cost?: number;
   total_time_ms?: number;
-  response_type?: 'general' | 'rag' | 'system' | 'error';
+  response_type?: 'general' | 'rag' | 'compare' | 'review' | 'reading' | 'abstain' | 'system' | 'error';
   answer_mode?: 'full' | 'partial' | 'abstain';
   claims?: unknown[];
   citations?: unknown[];

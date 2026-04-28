@@ -3,15 +3,22 @@ import type {
   StreamStatus,
   ToolTimelineItem as StreamToolTimelineItem,
 } from '@/app/hooks/useChatStream';
+import type {
+  AnswerContractDto,
+  AnswerQualityDto,
+  ChatResponseType as SharedChatResponseType,
+  EvidenceBlockDto,
+} from '@scholar-ai/types';
 
 export interface ToolTimelineItem extends StreamToolTimelineItem {}
 
-export type ChatResponseType = 'general' | 'rag' | 'system' | 'error';
+export type ChatResponseType = SharedChatResponseType | 'system';
 
 export interface CitationItem {
   paper_id: string;
   source_chunk_id?: string;
   source_id?: string;
+  citation_jump_url?: string;
   page_num?: number;
   section_path?: string;
   anchor_text?: string;
@@ -32,35 +39,16 @@ export interface AnswerClaim {
   supporting_source_chunk_ids: string[];
 }
 
-export interface EvidenceBlock {
-  source_chunk_id: string;
-  paper_id: string;
-  page_num?: number | null;
-  section_path?: string | null;
-  content_type: 'text' | 'table' | 'figure' | 'caption' | 'page' | string;
-  content: string;
-  quality_score?: number;
-}
+export type EvidenceBlock = EvidenceBlockDto;
 
-export interface AnswerQuality {
-  citation_coverage?: number;
-  unsupported_claim_rate?: number;
-  answer_evidence_consistency?: number;
-  fallback_used?: boolean;
-  fallback_reason?: string | null;
-}
+export type AnswerQuality = AnswerQualityDto;
 
-export interface AnswerContractPayload {
-  response_type?: ChatResponseType;
-  answer_mode: 'full' | 'partial' | 'abstain';
-  answer?: string;
+export interface AnswerContractPayload extends Omit<AnswerContractDto, 'claims' | 'citations' | 'evidence_blocks' | 'response_type' | 'quality'> {
+  response_type: ChatResponseType;
   claims: AnswerClaim[];
   citations: CitationItem[];
   evidence_blocks: EvidenceBlock[];
   quality: AnswerQuality;
-  retrieval_trace_id?: string;
-  error_state?: string | null;
-  trace?: Record<string, unknown>;
 }
 
 export interface ExtendedChatMessage extends SessionChatMessage {

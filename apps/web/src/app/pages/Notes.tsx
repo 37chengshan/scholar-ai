@@ -62,6 +62,7 @@ import {
   extractEditorPlainText,
   normalizeEditorDocument,
 } from '@/features/notes/content';
+import { LinkedEvidenceList } from '@/features/notes/components/LinkedEvidenceList';
 
 const MANUAL_FOLDERS_STORAGE_KEY = 'notes-manual-folders-v1';
 const FOLDER_TAG_PREFIX = 'folder:';
@@ -410,7 +411,7 @@ function NotesContent() {
       result = result.filter(
         (note) =>
           note.title.toLowerCase().includes(query) ||
-          extractEditorPlainText(note.content).toLowerCase().includes(query),
+          extractEditorPlainText(note.contentDoc || note.content).toLowerCase().includes(query),
       );
     }
 
@@ -439,7 +440,7 @@ function NotesContent() {
       await updateNote.mutateAsync({
         id: selectedNoteId,
         payload: {
-          content: JSON.stringify(content),
+          contentDoc: normalizeEditorDocument(content),
           title: note.title || '未命名笔记',
           tags: nextTags,
           paperIds: note.paperIds,
@@ -460,7 +461,7 @@ function NotesContent() {
     if (!selectedNote || !editorContent) {
       return false;
     }
-    const currentContent = JSON.stringify(normalizeEditorDocument(selectedNote.content));
+    const currentContent = JSON.stringify(normalizeEditorDocument(selectedNote.contentDoc || selectedNote.content));
     return JSON.stringify(editorContent) !== currentContent;
   }, [editorContent, selectedNote]);
 
@@ -477,7 +478,7 @@ function NotesContent() {
       setFolderSelectionSource(null);
     }
 
-    setEditorContent(normalizeEditorDocument(note.content));
+    setEditorContent(normalizeEditorDocument(note.contentDoc || note.content));
   }, []);
 
   const handleSelectSummary = useCallback(
@@ -563,7 +564,8 @@ function NotesContent() {
       const nextTitle = paperTitle ? `《${paperTitle}》阅读笔记` : '未命名笔记';
       const newNote = await createNote.mutateAsync({
         title: nextTitle,
-        content: JSON.stringify(createEmptyEditorDocument()),
+        contentDoc: createEmptyEditorDocument(),
+        sourceType: 'manual',
         tags: payloadTags,
         paperIds: paperIdFilter ? [paperIdFilter] : [],
       });
@@ -691,7 +693,8 @@ function NotesContent() {
     try {
       const newNote = await createNote.mutateAsync({
         title: `${summary.title} · 摘要笔记`,
-        content: JSON.stringify(normalizeEditorDocument(summary.readingNotes)),
+        contentDoc: normalizeEditorDocument(summary.readingNotes),
+        sourceType: 'read',
         tags: upsertFolderTag([], targetFolderId),
         paperIds: [summary.paperId],
       });
@@ -1063,7 +1066,7 @@ function NotesContent() {
                       )}
 
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                        {highlightText(extractEditorPlainText(note.content, 80) || '空笔记', searchQuery)}
+                        {highlightText(extractEditorPlainText(note.contentDoc || note.content, 80) || '空笔记', searchQuery)}
                       </p>
 
                       <div className="flex items-center gap-2 mt-1.5">
@@ -1107,7 +1110,7 @@ function NotesContent() {
                             <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{extractEditorPlainText(note.content, 80) || '空笔记'}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{extractEditorPlainText(note.contentDoc || note.content, 80) || '空笔记'}</p>
                       </div>
                     ))}
                   </div>
@@ -1199,6 +1202,7 @@ function NotesContent() {
 
               <div className="flex-1 p-6 overflow-auto bg-background">
                 <div className="mx-auto max-w-4xl">
+                  <LinkedEvidenceList evidence={selectedNote.linkedEvidence || []} />
                   <NotesEditor
                     content={editorContent}
                     onChange={handleEditorChange}

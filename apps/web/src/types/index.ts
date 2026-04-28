@@ -31,6 +31,7 @@ import type {
   ToolTimelineItem,
   CitationItem,
 } from './chat';
+import type { ReadingCardDoc } from '@/features/read/readingCard';
 
 // Chat Types (re-export for external modules)
 export * from './chat';
@@ -97,6 +98,7 @@ export interface Paper {
   processingStartedAt?: string | null;
   processingCompletedAt?: string | null;
   imradJson?: unknown;
+  readingCardDoc?: ReadingCardDoc | null;
   knowledgeBaseId?: string | null;
 }
 

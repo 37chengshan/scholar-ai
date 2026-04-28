@@ -97,6 +97,9 @@ class Paper(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
     storage_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reading_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reading_card_doc: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON, nullable=True, name="readingCardDoc"
+    )
     notes_version: Mapped[int] = mapped_column(Integer, default=0)
     starred: Mapped[bool] = mapped_column(Boolean, default=False)
     project_id: Mapped[Optional[str]] = mapped_column(

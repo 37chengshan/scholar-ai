@@ -15,6 +15,7 @@ import { useMeasuredMessages } from '@/features/chat/hooks/useMeasuredMessages';
 import { useAnswerContract } from '@/features/chat/hooks/useAnswerContract';
 import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
 import { EvidencePanel } from '@/features/chat/components/evidence/EvidencePanel';
+import { CompareCard } from '@/features/chat/components/CompareCard';
 
 interface MessageFeedCopy {
   noMessages: string;
@@ -89,7 +90,20 @@ function AssistantEvidenceSection({ message, isZh, onCitationClick }: {
   const contract = useAnswerContract(message);
   const { jumpToSource, saveEvidence } = useEvidenceNavigation(isZh);
 
-  if (!contract || contract.response_type !== 'rag') {
+  if (!contract) {
+    return null;
+  }
+
+  if (contract.response_type === 'compare' && contract.compare_matrix) {
+    return (
+      <CompareCard
+        contract={contract}
+        isZh={isZh}
+      />
+    );
+  }
+
+  if (contract.response_type !== 'rag') {
     return null;
   }
 

@@ -74,6 +74,7 @@ class PaperData(BaseModel):
     user_id: str
     storage_key: Optional[str] = None
     reading_notes: Optional[str] = None
+    reading_card_doc: Optional[dict] = None
     notes_version: Optional[int] = None
     starred: bool = False
     project_id: Optional[str] = None
@@ -259,6 +260,7 @@ def format_paper_response(paper: Paper, task: Optional[ProcessingTask] = None) -
         "user_id": paper.user_id,
         "storage_key": paper.storage_key,
         "reading_notes": paper.reading_notes,
+        "reading_card_doc": paper.reading_card_doc,
         "notes_version": paper.notes_version,
         "starred": paper.starred,
         "project_id": paper.project_id,

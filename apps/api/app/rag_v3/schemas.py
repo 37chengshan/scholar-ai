@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -150,11 +150,111 @@ class AnswerClaim(BaseModel):
     citation_ids: list[str] = Field(default_factory=list)
 
 
+class AnswerCitation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paper_id: str
+    source_chunk_id: str
+    page_num: Optional[int] = None
+    section_path: Optional[str] = None
+    title: str = ""
+    anchor_text: str = ""
+    text_preview: str = ""
+    score: Optional[float] = None
+    content_type: str = "text"
+    citation_jump_url: str = ""
+
+
+class EvidenceBlock(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_id: str
+    source_type: Literal["paper", "note", "web", "user_upload"] = "paper"
+    paper_id: str
+    source_chunk_id: str
+    page_num: Optional[int] = None
+    section_path: Optional[str] = None
+    content_type: str = "text"
+    text: str = ""
+    score: Optional[float] = None
+    rerank_score: Optional[float] = None
+    support_status: Optional[
+        Literal["supported", "partially_supported", "unsupported"]
+    ] = None
+    citation_jump_url: str = ""
+    user_comment: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Compare Matrix schemas
+# ---------------------------------------------------------------------------
+
+
+class CompareDimension(BaseModel):
+    """A single compare dimension descriptor."""
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    label: str
+
+
+class CompareCell(BaseModel):
+    """Evidence-backed cell in a compare matrix (paper × dimension)."""
+    model_config = ConfigDict(extra="forbid")
+
+    dimension_id: str
+    content: str
+    support_status: Literal["supported", "partially_supported", "unsupported", "not_enough_evidence"] = "not_enough_evidence"
+    evidence_blocks: list[EvidenceBlock] = Field(default_factory=list)
+
+
+class CompareRow(BaseModel):
+    """One paper's row in the compare matrix."""
+    model_config = ConfigDict(extra="forbid")
+
+    paper_id: str
+    title: str
+    year: Optional[int] = None
+    cells: list[CompareCell] = Field(default_factory=list)
+
+
+class CrossPaperInsight(BaseModel):
+    """A cross-paper insight backed by evidence from multiple papers."""
+    model_config = ConfigDict(extra="forbid")
+
+    claim: str
+    supporting_paper_ids: list[str] = Field(default_factory=list)
+    evidence_blocks: list[EvidenceBlock] = Field(default_factory=list)
+
+
+class CompareMatrix(BaseModel):
+    """Full multi-paper compare matrix – the canonical Phase 4 output structure."""
+    model_config = ConfigDict(extra="forbid")
+
+    paper_ids: list[str]
+    dimensions: list[CompareDimension]
+    rows: list[CompareRow]
+    summary: str = ""
+    cross_paper_insights: list[CrossPaperInsight] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Answer Contract
+# ---------------------------------------------------------------------------
+
+
 class AnswerContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    response_type: Literal["general", "rag", "compare", "review", "reading", "abstain", "error"] = "rag"
     answer_mode: Literal["full", "partial", "abstain"]
+    answer: str = ""
     claims: list[AnswerClaim] = Field(default_factory=list)
     unsupported_claims: list[str] = Field(default_factory=list)
     missing_evidence: list[str] = Field(default_factory=list)
-    citations: list[str] = Field(default_factory=list)
+    citations: list[AnswerCitation] = Field(default_factory=list)
+    evidence_blocks: list[EvidenceBlock] = Field(default_factory=list)
+    quality: dict[str, Any] = Field(default_factory=dict)
+    trace_id: str = ""
+    run_id: str = ""
+    compare_matrix: Optional[CompareMatrix] = None

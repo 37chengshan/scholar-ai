@@ -41,6 +41,8 @@ import {
   createEmptyEditorDocument,
   getPrimaryUserNoteForPaper,
 } from '@/features/notes/ownership';
+import { normalizeEditorDocument } from '@/features/notes/content';
+import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
 
 import { toast } from "sonner";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -76,6 +78,7 @@ function ReadContent() {
   const isZh = language === "zh";
   const sourceNav = useSourceNavigation();
   const chunkHighlight = useChunkHighlight(sourceNav.sourceId);
+  const { saveEvidence } = useEvidenceNavigation(isZh);
 
   const [paper, setPaper] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -112,26 +115,6 @@ function ReadContent() {
     [totalPages],
   );
 
-  const parseNoteJson = useCallback((raw: string | null | undefined) => {
-    if (!raw) {
-      return { type: "doc", content: [] };
-    }
-
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return {
-        type: "doc",
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: raw }],
-          },
-        ],
-      };
-    }
-  }, []);
-
   const initializeLinkedNote = useCallback(
     async (paperId: string, paperTitle: string) => {
       const noteTitle = buildReadingNoteTitle(paperTitle, isZh);
@@ -147,9 +130,9 @@ function ReadContent() {
 
       setLinkedNoteId(userNote.id);
       setLinkedNoteTitle(userNote.title || noteTitle);
-      setLinkedNoteContent(parseNoteJson(userNote.content));
+      setLinkedNoteContent(normalizeEditorDocument(userNote.contentDoc || userNote.content));
     },
-    [isZh, parseNoteJson],
+    [isZh],
   );
 
   useEffect(() => {
@@ -316,7 +299,8 @@ function ReadContent() {
         if (!linkedNoteId) {
           const created = await notesApi.createNote({
             title: linkedNoteTitle || buildReadingNoteTitle(paper?.title, isZh),
-            content: contentJson,
+            contentDoc: normalizeEditorDocument(content),
+            sourceType: 'read',
             tags: ['read-note'],
             paperIds: [id],
           });
@@ -327,7 +311,8 @@ function ReadContent() {
             title:
               linkedNoteTitle ||
               buildReadingNoteTitle(paper?.title, isZh),
-            content: contentJson,
+            contentDoc: normalizeEditorDocument(content),
+            sourceType: 'read',
             paperIds: [id],
           });
         }
@@ -672,7 +657,17 @@ function ReadContent() {
                 {chunkHighlight.hasHighlight ? (
                   <div className="mt-3 space-y-2">
                     <SourceChunkHighlight sourceChunkId={chunkHighlight.highlightedSourceChunkId} />
-                    <EvidenceSideNote source={sourceNav.source} sourceId={sourceNav.sourceId} page={sourceNav.page} />
+                    <EvidenceSideNote
+                      source={sourceNav.source}
+                      sourceId={sourceNav.sourceId}
+                      page={sourceNav.page}
+                      paperId={id || ''}
+                      targetNoteId={linkedNoteId}
+                      onSaveEvidence={(claim, block) => void saveEvidence(claim, block, {
+                        surface: 'read',
+                        targetNoteId: linkedNoteId || undefined,
+                      })}
+                    />
                   </div>
                 ) : null}
               </div>
@@ -741,7 +736,22 @@ function ReadContent() {
                 value="summary"
                 className="flex-1 overflow-hidden mt-0"
               >
-                <AISummaryPanel paperId={id!} summary={paper.readingNotes} />
+                <AISummaryPanel
+                  paperId={id!}
+                  summary={paper.readingNotes}
+                  readingCardDoc={paper.readingCardDoc}
+                  onJumpCitation={(block) => {
+                    if (block.citation_jump_url) {
+                      navigate(block.citation_jump_url);
+                    }
+                  }}
+                  onSaveEvidence={(claim, block) => {
+                    void saveEvidence(claim, block, {
+                      surface: 'read',
+                      targetNoteId: linkedNoteId || undefined,
+                    });
+                  }}
+                />
               </TabsContent>
 
               <TabsContent

@@ -8,9 +8,9 @@ Table name matches Prisma schema (notes).
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
-from sqlalchemy import ARRAY, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import ARRAY, JSON, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -33,6 +33,15 @@ class Note(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), name="userId")
     title: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
+    content_doc: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON, nullable=True, name="content_doc"
+    )
+    linked_evidence: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(
+        JSON, nullable=True, name="linked_evidence"
+    )
+    source_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="manual", server_default="manual", name="source_type"
+    )
     tags: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)
     paper_ids: Mapped[List[str]] = mapped_column(ARRAY(String), default=list, name="paper_ids")
     created_at: Mapped[datetime] = mapped_column(

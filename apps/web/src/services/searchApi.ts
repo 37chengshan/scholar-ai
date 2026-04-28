@@ -216,13 +216,18 @@ export interface LayeredEvidenceSearchResult {
   paper_results: string[];
   section_matches: string[];
   evidence_matches: Array<{
+    evidence_id?: string;
+    source_type?: string;
     source_chunk_id: string;
     paper_id: string;
     page_num?: number;
     section_path?: string;
     content_type?: string;
     content?: string;
+    text?: string;
     quality_score?: number;
+    citation_jump_url?: string;
+    support_status?: string;
   }>;
   relation_matches: unknown[];
   answer_mode?: 'full' | 'partial' | 'abstain';

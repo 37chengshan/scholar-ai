@@ -9,12 +9,14 @@ from fastapi import APIRouter
 from .kb_crud import router as crud_router
 from .kb_import import router as import_router
 from .kb_papers import router as papers_router
+from .kb_review import router as review_router
 
 
 router = APIRouter()
 router.include_router(crud_router, prefix="")
 router.include_router(import_router, prefix="")
 router.include_router(papers_router, prefix="")
+router.include_router(review_router, prefix="")
 
 
 __all__ = ["router"]

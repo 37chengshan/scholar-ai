@@ -21,7 +21,7 @@ def extract_paper_ids_from_query(query: str) -> list[str]:
 
 
 class DenseEvidenceRetriever:
-    """Dense retriever backed by Milvus with optional paper_id filtering."""
+    """Dense retriever backed by Milvus with optional paper-scoped filters."""
 
     unsupported_field_type_count: int = 0
     fallback_used_count: int = 0
@@ -47,7 +47,55 @@ class DenseEvidenceRetriever:
         ]
         self.last_trace: dict[str, Any] = {}
 
-    def retrieve(self, query: str, top_k: int, paper_id_filter: list[str] | None = None) -> list[EvidenceCandidate]:
+    @staticmethod
+    def _build_filter_expression(
+        paper_id_filter: list[str] | None = None,
+        section_paths: list[str] | None = None,
+        page_from: int | None = None,
+        page_to: int | None = None,
+        content_types: list[str] | None = None,
+    ) -> str:
+        parts = ["indexable == true"]
+
+        if paper_id_filter:
+            quoted = ", ".join(f'"{paper_id}"' for paper_id in dict.fromkeys(paper_id_filter) if paper_id)
+            if quoted:
+                parts.append(f"paper_id in [{quoted}]")
+
+        if section_paths:
+            normalized = [str(path).strip().lower() for path in section_paths if str(path).strip()]
+            if normalized:
+                clauses = [f'normalized_section_path like "{path}%"' for path in dict.fromkeys(normalized)]
+                parts.append(f"({' || '.join(clauses)})")
+
+        if page_from is not None:
+            parts.append(f"page_num >= {int(page_from)}")
+
+        if page_to is not None:
+            parts.append(f"page_num <= {int(page_to)}")
+
+        if content_types:
+            normalized_types = [
+                str(content_type).strip().lower()
+                for content_type in content_types
+                if str(content_type).strip().lower() in _CONTENT_TYPE_VALUES
+            ]
+            if normalized_types:
+                quoted_types = ", ".join(f'"{content_type}"' for content_type in dict.fromkeys(normalized_types))
+                parts.append(f"content_type in [{quoted_types}]")
+
+        return " && ".join(parts)
+
+    def retrieve(
+        self,
+        query: str,
+        top_k: int,
+        paper_id_filter: list[str] | None = None,
+        section_paths: list[str] | None = None,
+        page_from: int | None = None,
+        page_to: int | None = None,
+        content_types: list[str] | None = None,
+    ) -> list[EvidenceCandidate]:
         if not self._embedding_provider or not self._collection_name:
             self.last_trace = {
                 "search_path": "disabled",
@@ -57,12 +105,15 @@ class DenseEvidenceRetriever:
             }
             return []
 
-        # Primary path: configured minimal output fields.
         try:
             result = self._milvus_search(
                 query=query,
                 top_k=top_k,
                 paper_id_filter=paper_id_filter,
+                section_paths=section_paths,
+                page_from=page_from,
+                page_to=page_to,
+                content_types=content_types,
                 output_fields=self._output_fields,
             )
             self.last_trace = {
@@ -78,7 +129,6 @@ class DenseEvidenceRetriever:
             if unsupported_field:
                 DenseEvidenceRetriever.unsupported_field_type_count += 1
 
-            # Retry with strict id-only-compatible minimal fields.
             DenseEvidenceRetriever.fallback_used_count += 1
             self.last_trace = {
                 "search_path": "fallback",
@@ -87,22 +137,15 @@ class DenseEvidenceRetriever:
                 "output_fields": ["source_chunk_id", "paper_id"],
             }
 
-            if paper_id_filter:
-                # Retry without filter as fallback
-                try:
-                    return self._milvus_search(
-                        query=query,
-                        top_k=top_k,
-                        paper_id_filter=None,
-                        output_fields=["source_chunk_id", "paper_id"],
-                    )
-                except Exception:
-                    return []
             try:
                 return self._milvus_search(
                     query=query,
                     top_k=top_k,
-                    paper_id_filter=None,
+                    paper_id_filter=paper_id_filter,
+                    section_paths=section_paths,
+                    page_from=page_from,
+                    page_to=page_to,
+                    content_types=content_types,
                     output_fields=["source_chunk_id", "paper_id"],
                 )
             except Exception:
@@ -113,6 +156,10 @@ class DenseEvidenceRetriever:
         query: str,
         top_k: int,
         paper_id_filter: list[str] | None = None,
+        section_paths: list[str] | None = None,
+        page_from: int | None = None,
+        page_to: int | None = None,
+        content_types: list[str] | None = None,
         output_fields: list[str] | None = None,
     ) -> list[EvidenceCandidate]:
         from pymilvus import Collection
@@ -121,11 +168,13 @@ class DenseEvidenceRetriever:
         col = Collection(self._collection_name, using=self._milvus_alias)
         col.load()
 
-        if paper_id_filter:
-            quoted = ", ".join(f'"{pid}"' for pid in paper_id_filter)
-            expr = f"indexable == true && paper_id in [{quoted}]"
-        else:
-            expr = "indexable == true"
+        expr = self._build_filter_expression(
+            paper_id_filter=paper_id_filter,
+            section_paths=section_paths,
+            page_from=page_from,
+            page_to=page_to,
+            content_types=content_types,
+        )
 
         results = col.search(
             data=[vec],

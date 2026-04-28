@@ -38,6 +38,12 @@ vi.mock('@/utils/apiClient', () => ({
   },
 }));
 
+vi.mock('@/services/kbReviewApi', () => ({
+  kbReviewApi: {
+    listRuns: vi.fn(),
+  },
+}));
+
 vi.mock('@/features/kb/components/KnowledgeImportPanel', () => ({
   KnowledgeImportPanel: ({ onJobComplete }: { onJobComplete: () => void }) => (
     <button type="button" onClick={onJobComplete}>
@@ -65,6 +71,7 @@ vi.mock('@/app/components/ImportDialog', () => ({
 import { kbApi } from '@/services/kbApi';
 import { importApi } from '@/services/importApi';
 import apiClient from '@/utils/apiClient';
+import { kbReviewApi } from '@/services/kbReviewApi';
 
 describe('KnowledgeWorkspaceShell', () => {
   beforeEach(() => {
@@ -125,9 +132,13 @@ describe('KnowledgeWorkspaceShell', () => {
     } as any);
 
     vi.mocked(importApi.list).mockResolvedValue({ success: true, data: { jobs: [] } } as any);
-    vi.mocked(apiClient.get).mockResolvedValue({
-      data: [{ id: 'session-1', title: 'Run A', updatedAt: '2026-01-01T00:00:00Z' }],
+    vi.mocked(kbReviewApi.listRuns).mockResolvedValue({
+      items: [{ id: 'run-1', status: 'completed', updatedAt: '2026-01-01T00:00:00Z' }],
+      total: 1,
+      limit: 50,
+      offset: 0,
     } as any);
+    vi.mocked(apiClient.get).mockResolvedValue({ data: [] } as any);
   });
 
   it('renders papers panel by default', async () => {
@@ -147,7 +158,21 @@ describe('KnowledgeWorkspaceShell', () => {
     });
 
     await user.click(screen.getByRole('tab', { name: /Run 历史/i }));
-    expect(screen.getByText('Run A')).toBeInTheDocument();
+    expect(screen.getAllByText(/run-1/i).length).toBeGreaterThan(0);
+  });
+
+  it('opens review tab with runId when a KB run is clicked', async () => {
+    const user = userEvent.setup();
+    render(<KnowledgeWorkspaceShell />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Paper One')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('tab', { name: /Run 历史/i }));
+    await user.click(screen.getByRole('button', { name: /Run run-1/i }));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/knowledge-bases/kb-1?tab=review&runId=run-1');
   });
 
   it('only refreshes import jobs when upload queue submission completes', async () => {
@@ -220,7 +245,7 @@ describe('KnowledgeWorkspaceShell', () => {
     expect(vi.mocked(importApi.list)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(kbApi.listPapers)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(kbApi.get)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(kbReviewApi.listRuns)).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole('tab', { name: /上传工作台/i }));
     await user.click(screen.getByRole('button', { name: 'mock-upload-complete' }));
@@ -232,7 +257,7 @@ describe('KnowledgeWorkspaceShell', () => {
     await waitFor(() => {
       expect(vi.mocked(kbApi.listPapers).mock.calls.length).toBeGreaterThan(1);
       expect(vi.mocked(kbApi.get).mock.calls.length).toBeGreaterThan(1);
-      expect(vi.mocked(apiClient.get).mock.calls.length).toBeGreaterThan(1);
+      expect(vi.mocked(kbReviewApi.listRuns).mock.calls.length).toBeGreaterThan(1);
     });
   });
 
@@ -254,7 +279,7 @@ describe('KnowledgeWorkspaceShell', () => {
 
     expect(vi.mocked(kbApi.listPapers)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(kbApi.get)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(kbReviewApi.listRuns)).toHaveBeenCalledTimes(1);
   });
 
   it('only refreshes import jobs when import panel reports job completion', async () => {
@@ -276,6 +301,6 @@ describe('KnowledgeWorkspaceShell', () => {
 
     expect(vi.mocked(kbApi.listPapers)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(kbApi.get)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(apiClient.get)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(kbReviewApi.listRuns)).toHaveBeenCalledTimes(1);
   });
 });

@@ -70,6 +70,10 @@ async function readPersistedAuthState(): Promise<CachedAuthState | null> {
     if (!parsed?.user?.email || !Array.isArray(parsed?.cookies)) {
       return null;
     }
+    const hasWarmHintCookie = parsed.cookies.some((cookie) => cookie.name === 'authHint' && cookie.value === '1');
+    if (!hasWarmHintCookie) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;

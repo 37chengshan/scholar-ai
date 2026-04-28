@@ -158,7 +158,8 @@ Chat stream 请求体契约（冻结）：
     "paper_id": "paper-uuid"
   },
   "context": {
-    "auto_confirm": false
+    "auto_confirm": false,
+    "paper_ids": ["paper-uuid-a", "paper-uuid-b"]
   }
 }
 ```
@@ -169,6 +170,7 @@ Chat stream 请求体契约（冻结）：
   - `scope.paper_id` 仅在 `scope.type=paper` 时有效。
   - `scope.knowledge_base_id` 仅在 `scope.type=knowledge_base` 时有效。
   - `context`：可选扩展上下文，保持向后兼容。
+  - `context.paper_ids[]`：v2.0 冻结后的 canonical 多论文 follow-up scope。当前端从 Compare 页面“Continue in Chat”跳转时，后端必须在 `mode=auto|rag` 下把它下推为真实 retrieval `paper_scope`，不得忽略或改写成未文档化的 scope 类型。
 
 Session messages 契约（冻结）：
 
@@ -222,7 +224,7 @@ Run 恢复与控制接口（PR37）：
 RAG 检索与规划字段补充（Phase 1 + 2）：
 
 - `/api/v1/rag/query` 与检索评测链路允许返回以下 planner 字段：
-  - `query_family`：`fact|compare|evolution|critique|limitation|numeric|figure|table`
+  - `query_family`：`fact|compare|evolution|critique|limitation|numeric|figure|table|survey`
   - `planner_query_count`：planner 生成检索变体数量
   - `decontextualized_query`：去语境化后的查询
   - `second_pass_used`：是否触发 second-pass rewrite
@@ -264,6 +266,63 @@ Run timeline 前端契约补充（PR37）：
 
 - timeline item `type` 扩展为：`phase | tool | step | confirmation | done | error | recovery`。
 - timeline item 可携带 `status` 字段，前端用于执行态展示与恢复动作分流。
+
+Phase 5 ReviewDraft 与 KB Runs 契约（冻结）：
+
+- `POST /api/v1/knowledge-bases/{kb_id}/review-drafts`
+  - 请求体：
+
+```json
+{
+  "paper_ids": ["paper-1", "paper-2"],
+  "mode": "outline_and_draft",
+  "question": "What are current trends in retrieval-augmented generation?",
+  "target_review_draft_id": "optional-draft-id"
+}
+```
+
+  - 语义：
+    - 未传 `target_review_draft_id`：创建新 `ReviewDraft` 并启动新 run。
+    - 传入 `target_review_draft_id`：在同一 draft 上重生成覆盖。
+  - 成功响应：`success + data(ReviewDraftDto)`。
+
+- `GET /api/v1/knowledge-bases/{kb_id}/review-drafts`
+  - 语义：返回该 KB 下 ReviewDraft 列表。
+  - 响应：`data.items[]` + `meta(limit, offset, total)`。
+
+- `GET /api/v1/knowledge-bases/{kb_id}/review-drafts/{draft_id}`
+  - 语义：返回完整 `ReviewDraftDto`（含 `outline_doc`、`draft_doc`、`quality`、`error_state`、`trace_id`、`run_id`）。
+
+- `POST /api/v1/knowledge-bases/{kb_id}/review-drafts/{draft_id}/retry`
+  - 语义：复用同一输入范围与问题，触发新 run，更新同一 draft。
+  - 响应：`success + data(ReviewDraftDto)`。
+
+- `GET /api/v1/knowledge-bases/{kb_id}/runs`
+  - 语义：返回真实 KB run 历史（禁止 session 列表投影替代）。
+  - 响应：`data.items[]` + `meta(limit, offset, total)`。
+
+- `GET /api/v1/runs/{run_id}`
+  - 语义：返回完整 run 详情。
+  - 响应最小字段：`steps[]`、`tool_events[]`、`artifacts[]`、`evidence[]`、`recovery_actions[]`、`trace_id`、`error_state`。
+
+Review Agent Pipeline 契约（Phase 5）：
+
+- 生成流程固定步骤：`outline_planner -> evidence_retriever -> review_writer -> citation_validator -> draft_finalizer`。
+- 每步 metadata 必须记录：`input_schema_name`、`output_schema_name`。
+- 输入输出必须走显式 schema（Pydantic），禁止 loose dict 直接透传。
+
+ReviewDraft 生成质量闸门：
+
+- paragraph 进入 `draft_doc` 的必要条件：至少 1 条 validated citation。
+- `citation_coverage_status` 取值冻结：`covered|insufficient`。
+- uncovered paragraph 禁止进入正式正文；证据不足时使用 section 级 `omitted_reason`。
+- `error_state` 最少覆盖：`insufficient_evidence|graph_unavailable|validation_failed|writer_failed|partial_draft`。
+
+Graph/DRIFT-like global-local 检索约束（Phase 5）：
+
+- `query_family=survey` 仅在 KB 综述生成入口触发（`scope=full_kb` 或显式 `paper_ids[]`）。
+- Graph 分支仅用于全局主题发现与关系扩展，不替代单篇精确 RAG。
+- Graph 不可用时必须降级到 local-only，并在 `quality`/`error_state` 标记 fallback。
 Paper 资源契约补充：
 
 - `GET /api/v1/papers`：返回 `data.items[]` 与 `meta.limit/offset/total`。
@@ -310,19 +369,37 @@ Evidence/Notes 扩展契约补充（v3.4-v3.5）：
 
 - `GET /api/v1/evidence/source/{source_chunk_id}`
   - 用途：按 `source_chunk_id` 回查证据原文与落地位置信息
-  - 响应至少包含：`source_chunk_id`、`paper_id`、`page_num`、`section_path`、`content`、`read_url`
+  - 响应至少包含：`evidence_id`、`source_type`、`source_chunk_id`、`paper_id`、`page_num`、`section_path`、`content_type`、`content`、`citation_jump_url`
+  - `read_url` 仅作为兼容别名保留；新客户端统一消费 `citation_jump_url`
 - `POST /api/v1/notes/evidence`
   - 用途：将 claim+citation 证据保存为用户 Note（可编辑资源）
-  - 请求体至少包含：`claim`、`source_chunk_id`、`paper_id`、`content`，可选 `page_num`、`section_path`、`citation`
+  - 请求体至少包含：`claim`、`surface`、`evidence_block`
+  - `evidence_block` 固定采用 EvidenceBlock 2.0 字段：`evidence_id`、`source_type`、`paper_id`、`source_chunk_id`、`page_num`、`section_path`、`content_type`、`text`、`score`、`rerank_score`、`support_status`、`citation_jump_url`
+  - 可选字段：`target_note_id`、`user_comment`
   - 响应为标准 `NoteResponse` envelope，不得返回裸对象
+  - 返回 Note 资源时至少补充：`contentDoc`、`linkedEvidence[]`、`sourceType`
 
 Chat v3 Done 事件契约补充（Frontend Evidence UI）：
 
 - `chat/stream` 的 `done` 事件在既有字段基础上允许返回：
-  - `answer_mode`、`claims[]`、`evidence_blocks[]`、`quality`、`retrieval_trace_id`
+  - `response_type`、`answer_mode`、`claims[]`、`citations[]`、`evidence_blocks[]`、`quality`、`trace_id`、`run_id`
+  - `compare_matrix`：当 `response_type=compare` 时必须保留，不允许在 SDK 或前端 normalizer 中丢失
   - `trace{}`（包含 `runtime_profile`、`spans[]`、`fallback`、`cost_estimate`）
   - `cost_estimate`、`error_state`（取值允许 `fallback_used|partial_answer|abstain`）
 - SSE `done` 字段扩展必须向后兼容：老客户端仅消费 `answer`/`citations` 时不可崩溃。
+
+## `/api/v1/compare/v4` — Phase 4 canonical compare API
+
+- 路径：`POST /api/v1/compare/v4`
+- 用途：多论文 evidence-backed compare 真源接口，返回结构化 `AnswerContract`
+- 请求字段：
+  - `paper_ids[]`：2-10 篇论文，按输入顺序作为 matrix 行顺序
+  - `dimensions[]`：允许子集 `{problem, method, dataset, metrics, results, limitations, innovation}`
+  - `question`：可选研究问题，用于引导 retrieval
+- 响应字段要求：
+  - `response_type` 固定为 `compare`
+  - `compare_matrix` 必须存在，且其所有 cell 均来自真实 evidence candidates；证据不足时仅允许 `support_status=not_enough_evidence`
+  - `evidence_blocks[]` / `citations[]` 必须可回跳到 Read 页，不得返回 synthetic lexical placeholder 作为生产证据
 
 Plan C 契约治理约束：
 
@@ -409,6 +486,96 @@ RAG 查询响应契约补充：
 - 抽样检查分页接口参数与 meta 字段是否一致。
 - 抽样检查受保护接口的 401/403 行为。
 - 运行 `cd apps/api && .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1`，冻结导入批次与 Chat 主链路契约。
+
+## `/api/v1/evals` — Phase 6 Evaluation API (read-only, internal)
+
+所有 eval 接口均为内部只读接口，**无 auth 依赖**，仅供 `/analytics` 内部评测看板调用。
+路由前缀：`/api/v1/evals`，由 `apps/api/app/api/evals.py` 实现，通过 `eval_service.py` 读取 `artifacts/benchmarks/phase6/` 文件系统产物。
+
+### `GET /api/v1/evals/overview`
+
+返回最新离线门禁状态与运行汇总。
+
+Response: `EvaluationOverview`
+```json
+{
+  "latest_offline_gate": {
+    "run_id": "run_phase6_baseline_001",
+    "verdict": "PASS",
+    "gate_failures": [],
+    "metrics": { "retrieval_hit_rate": 0.891, "top_k_recall": { "recall_at_5": 0.874, "recall_at_10": 0.923 }, "..." }
+  },
+  "run_count": 1,
+  "offline_count": 1,
+  "online_count": 0,
+  "recent_runs": [{ "run_id": "...", "mode": "offline", "overall_verdict": "PASS", "created_at": "..." }]
+}
+```
+
+### `GET /api/v1/evals/runs?mode=offline|online|all&limit=20&offset=0`
+
+返回 benchmark 运行列表（分页，最新优先）。
+
+Response: `{ "items": BenchmarkRunSummary[], "total": number }`
+
+### `GET /api/v1/evals/runs/{run_id}`
+
+返回单次运行完整详情：meta + 归一化 metrics + per-family 分布 + citation jump 统计。
+
+Response: `BenchmarkRunDetail` | 404
+
+```json
+{
+  "run_id": "run_phase6_baseline_001",
+  "meta": { "mode": "offline", "reranker": "on", "total_queries": 128, "..." },
+  "metrics": { "retrieval_hit_rate": 0.891, "gate_failures": [], "overall_verdict": "PASS" },
+  "by_family": { "retrieval": { "rag_basics": { "recall_at_5": 0.90 } }, "answer_quality": {} },
+  "citation_jump_detail": { "total_checked": 312, "valid": 294, "invalid": 18 }
+}
+```
+
+### `GET /api/v1/evals/diff?base_run_id=...&candidate_run_id=...`
+
+计算两次运行的指标 delta。
+
+Response: `BenchmarkDiff` | 404
+
+```json
+{
+  "base_run_id": "...",
+  "candidate_run_id": "...",
+  "base_verdict": "PASS",
+  "candidate_verdict": "PASS",
+  "deltas": {
+    "retrieval_hit_rate": { "base": 0.85, "candidate": 0.89, "delta": 0.04, "status": "improved" }
+  },
+  "fallback_used_count_delta": 0,
+  "summary": { "improved": 3, "regressed": 0, "unchanged": 8 },
+  "non_regression_failures": [],
+  "latency_regression_requires_justification": false
+}
+```
+
+**Gate 阈值**（硬性门禁，FAIL 时 CI 阻断）：
+| Metric | Threshold |
+|--------|-----------|
+| `retrieval_hit_rate` | ≥ 0.80 |
+| `recall_at_5` | ≥ 0.75 |
+| `citation_jump_valid_rate` | ≥ 0.85 |
+| `answer_supported_rate` | ≥ 0.80 |
+| `groundedness` | ≥ 0.70 |
+| `abstain_precision` | ≥ 0.80 |
+| `latency_p95` | ≤ 8.0s |
+
+**v2.0 close-out 附加通过规则**：
+- 冻结 corpus 必须满足 `paper_count >= 50`、`query_count >= 128`，且 8 个 query families 全部出现于 `query_families[]` 与 `queries[]`
+- 必须同时存在一个 offline baseline run、一个 offline candidate run，以及 candidate 对 baseline 的 `diff_from_baseline.json`
+- 每个 run 必须包含：`meta.json`、`dashboard_summary.json`、`retrieval.json`、`answer_quality.json`、`citation_jump.json`
+- candidate run 除硬阈值外还必须满足：
+  - `fallback_used_count <= 5`
+  - `cost_per_answer` 存在
+  - `overall_verdict == PASS`
+- diff 必须对以下 6 项零回退：`retrieval_hit_rate`、`answer_supported_rate`、`groundedness`、`citation_jump_valid_rate`、`abstain_precision`、`recall_at_5`
 
 ## Open Questions
 
