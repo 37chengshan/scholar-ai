@@ -97,6 +97,7 @@ from app.schemas.rag import Citation, RAGQueryRequest, RAGResponse
 
 # Reading progress
 from app.models.reading_progress import ReadingProgress
+from app.models.review_draft import ReviewDraft, ReviewRun
 
 # Retrieval schema (unified field names)
 from app.models.retrieval import CitationSource, RetrievedChunk, SearchConstraints
@@ -153,6 +154,8 @@ __all__ = [
     "ImportBatch",
     "ImportJob",
     "ReadingProgress",
+    "ReviewDraft",
+    "ReviewRun",
     "Session",
     "ChatMessage",
     "UploadHistory",

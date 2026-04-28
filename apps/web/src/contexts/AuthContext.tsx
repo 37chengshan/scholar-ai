@@ -18,6 +18,49 @@ import { useUserStore } from '@/stores/userStore';
 import * as authApi from '@/services/authApi';
 import type { User } from '@/types';
 
+const AUTH_WARM_HINT_KEY = 'scholarai-auth-warm';
+const AUTH_WARM_COOKIE = 'authHint=1';
+
+function hasWarmAuthCookie(): boolean {
+  if (typeof document === 'undefined') {
+    return false;
+  }
+
+  return document.cookie.split(';').some((entry) => entry.trim() === AUTH_WARM_COOKIE);
+}
+
+function setWarmAuthHint(active: boolean): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (active) {
+      window.sessionStorage.setItem(AUTH_WARM_HINT_KEY, '1');
+    } else {
+      window.sessionStorage.removeItem(AUTH_WARM_HINT_KEY);
+    }
+  } catch {
+    // Ignore storage failures and fall back to cold auth checks.
+  }
+}
+
+export function hasWarmAuthHint(): boolean {
+  if (hasWarmAuthCookie()) {
+    return true;
+  }
+
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return window.sessionStorage.getItem(AUTH_WARM_HINT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Auth context interface
  */
@@ -70,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       setUser(userData);
+      setWarmAuthHint(true);
       setProfile(userData);
 
       // Load user settings
@@ -82,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       // Session invalid or not found
       setUser(null);
+      setWarmAuthHint(false);
       clearUser();
     } finally {
       if (requestVersion === authRequestVersionRef.current) {
@@ -112,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (response.user) {
         setUser(response.user);
+        setWarmAuthHint(true);
         setProfile(response.user);
         return;
       }
@@ -141,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Logout error:', error);
     } finally {
       if (requestVersion === authRequestVersionRef.current) {
+        setWarmAuthHint(false);
         clearAuth();
         clearUser();
         setLoading(false);

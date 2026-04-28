@@ -39,8 +39,11 @@ export function EvidencePanel({ contract, onJumpCitation, onOpenSource, onSaveEv
         ))}
       </div>
 
-      {contract.retrieval_trace_id ? (
-        <div className="mt-2 text-[11px] text-muted-foreground">trace: {contract.retrieval_trace_id}</div>
+      {contract.trace_id || contract.retrieval_trace_id ? (
+        <div className="mt-2 text-[11px] text-muted-foreground">
+          trace: {contract.trace_id || contract.retrieval_trace_id}
+          {contract.run_id ? ` · run: ${contract.run_id}` : ''}
+        </div>
       ) : null}
       {contract.error_state ? (
         <div className="mt-1 text-[11px] text-rose-700">state: {contract.error_state}</div>

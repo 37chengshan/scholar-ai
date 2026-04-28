@@ -15,6 +15,7 @@ import { KnowledgeImportPanel } from '@/features/kb/components/KnowledgeImportPa
 import { KnowledgeEvidencePanel } from '@/features/kb/components/KnowledgeEvidencePanel';
 import { KnowledgeRunHistoryPanel } from '@/features/kb/components/KnowledgeRunHistoryPanel';
 import { KnowledgeQuickAskPanel } from '@/features/kb/components/KnowledgeQuickAskPanel';
+import { KnowledgeReviewPanel } from '@/features/kb/components/KnowledgeReviewPanel';
 import { useKnowledgeRuns } from '@/features/kb/hooks/useKnowledgeRuns';
 import { useKnowledgeWorkflowRefresh } from '@/features/kb/hooks/useKnowledgeWorkflowRefresh';
 import { UploadWorkspace } from '@/features/uploads/components/UploadWorkspace';
@@ -31,9 +32,8 @@ export function KnowledgeWorkspaceShell() {
     refreshAll,
     syncTab,
   } = useKnowledgeBaseWorkspace();
-  const { runs, loadingRuns, reloadRuns } = useKnowledgeRuns();
-
   const { kbId, kb, papers, importJobs, loadingKB, papersLoading, loadImportJobs, loadPapers, loadKnowledgeBase } = queries;
+  const { runs, loadingRuns, reloadRuns } = useKnowledgeRuns(kbId);
 
   const hasRunningJobs = importJobs.some(
     (job) => job.status === 'created' || job.status === 'running' || job.status === 'awaiting_user_action'
@@ -184,6 +184,13 @@ export function KnowledgeWorkspaceShell() {
             }`}>
               <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> Run 历史</span>
             </TabsTrigger>
+            <TabsTrigger value="review" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+              activeTab === 'review'
+                ? 'border-primary text-foreground bg-transparent'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
+            }`}>
+              <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> Review Draft</span>
+            </TabsTrigger>
             <TabsTrigger value="chat" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'chat'
                 ? 'border-primary text-foreground bg-transparent'
@@ -233,7 +240,15 @@ export function KnowledgeWorkspaceShell() {
           </TabsContent>
 
           <TabsContent value="runs" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <KnowledgeRunHistoryPanel runs={runs} loading={loadingRuns} onOpenRun={(runId) => navigate(`/chat?sessionId=${runId}&kbId=${kb.id}`)} />
+            <KnowledgeRunHistoryPanel
+              runs={runs}
+              loading={loadingRuns}
+              onOpenRun={(runId) => navigate(`/knowledge-bases/${kb.id}?tab=review&runId=${runId}`)}
+            />
+          </TabsContent>
+
+          <TabsContent value="review" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <KnowledgeReviewPanel kbId={kb.id} papers={papers} onRunChanged={() => void reloadRuns()} />
           </TabsContent>
 
           <TabsContent value="chat" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">

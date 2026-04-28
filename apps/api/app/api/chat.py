@@ -59,9 +59,21 @@ router = APIRouter()
 # Task 1.4: Initialize ComplexityRouter (rule-based, no LLM client for now)
 complexity_router = ComplexityRouter()
 
-_FAST_PATH_MAX_CHARS = 40
 _COMPARE_HINT_PATTERN = re.compile(r"比较|对比|差异|区别|演进|综述|优缺点|研究现状", re.IGNORECASE)
 _SMALLTALK_HINT_PATTERN = re.compile(r"^(你好|您好|hi|hello|hey|在吗|你是谁|你能做什么)[!?！。\s]*$", re.IGNORECASE)
+
+
+def _extract_context_paper_ids(context: Dict[str, Any] | None) -> list[str]:
+    raw_paper_ids = (context or {}).get("paper_ids")
+    if not isinstance(raw_paper_ids, list):
+        return []
+    return [str(paper_id) for paper_id in raw_paper_ids if str(paper_id).strip()]
+
+
+def _infer_scoped_query_family(message: str, paper_ids: list[str]) -> str:
+    if len(paper_ids) > 1 or _COMPARE_HINT_PATTERN.search(message or ""):
+        return "compare"
+    return "fact"
 
 
 @router.post("")
@@ -69,12 +81,14 @@ async def chat_v3_query(request: ChatStreamRequest, user_id: str = CurrentUserId
     """Blocking chat endpoint backed by v3 hierarchical retriever contract."""
     trace_id = str(uuid4())
     try:
+        scoped_paper_ids = _extract_context_paper_ids(request.context)
         payload = build_answer_contract_payload(
             query=request.message,
             user_id=user_id,
-            query_family="fact",
+            query_family=_infer_scoped_query_family(request.message, scoped_paper_ids),
             stage="rule",
             trace_id=trace_id,
+            paper_scope=scoped_paper_ids or None,
         )
         return {
             "success": True,
@@ -104,17 +118,7 @@ def _should_use_simple_fast_path(
     if not _is_general_scope(scope):
         return False
 
-    complexity = str(routing_result.get("complexity", "simple")).lower()
-    if complexity != "simple":
-        return False
-
-    if _COMPARE_HINT_PATTERN.search(query):
-        return False
-
-    if _SMALLTALK_HINT_PATTERN.match(query):
-        return True
-
-    return len(query) <= _FAST_PATH_MAX_CHARS
+    return bool(_SMALLTALK_HINT_PATTERN.match(query))
 
 
 def _build_simple_fast_reply(query: str) -> str:
@@ -155,6 +159,9 @@ async def chat_stream(
     """
     session_id = request.session_id or "unknown-session"
     request_received_at = time.perf_counter()
+    # WP5: per-request trace_id + run_id for full-chain correlation
+    trace_id = str(uuid4())
+    run_id = str(uuid4())
 
     try:
         logger.info(
@@ -162,6 +169,8 @@ async def chat_stream(
             user_id=user_id,
             session_id=request.session_id,
             message=request.message[:100],
+            trace_id=trace_id,
+            run_id=run_id,
         )
 
         session = None
@@ -170,6 +179,11 @@ async def chat_stream(
             if not session:
                 logger.warning(
                     "Session not found, creating new", session_id=request.session_id
+                )
+            elif session.user_id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=Errors.forbidden("Session belongs to different user"),
                 )
 
         if not session:
@@ -214,6 +228,7 @@ async def chat_stream(
         auto_confirm = False
         if request.context:
             auto_confirm = request.context.get("auto_confirm", False)
+        scoped_paper_ids = _extract_context_paper_ids(request.context)
 
         async def event_generator() -> AsyncIterator[str]:
             """Generate SSE events from Agent execution with message persistence.
@@ -316,6 +331,104 @@ async def chat_stream(
                     except Exception as e:
                         logger.warning("Failed to save user message", error=str(e))
 
+                    if scoped_paper_ids and request.mode != "agent":
+                        session_ready_at = time.perf_counter()
+                        assistant_message_id = await chat_orchestrator._create_assistant_message(
+                            session_id=session_id,
+                            user_id=user_id,
+                        )
+
+                        buffered_session = await event_buffer.emit(
+                            SSEEventType.SESSION_START,
+                            {
+                                "session_id": session_id,
+                                "task_type": "general",
+                                "message_id": assistant_message_id,
+                                "run_id": run_id,
+                                "trace_id": trace_id,
+                            },
+                        )
+                        yield buffered_session.to_sse_format()
+
+                        if not routing_emitted:
+                            routing_event = await event_buffer.emit(
+                                "routing_decision",
+                                {
+                                    "complexity": routing_result["complexity"],
+                                    "method": routing_result["method"],
+                                    "confidence": routing_result["confidence"],
+                                    "reasoning": routing_result.get("reasoning", ""),
+                                    "query_preview": request.message[:100],
+                                    "message_id": assistant_message_id,
+                                },
+                            )
+                            yield routing_event.to_sse_format()
+                            routing_emitted = True
+
+                        payload = build_answer_contract_payload(
+                            query=request.message,
+                            user_id=user_id,
+                            paper_scope=scoped_paper_ids,
+                            query_family=_infer_scoped_query_family(
+                                request.message,
+                                scoped_paper_ids,
+                            ),
+                            stage="rule",
+                            trace_id=trace_id,
+                            run_id=run_id,
+                        )
+                        answer = str(payload.get("answer") or "")
+                        first_message_emitted_at = time.perf_counter()
+                        buffered_message = await event_buffer.emit(
+                            SSEEventType.MESSAGE,
+                            {
+                                "delta": answer,
+                                "seq": 1,
+                                "message_id": assistant_message_id,
+                            },
+                        )
+                        yield buffered_message.to_sse_format()
+
+                        await chat_orchestrator._safe_update_assistant_message(
+                            assistant_message_id,
+                            answer,
+                        )
+
+                        done_payload = {
+                            "finish_reason": "stop",
+                            "tokens_used": 0,
+                            "cost": 0.0,
+                            "total_time_ms": int((time.perf_counter() - request_received_at) * 1000),
+                            "message_id": assistant_message_id,
+                            "run_id": payload.get("run_id", run_id),
+                            "trace_id": payload.get("trace_id", trace_id),
+                            "response_type": payload.get("response_type", "rag"),
+                            "answer_mode": payload.get("answer_mode"),
+                            "answer": answer,
+                            "claims": payload.get("claims", []),
+                            "citations": payload.get("citations", []),
+                            "evidence_blocks": payload.get("evidence_blocks", []),
+                            "quality": payload.get("quality"),
+                            "retrieval_trace_id": payload.get("retrieval_trace_id"),
+                            "error_state": payload.get("error_state"),
+                            "compare_matrix": payload.get("compare_matrix"),
+                            "diagnostics": {
+                                "request_received_at": request_received_at,
+                                "session_ready_at": session_ready_at,
+                                "routing_decision_ready_at": routing_decision_ready_at,
+                                "assistant_message_created_at": session_ready_at,
+                                "first_message_emitted_at": first_message_emitted_at,
+                                "route_decision_latency_ms": int((routing_decision_ready_at - routing_start) * 1000),
+                                "first_token_emit_latency_ms": int((first_message_emitted_at - request_received_at) * 1000),
+                                "total_stream_latency_ms": int((time.perf_counter() - request_received_at) * 1000),
+                                "path": "scoped_paper_rag",
+                                "paper_scope_size": len(scoped_paper_ids),
+                            },
+                        }
+                        buffered_done = await event_buffer.emit(SSEEventType.DONE, done_payload)
+                        yield buffered_done.to_sse_format()
+                        return
+
                     if use_fast_path:
                         session_ready_at = time.perf_counter()
                         assistant_message_id = await chat_orchestrator._create_assistant_message(
@@ -327,6 +440,8 @@ async def chat_stream(
                             "session_id": session_id,
                             "task_type": "general",
                             "message_id": assistant_message_id,
+                            "run_id": run_id,
+                            "trace_id": trace_id,
                         }
                         buffered_session = await event_buffer.emit(
                             SSEEventType.SESSION_START,
@@ -372,6 +487,14 @@ async def chat_stream(
                             "cost": 0.0,
                             "total_time_ms": int((time.perf_counter() - request_received_at) * 1000),
                             "message_id": assistant_message_id,
+                            "run_id": run_id,
+                            "trace_id": trace_id,
+                            "response_type": "general",
+                            "answer_mode": None,
+                            "claims": [],
+                            "citations": [],
+                            "evidence_blocks": [],
+                            "quality": None,
                             "diagnostics": {
                                 "request_received_at": request_received_at,
                                 "session_ready_at": session_ready_at,
@@ -381,7 +504,7 @@ async def chat_stream(
                                 "route_decision_latency_ms": int((routing_decision_ready_at - routing_start) * 1000),
                                 "first_token_emit_latency_ms": int((first_message_emitted_at - request_received_at) * 1000),
                                 "total_stream_latency_ms": int((time.perf_counter() - request_received_at) * 1000),
-                                "path": "simple_fast_path",
+                                "path": "smalltalk_fast_path",
                             },
                         }
                         buffered_done = await event_buffer.emit(SSEEventType.DONE, done_payload)
@@ -416,6 +539,19 @@ async def chat_stream(
                                         event_type,
                                         event_data,
                                     )
+
+                                    if event_type == "done":
+                                        has_rag_fields = (
+                                            normalized_payload.get("answer_mode") is not None
+                                            or normalized_payload.get("retrieval_trace_id")
+                                            or bool(normalized_payload.get("citations"))
+                                            or bool(normalized_payload.get("evidence_blocks"))
+                                        )
+                                        normalized_payload["response_type"] = (
+                                            "rag"
+                                            if has_rag_fields
+                                            else normalized_payload.get("response_type", "general")
+                                        )
 
                                     # Buffer normalized event payload
                                     buffered_event = await event_buffer.emit(

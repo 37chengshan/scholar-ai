@@ -13,7 +13,12 @@ to enable cross-modal retrieval in a single vector space.
 import json
 from typing import Any, Dict, List, Optional, Union
 
-from FlagEmbedding import BGEM3FlagModel
+try:
+    from FlagEmbedding import BGEM3FlagModel
+    _FLAG_EMBEDDING_IMPORT_ERROR: Optional[Exception] = None
+except Exception as import_error:  # pragma: no cover - depends on local ML env
+    BGEM3FlagModel = None  # type: ignore[assignment]
+    _FLAG_EMBEDDING_IMPORT_ERROR = import_error
 
 from app.utils.logger import logger
 
@@ -34,7 +39,7 @@ class BGEM3Service:
     MAX_SEQ_LENGTH = 8192
 
     def __init__(self):
-        self.model: Optional[BGEM3FlagModel] = None
+        self.model: Optional[Any] = None
         self.device = "cuda" if self._check_cuda() else "cpu"
         self._initialized = False
 
@@ -50,6 +55,12 @@ class BGEM3Service:
         """Load model into memory. Called at app startup."""
         if self._initialized:
             return
+
+        if BGEM3FlagModel is None:
+            raise RuntimeError(
+                "FlagEmbedding import failed. "
+                f"Cannot load BGE-M3 model: {_FLAG_EMBEDDING_IMPORT_ERROR}"
+            )
 
         try:
             logger.info(

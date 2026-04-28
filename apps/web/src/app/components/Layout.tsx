@@ -276,18 +276,11 @@ export function Layout() {
                 clsx(
                   "group flex items-center transition-colors",
                   isActive
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-primary/[0.07] text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                   leftCollapsed
-                    ? "justify-center rounded-2xl border border-transparent px-0 py-3"
-                    : "gap-3 border-l px-0 py-2 pl-3",
-                  leftCollapsed && isActive
-                    ? "border-primary/30 bg-primary/[0.06]"
-                    : leftCollapsed
-                      ? "hover:border-border/80 hover:bg-background"
-                      : isActive
-                        ? "border-primary"
-                        : "border-transparent hover:border-border/80",
+                    ? "h-10 justify-center rounded-xl border border-transparent px-0"
+                    : "h-10 gap-2 rounded-xl px-3",
                 )
               }
             >
@@ -295,7 +288,7 @@ export function Layout() {
                 <>
                   <item.icon className={clsx("h-3.5 w-3.5 shrink-0", isActive ? "text-primary" : "text-foreground/55 group-hover:text-foreground/75")} />
                   {!leftCollapsed ? (
-                    <div className={clsx("text-[12px] font-semibold tracking-[0.04em]", isActive ? "text-foreground" : "text-foreground/82")}>
+                    <div className={clsx("text-[var(--font-xs)] font-semibold tracking-[0.04em]", isActive ? "text-foreground" : "text-foreground/82")}>
                       {isZh ? item.labelZh : item.labelEn}
                     </div>
                   ) : null}
@@ -357,21 +350,21 @@ export function Layout() {
                             "group w-full text-left transition-all duration-150",
                             leftCollapsed
                               ? "flex h-10 items-center justify-center rounded-2xl border border-transparent px-0 py-0"
-                              : "border-l px-0 py-2 pl-3 rounded-r-md",
+                              : "rounded-lg px-2.5 py-2",
                             isActive
                               ? leftCollapsed
                                 ? "border-primary/30 bg-primary/[0.06]"
-                                : "border-primary bg-primary/[0.03]"
+                                : "bg-primary/[0.03]"
                               : leftCollapsed
                                 ? "hover:border-border/80 hover:bg-background"
-                                : "border-transparent hover:bg-primary/[0.02] hover:border-primary/20",
+                                : "hover:bg-primary/[0.02]",
                           )}
                         >
                           {leftCollapsed ? (
                             <MessagesSquare className={clsx("h-3.5 w-3.5", isActive ? "text-primary" : "text-foreground/60")} />
                           ) : (
                             <>
-                              <div className="line-clamp-2 text-[11.5px] font-medium leading-snug text-foreground">
+                              <div className="line-clamp-1 text-[var(--font-xs)] font-medium leading-snug text-foreground">
                                 {session.title}
                               </div>
                               <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -420,7 +413,7 @@ export function Layout() {
               </div>
             ) : null}
             <div className="space-y-0.5">
-              {knowledgeBases.slice(0, 4).map((kb) => (
+              {knowledgeBases.slice(0, 3).map((kb) => (
                 <button
                   key={kb.id}
                   type="button"
@@ -500,10 +493,10 @@ export function Layout() {
   );
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-background text-foreground antialiased">
+    <div className="relative flex h-dvh overflow-hidden bg-background text-foreground antialiased">
       <aside className={clsx(
         "hidden shrink-0 border-r-2 border-border/70 bg-gradient-to-b from-muted/40 to-background shadow-2xl transition-[width] duration-200 md:block",
-        leftCollapsed ? "w-[68px]" : "w-[288px]",
+        leftCollapsed ? "w-[var(--sidebar-collapsed)]" : "w-[var(--sidebar-expanded)]",
       )}>
         {SidebarContent}
       </aside>

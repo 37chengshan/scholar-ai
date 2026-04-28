@@ -1,29 +1,36 @@
 import { useCallback, useEffect, useState } from 'react';
-import apiClient from '@/utils/apiClient';
+import { kbReviewApi } from '@/services/kbReviewApi';
 import type { KnowledgeRunSummary } from '@/features/kb/types/workspace';
 
-function toRunSummary(session: { id: string; title?: string; updatedAt?: string }): KnowledgeRunSummary {
+function toRunSummary(run: { id: string; status?: string; updatedAt?: string }): KnowledgeRunSummary {
   return {
-    id: session.id,
-    title: session.title || `Run ${session.id.slice(0, 8)}`,
-    updatedAt: session.updatedAt,
+    id: run.id,
+    title: run.status ? `Run ${run.id.slice(0, 8)} (${run.status})` : `Run ${run.id.slice(0, 8)}`,
+    status: run.status,
+    updatedAt: run.updatedAt,
   };
 }
 
-export function useKnowledgeRuns() {
+export function useKnowledgeRuns(kbId?: string | null) {
   const [runs, setRuns] = useState<KnowledgeRunSummary[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
 
   const loadRuns = useCallback(async () => {
+    if (!kbId) {
+      setRuns([]);
+      return;
+    }
     setLoadingRuns(true);
     try {
-      const response = await apiClient.get('/api/v1/sessions');
-      const sessions = Array.isArray(response.data) ? response.data : [];
-      setRuns(sessions.map((session) => toRunSummary(session)));
+      const response = await kbReviewApi.listRuns(kbId, { limit: 50, offset: 0 });
+      const items = Array.isArray(response.items) ? response.items : [];
+      setRuns(items.map((run) => toRunSummary(run)));
+    } catch {
+      setRuns([]);
     } finally {
       setLoadingRuns(false);
     }
-  }, []);
+  }, [kbId]);
 
   useEffect(() => {
     void loadRuns();

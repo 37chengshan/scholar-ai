@@ -192,12 +192,16 @@ export interface DoneEventData {
   tokens_used?: number;
   cost?: number;
   total_time_ms?: number;
+  response_type?: 'general' | 'rag' | 'compare' | 'review' | 'reading' | 'abstain' | 'system' | 'error';
   answer_mode?: 'full' | 'partial' | 'abstain';
   claims?: unknown[];
   citations?: unknown[];
   evidence_blocks?: unknown[];
   quality?: Record<string, unknown>;
   retrieval_trace_id?: string;
+  /** WP5: per-run and per-request correlation IDs */
+  run_id?: string;
+  trace_id?: string;
   error_state?: string | null;
   trace?: Record<string, unknown>;
 }
@@ -540,6 +544,7 @@ export class SSEService {
           tokens_used: (payload as any)?.tokens_used || 0,
           cost: (payload as any)?.cost || 0,
           total_time_ms: (payload as any)?.total_time_ms || 0,
+          response_type: (payload as any)?.response_type,
           answer_mode: (payload as any)?.answer_mode,
           claims: (payload as any)?.claims,
           citations: (payload as any)?.citations,

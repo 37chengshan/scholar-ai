@@ -25,6 +25,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models import Paper, ProcessingTask, PaperChunk
 from app.services.auth_service import User
+from app.services.reading_card_service import ensure_reading_card_doc
 from app.utils.problem_detail import ErrorTypes
 from app.config import settings
 
@@ -39,6 +40,7 @@ from .paper_shared import (
     uuid4,
     logger,
 )
+from app.services.reading_card_service import ensure_reading_card_doc
 
 
 router = APIRouter()
@@ -377,11 +379,21 @@ async def get_paper_summary(
             instance=instance,
         )
 
+    if not paper.reading_card_doc:
+        chunk_result = await db.execute(
+            select(PaperChunk).where(PaperChunk.paper_id == paper_id).order_by(PaperChunk.page_start, PaperChunk.id)
+        )
+        chunks = list(chunk_result.scalars().all())
+        reading_card_doc = ensure_reading_card_doc(paper, records=chunks)
+        if reading_card_doc is not None:
+            await db.flush()
+
     return PaperSummaryResponse(
         success=True,
         data={
             "paperId": paper_id,
             "summary": paper.reading_notes,
+            "readingCardDoc": paper.reading_card_doc,
             "imrad": paper.imrad_json,
             "status": paper.status,
             "hasNotes": paper.reading_notes is not None and len(paper.reading_notes) > 0,

@@ -60,6 +60,11 @@ class V3SearchRequest(BaseModel):
 	query: str = Field(..., min_length=1)
 	query_family: str = "fact"
 	top_k: int = Field(default=10, ge=1, le=50)
+	paper_id: str | None = None
+	section_paths: list[str] | None = None
+	page_from: int | None = None
+	page_to: int | None = None
+	content_types: list[str] | None = None
 
 
 @router.post("/evidence")
@@ -67,8 +72,14 @@ async def search_evidence_v3(request: V3SearchRequest):
 	payload = build_answer_contract_payload(
 		query=request.query,
 		user_id="search-system",
+		paper_scope=[request.paper_id] if request.paper_id else None,
 		query_family=request.query_family,
 		stage="rule",
+		top_k=request.top_k,
+		section_paths=request.section_paths,
+		page_from=request.page_from,
+		page_to=request.page_to,
+		content_types=request.content_types,
 	)
 
 	citations = payload.get("citations", [])[: request.top_k]

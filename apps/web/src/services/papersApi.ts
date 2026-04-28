@@ -12,6 +12,7 @@ import type {
   PapersQueryParams,
   ProcessingTaskStatus,
 } from '@/types';
+import type { ReadingCardDoc } from '@/features/read/readingCard';
 
 interface RawPaper {
   id: string;
@@ -42,6 +43,8 @@ interface RawPaper {
   processingError?: string | null;
   reading_notes?: string | null;
   readingNotes?: string | null;
+  reading_card_doc?: ReadingCardDoc | null;
+  readingCardDoc?: ReadingCardDoc | null;
   imrad_json?: unknown;
   imradJson?: unknown;
   knowledge_base_id?: string | null;
@@ -72,6 +75,7 @@ function normalizePaper(raw: RawPaper): PaperWithProgress {
     processingError: raw.processingError ?? null,
     lastUpdated: raw.updatedAt ?? raw.updated_at ?? '',
     readingNotes: raw.readingNotes ?? raw.reading_notes ?? null,
+    readingCardDoc: raw.readingCardDoc ?? raw.reading_card_doc ?? null,
     imradJson: raw.imradJson ?? raw.imrad_json ?? null,
     knowledgeBaseId: raw.knowledgeBaseId ?? raw.knowledge_base_id ?? null,
   } as PaperWithProgress & { readingNotes?: string | null };
@@ -202,6 +206,7 @@ export async function getStatus(id: string): Promise<{
 export async function getSummary(id: string): Promise<{
   paperId: string;
   summary?: string | null;
+  readingCardDoc?: ReadingCardDoc | null;
   imrad?: any | null;
   status: string;
   hasNotes: boolean;
@@ -209,6 +214,7 @@ export async function getSummary(id: string): Promise<{
   const response = await apiClient.get<{
     paperId: string;
     summary?: string | null;
+    readingCardDoc?: ReadingCardDoc | null;
     imrad?: any | null;
     status: string;
     hasNotes: boolean;

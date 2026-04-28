@@ -54,11 +54,13 @@ from app.api import (
     semantic_scholar,
     session,
     chat,
+    runs,
     entities,
     graph,
     compare,
     evidence,
     system,
+    evals,
     # Legacy/Python-specific routes
     health,
     parse,
@@ -181,6 +183,8 @@ async def lifespan(app: FastAPI):
                 "knowledge_base_papers",
                 "import_batches",
                 "import_jobs",
+                "review_drafts",
+                "review_runs",
             )
         )
     except Exception as e:
@@ -337,12 +341,14 @@ app.include_router(
 )
 app.include_router(session.router, prefix="/api/v1/sessions", tags=["session"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
+app.include_router(runs.router, prefix="/api/v1/runs", tags=["runs"])
 
 # Wave 3: Entities, Graph, Compare (27-04)
 app.include_router(entities.router, prefix="/api/v1/entities", tags=["entities"])
 app.include_router(graph.router, prefix="/api/v1/graph", tags=["graph"])
 app.include_router(compare.router, prefix="/api/v1/compare", tags=["compare"])
 app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["evidence"])
+app.include_router(evals.router, prefix="/api/v1/evals", tags=["evals"])
 
 # ============================================================================
 # Legacy/Python-specific Routes (keep for backward compatibility)

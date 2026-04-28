@@ -61,9 +61,16 @@ export function ComposerInput({
   };
 
   return (
-    <div className="px-4 pb-4 pt-2 bg-gradient-to-t from-paper-2 via-background to-transparent border-t border-border/60">
-      <div className="max-w-3xl mx-auto">
-        <div className="editorial-panel rounded-md focus-within:ring-1 focus-within:ring-primary/30 transition-all">
+    <div className="border-t border-border/50 bg-background/85 px-4 pb-4 pt-2 backdrop-blur-md">
+      <div className="mx-auto max-w-full" style={{ width: 'min(100%, var(--composer-max-width))' }}>
+        <div
+          data-testid="chat-composer"
+          className={clsx(
+            'rounded-2xl border border-border/70 bg-card shadow-sm transition-all',
+            'focus-within:border-primary/35 focus-within:ring-2 focus-within:ring-primary/10',
+            disabled && !streaming && 'opacity-70',
+          )}
+        >
           {/* Textarea area */}
           <div className="flex items-end gap-2 px-4 pt-3 pb-2">
             <textarea
@@ -71,7 +78,7 @@ export function ComposerInput({
               onChange={(event) => onInputChange(event.target.value)}
               onKeyDown={onKeyDown}
               placeholder={placeholder}
-              className="flex-1 text-sm bg-transparent resize-none outline-none min-h-[44px] max-h-[180px] leading-relaxed placeholder:text-muted-foreground"
+              className="min-h-[2.75rem] max-h-[11.25rem] flex-1 resize-none bg-transparent text-[var(--font-sm)] leading-relaxed outline-none placeholder:text-muted-foreground"
               rows={1}
               disabled={disabled && !streaming}
               onInput={(event) => {
@@ -91,7 +98,7 @@ export function ComposerInput({
                   onClick={() => setModeMenuOpen(v => !v)}
                   disabled={streaming || (disabled && !streaming)}
                   title={streaming ? (isZh ? '生成中不可切换模式' : 'Mode cannot change while streaming') : undefined}
-                  className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-sm hover:bg-muted"
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   <span className={clsx(
                     'w-1.5 h-1.5 rounded-full',
@@ -101,7 +108,7 @@ export function ComposerInput({
                   <ChevronDown className="w-3 h-3" />
                 </button>
                 {modeMenuOpen && (
-                  <div className="absolute bottom-full mb-1 left-0 bg-paper-1 border border-border rounded-sm shadow-md z-50 min-w-[180px] overflow-hidden py-1">
+                  <div className="absolute bottom-full left-0 z-50 mb-1 min-w-[180px] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-md">
                     {modeOptions.map(opt => (
                       <button
                         key={opt.value}

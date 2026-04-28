@@ -4,7 +4,7 @@ import type { ChatRenderMessage } from '@/features/chat/hooks/useChatMessagesVie
 
 export function useAnswerContract(message: ChatRenderMessage): AnswerContractPayload | null {
   return useMemo(() => {
-    if (message.answerContract) {
+    if (message.answerContract?.response_type === 'rag' || message.answerContract?.answer_mode) {
       return message.answerContract;
     }
 
@@ -12,29 +12,42 @@ export function useAnswerContract(message: ChatRenderMessage): AnswerContractPay
       return null;
     }
 
+    if (message.responseType && message.responseType !== 'rag') {
+      return null;
+    }
+
     const citations = message.displayCitations || [];
-    if (!message.displayContent && citations.length === 0) {
+    if (citations.length === 0) {
       return null;
     }
 
     return {
-      answer_mode: citations.length > 0 ? 'partial' : 'abstain',
+      response_type: 'rag',
+      answer_mode: 'partial',
       answer: message.displayContent,
       claims: [],
       citations,
       evidence_blocks: citations.map((citation) => ({
+        evidence_id: citation.source_chunk_id || citation.chunk_id || citation.source_id || '',
+        source_type: 'paper',
         source_chunk_id: citation.source_chunk_id || citation.chunk_id || citation.source_id || '',
         paper_id: citation.paper_id,
         page_num: citation.page_num || citation.page || null,
         section_path: citation.section_path || null,
         content_type: citation.content_type || 'text',
-        content: citation.text_preview || citation.snippet || citation.anchor_text || '',
+        text: citation.text_preview || citation.snippet || citation.anchor_text || '',
+        score: citation.score,
+        rerank_score: citation.score,
+        support_status: 'supported',
+        citation_jump_url: '',
       })),
       quality: {
         fallback_used: false,
       },
+      trace_id: '',
+      run_id: '',
       retrieval_trace_id: undefined,
       error_state: null,
     };
-  }, [message.answerContract, message.displayCitations, message.displayContent, message.role]);
+  }, [message.answerContract, message.displayCitations, message.displayContent, message.responseType, message.role]);
 }

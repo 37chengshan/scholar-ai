@@ -1,6 +1,10 @@
 """Multi-paper comparison API.
 
 Provides comparison analysis across user-specified dimensions.
+
+Phase 4 additions:
+  POST /compare/v4  – evidence-backed compare using HybridRetriever + CompareMatrix
+  The legacy POST /compare endpoint is kept for backward compatibility.
 """
 
 import json
@@ -631,3 +635,122 @@ async def detect_evolution_timeline(
         timeline=timeline_entries,
         summary=summary,
     )
+
+
+# =============================================================================
+# Phase 4 – Evidence-backed Compare (canonical endpoint)
+# =============================================================================
+
+
+from app.rag_v3.schemas import CompareDimension  # noqa: E402
+from app.services.compare_service import (  # noqa: E402
+    ALLOWED_DIMENSION_IDS,
+    DEFAULT_DIMENSIONS,
+    build_compare_contract,
+    get_compare_retriever,
+)
+
+
+class CompareV4Request(BaseModel):
+    """Phase 4 evidence-backed compare request."""
+
+    paper_ids: List[str] = Field(
+        ..., min_length=2, max_length=10, description="Paper IDs to compare (2-10)"
+    )
+    dimensions: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Subset of allowed dimension IDs to include. "
+            f"Allowed: {sorted(ALLOWED_DIMENSION_IDS)}. "
+            "Defaults to all 7 default dimensions."
+        ),
+    )
+    question: Optional[str] = Field(
+        default=None, description="Optional research question to guide retrieval"
+    )
+    knowledge_base_id: Optional[str] = Field(
+        default=None, description="Optional KB scope"
+    )
+
+    @field_validator("dimensions")
+    @classmethod
+    def validate_dimension_ids(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        invalid = [d for d in v if d not in ALLOWED_DIMENSION_IDS]
+        if invalid:
+            raise ValueError(
+                f"Invalid dimension IDs: {invalid}. "
+                f"Allowed: {sorted(ALLOWED_DIMENSION_IDS)}"
+            )
+        return v
+
+
+@router.post("/v4", summary="Evidence-backed multi-paper compare (Phase 4)")
+async def compare_papers_v4(
+    request: CompareV4Request,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = CurrentUserId,
+) -> Dict[str, Any]:
+    """Evidence-backed multi-paper compare using HybridRetriever.
+
+    Returns an AnswerContract with response_type='compare' and a fully
+    structured compare_matrix where every cell is backed by evidence.
+    Missing evidence is explicitly marked 'not_enough_evidence' – the
+    endpoint never fabricates content.
+    """
+    # Validate paper ownership
+    result = await db.execute(
+        select(Paper).where(
+            Paper.id.in_(request.paper_ids),
+            Paper.user_id == user_id,
+        )
+    )
+    papers_db = list(result.scalars().all())
+    found_ids = {p.id for p in papers_db}
+    missing_ids = set(request.paper_ids) - found_ids
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=Errors.not_found(
+                f"Papers not found or not accessible: {sorted(missing_ids)}"
+            ),
+        )
+
+    paper_meta: Dict[str, Dict[str, Any]] = {
+        p.id: {"title": p.title or p.id, "year": p.year}
+        for p in papers_db
+    }
+
+    # Resolve dimensions
+    if request.dimensions:
+        dim_lookup = {d["id"]: d for d in DEFAULT_DIMENSIONS}
+        dimensions = [
+            CompareDimension(id=did, label=dim_lookup[did]["label"])
+            for did in request.dimensions
+            if did in dim_lookup
+        ]
+    else:
+        dimensions = [CompareDimension(id=d["id"], label=d["label"]) for d in DEFAULT_DIMENSIONS]
+
+    # Build retrieval query
+    query = request.question or f"Compare papers: {', '.join(p.title or p.id for p in papers_db)}"
+
+    # Hybrid retrieval
+    retriever = get_compare_retriever()
+    pack = retriever.retrieve(
+        query=query,
+        paper_ids=request.paper_ids,
+    )
+
+    contract = build_compare_contract(
+        paper_ids=request.paper_ids,
+        paper_meta=paper_meta,
+        pack=pack,
+        dimensions=dimensions,
+    )
+
+    return {
+        "success": True,
+        "data": contract.model_dump(exclude_none=False),
+    }

@@ -196,6 +196,12 @@ def get_cookie_settings() -> dict:
 
 
 COOKIE_SETTINGS = get_cookie_settings()
+WARM_AUTH_COOKIE_SETTINGS = {
+    "httponly": False,
+    "secure": COOKIE_SETTINGS["secure"],
+    "samesite": COOKIE_SETTINGS["samesite"],
+    "path": COOKIE_SETTINGS["path"],
+}
 
 
 def _create_error_response(
@@ -355,6 +361,12 @@ async def login(
         max_age=REFRESH_TOKEN_MAX_AGE,
         **COOKIE_SETTINGS,
     )
+    response.set_cookie(
+        key="authHint",
+        value="1",
+        max_age=REFRESH_TOKEN_MAX_AGE,
+        **WARM_AUTH_COOKIE_SETTINGS,
+    )
 
     logger.info(
         "User logged in",
@@ -433,6 +445,12 @@ async def refresh_token(
             max_age=REFRESH_TOKEN_MAX_AGE,
             **COOKIE_SETTINGS,
         )
+        response.set_cookie(
+            key="authHint",
+            value="1",
+            max_age=REFRESH_TOKEN_MAX_AGE,
+            **WARM_AUTH_COOKIE_SETTINGS,
+        )
 
         logger.info(
             "Token refreshed",
@@ -489,6 +507,10 @@ async def logout(
     )
     response.delete_cookie(
         key="refreshToken",
+        path=COOKIE_SETTINGS["path"],
+    )
+    response.delete_cookie(
+        key="authHint",
         path=COOKIE_SETTINGS["path"],
     )
 

@@ -27,6 +27,105 @@ export class AuthError extends Error {
   }
 }
 
+type ProblemErrorPayload = {
+  type?: string;
+  title?: string;
+  status?: number;
+  detail?: string;
+  requestId?: string;
+  timestamp?: string;
+};
+
+class ApiProblemError extends Error {
+  readonly status?: number;
+  readonly requestId?: string;
+
+  constructor(name: string, message: string, status?: number, requestId?: string) {
+    super(message);
+    this.name = name;
+    this.status = status;
+    this.requestId = requestId;
+  }
+}
+
+export class ValidationError extends ApiProblemError {
+  constructor(message: string, status?: number, requestId?: string) {
+    super('ValidationError', message, status, requestId);
+  }
+}
+
+export class ForbiddenError extends ApiProblemError {
+  constructor(message: string, status?: number, requestId?: string) {
+    super('ForbiddenError', message, status, requestId);
+  }
+}
+
+export class NotFoundError extends ApiProblemError {
+  constructor(message: string, status?: number, requestId?: string) {
+    super('NotFoundError', message, status, requestId);
+  }
+}
+
+export class RateLimitError extends ApiProblemError {
+  constructor(message: string, status?: number, requestId?: string) {
+    super('RateLimitError', message, status, requestId);
+  }
+}
+
+export class ServerError extends ApiProblemError {
+  constructor(message: string, status?: number, requestId?: string) {
+    super('ServerError', message, status, requestId);
+  }
+}
+
+export class NetworkError extends ApiProblemError {
+  constructor(message: string) {
+    super('NetworkError', message);
+  }
+}
+
+function parseProblemPayload(raw: unknown): ProblemErrorPayload | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const candidate = raw as { error?: ProblemErrorPayload };
+  const envelopeError = candidate.error;
+  if (envelopeError && typeof envelopeError === 'object') {
+    return envelopeError;
+  }
+
+  // Compatibility path: backend may directly return ProblemDetail fields in detail.
+  return raw as ProblemErrorPayload;
+}
+
+function mapProblemToTypedError(status: number, raw: unknown): Error {
+  const payload = parseProblemPayload(raw);
+  const message = payload?.detail || payload?.title || 'Request failed';
+  const requestId = payload?.requestId;
+
+  if (status === 401) {
+    return new AuthError(message);
+  }
+  if (status === 403) {
+    return new ForbiddenError(message, status, requestId);
+  }
+  if (status === 404) {
+    return new NotFoundError(message, status, requestId);
+  }
+  if (status === 422 || status === 400) {
+    return new ValidationError(message, status, requestId);
+  }
+  if (status === 429) {
+    return new RateLimitError(message, status, requestId);
+  }
+  if (status >= 500) {
+    return new ServerError(message, status, requestId);
+  }
+
+  return new ApiProblemError('ApiProblemError', message, status, requestId);
+}
+
 /**
  * Axios instance with Cookie-based authentication
  *
@@ -155,7 +254,7 @@ apiClient.interceptors.response.use(
 
       // Max retries exhausted
       toast.error('网络连接失败，请检查您的网络连接');
-      return Promise.reject(error);
+      return Promise.reject(new NetworkError(error.message || 'Network connection failed'));
     }
 
     // Case 2: 401 Unauthorized - Token refresh logic
@@ -168,8 +267,8 @@ apiClient.interceptors.response.use(
         originalRequest?.url?.includes('/auth/register');
       
       if (isAuthCheckEndpoint) {
-        // Just reject, don't trigger refresh or redirect
-        return Promise.reject(error);
+        // Just reject as typed auth error, don't trigger refresh
+        return Promise.reject(mapProblemToTypedError(401, error.response?.data));
       }
       
       // CRITICAL: Check if this is a refresh request itself
@@ -209,10 +308,11 @@ apiClient.interceptors.response.use(
     // Case 3: All other errors - Extract error message and show toast
     const errorData = error.response?.data as any;
     const errorMessage = errorData?.error?.detail || errorData?.message || '请求失败';
+    const status = error.response.status;
 
     toast.error(errorMessage);
 
-    return Promise.reject(error);
+    return Promise.reject(mapProblemToTypedError(status, error.response.data));
   }
 );
 

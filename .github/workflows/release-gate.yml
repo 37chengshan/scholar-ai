@@ -1,0 +1,214 @@
+name: Release Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── Job 1: Web type-check ────────────────────────────────────────────────
+  web-type-check:
+    name: Web Type-Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install web deps
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: apps/web
+        run: pnpm type-check
+
+  # ─── Job 2: Core E2E ─────────────────────────────────────────────────────
+  web-e2e-critical:
+    name: E2E Critical Suite
+    runs-on: ubuntu-latest
+    needs: web-type-check
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: scholar_ai_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test_user -d scholar_ai_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/scholar_ai_test
+      REDIS_URL: redis://localhost:6379
+      SECRET_KEY: ci-secret-key-not-for-production
+      ALGORITHM: HS256
+      E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL || 'pr19-e2e@example.com' }}
+      E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD || 'Pr19E2EPass123' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        working-directory: apps/api
+        run: pip install -r requirements.txt --quiet
+
+      - name: Run DB migrations
+        working-directory: apps/api
+        run: |
+          python -m alembic upgrade head || echo "Migration failed (non-fatal in CI)"
+
+      - name: Ensure E2E test user
+        working-directory: apps/api
+        run: |
+          python scripts/ensure_e2e_test_user.py || echo "User already exists"
+
+      - name: Start backend
+        working-directory: apps/api
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health/live && break
+            sleep 2
+          done
+
+      - name: Install web deps + Playwright
+        working-directory: apps/web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Start frontend dev server
+        working-directory: apps/web
+        run: pnpm dev &
+
+      - name: Wait for frontend
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173 && break
+            sleep 2
+          done
+
+      - name: Run E2E critical suite
+        working-directory: apps/web
+        run: |
+          pnpm playwright test \
+            e2e/chat-critical.spec.ts \
+            e2e/chat-evidence.spec.ts \
+            e2e/retrieval-critical.spec.ts \
+            e2e/notes-rendering.spec.ts \
+            e2e/kb-critical.spec.ts \
+            e2e/compare-critical.spec.ts \
+            e2e/chat-responsive.spec.ts \
+            --reporter=line
+
+      - name: Upload E2E artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+  # ─── Job 3: Backend fast-path unit ───────────────────────────────────────
+  api-unit-smoke:
+    name: API Unit Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        working-directory: apps/api
+        run: pip install -r requirements.txt --quiet
+
+      - name: Run fast path unit tests
+        working-directory: apps/api
+        run: |
+          python3 -m pytest \
+            tests/unit/test_chat_fast_path.py \
+            tests/unit/test_phase4_hybrid_compare.py \
+            tests/unit/test_eval_service.py \
+            -q
+
+  # ─── Job 4: Phase 6 offline gate ───────────────────────────────────────
+  phase6-offline-gate:
+    name: Phase 6 Offline Gate
+    runs-on: ubuntu-latest
+    needs: api-unit-smoke
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        working-directory: apps/api
+        run: pip install -r requirements.txt --quiet
+
+      - name: Run offline gate
+        run: python3 scripts/evals/phase6_gate.py
+
+  # ─── Job 5: Docs governance ──────────────────────────────────────────────
+  docs-governance:
+    name: Docs Governance
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check doc governance
+        run: bash scripts/check-doc-governance.sh
+
+      - name: Check structure boundaries
+        run: bash scripts/check-structure-boundaries.sh
+
+      - name: Check code boundaries
+        run: bash scripts/check-code-boundaries.sh
+
+      - name: Check governance
+        run: bash scripts/check-governance.sh

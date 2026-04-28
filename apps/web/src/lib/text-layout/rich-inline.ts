@@ -35,3 +35,27 @@ export function tokenizeRichInline(input: string): InlineToken[] {
 
   return tokens;
 }
+
+export function tokenizeEvidenceInline(input: {
+  paperId: string;
+  pageNum?: number | null;
+  sectionPath?: string | null;
+}): InlineToken[] {
+  const tokens: InlineToken[] = [
+    { kind: 'tag', text: input.paperId },
+  ];
+
+  if (input.pageNum) {
+    tokens.push({ kind: 'text', text: ` p.${input.pageNum}` });
+  }
+
+  if (input.sectionPath) {
+    tokens.push({
+      kind: 'evidence',
+      text: ` ${input.sectionPath}`,
+      sourceChunkId: input.sectionPath,
+    });
+  }
+
+  return tokens;
+}

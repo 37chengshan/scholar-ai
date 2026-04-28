@@ -15,6 +15,10 @@ from app.rag_v3.indexes.artifact_loader import build_indexes_from_artifacts
 from app.rag_v3.retrieval.dense_evidence_retriever import DenseEvidenceRetriever
 from app.rag_v3.retrieval.hierarchical_retriever import HierarchicalRetriever
 from app.rag_v3.schemas import EvidencePack
+from app.services.evidence_contract_service import (
+    build_citation_jump_url,
+    get_evidence_source_payload,
+)
 
 ARTIFACT_ROOT = "artifacts/papers"
 COLLECTION_SUFFIX = "v2_3"
@@ -63,12 +67,26 @@ def retrieve_evidence(
     query_family: str | None = None,
     stage: str = "rule",
     trace_id: str | None = None,
+    top_k: int = 10,
+    section_paths: list[str] | None = None,
+    page_from: int | None = None,
+    page_to: int | None = None,
+    content_types: list[str] | None = None,
 ) -> EvidencePack:
     _ = (user_id, kb_id)
     stage = _safe_stage(stage)
     family = query_family or "fact"
     retriever = _get_retriever(stage)
-    pack = retriever.retrieve_evidence(query=query, query_family=family, stage=stage, top_k=10)
+    pack = retriever.retrieve_evidence(
+        query=query,
+        query_family=family,
+        stage=stage,
+        top_k=top_k,
+        section_paths=section_paths,
+        page_from=page_from,
+        page_to=page_to,
+        content_types=content_types,
+    )
 
     if paper_scope:
         allowed_papers = {p for p in paper_scope if p}
@@ -106,8 +124,15 @@ def build_answer_contract_payload(
     query_family: str | None = None,
     stage: str = "rule",
     trace_id: str | None = None,
+    run_id: str | None = None,
+    top_k: int = 10,
+    section_paths: list[str] | None = None,
+    page_from: int | None = None,
+    page_to: int | None = None,
+    content_types: list[str] | None = None,
 ) -> dict[str, Any]:
     trace = trace_id or str(uuid4())
+    run = run_id or str(uuid4())
     settings = get_settings()
 
     t0 = perf_counter()
@@ -119,6 +144,11 @@ def build_answer_contract_payload(
         query_family=query_family,
         stage=stage,
         trace_id=trace,
+        top_k=top_k,
+        section_paths=section_paths,
+        page_from=page_from,
+        page_to=page_to,
+        content_types=content_types,
     )
     t1 = perf_counter()
 
@@ -127,28 +157,52 @@ def build_answer_contract_payload(
     contract = build_answer_contract(pack, quality)
     t3 = perf_counter()
 
-    citations = []
-    evidence_blocks = []
-    for cand in pack.candidates[:10]:
+    citations: list[dict[str, Any]] = []
+    evidence_blocks: list[dict[str, Any]] = []
+    for cand in pack.candidates[:top_k]:
+        source_payload = get_evidence_source_payload(cand.source_chunk_id) or {}
+        citation_jump_url = source_payload.get("citation_jump_url") or build_citation_jump_url(
+            paper_id=cand.paper_id,
+            source_chunk_id=cand.source_chunk_id,
+        )
+        page_num = source_payload.get("page_num")
+        section_path = source_payload.get("section_path") or cand.section_id
+        support_status = next(
+            (
+                claim.support_status
+                for claim in contract.claims
+                if cand.source_chunk_id in claim.supporting_source_chunk_ids
+            ),
+            None,
+        )
+        text = source_payload.get("content") or cand.anchor_text
         citation = {
             "paper_id": cand.paper_id,
             "source_chunk_id": cand.source_chunk_id,
-            "page_num": None,
-            "section_path": cand.section_id,
+            "page_num": page_num,
+            "section_path": section_path,
+            "title": cand.paper_id,
             "anchor_text": cand.anchor_text,
+            "text_preview": text[:300],
             "content_type": cand.content_type,
             "score": cand.rerank_score,
+            "citation_jump_url": citation_jump_url,
         }
         citations.append(citation)
         evidence_blocks.append(
             {
+                "evidence_id": cand.source_chunk_id,
+                "source_type": "paper",
                 "source_chunk_id": cand.source_chunk_id,
                 "paper_id": cand.paper_id,
-                "page_num": None,
-                "section_path": cand.section_id,
+                "page_num": page_num,
+                "section_path": section_path,
                 "content_type": cand.content_type,
-                "content": cand.anchor_text,
-                "quality_score": cand.rerank_score,
+                "text": text,
+                "score": cand.rerank_score,
+                "rerank_score": cand.rerank_score,
+                "support_status": support_status,
+                "citation_jump_url": citation_jump_url,
             }
         )
 
@@ -176,6 +230,7 @@ def build_answer_contract_payload(
 
     trace_payload = {
         "trace_id": trace,
+        "run_id": run,
         "runtime_profile": settings.RUNTIME_PROFILE,
         "query_family": query_family or "fact",
         "paper_candidate_count": len(paper_ids),
@@ -204,10 +259,12 @@ def build_answer_contract_payload(
     }
 
     return {
+        "response_type": "rag",
         "answer_mode": contract.answer_mode,
         "answer": answer_text,
         "claims": [c.model_dump() for c in contract.claims],
         "unsupported_claims": contract.unsupported_claims,
+        "missing_evidence": contract.missing_evidence,
         "citations": citations,
         "evidence_blocks": evidence_blocks,
         "quality": {
@@ -218,6 +275,8 @@ def build_answer_contract_payload(
             "fallback_reason": "unsupported_field_type" if fallback_used else None,
         },
         "trace": trace_payload,
+        "trace_id": trace,
+        "run_id": run,
         "retrieval_trace_id": trace,
         "cost_estimate": trace_payload["cost_estimate"],
         "error_state": error_state,

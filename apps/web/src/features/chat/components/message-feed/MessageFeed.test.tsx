@@ -6,6 +6,13 @@ import { createInitialState } from '@/app/hooks/useChatStream';
 import { MessageFeed } from './MessageFeed';
 import type { ChatRenderMessage } from '@/features/chat/hooks/useChatMessagesViewModel';
 
+vi.mock('@/features/chat/hooks/useEvidenceNavigation', () => ({
+  useEvidenceNavigation: () => ({
+    jumpToSource: vi.fn(),
+    saveEvidence: vi.fn(),
+  }),
+}));
+
 function asRenderMessage(message: Partial<ChatRenderMessage>): ChatRenderMessage {
   return {
     id: message.id || 'm-1',

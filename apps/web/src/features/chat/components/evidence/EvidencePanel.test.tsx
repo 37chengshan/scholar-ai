@@ -7,6 +7,7 @@ describe('EvidencePanel', () => {
     render(
       <EvidencePanel
         contract={{
+          response_type: 'rag',
           answer_mode: 'partial',
           answer: 'answer',
           claims: [],
@@ -16,6 +17,8 @@ describe('EvidencePanel', () => {
             fallback_used: true,
             fallback_reason: 'unsupported_field_type',
           },
+          trace_id: 'trace-1',
+          run_id: 'run-1',
           retrieval_trace_id: 'trace-1',
           error_state: 'fallback_used',
         }}
@@ -27,6 +30,7 @@ describe('EvidencePanel', () => {
 
     expect(screen.getByText(/fallback active/i)).toBeInTheDocument();
     expect(screen.getByText(/trace-1/i)).toBeInTheDocument();
+    expect(screen.getByText(/run-1/i)).toBeInTheDocument();
     expect(screen.getByText(/fallback_used/i)).toBeInTheDocument();
   });
 });

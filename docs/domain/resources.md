@@ -30,10 +30,13 @@
 - IndexArtifact：索引或检索产物
 - ImportBatch：批量导入会话
 - EvidenceBundle：面向学术检索的证据包聚合资源（跨 text/table/figure/caption）
+- Note：用户笔记真源，Notes 2.0 以 `contentDoc` 与 `linkedEvidence[]` 为结构化字段
 - EvidenceSourceView：按 `source_chunk_id` 回查证据原文与定位信息的只读资源视图
 - EvidenceNote：由 claim+citation 落盘生成的用户可编辑笔记资源（归属 Note 主模型）
 - ClaimVerificationReport：RAG 回答阶段的 claim 级验证结果资源（支持/弱支持/不支持）
 - GraphRetrievalResult：图增强检索候选与融合统计资源（compare/evolution/numeric 场景）
+- ReviewDraft：KB 级正式综述草稿资源（outlineDoc + draftDoc 同源承载）
+- ReviewRun：KB 级综述生成运行记录资源（steps/tool_events/artifacts/evidence/recovery）
 
 资源关系：
 
@@ -43,10 +46,13 @@
 - Task 作用于 Paper、Collection 或 IndexArtifact。
 - UploadHistory 是 ImportJob、UploadSession、ProcessingTask 的状态投影视图，不应成为并行真源。
 - EvidenceBundle 由 Chunk 聚合而成，可关联 table/figure/caption 与指标证据槽位。
-- EvidenceSourceView 由 Chunk/索引产物投影生成，必须可回跳到 Read 页面定位参数（`paper_id`、`page_num`、`source_chunk_id`）。
-- EvidenceNote 是 Note 的受控创建路径之一，必须绑定 `paper_id` 与 `source_chunk_id`，不得创建并行笔记模型。
+- Note 资源允许通过 `content` 兼容旧数据，但结构化真源固定为 `contentDoc`；`linkedEvidence[]` 是沉淀后的 canonical evidence 数组。
+- EvidenceSourceView 由 Chunk/索引产物投影生成，必须提供 `citation_jump_url` 作为统一跳转字段，并兼容回跳到 Read 页面定位参数（`paper_id`、`page_num`、`source_chunk_id`）。
+- EvidenceNote 是 Note 的受控创建路径之一，必须绑定 `paper_id` 与 `source_chunk_id`，并把 EvidenceBlock 2.0 写入 `linkedEvidence[]`，不得创建并行笔记模型。
 - ClaimVerificationReport 绑定单次 RAG 响应，引用 EvidenceBundle/Chunk 作为 claim 证据来源。
 - GraphRetrievalResult 绑定单次检索计划，作为 vector 检索的约束与重排辅助，不独立替代 Chunk。
+- ReviewDraft 归属 KnowledgeBase，可选绑定 `sourcePaperIds[]` 子集；同一 draft 可被多次 retry/run 覆盖更新。
+- ReviewRun 归属 KnowledgeBase 且可回链到 ReviewDraft；Run 是执行轨迹真源，禁止用 session 列表投影伪装。
 
 ChatSession/ChatMessage 读取契约约束：
 
@@ -73,6 +79,7 @@ Chat 查询作用域资源约束：
 	- `knowledge_base`（绑定知识库）
 	- `general`（全局无绑定）
 - `mode` 固定枚举：`auto | rag | agent`。
+- `context.paper_ids[]` 是 Compare -> Chat follow-up 的 canonical 多论文作用域输入；当其存在且 `mode=auto|rag` 时，后端必须把它转成真实 retrieval `paper_scope`，不能只作为前端展示上下文。
 
 状态机：
 
@@ -84,6 +91,8 @@ Chat 查询作用域资源约束：
 - ChatSession：active -> closed | archived
 - IndexArtifact：building -> ready | failed -> rebuilding
 - ImportBatch：created -> running -> completed | failed | cancelled | partial
+- ReviewDraft：idle -> running -> completed | failed | partial
+- ReviewRun：queued -> running -> completed | failed | cancelled
 
 Paper 交互资源补充：
 
@@ -100,6 +109,11 @@ Paper 交互资源补充：
 - task.finished
 - task.failed
 - session.closed
+- review_draft.created
+- review_draft.run_started
+- review_draft.completed
+- review_draft.failed
+- review_draft.retry_requested
 
 可被异步任务修改的资源：
 
@@ -111,6 +125,8 @@ Paper 交互资源补充：
 - IndexArtifact（构建状态）
 - ImportBatch（聚合计数与整体状态）
 - EvidenceBundle（重建、去重、字段回填）
+- ReviewDraft（outline/draft 覆盖更新、quality/errorState 回写）
+- ReviewRun（步骤状态、恢复动作、trace 元数据写入）
 
 EvidenceBundle 最小字段契约：
 
@@ -132,6 +148,32 @@ GraphRetrievalResult 最小字段契约：
 - `graphRetrievalUsed`、`graphCandidateCount`、`graphVectorMergedEvidence`
 - 可选追踪字段：`graph_narrowed_paper_ids[]`（用于检索约束下推可观测性）
 
+ReviewDraft 最小字段契约（Phase 5）：
+
+- `id`、`knowledge_base_id`、`title`
+- `status`：`idle|running|completed|failed|partial`
+- `source_paper_ids[]`
+- `outline_doc`：`research_question`、`themes[]`、`sections[]`
+- `outline_doc.sections[]`：`title`、`intent`、`supporting_paper_ids[]`、`seed_evidence[]`
+- `draft_doc.sections[]`：`heading`、`paragraphs[]`、`omitted_reason`
+- `draft_doc.sections[].paragraphs[]`：`paragraph_id`、`text`、`citations[]`、`evidence_blocks[]`、`citation_coverage_status(covered|insufficient)`
+- `quality`：`citation_coverage`、`unsupported_paragraph_rate`、`graph_assist_used`、`fallback_used`
+- `trace_id`、`run_id`、`error_state`、`created_at`、`updated_at`
+
+ReviewDraft 约束（Phase 5）：
+
+- 正式段落必须携带 citation；无 citation 的正文段落禁止进入 `draft_doc`。
+- 证据不足时以 section 级 `omitted_reason` 表达，不允许生成无证据正文占位段。
+- `error_state` 最少覆盖：`insufficient_evidence|graph_unavailable|validation_failed|writer_failed|partial_draft`。
+
+ReviewRun 最小字段契约（Phase 5）：
+
+- `id`、`knowledge_base_id`、`review_draft_id`、`status`
+- `steps[]`：每步至少包含 `step_name`、`status`、`started_at`、`ended_at`
+- `steps[].metadata`：至少包含 `input_schema_name`、`output_schema_name`
+- `tool_events[]`、`artifacts[]`、`evidence[]`、`recovery_actions[]`
+- `trace_id`、`error_state`、`created_at`、`updated_at`
+
 ## Required Updates
 
 - 新增资源类型：同步更新本文件与 docs/architecture/api-contract.md。
@@ -145,6 +187,43 @@ GraphRetrievalResult 最小字段契约：
 - 抽样检查任务完成后资源状态迁移是否可追踪。
 - 抽样检查同一资源无重复命名或平行模型定义。
 - 运行 `cd apps/api && .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1`，验证 stream->messages 回读链路契约稳定。
+
+## Phase 6 评测资源（文件系统模型）
+
+以下资源均以文件系统产物形式存储于 `apps/api/artifacts/benchmarks/phase6/`，**无 DB 表**，通过 `eval_service.py` 读取。
+
+### BenchmarkDataset（冻结语料库）
+- 文件：`phase6/corpus.json`
+- 字段：`dataset_version`、`total_queries`、`total_papers`、`query_families[]`、`queries[]`
+- 状态：**冻结**（只读，不可变更）
+- 每个 query 含：`query_id`、`family`、`question`、`expected_paper_ids`、`expected_sections`、`must_abstain`、`expected_citation_targets`
+- v2.0 pass 最低要求：`paper_count >= 50`、`query_count >= 128`，且 8 个 families `{single_fact, method, experiment_result, table, figure_caption, multi_paper_compare, kb_global, no_answer}` 同时存在于 `query_families[]` 与 `queries[]`
+
+### BenchmarkRun（运行产物目录）
+- 路径：`phase6/runs/{run_id}/`
+- 子文件：`meta.json`、`retrieval.json`、`answer_quality.json`、`citation_jump.json`、`dashboard_summary.json`、`diff_from_baseline.json`
+- `meta.json` 字段：`run_id`、`mode (offline|online)`、`reranker (on|off)`、`dataset_version`、`total_queries`、`overall_verdict`、`created_at`
+- `dashboard_summary.json` 是归一化指标快照，gate 重新计算以实际 thresholds 为准
+- 不可变：写入后不得修改（append-only artifact model）
+- v2.0 close-out 至少要求：
+  - 1 个 offline baseline run
+  - 1 个 offline candidate run
+  - candidate run 的 `diff_from_baseline.json`
+  - 每个 run 均完整包含 `meta.json`、`dashboard_summary.json`、`retrieval.json`、`answer_quality.json`、`citation_jump.json`
+
+### DiffReport（对比报告）
+- 存储：嵌入 `runs/{run_id}/diff_from_baseline.json`
+- 字段：`base_run_id`、`candidate_run_id`、`deltas{}`、`summary{improved, regressed, unchanged}`
+- 动态计算：也可通过 `GET /api/v1/evals/diff` 实时计算，不依赖存储文件
+
+### GateVerdict（门禁裁决）
+- 不独立存储；嵌入 `dashboard_summary.json` 与 `meta.json` 的 `overall_verdict` 字段
+- 硬性阈值见 `eval_service.py::PHASE6_THRESHOLDS`
+- 门禁脚本：`scripts/evals/phase6_gate.py`（exit 0=PASS / exit 1=FAIL）
+- v2.0 close-out 额外规则：
+  - `fallback_used_count <= 5`
+  - `cost_per_answer` 必须存在
+  - diff 在 `retrieval_hit_rate`、`answer_supported_rate`、`groundedness`、`citation_jump_valid_rate`、`abstain_precision`、`recall_at_5` 上不得回退
 
 ## Open Questions
 

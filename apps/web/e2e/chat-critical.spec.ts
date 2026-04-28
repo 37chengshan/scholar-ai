@@ -72,4 +72,32 @@ test.describe('Critical E2E - Chat', () => {
     await expect(page).toHaveURL(new RegExp(`/chat\\?session=${createdSessionId}`), { timeout: 20000 });
     await expect(input).toBeEnabled({ timeout: 120000 });
   });
+
+  test('reload restores current session from URL', async ({ page, request }) => {
+    await registerAndLogin(page, request);
+
+    await page.goto('/chat?new=1');
+    const input = page.getByTestId('chat-composer').locator('textarea');
+    await expect(input).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/\/chat$/);
+
+    const createSessionResponsePromise = page.waitForResponse((res) => (
+      res.url().includes('/api/v1/sessions')
+      && res.request().method() === 'POST'
+    ));
+
+    await input.fill('reload should keep session context');
+    await input.press('Enter');
+
+    const createSessionResponse = await createSessionResponsePromise;
+    const createSessionPayload = await createSessionResponse.json();
+    const createdSessionId = createSessionPayload?.data?.id || createSessionPayload?.id;
+    expect(createdSessionId).toBeTruthy();
+
+    await expect(page).toHaveURL(new RegExp(`/chat\\?session=${createdSessionId}`), { timeout: 20000 });
+
+    await page.reload();
+    await expect(page).toHaveURL(new RegExp(`/chat\\?session=${createdSessionId}`), { timeout: 20000 });
+    await expect(page.getByTestId('chat-composer').locator('textarea')).toBeVisible({ timeout: 10000 });
+  });
 });

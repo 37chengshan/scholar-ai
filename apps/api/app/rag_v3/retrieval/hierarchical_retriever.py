@@ -42,6 +42,10 @@ class HierarchicalRetriever:
         query_family: str,
         stage: str,
         top_k: int = 10,
+        section_paths: list[str] | None = None,
+        page_from: int | None = None,
+        page_to: int | None = None,
+        content_types: list[str] | None = None,
     ) -> EvidencePack:
         plan = build_query_plan(query=query, query_family=query_family)
         family = normalize_query_family(plan.query_family)
@@ -67,18 +71,38 @@ class HierarchicalRetriever:
         if effective_paper_ids:
             # Primary: filter by query-referenced papers
             dense_candidates = self._dense_retriever.retrieve(
-                query=query, top_k=dense_top_k, paper_id_filter=effective_paper_ids
+                query=query,
+                top_k=dense_top_k,
+                paper_id_filter=effective_paper_ids,
+                section_paths=section_paths,
+                page_from=page_from,
+                page_to=page_to,
+                content_types=content_types,
             )
             # Fallback: if not enough results, also search without filter
             if len(dense_candidates) < top_k:
-                extra = self._dense_retriever.retrieve(query=query, top_k=top_k * 2)
+                extra = self._dense_retriever.retrieve(
+                    query=query,
+                    top_k=top_k * 2,
+                    section_paths=section_paths,
+                    page_from=page_from,
+                    page_to=page_to,
+                    content_types=content_types,
+                )
                 seen = {c.source_chunk_id for c in dense_candidates}
                 for c in extra:
                     if c.source_chunk_id not in seen:
                         dense_candidates.append(c)
                         seen.add(c.source_chunk_id)
         else:
-            dense_candidates = self._dense_retriever.retrieve(query=query, top_k=dense_top_k)
+            dense_candidates = self._dense_retriever.retrieve(
+                query=query,
+                top_k=dense_top_k,
+                section_paths=section_paths,
+                page_from=page_from,
+                page_to=page_to,
+                content_types=content_types,
+            )
 
         # Level 1: Section-level candidates from identified papers
         section_candidates = self._retrieve_section_candidates(

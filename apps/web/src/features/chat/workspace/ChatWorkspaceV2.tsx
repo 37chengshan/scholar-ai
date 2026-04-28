@@ -118,6 +118,14 @@ export function ChatWorkspaceV2() {
 
   const { language } = useLanguage();
   const isZh = language === "zh";
+  const comparePaperIds = useMemo(
+    () =>
+      (searchParams.get('paper_ids') || '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    [searchParams],
+  );
   const runtime = useRuntime();
   const { scope, scopeLoading, handleExitScope } = useChatScopeController({
     mode,
@@ -402,6 +410,7 @@ export function ChatWorkspaceV2() {
     sending,
     mode,
     scope: uiScope,
+    comparePaperIds,
     scopeLoading,
     currentSession,
     forceNewSessionForNextSend,
@@ -536,7 +545,11 @@ export function ChatWorkspaceV2() {
       if (!citation.page_num && !citation.page) {
         toast.warning(isZh ? '引用缺少页码，已跳转到第一页' : 'Citation has no page; opening first page');
       }
-      navigate(`/read/${citation.paper_id}?page=${page}&source=chat&source_id=${citation.source_id || ''}`);
+      if (citation.citation_jump_url) {
+        navigate(citation.citation_jump_url);
+        return;
+      }
+      navigate(`/read/${citation.paper_id}?page=${page}&source=chat&source_id=${citation.source_id || citation.source_chunk_id || ''}`);
     },
     [navigate, isZh],
   );

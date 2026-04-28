@@ -15,7 +15,13 @@ Design decisions (per D-R03):
 """
 
 from typing import List, Dict, Any, Union, Optional
-from FlagEmbedding import FlagReranker
+
+try:
+    from FlagEmbedding import FlagReranker
+    _FLAG_EMBEDDING_IMPORT_ERROR: Optional[Exception] = None
+except Exception as import_error:  # pragma: no cover - depends on local ML env
+    FlagReranker = None  # type: ignore[assignment]
+    _FLAG_EMBEDDING_IMPORT_ERROR = import_error
 
 from app.core.reranker.base import BaseRerankerService
 from app.utils.logger import logger
@@ -49,7 +55,7 @@ class BGERerankerService(BaseRerankerService):
         Detects device (cuda/cpu) automatically.
         Model not loaded until load_model() called.
         """
-        self.model: Optional[FlagReranker] = None
+        self.model: Optional[Any] = None
         self.device = self._detect_device()
         self._initialized = False
 
@@ -76,6 +82,12 @@ class BGERerankerService(BaseRerankerService):
         if self._initialized:
             logger.info("BGE-Reranker model already loaded, skipping")
             return
+
+        if FlagReranker is None:
+            raise RuntimeError(
+                "FlagEmbedding import failed. "
+                f"Cannot load BGE-Reranker model: {_FLAG_EMBEDDING_IMPORT_ERROR}"
+            )
 
         try:
             logger.info(

@@ -15,6 +15,7 @@ import { useMeasuredMessages } from '@/features/chat/hooks/useMeasuredMessages';
 import { useAnswerContract } from '@/features/chat/hooks/useAnswerContract';
 import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
 import { EvidencePanel } from '@/features/chat/components/evidence/EvidencePanel';
+import { CompareCard } from '@/features/chat/components/CompareCard';
 
 interface MessageFeedCopy {
   noMessages: string;
@@ -93,6 +94,19 @@ function AssistantEvidenceSection({ message, isZh, onCitationClick }: {
     return null;
   }
 
+  if (contract.response_type === 'compare' && contract.compare_matrix) {
+    return (
+      <CompareCard
+        contract={contract}
+        isZh={isZh}
+      />
+    );
+  }
+
+  if (contract.response_type !== 'rag') {
+    return null;
+  }
+
   return (
     <EvidencePanel
       contract={contract}
@@ -132,7 +146,7 @@ export function MessageFeed({
       {renderMessages.length === 0 ? (
         <ChatEmptyState isZh={isZh} onSuggest={onSuggest} />
       ) : (
-        <div className="mx-auto max-w-3xl w-full flex flex-col py-6 px-4 sm:px-6">
+        <div data-testid="chat-message-list" className="chat-message-list flex flex-col px-4 py-8 sm:px-6">
           {renderMessages.map((message, index) => {
               const isStreaming = message.isStreaming;
               const isPlaceholder = message.isPlaceholder || message.id === currentMessageId;
@@ -277,7 +291,7 @@ export function MessageFeed({
                   className={clsx('flex justify-end', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
                   style={{ minHeight: measuredHeights[message.id] ? `${measuredHeights[message.id]}px` : undefined }}
                 >
-                  <div className="max-w-[75%]">
+                  <div className="max-w-[min(75%,42rem)]">
                     <div className="rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-2.5 shadow-sm">
                       <div className="text-sm leading-relaxed font-medium whitespace-pre-wrap">
                         {message.displayContent}

@@ -29,6 +29,7 @@ from app.core.section_normalizer import (
 )
 from app.core.qwen3vl_service import get_qwen3vl_service
 from app.core.contextual_chunk_builder import enrich_chunk, build_section_summary_text
+from app.services.reading_card_service import build_reading_card_doc
 from app.utils.logger import logger
 
 
@@ -279,7 +280,11 @@ class StorageManager:
         # 3. Store all content vectors in Milvus (batched)
         chunk_ids = await self._store_vectors(ctx)
 
-        # 4. Store graph nodes in Neo4j
+        # 4. Persist reading card from section-aware chunk metadata
+        async with self.db_pool.acquire() as conn:
+            await self._store_reading_card(conn, ctx)
+
+        # 5. Store graph nodes in Neo4j
         await self._store_graph_nodes(ctx, chunk_ids)
 
         logger.info(
@@ -737,6 +742,32 @@ class StorageManager:
             # Summary index failure is non-critical — degrade gracefully
             logger.warning(
                 "Summary index storage failed, continuing",
+                task_id=ctx.task_id,
+                error=str(exc),
+            )
+
+    async def _store_reading_card(
+        self, conn: asyncpg.Connection, ctx: PipelineContext
+    ) -> None:
+        if not (ctx.chunk_results or []):
+            return
+
+        try:
+            reading_card_doc = build_reading_card_doc(
+                paper_id=ctx.paper_id,
+                records=ctx.chunk_results or [],
+            )
+            await conn.execute(
+                '''UPDATE papers
+                   SET "readingCardDoc" = $1,
+                       "updatedAt" = NOW()
+                   WHERE id = $2''',
+                json.dumps(self._sanitize_obj(reading_card_doc)),
+                ctx.paper_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Reading card storage failed, continuing",
                 task_id=ctx.task_id,
                 error=str(exc),
             )
