@@ -32,7 +32,6 @@ def build_answer_contract(pack: EvidencePack, quality: EvidenceQualityScore) -> 
             paper_id=candidate.paper_id,
             source_chunk_id=candidate.source_chunk_id,
         )
-
         claims.append(
             {
                 "claim": claim_text,

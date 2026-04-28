@@ -10,7 +10,7 @@ test.describe('Critical E2E - Chat', () => {
     await page.waitForURL(/\/dashboard/, { timeout: 20000 });
     await expect(page).toHaveURL(/\/dashboard/);
 
-    await page.locator('a[href="/chat"][title]').first().click();
+    await page.getByRole('link', { name: /对话|Chat/i }).click();
     await expect(page).toHaveURL(/\/chat/);
     const input = page.getByTestId('chat-composer').locator('textarea');
     await expect(input).toBeVisible({ timeout: 10000 });
@@ -79,6 +79,7 @@ test.describe('Critical E2E - Chat', () => {
     await page.goto('/chat?new=1');
     const input = page.getByTestId('chat-composer').locator('textarea');
     await expect(input).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/\/chat$/);
 
     const createSessionResponsePromise = page.waitForResponse((res) => (
       res.url().includes('/api/v1/sessions')
@@ -95,7 +96,6 @@ test.describe('Critical E2E - Chat', () => {
 
     await expect(page).toHaveURL(new RegExp(`/chat\\?session=${createdSessionId}`), { timeout: 20000 });
 
-    // Reload and verify URL/session binding remains intact.
     await page.reload();
     await expect(page).toHaveURL(new RegExp(`/chat\\?session=${createdSessionId}`), { timeout: 20000 });
     await expect(page.getByTestId('chat-composer').locator('textarea')).toBeVisible({ timeout: 10000 });

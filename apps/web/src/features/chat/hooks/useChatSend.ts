@@ -164,6 +164,7 @@ export function useChatSend({
 
     return {
       response_type: responseType || 'rag',
+      
       answer_mode: answerMode,
       answer: String(payload.answer || fallbackContent || ''),
       claims: claimsRaw.map((item) => {
