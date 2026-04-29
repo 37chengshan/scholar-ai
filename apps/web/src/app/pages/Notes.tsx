@@ -63,6 +63,7 @@ import {
   normalizeEditorDocument,
 } from '@/features/notes/content';
 import { LinkedEvidenceList } from '@/features/notes/components/LinkedEvidenceList';
+import { useNotesPreferencesStore } from '@/features/notes/state/notesPreferencesStore';
 
 const MANUAL_FOLDERS_STORAGE_KEY = 'notes-manual-folders-v1';
 const FOLDER_TAG_PREFIX = 'folder:';
@@ -158,15 +159,19 @@ function NotesContent() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedSummaryPaperId, setSelectedSummaryPaperId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [tagFilter, setTagFilter] = useState<string>('all');
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState<any>(null);
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [folderSelectionSource, setFolderSelectionSource] = useState<FolderSelectionSource | null>(null);
   const [pendingCreateAfterFolder, setPendingCreateAfterFolder] = useState(false);
   const [retryingSave, setRetryingSave] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
+  const {
+    selectedFolderId,
+    tagFilter,
+    setSelectedFolderId,
+    setTagFilter,
+  } = useNotesPreferencesStore();
 
   const [kbFolders, setKbFolders] = useState<NotesFolder[]>([]);
   const [manualFolders, setManualFolders] = useState<NotesFolder[]>([]);
@@ -332,6 +337,20 @@ function NotesContent() {
       ...mapped,
     ];
   }, [folderCounts, kbFolders, manualFolders, userNotes]);
+
+  useEffect(() => {
+    if (selectedFolderId === null) {
+      return;
+    }
+
+    const folderExists = folders.some((folder) => folder.id === selectedFolderId);
+    if (folderExists) {
+      return;
+    }
+
+    setSelectedFolderId(null);
+    setFolderSelectionSource(null);
+  }, [folders, selectedFolderId, setSelectedFolderId]);
 
   useEffect(() => {
     if (!paperIdFilter || notesLoading || catalogLoading || folderSelectionSource === 'manual') {
@@ -1045,7 +1064,7 @@ function NotesContent() {
                         </h4>
                         <div className="flex items-center gap-1">
                           <button
-                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                            className="p-0.5 rounded text-muted-foreground/80 hover:bg-destructive/10 hover:text-destructive transition-colors"
                             onClick={(e) => {
                               e.stopPropagation();
                               setDeleteNoteId(note.id);
@@ -1099,7 +1118,7 @@ function NotesContent() {
                         <div className="flex items-start justify-between gap-1">
                           <h4 className="text-sm font-medium line-clamp-1 flex-1">{note.title || '未命名笔记'}</h4>
                           <button
-                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                            className="p-0.5 rounded text-muted-foreground/80 hover:bg-destructive/10 hover:text-destructive transition-colors"
                             onClick={(e) => {
                               e.stopPropagation();
                               setDeleteNoteId(note.id);
