@@ -307,6 +307,159 @@ def summarize_real_world_validation(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_phase_j_workflow_bundle(
+    payload: dict[str, Any],
+    *,
+    dataset_version: str | None = None,
+) -> dict[str, Any]:
+    summary = summarize_real_world_validation(payload)
+    runs = payload.get("runs") or []
+    version = (
+        str(dataset_version or "").strip()
+        or str(payload.get("dataset_version") or payload.get("schema_version") or "").strip()
+        or "phase-d-unknown"
+    )
+    entries: list[dict[str, Any]] = []
+
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        run_id = str(run.get("run_id") or "").strip() or "unknown-run"
+        runtime_truth = run.get("runtime_truth") if isinstance(run.get("runtime_truth"), dict) else {}
+        if not runtime_truth:
+            runtime_truth = {
+                "runtime_mode": str(run.get("execution_mode") or "online").strip(),
+                "mode_parity_with_baseline": True,
+                "provider_identity": {
+                    "reported_by": "phase_d_workflow_adapter",
+                    "status": "inferred_from_phase_d_payload",
+                },
+            }
+        workflow_steps = run.get("workflow_steps") or []
+        failure_points = run.get("failure_points") or []
+        evidence_reviews = run.get("evidence_reviews") or []
+        honesty_checks = run.get("honesty_checks") if isinstance(run.get("honesty_checks"), dict) else {}
+        success_state = str(run.get("success_state") or "").strip()
+
+        step_map = {
+            str(step.get("step_name") or "").strip(): step
+            for step in workflow_steps
+            if isinstance(step, dict)
+        }
+
+        workflow_cases = [
+            ("read_chat", ["read", "chat"], "Read/Chat"),
+            ("review", ["review"], "Review"),
+            ("compare", ["compare"], "Compare"),
+        ]
+        for case_key, required_steps, task_family in workflow_cases:
+            steps_present = [step_map.get(name) for name in required_steps]
+            if not any(steps_present):
+                continue
+            case_failures = [
+                failure
+                for failure in failure_points
+                if str(failure.get("workflow_step") or "").strip() in required_steps
+            ]
+            unsupported_claim_count = sum(
+                int(review.get("unsupported_claim_count") or 0)
+                for review in evidence_reviews
+                if str(review.get("surface") or "").strip().lower() in {name.lower() for name in required_steps}
+                or not review.get("surface")
+            )
+            weakly_supported_claim_count = sum(
+                int(review.get("weakly_supported_claim_count") or 0)
+                for review in evidence_reviews
+                if str(review.get("surface") or "").strip().lower() in {name.lower() for name in required_steps}
+                or not review.get("surface")
+            )
+            total_claim_count = unsupported_claim_count + weakly_supported_claim_count
+            unsupported_claim_rate = (
+                round(unsupported_claim_count / total_claim_count, 4)
+                if total_claim_count
+                else 0.0
+            )
+
+            citation_review_hits = [
+                review for review in evidence_reviews if review.get("citation_jump_passed") is True
+            ]
+            citation_coverage = 1.0 if citation_review_hits else 0.0
+            if not evidence_reviews and honesty_checks.get("citation_jump_honest") is True:
+                citation_coverage = 1.0
+            elif honesty_checks.get("citation_jump_honest") is False:
+                citation_coverage = 0.0
+
+            degraded_conditions = [
+                str(failure.get("description") or "").strip()
+                for failure in case_failures
+                if str(failure.get("bucket") or "").strip() in {"degrading", "paper_cut"}
+                and str(failure.get("description") or "").strip()
+            ]
+            blocking_conditions = [
+                str(failure.get("description") or "").strip()
+                for failure in case_failures
+                if str(failure.get("bucket") or "").strip() == "blocking"
+                and str(failure.get("description") or "").strip()
+            ]
+
+            task_latency_ms = 0.0
+            for step in steps_present:
+                if isinstance(step, dict):
+                    task_latency_ms += float(step.get("latency_ms") or 0.0)
+            cost_estimate = float(run.get("cost_estimate") or 0.0)
+            if cost_estimate == 0.0 and task_latency_ms > 0:
+                cost_estimate = round(task_latency_ms / 1000000.0, 6)
+
+            task_success_state = "blocked" if blocking_conditions else success_state
+            if task_success_state == "pass" and degraded_conditions:
+                task_success_state = "partial"
+
+            entries.append(
+                {
+                    "case_id": f"{run_id}:{case_key}",
+                    "case_source": "workflow",
+                    "dataset_version": version,
+                    "task_family": task_family,
+                    "execution_mode": str(
+                        runtime_truth.get("runtime_mode")
+                        or run.get("execution_mode")
+                        or "online"
+                    ).strip(),
+                    "truthfulness_report_summary": {
+                        "citation_coverage": citation_coverage,
+                        "unsupported_claim_rate": unsupported_claim_rate,
+                        "unsupported_claim_count": unsupported_claim_count,
+                        "weakly_supported_claim_count": weakly_supported_claim_count,
+                        "honesty_checks": honesty_checks,
+                    },
+                    "retrieval_plane_policy": (
+                        run.get("retrieval_plane_policy")
+                        if isinstance(run.get("retrieval_plane_policy"), dict)
+                        else {
+                            "workflow_case": case_key,
+                            "required_steps": required_steps,
+                        }
+                    ),
+                    "degraded_conditions": degraded_conditions + blocking_conditions,
+                    "citation_coverage": citation_coverage,
+                    "unsupported_claim_rate": unsupported_claim_rate,
+                    "total_latency_ms": round(task_latency_ms, 4),
+                    "cost_estimate": round(cost_estimate, 6),
+                    "runtime_truth": runtime_truth,
+                    "mode_parity_with_baseline": runtime_truth.get("mode_parity_with_baseline", True),
+                    "workflow_success_state": task_success_state,
+                }
+            )
+
+    return {
+        "comparative_bundle_type": "phase_j_workflow_bundle",
+        "schema_version": "phase_j.workflow.v1",
+        "dataset_version": version,
+        "workflow_summary": summary,
+        "entries": entries,
+    }
+
+
 def render_markdown_report(summary: dict[str, Any]) -> str:
     sample_summary = summary.get("sample_summary") or {}
     run_summary = summary.get("run_summary") or {}

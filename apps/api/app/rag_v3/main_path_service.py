@@ -92,8 +92,6 @@ def _resolve_runtime_execution_mode(
 
     # The current main-path service remains a local evidence answer path.
     degraded_conditions.append("global_review_fallback_to_local_evidence")
-    if len(paper_scope or []) > 1:
-        return "local_compare", degraded_conditions
     return "local_evidence", degraded_conditions
 
 

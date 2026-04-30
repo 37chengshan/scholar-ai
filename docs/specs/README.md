@@ -17,6 +17,7 @@
 ## Rules
 
 - `docs/specs/` 只放规范、架构、设计、治理、参考资料，不放执行中的阶段报告。
+- 不再承担 `docs/` 根层兼容入口；根层旧副本必须迁回 `docs/specs/` 的 canonical 位置或删除。
 - 架构与契约真源放在 `architecture/`、`domain/`、`contracts/`。
 - 流程与治理真源放在 `development/`、`governance/`。
 - 兼容入口可以保留，但必须明确指向 canonical 文档。

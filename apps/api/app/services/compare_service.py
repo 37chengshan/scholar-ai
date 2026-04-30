@@ -396,6 +396,7 @@ def build_compare_contract(
         evidence_blocks=deduped_blocks,
         quality={
             "citation_coverage": supported / max(total, 1),
+            "unsupported_claim_rate": truthfulness_report.get("unsupportedClaimRate", 0.0),
             "fallback_used": False,
             "fallback_reason": None,
         },

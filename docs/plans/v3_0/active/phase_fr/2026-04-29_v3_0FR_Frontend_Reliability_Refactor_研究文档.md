@@ -3,7 +3,7 @@
 > 日期：2026-04-29  
 > 状态：research  
 > 上游依据：
-> - `docs/reports/frontend-design-audit-2026-04-29.md`
+> - `docs/plans/v3_0/reports/frontend/frontend-design-audit-2026-04-29.md`
 > - `docs/specs/design/frontend/DESIGN_SYSTEM.md`
 > - `apps/web/src/features/chat/workspace/ChatWorkspaceV2.tsx`
 > - `apps/web/src/features/kb/components/KnowledgeWorkspaceShell.tsx`

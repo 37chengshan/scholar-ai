@@ -20,6 +20,25 @@
 - `plans/`
   - 按版本组织的计划、研究、报告、归档与状态真源
 
+## Top-level Contract
+
+`docs/` 根层是强约束目录，只允许存在以下三个入口：
+
+1. `docs/README.md`
+2. `docs/specs/`
+3. `docs/plans/`
+
+以下内容不允许继续直接放在 `docs/` 根层：
+
+- 报告、研究、审计、验证结论
+- 旧的 `architecture/`、`domain/`、`governance/` 兼容副本目录
+- 产品指南、实现说明、临时材料
+
+落位规则固定为：
+
+- 规范、架构、设计、治理、参考资料 -> `docs/specs/`
+- 计划、研究、评测、报告、归档 -> `docs/plans/`
+
 ## Canonical Paths
 
 核心治理与架构文档统一使用这些 canonical 路径：

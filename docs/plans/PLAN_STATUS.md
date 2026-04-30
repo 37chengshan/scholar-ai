@@ -31,7 +31,7 @@
 | G | product-engineering | closeout-required | 2026-04-29 | docs/plans/v3_0/active/phase_g/14_v3_0G_execution_plan.md | Beta 包与 walkthrough 资产待回填 |
 | H | ai-runtime | research-required | 2026-04-30 | docs/plans/v3_0/active/phase_h/2026-04-30_v3_0H_RAG_Online_Transition_研究文档.md | 新增边界：RAG 主链全面转向线上，替代本地实验模型默认路径 |
 | I | ai-runtime | implementation-complete / verification-passed | 2026-04-30 | docs/plans/v3_0/active/phase_i/16_v3_0I_execution_plan.md | P0+P1 首批 `Truth + Route` 已完成并验证；已冻结 taxonomy/kernel/truthfulness，主链接入 rag/chat/compare/review，后续仅保留 STORM/GraphRAG/强 verifier 等非本轮目标 |
-| J | ai-platform | research-required | 2026-04-30 | docs/plans/v3_0/active/phase_j/2026-04-30_v3_0J_RAG_Benchmark_研究文档.md | 新增边界：RAG benchmark 从阶段评测升级为持续对比与放行门禁 |
+| J | ai-platform | closeout-complete / verification-passed | 2026-04-30 | docs/plans/v3_0/active/phase_j/17_v3_0J_execution_plan.md | comparative gate、academic/workflow normalization、orchestration、verdict JSON/diff JSON/markdown report 已落地；当前证据见 `artifacts/validation-results/phase_j/2026-04-30-closeout/` |
 
 ## v3.0 Close-out 真源
 
@@ -41,6 +41,9 @@
   - `artifacts/validation-results/phase_d/real_world_validation.json`
   - `artifacts/validation-results/phase_d/real_world_validation.summary.json`
   - `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md`
+  - `artifacts/validation-results/phase_j/2026-04-30-closeout/comparative_verdict.json`
+  - `artifacts/validation-results/phase_j/2026-04-30-closeout/comparative_diff.json`
+  - `artifacts/validation-results/phase_j/2026-04-30-closeout/closeout_summary.md`
 
 ## 活跃计划面板
 
@@ -77,6 +80,7 @@
 | v3_0I_framework_decision_matrix | ai-runtime | done | 16_v3_0I_execution_plan | 2026-04-30 | planning-doc-20260430-v3i-matrix | V3.0-I-MATRIX | DU-20260430-007 | pending | apps/api,apps/web,docs | high | adopt/extend/experiment/reject 矩阵已冻结，并已用于确定首批只落 Adaptive-RAG pattern + truthfulness substrate |
 | v3_0I_academic_kernel_blueprint | ai-runtime | done | v3_0I_framework_decision_matrix | 2026-04-30 | planning-doc-20260430-v3i-blueprint | V3.0-I-BLUEPRINT | DU-20260430-009 | pending | apps/api,apps/web,docs | high | academic kernel、双核结构、truthfulness layer 与 route/runtime contract 已冻结并完成首批代码映射 |
 | v3_0J_rag_benchmark_research | ai-platform | in-progress | v3_0H_rag_online_transition_research,v3_0I_academic_custom_rag_framework_research,07_v3_0A_execution_plan | 2026-04-30 | planning-doc-20260430-v3j | V3.0-J | DU-20260430-003 | pending | apps/api,docs,scripts | high | 作为 RAG benchmark 与对比门禁研究真源，定义线上基线、候选框架、真实链路结果的统一对比体系 |
+| 17_v3_0J_execution_plan | ai-platform | done | v3_0J_rag_benchmark_research | 2026-04-30 | working-tree-phase-j-closeout | V3.0-J-EXEC | DU-20260430-011 | pending | apps/api,docs,scripts | high | Phase J close-out 已落地：comparative contract、academic/workflow adapter、orchestrator、verdict JSON/diff JSON/markdown report 已生成并通过聚焦测试 |
 | PR11_Harness_Observability_文件级实施方案 | ai-platform | done | PR10 | 2026-04-17 | 89a9d9a | PR11 | DU-20260417-009 | historical | scripts,docs | medium | 已完成，进入维护态 |
 | PR12_Benchmark_基线评测_文件级实施方案 | ai-platform | done | PR11 | 2026-04-17 | 84fd597 | PR12 | DU-20260417-010 | historical | scripts/docs/reports | medium | 已完成，进入阈值维护态 |
 | PlanA_前端架构与交互重构 | web-platform | done | PR10,PR7_PR8 | 2026-04-18 | 9f58bb9,9a2fc2c,0b01076,43fe5c9,e02c880 | PlanA | DU-20260418-004 | PR22 | apps/web,docs | high | W0-W6 全部完成，进入维护态 |
