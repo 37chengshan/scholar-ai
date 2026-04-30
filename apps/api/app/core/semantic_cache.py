@@ -13,7 +13,7 @@ import time
 import numpy as np
 from typing import Any, Dict, List, Optional
 
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.embedding.factory import get_embedding_service
 from app.core.database import redis_db
 from app.utils.logger import logger
 
@@ -44,12 +44,12 @@ class SemanticCache:
             threshold: Minimum similarity threshold for cache hit (default: 0.95)
             ttl: Cache entry TTL in seconds (default: 86400 for 24 hours)
             max_entries: Maximum number of cache entries before eviction
-            embedding_service: Optional embedding service instance (defaults to Qwen3VL)
+            embedding_service: Optional embedding service instance (defaults to unified embedding factory)
         """
         self.threshold = threshold
         self.ttl = ttl
         self.max_entries = max_entries
-        self.embedding_service = embedding_service or get_qwen3vl_service()
+        self.embedding_service = embedding_service or get_embedding_service()
         self.prefix = "rag:semantic_cache"
 
     async def _enforce_cache_limit(self) -> None:

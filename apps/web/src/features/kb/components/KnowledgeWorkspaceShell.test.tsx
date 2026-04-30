@@ -147,6 +147,10 @@ describe('KnowledgeWorkspaceShell', () => {
     await waitFor(() => {
       expect(screen.getByText('Paper One')).toBeInTheDocument();
     });
+
+    expect(screen.getByText('Readiness')).toBeInTheDocument();
+    expect(screen.getByText('Evidence is ready to inspect')).toBeInTheDocument();
+    expect(screen.getByText('Review and chat are ready to continue')).toBeInTheDocument();
   });
 
   it('switches to runs panel and shows run history', async () => {

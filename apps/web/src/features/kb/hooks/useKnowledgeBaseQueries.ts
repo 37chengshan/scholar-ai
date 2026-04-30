@@ -42,7 +42,7 @@ export function useKnowledgeBaseQueries() {
         toast.error(error?.message || '加载知识库失败');
       }
     } finally {
-      if (!options?.silent && requestId === kbRequestIdRef.current) {
+      if (requestId === kbRequestIdRef.current) {
         setLoadingKB(false);
       }
     }
@@ -69,7 +69,7 @@ export function useKnowledgeBaseQueries() {
         toast.error(error?.message || '加载论文失败');
       }
     } finally {
-      if (!options?.silent && requestId === papersRequestIdRef.current) {
+      if (requestId === papersRequestIdRef.current) {
         setPapersLoading(false);
       }
     }
@@ -98,7 +98,7 @@ export function useKnowledgeBaseQueries() {
     } catch {
       // Keep silent to avoid noisy toasts during polling.
     } finally {
-      if (!options?.silent && requestId === importJobsRequestIdRef.current) {
+      if (requestId === importJobsRequestIdRef.current) {
         setImportJobsLoading(false);
       }
     }

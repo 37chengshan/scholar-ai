@@ -465,7 +465,7 @@ export const importApi = {
     handlers: ImportJobSubscriptionHandlers = {}
   ): (() => void) => {
     const streamUrl = importApi.getStreamUrl(jobId);
-    const eventSource = new EventSource(streamUrl);
+    const eventSource = new EventSource(streamUrl, { withCredentials: true });
 
     const parsePayload = <T>(event: MessageEvent, fallback: T): T => {
       try {

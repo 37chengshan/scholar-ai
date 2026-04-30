@@ -10,12 +10,15 @@ Endpoints:
 """
 
 import asyncio
+import copy
 import hashlib
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .shared import (
     LibrarySearchResponse,
@@ -31,9 +34,13 @@ from .shared import (
 )
 from .external import search_arxiv, search_semantic_scholar
 from app.core.multimodal_search_service import get_multimodal_search_service
-from app.deps import CurrentUserId
-from app.utils.logger import logger
+from app.deps import CurrentUserId, get_db
+from app.middleware.auth import get_optional_user
+from app.services.search_library_status_service import (
+    search_library_status_service,
+)
 from app.utils.problem_detail import Errors
+from app.utils.logger import logger
 
 
 router = APIRouter()
@@ -41,6 +48,16 @@ router = APIRouter()
 
 def _stable_query_hash(query: str) -> str:
     return hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
+
+
+def _serialize_search_results(results: List[Any]) -> List[Dict[str, Any]]:
+    serialized: List[Dict[str, Any]] = []
+    for result in results:
+        if isinstance(result, SearchResult):
+            serialized.append(result.model_dump())
+        else:
+            serialized.append(dict(result))
+    return serialized
 
 
 @router.get("/library", response_model=LibrarySearchResponse)
@@ -124,7 +141,6 @@ async def search_library(
                     paper_id=r.get("paper_id", ""),
                     content=(
                         r.get("text")
-                        or r.get("content_data")
                         or r.get("content")
                         or ""
                     )[:500],
@@ -200,6 +216,8 @@ async def search_unified(
     offset: int = Query(default=0, ge=0),
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    optional_user=Depends(get_optional_user),
 ) -> Dict[str, Any]:
     """Search both arXiv and Semantic Scholar, return merged results.
 
@@ -212,7 +230,7 @@ async def search_unified(
 
     Results are:
     1. Fetched from both sources in parallel
-    2. Merged and deduplicated (by arXiv ID + title similarity)
+    2. Merged and deduplicated (by arXiv ID + title overlap score)
     3. Filtered by year range
     4. Sorted by citation-based composite score
     """
@@ -235,16 +253,22 @@ async def search_unified(
     cached = await get_search_cache(cache_key)
     if cached:
         logger.info("Unified search cache hit", query=query, limit=limit)
+        cached_data = copy.deepcopy(cached)
+        cached_data["results"] = await search_library_status_service.annotate_results(
+            cached_data.get("results", []),
+            user=optional_user,
+            db=db,
+        )
         logger.info(
             "search_completed",
             event_type="search_completed",
             run_id=run_id,
             route="/api/v1/search/unified",
-            result_count=len(cached.get("results", [])),
+            result_count=len(cached_data.get("results", [])),
             cache_hit=True,
             duration_ms=round((time.perf_counter() - started) * 1000, 2),
         )
-        return SearchResponse(success=True, data=cached)
+        return SearchResponse(success=True, data=cached_data)
 
     logger.info(
         "Unified search initiated",
@@ -294,27 +318,37 @@ async def search_unified(
         reverse=True,
     )
 
+    final_results = scored_results[:limit]
     total = arxiv_total + s2_total
-    result_data = {"results": scored_results[:limit], "total": total}
+    cached_result_data = {
+        "results": _serialize_search_results(final_results),
+        "total": total,
+    }
 
-    await set_search_cache(cache_key, result_data)
+    await set_search_cache(cache_key, cached_result_data)
+    response_data = copy.deepcopy(cached_result_data)
+    response_data["results"] = await search_library_status_service.annotate_results(
+        response_data.get("results", []),
+        user=optional_user,
+        db=db,
+    )
     logger.info(
         "Unified search complete",
         query=query,
         total_results=len(all_results),
         unique_results=len(unique_results),
-        returned_results=len(result_data["results"]),
+        returned_results=len(response_data["results"]),
     )
     logger.info(
         "search_completed",
         event_type="search_completed",
         run_id=run_id,
         route="/api/v1/search/unified",
-        result_count=len(result_data["results"]),
+        result_count=len(response_data["results"]),
         duration_ms=round((time.perf_counter() - started) * 1000, 2),
     )
 
-    return SearchResponse(success=True, data=result_data)
+    return SearchResponse(success=True, data=response_data)
 
 
 @router.post("/fusion", response_model=FusionSearchResponse)
@@ -384,7 +418,6 @@ async def fusion_search(
                     year=r.get("year", 0),
                     abstract=(
                         r.get("text")
-                        or r.get("content_data")
                         or r.get("content")
                         or ""
                     )[:500],

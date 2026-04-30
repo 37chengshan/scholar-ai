@@ -11,23 +11,26 @@ Per D-06: Batch storage reduces database round trips.
 import json
 import re
 import asyncio
+from time import perf_counter
 from typing import Any, Dict, List, Optional
 
 import asyncpg
+import torch
 
+from app.config import settings
 from app.workers.pipeline_context import PipelineContext
 from app.core.chunk_identity import build_stable_chunk_id
 from app.core.milvus_service import get_milvus_service, calculate_chunk_quality
 from app.core.neo4j_service import Neo4jService
 from app.core.notes_generator import NotesGenerator
-from app.core.docling_service import DoclingParser
+from app.core.docling_service import get_docling_parser
 from app.core.section_normalizer import (
     normalize_section_path,
     section_leaf,
     section_parent_path,
     serialize_section_path,
 )
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.embedding.factory import get_embedding_service
 from app.core.contextual_chunk_builder import enrich_chunk, build_section_summary_text
 from app.services.reading_card_service import build_reading_card_doc
 from app.utils.logger import logger
@@ -39,6 +42,26 @@ class StorageManager:
     EMBEDDING_DIM = 2048  # Qwen3VL dimension
     MIN_CHUNK_QUALITY = 0.25
     MAX_INDEXED_TITLE_LEN = 240
+
+    @staticmethod
+    def _embedding_batch_size_for_device(device: str) -> int:
+        """Select a safe batch size per runtime device."""
+        normalized = (device or "").strip().lower()
+        if normalized == "cuda":
+            return max(int(settings.EMBEDDING_BATCH_SIZE_CUDA), 1)
+        if normalized == "mps":
+            return max(int(settings.EMBEDDING_BATCH_SIZE_MPS), 1)
+        return max(int(settings.EMBEDDING_BATCH_SIZE_CPU), 1)
+
+    @staticmethod
+    def _should_empty_mps_cache(device: str, batch_index: int) -> bool:
+        """Only clear MPS cache when explicitly configured to do so."""
+        if (device or "").strip().lower() != "mps":
+            return False
+        interval = int(settings.EMBEDDING_MPS_EMPTY_CACHE_INTERVAL)
+        if interval <= 0:
+            return False
+        return batch_index > 0 and batch_index % interval == 0
 
     def __init__(
         self,
@@ -59,11 +82,11 @@ class StorageManager:
         self.milvus = milvus_service or get_milvus_service()
         self.neo4j = neo4j_service or Neo4jService()
         self.notes_generator = notes_generator or NotesGenerator()
-        self.parser = DoclingParser()
+        self.parser = get_docling_parser()
 
         # Get or create Qwen3VL service. Keep lazy-loading to avoid startup crash;
         # actual hard validation happens during vector stage.
-        self.qwen3vl_service = get_qwen3vl_service()
+        self.qwen3vl_service = get_embedding_service()
 
     @staticmethod
     def _sanitize_text(value: Optional[str]) -> Optional[str]:
@@ -104,6 +127,48 @@ class StorageManager:
             normalized = normalized[: cls.MAX_INDEXED_TITLE_LEN].rstrip()
 
         return normalized or None
+
+    @staticmethod
+    def _looks_like_placeholder_title(value: Optional[str]) -> bool:
+        """Return True when an existing title is likely a filename or placeholder."""
+        if not value:
+            return True
+
+        normalized = value.strip().lower()
+        if not normalized:
+            return True
+
+        if normalized in {"untitled", "unknown", "document", "paper"}:
+            return True
+
+        if normalized.endswith(".pdf"):
+            return True
+
+        if "/" in normalized or "\\" in normalized:
+            return True
+
+        return False
+
+    @classmethod
+    def _should_replace_existing_title(
+        cls,
+        existing_title: Optional[str],
+        extracted_title: Optional[str],
+    ) -> bool:
+        """Only replace titles that still look like placeholders.
+
+        Real imports may already have a trusted source title before PDF parsing.
+        In those cases, fallback parser metadata should not overwrite it with
+        a noisy first-line extraction.
+        """
+        if not extracted_title:
+            return False
+
+        if cls._looks_like_placeholder_title(existing_title):
+            return True
+
+        normalized_existing = cls._normalize_title(existing_title)
+        return normalized_existing == extracted_title
 
     async def _ensure_unique_title_for_user(
         self,
@@ -305,28 +370,31 @@ class StorageManager:
         imrad = self._sanitize_obj(ctx.imrad or {})
         markdown = self._sanitize_text((ctx.parse_result or {}).get("markdown", ""))
 
+        existing_title = await conn.fetchval(
+            "SELECT title FROM papers WHERE id = $1",
+            ctx.paper_id,
+        )
+
         # Extract title from metadata, convert empty strings to None
         extracted_title = self._normalize_title(metadata.get("title"))
 
-        if extracted_title:
+        if self._should_replace_existing_title(existing_title, extracted_title):
             extracted_title = await self._ensure_unique_title_for_user(
                 conn=conn,
                 user_id=ctx.user_id,
                 paper_id=ctx.paper_id,
                 candidate=extracted_title,
             )
-
-        # Per D-04: Use extracted title if available (overwrites filename-based title)
-        # Only fallback to existing title if extraction truly failed
-        title_update_clause = "title = $4" if extracted_title else "title = title"
+        else:
+            extracted_title = None
 
         await conn.execute(
-            f"""UPDATE papers
+            """UPDATE papers
                SET content = $1,
                    "pageCount" = $2,
                    status = 'processing',
                    "imradJson" = $3,
-                   {title_update_clause},
+                   title = COALESCE($4::text, title),
                    authors = COALESCE(NULLIF($5::text[], '{{}}'), authors),
                    abstract = COALESCE(NULLIF($6, ''), abstract),
                    doi = COALESCE(NULLIF($7, ''), doi),
@@ -518,29 +586,38 @@ class StorageManager:
             f"Embedding model status - Loaded: {self.qwen3vl_service.is_loaded()}, Device: {self.qwen3vl_service.get_device()}"
         )
 
-        # Generate embeddings in smaller batches to avoid GPU memory overflow
-        # MPS on Mac has limited GPU memory allocation
-        BATCH_SIZE = 8
+        batch_size = self._embedding_batch_size_for_device(self.qwen3vl_service.get_device())
         embeddings = []
+        device = self.qwen3vl_service.get_device()
+        embedding_started_at = perf_counter()
 
         try:
-            for i in range(0, len(chunk_texts), BATCH_SIZE):
-                batch = chunk_texts[i : i + BATCH_SIZE]
+            for batch_index, i in enumerate(range(0, len(chunk_texts), batch_size), start=1):
+                batch = chunk_texts[i : i + batch_size]
                 batch_embeddings = self.qwen3vl_service.encode_text(batch)
                 embeddings.extend(batch_embeddings)
 
-                # Clear GPU cache after each batch
-                import torch
-
-                if torch.backends.mps.is_available():
+                if self._should_empty_mps_cache(device, batch_index):
                     torch.mps.empty_cache()
 
             logger.info(
-                "Embeddings generated", task_id=ctx.task_id, count=len(embeddings)
+                "Embeddings generated",
+                task_id=ctx.task_id,
+                count=len(embeddings),
+                device=device,
+                batch_size=batch_size,
+                chunk_count=len(chunk_texts),
+                elapsed_ms=round((perf_counter() - embedding_started_at) * 1000, 2),
             )
         except Exception as e:
             logger.error(
-                "Failed to generate batch embeddings", task_id=ctx.task_id, error=str(e)
+                "Failed to generate batch embeddings",
+                task_id=ctx.task_id,
+                error=str(e),
+                device=device,
+                batch_size=batch_size,
+                chunk_count=len(chunk_texts),
+                elapsed_ms=round((perf_counter() - embedding_started_at) * 1000, 2),
             )
             raise RuntimeError("Qwen embedding failed during batch generation") from e
 

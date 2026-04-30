@@ -11,9 +11,15 @@ export type ChatResponseType =
   | 'error';
 
 export interface AnswerClaimDto {
+  claim_id?: string;
+  claim_text?: string;
+  claim_type?: string;
   claim: string;
-  support_status: 'supported' | 'partially_supported' | 'unsupported';
+  support_status: 'supported' | 'weakly_supported' | 'partially_supported' | 'unsupported';
+  support_score?: number;
   supporting_source_chunk_ids: string[];
+  repairable?: boolean;
+  repair_hint?: string;
 }
 
 export interface AnswerCitationDto {
@@ -26,6 +32,9 @@ export interface AnswerCitationDto {
   authors?: string[];
   year?: number;
   anchor_text?: string;
+  quote_text?: string;
+  source_offset_start?: number | null;
+  source_offset_end?: number | null;
   text_preview?: string;
   snippet?: string;
   page?: number;

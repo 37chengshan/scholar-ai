@@ -1221,7 +1221,11 @@ function NotesContent() {
 
               <div className="flex-1 p-6 overflow-auto bg-background">
                 <div className="mx-auto max-w-4xl">
-                  <LinkedEvidenceList evidence={selectedNote.linkedEvidence || []} />
+                  <LinkedEvidenceList
+                    evidence={selectedNote.linkedEvidence || []}
+                    noteTitle={selectedNote.title}
+                    noteId={selectedNote.id}
+                  />
                   <NotesEditor
                     content={editorContent}
                     onChange={handleEditorChange}

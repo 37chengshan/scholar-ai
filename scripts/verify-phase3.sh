@@ -63,7 +63,7 @@ test -f apps/api/app/services/paper_service.py
 echo "✓ paper_service.py 存在"
 
 echo "[7/8] 检查 code-boundary baseline 存在..."
-test -f docs/governance/code-boundary-baseline.md
+test -f docs/specs/governance/code-boundary-baseline.md
 echo "✓ baseline 文件存在"
 
 echo "[8/8] 运行后端关键测试..."

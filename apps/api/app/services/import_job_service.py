@@ -23,6 +23,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import inspect as sqlalchemy_inspect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -343,26 +344,34 @@ class ImportJobService:
         Returns:
             Updated ImportJob with retry next_action
         """
-        self._validate_status_transition(job.status, "failed")
-        job.status = "failed"
-        job.stage = "failed"
-        job.error_code = error_code
-        job.error_message = error_message
-        job.error_detail = error_detail
-        job.next_action = {"type": "retry", "message": error_message}
-        job.updated_at = datetime.now(timezone.utc)
+        identity = sqlalchemy_inspect(job).identity if sqlalchemy_inspect(job, raiseerr=False) is not None else None
+        job_id = identity[0] if identity else job.__dict__.get("id")
+        if not job_id:
+            raise ValueError("ImportJob id unavailable in error path")
+        current_job = await self.get_job_by_id(job_id, db)
+        target_job = current_job or job
+
+        if current_job and current_job.status in {"completed", "cancelled"}:
+            return current_job
+        target_job.status = "failed"
+        target_job.stage = "failed"
+        target_job.error_code = error_code
+        target_job.error_message = error_message
+        target_job.error_detail = error_detail
+        target_job.next_action = {"type": "retry", "message": error_message}
+        target_job.updated_at = datetime.now(timezone.utc)
 
         await db.commit()
-        await db.refresh(job)
+        await db.refresh(target_job)
 
         logger.error(
             "ImportJob error set",
-            job_id=job.id,
+            job_id=target_job.id,
             error_code=error_code,
             error_message=error_message,
         )
 
-        return job
+        return target_job
 
     async def set_awaiting_dedupe(
         self,

@@ -68,8 +68,8 @@ describe('useWorkflowHydration', () => {
     const state = useWorkflowStore.getState();
     expect(state.currentRun?.id).toBe('run-1');
     expect(state.scope.type).toBe('paper');
-    expect(state.pendingActions[0]?.label).toBe('RETRY');
-    expect(state.recoverableTasks[0]?.label).toBe('RETRY');
+    expect(state.pendingActions[0]?.label).toBe('Retry');
+    expect(state.recoverableTasks[0]?.label).toBe('Retry');
     expect(state.artifacts[0]?.title).toBe('Evidence');
   });
 

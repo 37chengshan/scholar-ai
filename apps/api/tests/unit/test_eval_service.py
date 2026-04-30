@@ -18,6 +18,7 @@ from app.services.eval_service import (
     load_manifest,
     run_offline_gate,
 )
+from app.api.evals import eval_runs
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -297,6 +298,57 @@ def test_get_run_detail_metrics_gate_reevaluated():
     assert verdict in ("PASS", "FAIL", "UNKNOWN")
     # gate_failures list must be present
     assert isinstance(detail["metrics"]["gate_failures"], list)
+
+
+def test_get_run_detail_v3_reads_evidence_artifact(tmp_path, monkeypatch):
+    import app.services.eval_service as svc
+
+    run_id = "run_v3_001"
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True)
+
+    meta = _make_meta(run_id=run_id, mode="public_offline")
+    meta["dataset_version"] = "v3_0_academic"
+    (run_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    (run_dir / "dashboard_summary.json").write_text(json.dumps(_make_summary()), encoding="utf-8")
+    (run_dir / "retrieval.json").write_text(json.dumps({"by_family": {}}), encoding="utf-8")
+    (run_dir / "answer_quality.json").write_text(json.dumps({"by_family": {}}), encoding="utf-8")
+    (run_dir / "evidence.json").write_text(
+        json.dumps(
+            {
+                "total_citations_checked": 12,
+                "valid_citations": 10,
+                "invalid_citations": 2,
+                "invalid_reasons": {"missing_anchor": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(svc, "_benchmark_root", lambda benchmark="phase6": tmp_path)
+
+    detail = get_run_detail(run_id, "v3_0_academic")
+    assert detail is not None
+    assert detail["citation_jump_detail"]["total_checked"] == 12
+    assert detail["citation_jump_detail"]["valid"] == 10
+    assert detail["citation_jump_detail"]["invalid"] == 2
+
+
+@pytest.mark.asyncio
+async def test_eval_runs_offline_filter_includes_v3_offline_modes(mocker):
+    mocker.patch(
+        "app.api.evals.list_run_summaries",
+        return_value=[
+            {"run_id": "run-1", "mode": "public_offline"},
+            {"run_id": "run-2", "mode": "blind_offline"},
+            {"run_id": "run-3", "mode": "online"},
+        ],
+    )
+
+    response = await eval_runs(benchmark="v3_0_academic", mode="offline", limit=20, offset=0)
+
+    assert response["meta"]["total"] == 2
+    assert [item["run_id"] for item in response["data"]["items"]] == ["run-1", "run-2"]
 
 
 # ─── get_overview ─────────────────────────────────────────────────────────────

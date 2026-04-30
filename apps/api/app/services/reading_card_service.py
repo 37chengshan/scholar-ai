@@ -255,8 +255,6 @@ def ensure_reading_card_doc(
     source_records = list(records or [])
     if not source_records:
         source_records = get_artifact_records_for_paper(paper.id)
-    if not source_records and paper.paper_chunks:
-        source_records = list(paper.paper_chunks)
     if not source_records:
         return None
 

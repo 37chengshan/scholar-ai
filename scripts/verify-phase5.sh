@@ -15,15 +15,15 @@ for pkg in types sdk ui config; do
 done
 
 echo "[2/6] 检查迁移条件清单文档..."
-if [[ -f docs/governance/migration-conditions.md ]]; then
-  echo "✓ docs/governance/migration-conditions.md 存在"
+if [[ -f docs/specs/governance/migration-conditions.md ]]; then
+  echo "✓ docs/specs/governance/migration-conditions.md 存在"
 else
-  echo "✗ 缺少 docs/governance/migration-conditions.md" >&2
+  echo "✗ 缺少 docs/specs/governance/migration-conditions.md" >&2
   exit 1
 fi
 
 echo "[3/6] 检查 stabilization 报告模板..."
-test -f docs/reports/post-migration-stabilization-checklist.md
+test -f docs/plans/v2_0/reports/release/post-migration-stabilization-checklist.md
 echo "✓ stabilization 报告模板存在"
 
 echo "[4/6] 检查共享包落地状态..."

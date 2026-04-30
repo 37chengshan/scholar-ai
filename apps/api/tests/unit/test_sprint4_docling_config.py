@@ -27,6 +27,7 @@ from app.core.docling_service import (
     FileTooLargeError,
     ParseTimeoutError,
     PageLimitError,
+    get_docling_parser,
 )
 
 
@@ -124,6 +125,23 @@ class TestDoclingParserConfig:
         assert parser.pipeline_options.do_ocr is True
         assert parser.pipeline_options.generate_picture_images is True
         assert parser.pipeline_options.generate_table_images is True
+
+    def test_docling_parser_prewarm_initializes_native_converter(self):
+        """Prewarm should initialize the native converter without a real parse."""
+        parser = DoclingParser(config=ParserConfig(do_ocr=False))
+        assert parser._native_converter is None
+
+        parser.prewarm()
+
+        assert parser._native_converter is not None
+        assert parser._ocr_converter is None
+
+    def test_get_docling_parser_returns_singleton(self):
+        """Worker runtime should reuse a shared parser instance."""
+        parser_a = get_docling_parser()
+        parser_b = get_docling_parser()
+
+        assert parser_a is parser_b
 
 
 class TestDoclingParserForceOCR:

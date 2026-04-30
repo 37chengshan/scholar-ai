@@ -26,6 +26,7 @@ import type { CompareDimensionId } from '@/services/compareApi';
 import * as notesApi from '@/services/notesApi';
 import * as papersApi from '@/services/papersApi';
 import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
+import { navigateToChatWithHandoff } from '@/features/chat/chatHandoff';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Badge } from '../components/ui/badge';
@@ -72,9 +73,10 @@ interface CompareCellViewProps {
   cell: CompareCellDto;
   onJumpEvidence?: (block: EvidenceBlockDto) => void;
   onSaveEvidence?: (cell: CompareCellDto) => void;
+  onContinueInChat?: (cell: CompareCellDto) => void;
 }
 
-function CompareCellView({ cell, onJumpEvidence, onSaveEvidence }: CompareCellViewProps) {
+function CompareCellView({ cell, onJumpEvidence, onSaveEvidence, onContinueInChat }: CompareCellViewProps) {
   if (cell.support_status === 'not_enough_evidence') {
     return (
       <td className="border border-border/40 px-3 py-2 text-center text-sm text-muted-foreground/60 italic">
@@ -105,6 +107,13 @@ function CompareCellView({ cell, onJumpEvidence, onSaveEvidence }: CompareCellVi
             >
               Save
             </button>
+            <button
+              type="button"
+              className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/50 hover:text-primary"
+              onClick={() => onContinueInChat?.(cell)}
+            >
+              Chat
+            </button>
           </>
         ) : null}
       </div>
@@ -116,9 +125,10 @@ interface CompareMatrixTableProps {
   matrix: CompareMatrixDto;
   onJumpEvidence?: (block: EvidenceBlockDto) => void;
   onSaveEvidence?: (cell: CompareCellDto, paperId: string) => void;
+  onContinueInChat?: (cell: CompareCellDto, paperId: string) => void;
 }
 
-function CompareMatrixTable({ matrix, onJumpEvidence, onSaveEvidence }: CompareMatrixTableProps) {
+function CompareMatrixTable({ matrix, onJumpEvidence, onSaveEvidence, onContinueInChat }: CompareMatrixTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full border-collapse text-sm">
@@ -152,6 +162,7 @@ function CompareMatrixTable({ matrix, onJumpEvidence, onSaveEvidence }: CompareM
                   cell={cell}
                   onJumpEvidence={onJumpEvidence}
                   onSaveEvidence={(c) => onSaveEvidence?.(c, row.paper_id)}
+                  onContinueInChat={(c) => onContinueInChat?.(c, row.paper_id)}
                 />
               ))}
             </tr>
@@ -298,7 +309,7 @@ export function Compare() {
   const [compareError, setCompareError] = useState<string | null>(null);
 
   // --- evidence navigation
-  const { jumpToSource } = useEvidenceNavigation(isZh);
+  const { jumpToSource, saveEvidence } = useEvidenceNavigation(isZh);
 
   useEffect(() => {
     let cancelled = false;
@@ -439,9 +450,11 @@ export function Compare() {
       const block = cell.evidence_blocks[0];
       if (!block) return;
       try {
-        await notesApi.saveEvidenceNote({
-          claim: cell.content || cell.dimension_id,
-          evidence_block: block,
+        await saveEvidence(cell.content || cell.dimension_id, {
+          ...block,
+          text: block.text || cell.content || cell.dimension_id,
+          citation_jump_url: block.citation_jump_url || '',
+        }, {
           surface: 'compare',
         });
         toast.success(isZh ? '证据已保存到笔记' : 'Evidence saved to Notes');
@@ -449,7 +462,33 @@ export function Compare() {
         toast.error(isZh ? '保存失败' : 'Save failed');
       }
     },
-    [isZh],
+    [isZh, saveEvidence],
+  );
+
+  const handleContinueCellInChat = useCallback(
+    (cell: CompareCellDto, paperId: string) => {
+      const dimensionLabel = DIMENSION_LABELS[cell.dimension_id as CompareDimensionId] || cell.dimension_id;
+      navigateToChatWithHandoff(
+        navigate,
+        {
+          paperIds: selectedPapers.map((paper) => paper.id),
+        },
+        {
+          origin: 'compare',
+          promptDraft: isZh
+            ? `继续分析对比维度“${dimensionLabel}”，重点解释《${selectedPapers.find((paper) => paper.id === paperId)?.title || '这篇论文'}》在该维度上的证据、结论和局限。`
+            : `Continue the comparison on "${dimensionLabel}" and explain the evidence, conclusion, and limitation for "${selectedPapers.find((paper) => paper.id === paperId)?.title || 'this paper'}".`,
+          evidence: cell.evidence_blocks.slice(0, 2).map((block) => ({
+            paperId: block.paper_id,
+            sourceChunkId: block.source_chunk_id,
+            pageNum: block.page_num ?? undefined,
+            claim: cell.content,
+          })),
+          returnTo: `/compare?paper_ids=${selectedPapers.map((paper) => paper.id).join(',')}`,
+        },
+      );
+    },
+    [isZh, navigate, selectedPapers],
   );
 
   const handleSaveWholeCompare = useCallback(async () => {
@@ -493,9 +532,19 @@ export function Compare() {
   }, [compareResult, isZh, question, selectedPapers]);
 
   const handleOpenChat = useCallback(() => {
-    const ids = selectedPapers.map((p) => p.id).join(',');
-    navigate(`/chat?paper_ids=${ids}`);
-  }, [selectedPapers, navigate]);
+    navigateToChatWithHandoff(
+      navigate,
+      { paperIds: selectedPapers.map((paper) => paper.id) },
+      {
+        origin: 'compare',
+        promptDraft: isZh
+          ? `基于这组论文对比，继续分析${question.trim() ? `“${question.trim()}”` : '核心差异、共同点和下一步研究问题'}。`
+          : `Using this comparison set, continue analyzing ${question.trim() ? `"${question.trim()}"` : 'the major differences, common ground, and next research questions'}.`,
+        evidence: selectedPapers.map((paper) => ({ paperId: paper.id })),
+        returnTo: `/compare?paper_ids=${selectedPapers.map((paper) => paper.id).join(',')}`,
+      },
+    );
+  }, [isZh, navigate, question, selectedPapers]);
 
   // ---- Render --------------------------------------------------------------
 
@@ -629,11 +678,12 @@ export function Compare() {
             </div>
           ) : compareResult?.compare_matrix ? (
             <div className="space-y-6">
-              <CompareMatrixTable
-                matrix={compareResult.compare_matrix}
-                onJumpEvidence={handleJumpEvidence}
-                onSaveEvidence={handleSaveCellEvidence}
-              />
+            <CompareMatrixTable
+              matrix={compareResult.compare_matrix}
+              onJumpEvidence={handleJumpEvidence}
+              onSaveEvidence={handleSaveCellEvidence}
+              onContinueInChat={handleContinueCellInChat}
+            />
               {compareResult.compare_matrix.cross_paper_insights.length > 0 ? (
                 <section>
                   <h3 className="mb-2 text-sm font-semibold text-foreground">

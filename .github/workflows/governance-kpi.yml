@@ -18,10 +18,10 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x scripts/audit-governance-kpi.sh
-          bash scripts/audit-governance-kpi.sh --window 14d --output docs/reports/governance-kpi/latest.md
+          bash scripts/audit-governance-kpi.sh --window 14d --output docs/plans/v3_0/reports/governance-kpi/latest.md
 
       - name: Upload KPI artifact
         uses: actions/upload-artifact@v4
         with:
           name: governance-kpi-latest
-          path: docs/reports/governance-kpi/latest.md
+          path: docs/plans/v3_0/reports/governance-kpi/latest.md

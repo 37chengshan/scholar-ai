@@ -30,21 +30,21 @@
 - `tests/unit/test_rag_error_state_contract.py`：新增合同测试，验证 error_state 与降级逻辑正确映射
 
 **文档（docs）：**
-- `docs/architecture/api-contract.md`：
+- `docs/specs/architecture/api-contract.md`：
   - 补充 `POST /api/v1/search/evidence` 端点合同（query/queryFamily/topK → LayeredEvidenceSearchResult）
   - 补充 `GET /api/v1/evidence/source/{source_chunk_id}` 端点合同（返回 EvidenceSourceDetail）
   - 补充 `POST /api/v1/notes/evidence` 端点合同（创建证据笔记）
   - 扩展 ChatMessage.answerContract 与 Answer 资源定义，新增 trace_id/error_state/cost_estimate/quality_score 字段
 
-- `docs/domain/resources.md`：
+- `docs/specs/domain/resources.md`：
   - 新增 `EvidenceNote` 资源定义（id/source_chunk_id/note_text/user_id/created_at）
   - 新增 `SearchEvidenceSource` 资源定义（source_chunk_id/paper_id/section_path/page_num/content_type/citation）
   - 新增 `LayeredEvidenceSearchResult` 资源定义（paper_results/section_matches/evidence_matches/relation_matches）
 
-- `docs/reports/v3_4_frontend_evidence_ui_pretext.md`：P4 完成报告，覆盖 scope/changes/verification/risk
-- `docs/reports/v3_5_trace_cost_error_state.md`：P5 完成报告，覆盖后端数据通路与测试验证
-- `docs/reports/v3_6_release_gate_report.md`：P6 governance 门禁通过报告
-- `docs/reports/v1_0_release_candidate_report.md`：v1.0 发布候选总结报告
+- `docs/plans/archive/reports/v3_4_frontend_evidence_ui_pretext.md`：P4 完成报告，覆盖 scope/changes/verification/risk
+- `docs/plans/archive/reports/v3_5_trace_cost_error_state.md`：P5 完成报告，覆盖后端数据通路与测试验证
+- `docs/plans/archive/reports/v3_6_release_gate_report.md`：P6 governance 门禁通过报告
+- `docs/plans/archive/reports/v1_0_release_candidate_report.md`：v1.0 发布候选总结报告
 
 **发布产物（artifacts/release/v1_0）：**
 - `e2e_results.json`：端到端验证清单（type-check/test/governance/deployment）
@@ -88,7 +88,7 @@
 3. 文档：无回滚风险（仅文档更新）
 
 ## 交付单元追踪
-与 `docs/governance/phase-delivery-ledger.md` 对应：
+与 `docs/specs/governance/phase-delivery-ledger.md` 对应：
 
 | Phase | Deliverable Unit | Status | Code Changes | Test Changes | Doc Changes |
 |-------|------------------|--------|--------------|--------------|-------------|
@@ -135,9 +135,9 @@
 - [x] 需要，已同步更新
 
 **更新文档清单：**
-- [x] `docs/architecture/system-overview.md` (Evidence 层级架构澄清)
-- [x] `docs/architecture/api-contract.md` (3 个新端点 + answer contract 扩展)
-- [x] `docs/domain/resources.md` (EvidenceNote/SearchEvidenceSource/LayeredEvidenceSearchResult)
+- [x] `docs/specs/architecture/system-overview.md` (Evidence 层级架构澄清)
+- [x] `docs/specs/architecture/api-contract.md` (3 个新端点 + answer contract 扩展)
+- [x] `docs/specs/domain/resources.md` (EvidenceNote/SearchEvidenceSource/LayeredEvidenceSearchResult)
 - [x] `architecture.md` (root level 体系图)
 - [x] `AGENTS.md` (phase-delivery-ledger 交付规则)
 
@@ -184,7 +184,7 @@ $ bash scripts/check-governance.sh
 ### 发布产物
 - `artifacts/release/v1_0/e2e_results.json` (端到端验证清单)
 - `artifacts/release/v1_0/manual_evidence_audit.json` (手工证据审计)
-- `docs/reports/v1_0_release_candidate_report.md` (v1.0 发布候选汇总)
+- `docs/plans/archive/reports/v1_0_release_candidate_report.md` (v1.0 发布候选汇总)
 
 ## 关联 Issue / 背景
 

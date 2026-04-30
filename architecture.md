@@ -10,22 +10,23 @@
 
 ## Source of Truth
 
-- 系统总览：docs/architecture/system-overview.md
-- API 契约：docs/architecture/api-contract.md
+- 系统总览：docs/specs/architecture/system-overview.md
+- API 契约：docs/specs/architecture/api-contract.md
+- 前端设计系统与规范：docs/specs/design/frontend/DESIGN_SYSTEM.md
 - 共享契约（types）：packages/types
 - 共享 SDK：packages/sdk
-- 资源模型：docs/domain/resources.md
-- v2.0 收尾标准：docs/reports/2026-04-28_v2_0_closeout_pass_framework.md
-- 开发规范：docs/development/coding-standards.md
-- 文档校验：docs/development/documentation-validation.md
-- PR 流程：docs/development/pr-process.md
-- 测试策略：docs/development/testing-strategy.md
-- Harness 治理：docs/governance/harness-engineering-playbook.md
-- Phase 台账：docs/governance/phase-delivery-ledger.md
-- 分支生命周期：docs/governance/branch-lifecycle-policy.md
-- 治理 KPI：docs/governance/governance-kpi-spec.md
-- E2E 失败手册：docs/governance/e2e-failure-handbook.md
-- ADR 索引：docs/adr
+- 资源模型：docs/specs/domain/resources.md
+- v2.0 收尾标准：docs/plans/v2_0/reports/2026-04-28_v2_0_closeout_pass_framework.md
+- 开发规范：docs/specs/development/coding-standards.md
+- 文档校验：docs/specs/development/documentation-validation.md
+- PR 流程：docs/specs/development/pr-process.md
+- 测试策略：docs/specs/development/testing-strategy.md
+- Harness 治理：docs/specs/governance/harness-engineering-playbook.md
+- Phase 台账：docs/specs/governance/phase-delivery-ledger.md
+- 分支生命周期：docs/specs/governance/branch-lifecycle-policy.md
+- 治理 KPI：docs/specs/governance/governance-kpi-spec.md
+- E2E 失败手册：docs/specs/governance/e2e-failure-handbook.md
+- ADR 索引：docs/specs/adr
 
 ## Rules
 
@@ -37,13 +38,13 @@
 
 ## Required Updates
 
-- 新增子系统或边界变化：更新 docs/architecture/system-overview.md 后同步更新本文件链接。
+- 新增子系统或边界变化：更新 docs/specs/architecture/system-overview.md 后同步更新本文件链接。
 - 新增契约文档：加入本文件链接索引。
 
 ## Verification
 
 - 检查所有链接路径存在且可访问。
-- 抽查本文件与 docs/architecture/system-overview.md 的边界描述一致。
+- 抽查本文件与 docs/specs/architecture/system-overview.md 的边界描述一致。
 - 运行 bash scripts/check-doc-governance.sh 验证文档结构与本地链接。
 
 ## Open Questions

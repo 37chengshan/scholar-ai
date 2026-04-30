@@ -17,6 +17,7 @@ from functools import wraps
 from typing import Any, Dict, List, Optional
 
 from app.config import settings
+from app.core.runtime_contract import RuntimeBinding, build_vector_store_binding
 from app.utils.logger import logger
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
 from pymilvus.exceptions import MilvusException
@@ -158,6 +159,8 @@ class MilvusService:
         self.timeout = timeout
         self._alias = "scholarai"
         self._connected = False
+        self.mode = "online"
+        self._degraded_conditions: list[str] = []
 
         # Use embedding dimension from config (per Phase 18)
         # Supports: Qwen3-VL (2048), BGE-M3 (1024), or other models
@@ -208,6 +211,8 @@ class MilvusService:
                 timeout=self.timeout,
             )
             self._connected = True
+            self.mode = "online"
+            self._degraded_conditions = []
             logger.info(
                 "Milvus connected",
                 host=self.host,
@@ -231,6 +236,10 @@ class MilvusService:
             try:
                 connections.connect(alias=self._alias, uri=lite_db_path)
                 self._connected = True
+                self.mode = "lite"
+                self._degraded_conditions = [
+                    f"Milvus server unavailable, switched to Milvus Lite at {lite_db_path}"
+                ]
                 logger.warning(
                     "Milvus server unavailable, switched to Milvus Lite",
                     lite_db_path=lite_db_path,
@@ -258,6 +267,13 @@ class MilvusService:
     def is_connected(self) -> bool:
         """Check if connection is active."""
         return self._connected
+
+    def get_runtime_binding(self) -> RuntimeBinding:
+        return build_vector_store_binding(
+            backend=str(getattr(settings, "VECTOR_STORE_BACKEND", "milvus")),
+            resolved_mode="lite" if self.mode == "lite" else "online",
+            degraded_conditions=self._degraded_conditions,
+        )
 
     def _create_collection_schema(
         self, name: str, fields: List[FieldSchema]

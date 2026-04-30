@@ -5,19 +5,20 @@ required_docs=(
   "README.md"
   "AGENTS.md"
   "architecture.md"
-  "docs/architecture/system-overview.md"
-  "docs/architecture/api-contract.md"
-  "docs/domain/resources.md"
-  "docs/development/coding-standards.md"
-  "docs/development/documentation-validation.md"
-  "docs/development/pr-process.md"
-  "docs/development/testing-strategy.md"
-  "docs/governance/code-boundary-baseline.md"
-  "docs/governance/harness-engineering-playbook.md"
-  "docs/governance/phase-delivery-ledger.md"
-  "docs/governance/branch-lifecycle-policy.md"
-  "docs/governance/governance-kpi-spec.md"
-  "docs/governance/e2e-failure-handbook.md"
+  "docs/specs/README.md"
+  "docs/specs/architecture/system-overview.md"
+  "docs/specs/architecture/api-contract.md"
+  "docs/specs/domain/resources.md"
+  "docs/specs/development/coding-standards.md"
+  "docs/specs/development/documentation-validation.md"
+  "docs/specs/development/pr-process.md"
+  "docs/specs/development/testing-strategy.md"
+  "docs/specs/governance/code-boundary-baseline.md"
+  "docs/specs/governance/harness-engineering-playbook.md"
+  "docs/specs/governance/phase-delivery-ledger.md"
+  "docs/specs/governance/branch-lifecycle-policy.md"
+  "docs/specs/governance/governance-kpi-spec.md"
+  "docs/specs/governance/e2e-failure-handbook.md"
 )
 
 required_sections=(
@@ -31,30 +32,30 @@ required_sections=(
 )
 
 required_references=(
-  "README.md:docs/architecture/system-overview.md"
-  "README.md:docs/architecture/api-contract.md"
-  "README.md:docs/domain/resources.md"
-  "README.md:docs/development/documentation-validation.md"
-  "README.md:docs/governance/code-boundary-baseline.md"
-  "README.md:docs/governance/harness-engineering-playbook.md"
-  "README.md:docs/governance/phase-delivery-ledger.md"
-  "README.md:docs/governance/branch-lifecycle-policy.md"
-  "README.md:docs/governance/governance-kpi-spec.md"
-  "README.md:docs/governance/e2e-failure-handbook.md"
-  "AGENTS.md:docs/architecture/system-overview.md"
-  "AGENTS.md:docs/architecture/api-contract.md"
-  "AGENTS.md:docs/domain/resources.md"
-  "AGENTS.md:docs/development/documentation-validation.md"
-  "AGENTS.md:docs/governance/code-boundary-baseline.md"
-  "AGENTS.md:docs/governance/harness-engineering-playbook.md"
-  "AGENTS.md:docs/governance/phase-delivery-ledger.md"
-  "AGENTS.md:docs/governance/branch-lifecycle-policy.md"
-  "AGENTS.md:docs/governance/governance-kpi-spec.md"
-  "AGENTS.md:docs/governance/e2e-failure-handbook.md"
-  "architecture.md:docs/architecture/system-overview.md"
-  "architecture.md:docs/architecture/api-contract.md"
-  "docs/development/pr-process.md:docs/development/testing-strategy.md"
-  "docs/development/testing-strategy.md:docs/development/pr-process.md"
+  "README.md:docs/specs/architecture/system-overview.md"
+  "README.md:docs/specs/architecture/api-contract.md"
+  "README.md:docs/specs/domain/resources.md"
+  "README.md:docs/specs/development/documentation-validation.md"
+  "README.md:docs/specs/governance/code-boundary-baseline.md"
+  "README.md:docs/specs/governance/harness-engineering-playbook.md"
+  "README.md:docs/specs/governance/phase-delivery-ledger.md"
+  "README.md:docs/specs/governance/branch-lifecycle-policy.md"
+  "README.md:docs/specs/governance/governance-kpi-spec.md"
+  "README.md:docs/specs/governance/e2e-failure-handbook.md"
+  "AGENTS.md:docs/specs/architecture/system-overview.md"
+  "AGENTS.md:docs/specs/architecture/api-contract.md"
+  "AGENTS.md:docs/specs/domain/resources.md"
+  "AGENTS.md:docs/specs/development/documentation-validation.md"
+  "AGENTS.md:docs/specs/governance/code-boundary-baseline.md"
+  "AGENTS.md:docs/specs/governance/harness-engineering-playbook.md"
+  "AGENTS.md:docs/specs/governance/phase-delivery-ledger.md"
+  "AGENTS.md:docs/specs/governance/branch-lifecycle-policy.md"
+  "AGENTS.md:docs/specs/governance/governance-kpi-spec.md"
+  "AGENTS.md:docs/specs/governance/e2e-failure-handbook.md"
+  "architecture.md:docs/specs/architecture/system-overview.md"
+  "architecture.md:docs/specs/architecture/api-contract.md"
+  "docs/specs/development/pr-process.md:docs/specs/development/testing-strategy.md"
+  "docs/specs/development/testing-strategy.md:docs/specs/development/pr-process.md"
 )
 
 fail_count=0
@@ -91,11 +92,13 @@ markdown_sources=(
   "AGENTS.md"
   "architecture.md"
   "docs/README.md"
+  "docs/plans/README.md"
+  "docs/specs/README.md"
 )
 
 while IFS= read -r doc_file; do
   markdown_sources+=("$doc_file")
-done < <(find docs/architecture docs/domain docs/development docs/governance -type f -name "*.md" | sort)
+done < <(find docs/specs/architecture docs/specs/domain docs/specs/development docs/specs/governance -type f -name "*.md" | sort)
 
 for source in "${markdown_sources[@]}"; do
   [[ -f "$source" ]] || continue

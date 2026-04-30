@@ -19,7 +19,7 @@ from PIL import Image
 
 from app.core.image_extractor import ImageExtractor
 from app.core.table_extractor import TableExtractor
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.embedding.factory import get_multimodal_embedding_service
 from app.core.milvus_service import get_milvus_service
 from app.core.storage import ObjectStorage
 from app.utils.logger import logger
@@ -145,7 +145,7 @@ class MultimodalIndexer:
         """Initialize the multimodal indexer."""
         self.image_extractor = ImageExtractor()
         self.table_extractor = TableExtractor()
-        self.qwen3vl_service = get_qwen3vl_service()
+        self.qwen3vl_service = get_multimodal_embedding_service()
         self.milvus = get_milvus_service()
         self.storage = ObjectStorage()
         self.collection_name = "paper_contents_v2"  # Use v2 collection for 2048-dim embeddings

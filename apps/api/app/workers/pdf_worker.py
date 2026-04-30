@@ -34,7 +34,7 @@ import asyncpg
 from app.config import settings
 from app.core.storage import ObjectStorage
 from app.core.docling_service import DoclingParser
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.embedding.factory import get_embedding_service
 from app.core.imrad_extractor import (
     extract_imrad_structure,  # Keep for backward compatibility
     extract_imrad_enhanced,  # NEW: enhanced version per D-05
@@ -382,9 +382,9 @@ class PDFProcessor:
         .. deprecated:: Use ``PDFCoordinator.process()`` instead.
         """
         warnings.warn("_embed_text_chunks is deprecated; pipeline stages are handled by PDFCoordinator.", DeprecationWarning, stacklevel=2)
-        qwen3vl = get_qwen3vl_service()
+        embedding_service = get_embedding_service()
         texts = [chunk.get("text", "") for chunk in chunks]
-        embeddings = qwen3vl.encode_text(texts)
+        embeddings = embedding_service.encode_text(texts)
         logger.debug("Chunks embedded", count=len(embeddings))
         return embeddings
 
@@ -708,8 +708,8 @@ async def worker_loop():
     # Initialize embedding model at startup
     logger.info("Initializing embedding model...")
     try:
-        qwen3vl_service = get_qwen3vl_service()
-        qwen3vl_service.load_model()
+        embedding_service = get_embedding_service()
+        embedding_service.load_model()
         logger.info("Embedding model initialized successfully")
     except Exception as e:
         logger.error("Failed to initialize embedding model", error=str(e))

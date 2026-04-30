@@ -82,7 +82,16 @@ async def list_kb_papers(
             )
 
         query = (
-            select(Paper)
+            select(
+                Paper.id,
+                Paper.title,
+                Paper.authors,
+                Paper.year,
+                Paper.venue,
+                Paper.status,
+                Paper.created_at,
+                Paper.updated_at,
+            )
             .where(Paper.knowledge_base_id == kb_id, Paper.user_id == user_id)
             .order_by(desc(Paper.created_at))
             .offset(offset)
@@ -90,7 +99,7 @@ async def list_kb_papers(
         )
 
         result = await db.execute(query)
-        papers = result.scalars().all()
+        papers = result.all()
 
         total_result = await db.execute(
             select(func.count(Paper.id)).where(
@@ -330,7 +339,7 @@ async def kb_query(
         context_chunks = result.get("results", [])[:5]
         context_text = "\n\n---\n\n".join(
             [
-                f"[{i + 1}] {chunk.get('text') or chunk.get('content_data', '') or chunk.get('content', '')}"
+                f"[{i + 1}] {chunk.get('text') or chunk.get('content', '')}"
                 for i, chunk in enumerate(context_chunks)
             ]
         )
@@ -385,7 +394,6 @@ Please provide a comprehensive answer based on the context above."""
                     "chunk_id": res.get("id"),
                     "content_preview": (
                         res.get("text")
-                        or res.get("content_data")
                         or res.get("content")
                         or ""
                     )[:200],

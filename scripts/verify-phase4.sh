@@ -7,10 +7,10 @@ cd "$ROOT_DIR"
 echo "=== Phase 4 验收开始 ==="
 
 echo "[1/8] 检查 API 契约文档关键字段..."
-test -f docs/architecture/api-contract.md
-rg -n '"items"' docs/architecture/api-contract.md -S >/dev/null
-rg -n '"meta"' docs/architecture/api-contract.md -S >/dev/null
-grep -q "camelCase" docs/architecture/api-contract.md
+test -f docs/specs/architecture/api-contract.md
+rg -n '"items"' docs/specs/architecture/api-contract.md -S >/dev/null
+rg -n '"meta"' docs/specs/architecture/api-contract.md -S >/dev/null
+grep -q "camelCase" docs/specs/architecture/api-contract.md
 echo "✓ API 契约文档关键字段存在"
 
 echo "[2/8] 检查后端通用响应壳..."

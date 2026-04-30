@@ -22,11 +22,20 @@ export interface SearchResult {
   authors?: string[];
   abstract?: string;
   year?: number;
-  source: 'internal' | 'arxiv' | 's2';
+  source: 'internal' | 'arxiv' | 's2' | 'semantic_scholar';
   paperId?: string;
   externalId?: string;
   pdfUrl?: string;
   citations?: number;
+  // canonical ExternalPaper fields (WP0/WP1)
+  arxivId?: string;
+  s2PaperId?: string;
+  doi?: string;
+  venue?: string;
+  openAccess?: boolean;
+  fieldsOfStudy?: string[];
+  availability?: 'metadata_only' | 'pdf_available' | 'pdf_unavailable';
+  libraryStatus?: 'not_imported' | 'importing' | 'imported_metadata_only' | 'imported_fulltext_ready';
 }
 
 export interface SearchResults {

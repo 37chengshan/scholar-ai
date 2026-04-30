@@ -34,6 +34,18 @@ async function createAuthState(page: Page, request: APIRequestContext): Promise<
   const user = buildE2EUser();
 
   await page.goto('/login');
+  await page.waitForLoadState('domcontentloaded');
+
+  // A fresh page can still inherit valid cookies from an earlier attempt.
+  // If /login immediately redirects to /dashboard, reuse that authenticated state.
+  if (/\/dashboard(?:[/?#]|$)/.test(page.url())) {
+    await page.locator('#root').waitFor({ timeout: 20000 });
+    return {
+      user,
+      cookies: await page.context().cookies(),
+    };
+  }
+
   await page.fill('input[type="email"]', user.email);
   await page.fill('input[type="password"]', user.password);
   const submitButton = page.locator('button[type="submit"]').first();
@@ -132,6 +144,7 @@ export async function registerAndLogin(page: Page, request: APIRequestContext): 
     cachedAuthState = null;
     cachedAuthStatePromise = null;
     await clearPersistedAuthState();
+    await page.context().clearCookies();
 
     authState = await createAuthState(page, request);
     await persistAuthState(authState);

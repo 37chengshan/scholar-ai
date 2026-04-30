@@ -2,12 +2,15 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import type { EvidenceBlockDto } from '@scholar-ai/types';
 import { measureEvidenceBlock, tokenizeEvidenceInline } from '@/lib/text-layout';
+import { navigateToChatWithHandoff } from '@/features/chat/chatHandoff';
 
 interface LinkedEvidenceListProps {
   evidence: EvidenceBlockDto[];
+  noteTitle?: string;
+  noteId?: string;
 }
 
-export function LinkedEvidenceList({ evidence }: LinkedEvidenceListProps) {
+export function LinkedEvidenceList({ evidence, noteTitle, noteId }: LinkedEvidenceListProps) {
   const navigate = useNavigate();
 
   const measured = useMemo(
@@ -70,6 +73,31 @@ export function LinkedEvidenceList({ evidence }: LinkedEvidenceListProps) {
                 onClick={() => navigate(item.citation_jump_url)}
               >
                 Open source
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border/70 px-2 py-1 text-foreground hover:border-primary/50 hover:text-primary"
+                onClick={() => {
+                  navigateToChatWithHandoff(
+                    navigate,
+                    { paperId: item.paper_id },
+                    {
+                      origin: 'notes',
+                      promptDraft: `Continue from note evidence${noteTitle ? ` in "${noteTitle}"` : ''}: explain why this source matters, how strong the support is, and what I should ask next.`,
+                      evidence: [
+                        {
+                          paperId: item.paper_id,
+                          sourceChunkId: item.source_chunk_id,
+                          pageNum: item.page_num ?? undefined,
+                          claim: item.text,
+                        },
+                      ],
+                      returnTo: noteId ? `/notes?noteId=${noteId}` : '/notes',
+                    },
+                  );
+                }}
+              >
+                Continue in Chat
               </button>
             </div>
           </article>

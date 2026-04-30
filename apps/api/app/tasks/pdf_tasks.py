@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from sqlalchemy import select, func, update, desc
+from sqlalchemy import select, func, update, desc, text
 
 from app.core.celery_config import celery_app
 from app.core.worker_async import run_async_in_worker_loop
@@ -235,20 +235,35 @@ async def process_single_pdf_async(
             # Check if task already exists
             if processing_task_id:
                 result = await db.execute(
-                    select(ProcessingTask).where(ProcessingTask.id == processing_task_id)
+                    select(
+                        ProcessingTask.id,
+                        ProcessingTask.status,
+                        ProcessingTask.storage_key,
+                    ).where(ProcessingTask.id == processing_task_id)
                 )
             else:
                 result = await db.execute(
-                    select(ProcessingTask).where(ProcessingTask.paper_id == paper_id)
+                    select(
+                        ProcessingTask.id,
+                        ProcessingTask.status,
+                        ProcessingTask.storage_key,
+                    ).where(ProcessingTask.paper_id == paper_id)
                 )
-            existing_task = result.scalar_one_or_none()
+            existing_task = result.first()
 
             if existing_task:
                 task_id = existing_task.id
                 storage_key = existing_task.storage_key
                 # Update status to processing
-                existing_task.status = 'processing'
-                existing_task.updated_at = datetime.now(timezone.utc)
+                await db.execute(
+                    text(
+                        """UPDATE processing_tasks
+                           SET status = :status,
+                               updated_at = NOW()
+                           WHERE id = :id"""
+                    ),
+                    {"status": "processing", "id": task_id},
+                )
             else:
                 # Create new task record with UUID
                 task_id = processing_task_id or str(uuid.uuid4())
@@ -258,13 +273,22 @@ async def process_single_pdf_async(
                 )
                 storage_key = paper_result.scalar_one_or_none()
 
-                new_task = ProcessingTask(
-                    id=task_id,
-                    paper_id=paper_id,
-                    status='processing',
-                    storage_key=storage_key or '',
+                await db.execute(
+                    text(
+                        """INSERT INTO processing_tasks
+                           (id, paper_id, status, storage_key, attempts, checkpoint_version, is_retryable)
+                           VALUES (:id, :paper_id, :status, :storage_key, :attempts, :checkpoint_version, :is_retryable)"""
+                    ),
+                    {
+                        "id": task_id,
+                        "paper_id": paper_id,
+                        "status": "processing",
+                        "storage_key": storage_key or "",
+                        "attempts": 0,
+                        "checkpoint_version": 0,
+                        "is_retryable": True,
+                    },
                 )
-                db.add(new_task)
 
             await db.commit()
 

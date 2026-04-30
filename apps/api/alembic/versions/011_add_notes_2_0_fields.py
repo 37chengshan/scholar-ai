@@ -1,7 +1,7 @@
 """add notes 2.0 fields
 
 Revision ID: 011_add_notes_2_0_fields
-Revises: 010_add_upload_sessions
+Revises: 010_add_upload_sessions_table
 Create Date: 2026-04-27
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "011_add_notes_2_0_fields"
-down_revision = "010_add_upload_sessions"
+down_revision = "010_add_upload_sessions_table"
 branch_labels = None
 depends_on = None
 

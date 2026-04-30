@@ -17,6 +17,7 @@ Implementation per D-01, D-02, D-11, D-12 from CONTEXT.md.
 import sys
 import os
 import json
+from time import perf_counter
 from importlib import import_module
 from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
@@ -401,6 +402,19 @@ class Qwen3VLMultimodalEmbedding:
         except Exception as e:
             logger.error("Failed to encode texts", error=str(e), text_count=len(normalized_texts))
             raise
+
+    def warmup_text_encode(self) -> None:
+        """Trigger the first encode_text path with a minimal payload."""
+        if not self.is_loaded():
+            self.load_model()
+
+        started_at = perf_counter()
+        self.encode_text("warmup")
+        logger.info(
+            "Qwen3-VL text encode warmup completed",
+            device=self.device,
+            elapsed_ms=round((perf_counter() - started_at) * 1000, 2),
+        )
 
     def _normalize_text_value(self, value: Any) -> str:
         """Normalize unknown input values into tokenizer-safe text."""

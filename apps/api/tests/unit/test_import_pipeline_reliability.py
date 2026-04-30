@@ -3,6 +3,8 @@
 Covers:
 - dedupe decision re-queue behavior
 - batch local file upload partial success behavior
+- hash dedupe tolerates historical duplicate imports
+- error persistence reloads a fresh ImportJob instance
 """
 
 from datetime import datetime, timezone
@@ -16,6 +18,9 @@ from app.api.imports.batches import upload_batch_local_files
 from app.api.imports.dedupe import DedupeDecisionRequest, submit_dedupe_decision
 from app.models.import_batch import ImportBatch
 from app.models.import_job import ImportJob
+from app.services.import_dedupe_service import ImportDedupeService
+from app.services.import_job_service import ImportJobService
+from app.workers.import_worker_helpers import _resolve_s2_paper_id_for_insert
 
 
 class _ScalarResult:
@@ -35,6 +40,9 @@ class _ScalarsResult:
 
     def all(self):
         return self._values
+
+    def first(self):
+        return self._values[0] if self._values else None
 
 
 @pytest.mark.asyncio
@@ -175,6 +183,7 @@ async def test_upload_batch_local_files_marks_job_failed_when_enqueue_fails():
     db.execute.side_effect = [
         _ScalarResult(batch),
         _ScalarsResult([job]),
+        _ScalarResult(job),
     ]
 
     files = [
@@ -207,3 +216,96 @@ async def test_upload_batch_local_files_marks_job_failed_when_enqueue_fails():
     assert response.data["rejected"][0]["importJobId"] == job.id
     assert job.status == "failed"
     assert job.error_code == "QUEUE_SUBMIT_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_hash_dedupe_uses_latest_completed_match_without_requiring_uniqueness():
+    db = AsyncMock()
+    service = ImportDedupeService()
+
+    old_job = ImportJob(
+        id="imp_old_completed",
+        user_id="user-1",
+        knowledge_base_id="kb-1",
+        source_type="local_file",
+        source_ref_raw="old.pdf",
+        status="completed",
+        stage="completed",
+        paper_id="paper-old",
+    )
+    new_job = ImportJob(
+        id="imp_new_completed",
+        user_id="user-1",
+        knowledge_base_id="kb-1",
+        source_type="local_file",
+        source_ref_raw="new.pdf",
+        status="completed",
+        stage="completed",
+        paper_id="paper-new",
+    )
+    db.execute.return_value = _ScalarsResult([new_job, old_job])
+
+    match = await service._match_by_hash("sha256", "user-1", db)
+
+    assert match is new_job
+
+
+@pytest.mark.asyncio
+async def test_cross_user_duplicate_s2_paper_id_is_omitted_before_insert():
+    db = AsyncMock()
+    db.execute.return_value = _ScalarResult("existing-paper")
+
+    resolved = await _resolve_s2_paper_id_for_insert(db, "s2-duplicate")
+
+    assert resolved is None
+
+
+@pytest.mark.asyncio
+async def test_fresh_s2_paper_id_is_preserved_before_insert():
+    db = AsyncMock()
+    db.execute.return_value = _ScalarResult(None)
+
+    resolved = await _resolve_s2_paper_id_for_insert(db, "s2-fresh")
+
+    assert resolved == "s2-fresh"
+
+
+@pytest.mark.asyncio
+async def test_set_error_reloads_job_before_marking_failed():
+    db = AsyncMock()
+    service = ImportJobService()
+
+    stale_job = ImportJob(
+        id="imp_stale_job",
+        user_id="user-1",
+        knowledge_base_id="kb-1",
+        source_type="local_file",
+        source_ref_raw="stale.pdf",
+        status="running",
+        stage="dedupe_check",
+    )
+    fresh_job = ImportJob(
+        id="imp_stale_job",
+        user_id="user-1",
+        knowledge_base_id="kb-1",
+        source_type="local_file",
+        source_ref_raw="fresh.pdf",
+        status="running",
+        stage="dedupe_check",
+    )
+    db.execute.return_value = _ScalarResult(fresh_job)
+
+    updated = await service.set_error(
+        stale_job,
+        error_code="IMPORT_FAILED",
+        error_message="boom",
+        db=db,
+    )
+
+    assert updated is fresh_job
+    assert fresh_job.status == "failed"
+    assert fresh_job.stage == "failed"
+    assert fresh_job.error_code == "IMPORT_FAILED"
+    assert fresh_job.next_action == {"type": "retry", "message": "boom"}
+    db.commit.assert_awaited()
+    db.refresh.assert_awaited_with(fresh_job)

@@ -49,7 +49,7 @@ fi
 # Frontend service changes should only trigger contract docs when they touch
 # real API client surfaces. Barrel exports and presentation-only helpers do not
 # change the repository contract by themselves.
-contract_surface_regex='^(apps/api/app/api/|apps/api/app/models/|apps/api/app/services/|packages/types/|packages/sdk/|docs/architecture/api-contract.md|docs/domain/resources.md)'
+contract_surface_regex='^(apps/api/app/api/|apps/api/app/models/|apps/api/app/services/|packages/types/|packages/sdk/|docs/specs/architecture/api-contract.md|docs/specs/domain/resources.md)'
 frontend_contract_surface_regex='^apps/web/src/services/(annotationsApi|authApi|chatApi|importApi|kbApi|notesApi|papersApi|projectsApi|ragApi|searchApi|sessionResponse|sessionsApi|sseService|systemApi|uploadApi|uploadHistoryApi|uploadSessionApi|usersApi)\.ts$'
 
 contract_surface_changed="false"
@@ -62,7 +62,7 @@ if grep -E "$frontend_contract_surface_regex" <<<"$changed_files" >/dev/null; th
 fi
 
 if [[ "$contract_surface_changed" == "true" ]]; then
-  required_docs=("docs/architecture/api-contract.md" "docs/domain/resources.md")
+  required_docs=("docs/specs/architecture/api-contract.md" "docs/specs/domain/resources.md")
   for doc in "${required_docs[@]}"; do
     if ! grep -Fxq "$doc" <<<"$changed_files"; then
       echo "[contract-gate] contract surface changed but missing synced doc update: $doc" >&2

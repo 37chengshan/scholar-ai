@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import CurrentUserId
-from app.schemas.review_draft import ReviewDraftCreateRequest, ReviewDraftRetryRequest
+from app.schemas.review_draft import (
+    ReviewClaimRepairRequest,
+    ReviewDraftCreateRequest,
+    ReviewDraftRetryRequest,
+)
 from app.services.review_draft_service import ReviewDraftService
 
 
@@ -92,6 +96,28 @@ async def retry_review_draft(
         # Reserved behavior hook; current retry flow is idempotent and force-safe.
         pass
     draft = await service.retry_draft(kb_id=kb_id, draft_id=draft_id, user_id=user_id)
+    return {
+        "success": True,
+        "data": service.to_review_dto(draft).model_dump(mode="json"),
+    }
+
+
+@router.post("/{kb_id}/review-drafts/{draft_id}/claims/repair")
+async def repair_review_claim(
+    kb_id: str,
+    draft_id: str,
+    request: ReviewClaimRepairRequest,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    service = ReviewDraftService(db)
+    draft = await service.repair_claim(
+        kb_id=kb_id,
+        draft_id=draft_id,
+        paragraph_id=request.paragraph_id,
+        claim_id=request.claim_id,
+        user_id=user_id,
+    )
     return {
         "success": True,
         "data": service.to_review_dto(draft).model_dump(mode="json"),

@@ -17,6 +17,7 @@ import { SearchPagination } from '@/features/search/components/SearchPagination'
 import { SearchResultsPanel } from '@/features/search/components/SearchResultsPanel';
 import { SearchAuthorPanel } from '@/features/search/components/SearchAuthorPanel';
 import { SearchKnowledgeBaseImportModal } from '@/features/search/components/SearchKnowledgeBaseImportModal';
+import { navigateToChatWithHandoff } from '@/features/chat/chatHandoff';
 
 export function SearchWorkspace() {
   const { language } = useLanguage();
@@ -87,6 +88,8 @@ export function SearchWorkspace() {
     loading: isZh ? '加载中...' : 'Loading...',
     noKB: isZh ? '暂无知识库，请先创建知识库' : 'No knowledge bases available',
     paperUnit: isZh ? '篇论文' : 'papers',
+    kbSelectPrompt: isZh ? '先选中目标知识库，再确认导入。' : 'Select the target knowledge base, then confirm import.',
+    kbImportConfirm: isZh ? '确认导入到该知识库' : 'Import to selected knowledge base',
     authorMinChars: isZh ? '输入至少 3 个字符搜索作者' : 'Enter at least 3 characters to search authors',
     externalDegraded: isZh ? '部分外部来源暂时失败，已展示可用结果。' : 'Some external sources are degraded; showing available results.',
     emptyLibrary: isZh ? '本地库无结果，可尝试外部来源。' : 'No local results. Try external sources.',
@@ -163,6 +166,34 @@ export function SearchWorkspace() {
 
   const handleAddToLibrary = async (paper: any) => {
     await importFlow.startImportSelection(paper);
+  };
+
+  const handleContinueInChat = (paper: {
+    paperId?: string;
+    title?: string;
+    source?: string;
+    libraryStatus?: string;
+  }) => {
+    if (!paper.paperId) {
+      return;
+    }
+
+    navigateToChatWithHandoff(
+      navigate,
+      { paperId: paper.paperId },
+      {
+        origin: 'search',
+        promptDraft: isZh
+          ? `基于《${paper.title || '当前论文'}》帮我梳理核心贡献、关键证据和下一步阅读建议。`
+          : `Using "${paper.title || 'this paper'}", help me summarize the core contribution, key evidence, and best next reading steps.`,
+        evidence: [
+          {
+            paperId: paper.paperId,
+          },
+        ],
+        returnTo: '/search',
+      },
+    );
   };
 
   const plannerMetaRows = useMemo(() => {
@@ -283,6 +314,22 @@ export function SearchWorkspace() {
           statusLine={statusLine}
         />
 
+        {importFlow.runtimeStatus ? (
+          <div className="border-b border-border/50 bg-background/80 px-5 py-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 font-semibold text-blue-700">
+                {isZh ? '导入链进行中' : 'Import chain active'}
+              </span>
+              <span>
+                {importFlow.stageLabel || importFlow.runtimeStatus.stage}
+              </span>
+              {importFlow.runtimeStatus.error ? (
+                <span className="text-rose-600">{importFlow.runtimeStatus.error}</span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex-1 overflow-y-auto bg-paper-2/35 p-5">
           <SearchResultsPanel
             activeSource={workspace.activeSource}
@@ -308,6 +355,7 @@ export function SearchWorkspace() {
             }}
             onViewPaper={(paperId) => navigate(`/read/${paperId}?source=search`)}
             onAddToLibrary={handleAddToLibrary}
+            onContinueInChat={handleContinueInChat}
             onAuthorClick={handleOpenAuthor}
           />
 
@@ -543,19 +591,23 @@ export function SearchWorkspace() {
         open={importFlow.showKBSelectModal}
         loadingKnowledgeBases={importFlow.loadingKBs}
         knowledgeBases={importFlow.knowledgeBases}
+        selectedKnowledgeBaseId={importFlow.selectedKnowledgeBaseId}
         importingPaperId={importFlow.importingPaperId}
         labels={{
           title: labels.kbImportTitle,
           loading: labels.loading,
           empty: labels.noKB,
           papersUnit: labels.paperUnit,
+          confirm: labels.kbImportConfirm,
+          selectPrompt: labels.kbSelectPrompt,
         }}
         onClose={() => {
           importFlow.cancelImport();
           importFlow.setShowKBSelectModal(false);
           importFlow.clearPendingImport();
         }}
-        onConfirmImport={importFlow.importToKnowledgeBase}
+        onSelectKnowledgeBase={importFlow.setSelectedKnowledgeBaseId}
+        onConfirmImport={() => void importFlow.importToKnowledgeBase()}
       />
     </section>
   );

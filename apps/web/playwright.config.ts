@@ -14,7 +14,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     // All tests reuse auth state produced by global-setup
-    storageState: './e2e/.auth/user.json',
+    storageState: './e2e/.auth/e2e-auth-state.json',
   },
   projects: [
     {

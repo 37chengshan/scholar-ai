@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-policy_file="docs/governance/branch-lifecycle-policy.md"
+policy_file="docs/specs/governance/branch-lifecycle-policy.md"
 stale_days="${BRANCH_STALE_DAYS:-14}"
 review_ready_days="${BRANCH_REVIEW_READY_DAYS:-7}"
 

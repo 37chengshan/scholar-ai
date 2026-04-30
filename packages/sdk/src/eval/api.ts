@@ -8,20 +8,21 @@ import type {
 } from '@scholar-ai/types';
 
 export interface EvalApi {
-  getOverview(): Promise<EvaluationOverview>;
-  listRuns(params?: { mode?: EvalRunMode; limit?: number; offset?: number }): Promise<{
+  getOverview(params?: { benchmark?: 'phase6' | 'v3_0_academic' }): Promise<EvaluationOverview>;
+  listRuns(params?: { benchmark?: 'phase6' | 'v3_0_academic'; mode?: EvalRunMode; limit?: number; offset?: number }): Promise<{
     items: BenchmarkRunSummary[];
     total: number;
   }>;
-  getRunDetail(runId: string): Promise<BenchmarkRunDetail>;
-  getDiff(baseRunId: string, candidateRunId: string): Promise<BenchmarkDiff>;
+  getRunDetail(runId: string, params?: { benchmark?: 'phase6' | 'v3_0_academic' }): Promise<BenchmarkRunDetail>;
+  getDiff(baseRunId: string, candidateRunId: string, params?: { benchmark?: 'phase6' | 'v3_0_academic' }): Promise<BenchmarkDiff>;
 }
 
 export function createEvalApi(client: HttpClient): EvalApi {
   return {
-    async getOverview() {
+    async getOverview(params) {
       return client.get<EvaluationOverview>(
-        '/api/v1/evals/overview'
+        '/api/v1/evals/overview',
+        { params: params as Record<string, unknown> }
       );
     },
 
@@ -36,16 +37,23 @@ export function createEvalApi(client: HttpClient): EvalApi {
       };
     },
 
-    async getRunDetail(runId) {
+    async getRunDetail(runId, params) {
       return client.get<BenchmarkRunDetail>(
-        `/api/v1/evals/runs/${runId}`
+        `/api/v1/evals/runs/${runId}`,
+        { params: params as Record<string, unknown> }
       );
     },
 
-    async getDiff(baseRunId, candidateRunId) {
+    async getDiff(baseRunId, candidateRunId, params) {
       return client.get<BenchmarkDiff>(
         '/api/v1/evals/diff',
-        { params: { base_run_id: baseRunId, candidate_run_id: candidateRunId } }
+        {
+          params: {
+            ...(params as Record<string, unknown> | undefined),
+            base_run_id: baseRunId,
+            candidate_run_id: candidateRunId,
+          },
+        }
       );
     },
   };

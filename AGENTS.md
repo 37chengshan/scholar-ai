@@ -17,25 +17,30 @@
 
 ## Source of Truth
 
-- 系统边界：docs/architecture/system-overview.md
-- API 契约：docs/architecture/api-contract.md
-- 资源模型：docs/domain/resources.md
-- 编码规范：docs/development/coding-standards.md
-- 文档校验：docs/development/documentation-validation.md
-- PR 流程：docs/development/pr-process.md
-- 测试策略：docs/development/testing-strategy.md
-- 代码边界基线：docs/governance/code-boundary-baseline.md
-- Harness 治理：docs/governance/harness-engineering-playbook.md
-- Phase 台账：docs/governance/phase-delivery-ledger.md
-- 分支生命周期：docs/governance/branch-lifecycle-policy.md
-- 治理 KPI：docs/governance/governance-kpi-spec.md
-- E2E 失败手册：docs/governance/e2e-failure-handbook.md
+- 系统边界：docs/specs/architecture/system-overview.md
+- API 契约：docs/specs/architecture/api-contract.md
+- 前端设计系统与规范：docs/specs/design/frontend/DESIGN_SYSTEM.md
+- 资源模型：docs/specs/domain/resources.md
+- 编码规范：docs/specs/development/coding-standards.md
+- 文档校验：docs/specs/development/documentation-validation.md
+- PR 流程：docs/specs/development/pr-process.md
+- 测试策略：docs/specs/development/testing-strategy.md
+- 代码边界基线：docs/specs/governance/code-boundary-baseline.md
+- Harness 治理：docs/specs/governance/harness-engineering-playbook.md
+- Phase 台账：docs/specs/governance/phase-delivery-ledger.md
+- 分支生命周期：docs/specs/governance/branch-lifecycle-policy.md
+- 治理 KPI：docs/specs/governance/governance-kpi-spec.md
+- E2E 失败手册：docs/specs/governance/e2e-failure-handbook.md
 - 架构导航：architecture.md
 
 ## Rules
 
 - 禁止新增根级 doc、tmp、legacy、_new、平行实现目录。
 - 禁止在根目录提交 *.pid、cookies.txt、临时日志、测试产物。
+- `docs/` 根层只允许保留 `README.md`、`specs/`、`plans/`。
+- agent 可读的规范、架构、设计、治理、参考资料统一放在 `docs/specs/`。
+- 计划、研究、评测、归档统一放在 `docs/plans/`。
+- 版本化执行材料统一进入 `docs/plans/<version>/{active,complete,search,reports}`。
 - 当前阶段前端真实代码只允许落在 apps/web，不允许在根级新增平行前端实现路径。
 - 当前阶段后端真实代码只允许落在 apps/api，不允许在根级新增平行后端实现路径。
 - 禁止提交运行时产物与本地环境目录：
@@ -44,27 +49,30 @@
   - apps/api/venv、apps/api/htmlcov*、apps/api/**/__pycache__
 - 禁止提交嵌套旧仓库快照目录（例如 scholar-ai/**）。
 - 改接口必须同时检查并必要时更新：
-  - docs/architecture/api-contract.md
-  - docs/domain/resources.md
+  - docs/specs/architecture/api-contract.md
+  - docs/specs/domain/resources.md
 - 改前端前必须检查：
-  - docs/architecture/api-contract.md
+  - docs/specs/design/frontend/DESIGN_SYSTEM.md
+  - docs/specs/architecture/api-contract.md
   - apps/web/src/services
   - apps/web/src/app
 - 改后端前必须检查：
   - apps/api/app/api
   - apps/api/app/services
   - apps/api/app/models
-  - docs/architecture/api-contract.md
+  - docs/specs/architecture/api-contract.md
 - 新功能必须落到既定目录，不允许再开第二套实现路径。
 - agent 创建 PR 时必须按 `.github/pull_request_template.md` 完整填写描述，并优先使用 `scripts/pr_create_with_template_check.sh`；未通过模板校验的 PR 不允许提交。
 
 ## Required Updates
 
-- 架构边界变化：更新 docs/architecture/system-overview.md 与 architecture.md。
-- API 形态变化：更新 docs/architecture/api-contract.md。
-- 资源状态变化：更新 docs/domain/resources.md。
-- 流程变化：更新 docs/development/pr-process.md。
-- 规范变化：更新 docs/development/coding-standards.md。
+- 架构边界变化：更新 docs/specs/architecture/system-overview.md 与 architecture.md。
+- 前端设计变化：更新 docs/specs/design/frontend/DESIGN_SYSTEM.md。
+- API 形态变化：更新 docs/specs/architecture/api-contract.md。
+- 资源状态变化：更新 docs/specs/domain/resources.md。
+- 流程变化：更新 docs/specs/development/pr-process.md。
+- 规范变化：更新 docs/specs/development/coding-standards.md。
+- 文档根层结构变化：同步更新 docs/README.md、docs/specs/README.md、docs/plans/README.md。
 
 ## Verification
 

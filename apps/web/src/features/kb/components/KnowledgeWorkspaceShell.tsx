@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowLeft, Database, Library, Clock3, Search, MessageSquare, UploadCloud, Loader2 } from 'lucide-react';
 import { Link } from 'react-router';
@@ -19,6 +19,7 @@ import { KnowledgeReviewPanel } from '@/features/kb/components/KnowledgeReviewPa
 import { useKnowledgeRuns } from '@/features/kb/hooks/useKnowledgeRuns';
 import { useKnowledgeWorkflowRefresh } from '@/features/kb/hooks/useKnowledgeWorkflowRefresh';
 import { UploadWorkspace } from '@/features/uploads/components/UploadWorkspace';
+import { buildKnowledgeBaseReadinessItems } from '@/features/workflow/commandCenter';
 
 export function KnowledgeWorkspaceShell() {
   const navigate = useNavigate();
@@ -60,6 +61,12 @@ export function KnowledgeWorkspaceShell() {
     loadKnowledgeBase,
     reloadRuns,
   });
+  const readinessItems = useMemo(() => {
+    if (!kb) {
+      return [];
+    }
+    return buildKnowledgeBaseReadinessItems({ kb, importJobs, runs });
+  }, [importJobs, kb, runs]);
 
   if (loadingKB) {
     return (
@@ -146,6 +153,51 @@ export function KnowledgeWorkspaceShell() {
             </button>
           </div>
         </div>
+
+        <section className="rounded-2xl border border-border/80 bg-paper-1 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">Readiness</div>
+              <h2 className="mt-1 font-serif text-xl font-semibold text-foreground">Import to evidence to action</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshAll({ silent: true })}
+              className="rounded-full border border-border/70 bg-background px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-foreground/75 transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              Refresh
+            </button>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-5">
+            {readinessItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => navigate(item.targetHref)}
+                className="rounded-xl border border-border/70 bg-background/80 p-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                    {item.title}
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      item.priority === 'blocked'
+                        ? 'bg-rose-500/10 text-rose-700'
+                        : item.priority === 'active'
+                          ? 'bg-blue-500/10 text-blue-700'
+                          : 'bg-emerald-500/10 text-emerald-700'
+                    }`}
+                  >
+                    {item.statusLabel}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.reason}</div>
+                <div className="mt-3 text-[11px] font-medium text-foreground/80">Open target</div>
+              </button>
+            ))}
+          </div>
+        </section>
 
         <Tabs value={activeTab} onValueChange={syncTab} className="w-full">
           <TabsList className="flex h-auto w-full flex-wrap justify-start gap-0 border-b border-border/80 bg-transparent p-0">

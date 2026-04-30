@@ -12,6 +12,8 @@ export function resolveNextActions(run: WorkflowRun | null): WorkflowAction[] {
         label: 'Monitor Run',
         description: 'Watch stage updates and evidence stream in real-time.',
         intent: 'primary',
+        kind: 'primary',
+        action: 'open',
       },
     ];
   }
@@ -23,6 +25,8 @@ export function resolveNextActions(run: WorkflowRun | null): WorkflowAction[] {
         label: 'Continue',
         description: 'This run is waiting for your confirmation to proceed.',
         intent: 'primary',
+        kind: 'primary',
+        action: 'resume',
       },
     ];
   }
@@ -34,6 +38,8 @@ export function resolveNextActions(run: WorkflowRun | null): WorkflowAction[] {
         label: 'Retry',
         description: 'Retry this step using the same scope context.',
         intent: 'danger',
+        kind: 'danger',
+        action: 'retry',
       },
     ];
   }
@@ -45,6 +51,8 @@ export function resolveNextActions(run: WorkflowRun | null): WorkflowAction[] {
         label: 'Review Artifacts',
         description: 'Inspect outputs and citations before accepting.',
         intent: 'neutral',
+        kind: 'secondary',
+        action: 'open',
       },
     ];
   }
@@ -63,6 +71,8 @@ export function resolveRecoverableActions(run: WorkflowRun | null): WorkflowActi
       label: 'Recover Task',
       description: run.error || 'Recover from the last failed step.',
       intent: 'danger',
+      kind: 'danger',
+      action: 'retry',
     },
   ];
 }

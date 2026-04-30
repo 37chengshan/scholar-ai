@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -141,6 +141,37 @@ export function Analytics() {
   const filteredRuns = (overview?.recent_runs ?? []).filter(
     (r) => modeFilter === 'all' || r.mode === modeFilter,
   );
+  const summaryCards = useMemo(() => {
+    if (!overview?.latest_offline_gate) {
+      return [];
+    }
+
+    const gate = overview.latest_offline_gate;
+    const hasFailures = gate.gate_failures.length > 0;
+    const conclusion = hasFailures
+      ? (isZh ? '当前离线门禁未通过' : 'Current offline gate is not passing')
+      : (isZh ? '当前离线门禁已通过' : 'Current offline gate is passing');
+    const status = hasFailures
+      ? (isZh ? `${gate.gate_failures.length} 个门槛未达标` : `${gate.gate_failures.length} gate checks are failing`)
+      : (isZh ? '关键门槛当前全部达标' : 'Key quality thresholds are currently satisfied');
+    const reason = selected
+      ? (isZh
+          ? `当前查看运行 ${selected.run_id.slice(-8)}，有据率 ${pct(selected.metrics.answer_supported_rate)}，Recall@5 ${pct(selected.metrics.top_k_recall.recall_at_5)}。`
+          : `Run ${selected.run_id.slice(-8)} is in focus with ${pct(selected.metrics.answer_supported_rate)} answer support and ${pct(selected.metrics.top_k_recall.recall_at_5)} Recall@5.`)
+      : (isZh
+          ? '最新离线门禁定义了当前系统质量是否可继续对外展示。'
+          : 'The latest offline gate determines whether the system is safe to present externally.');
+    const nextAction = hasFailures
+      ? (isZh ? '先看失败门槛与最近运行差异，再决定是否继续上线或复测。' : 'Inspect failing gates and recent run deltas before promoting or rerunning.')
+      : (isZh ? '继续检查最近运行趋势，确认改进不是一次性波动。' : 'Review recent run trends to confirm this pass is stable, not a one-off spike.');
+
+    return [
+      { title: isZh ? '结论' : 'Conclusion', value: conclusion, body: reason },
+      { title: isZh ? '当前状态' : 'Current Status', value: hasFailures ? (isZh ? '未过门槛' : 'Below Gate') : (isZh ? '达标' : 'On Target'), body: status },
+      { title: isZh ? '为什么重要' : 'Why It Matters', value: isZh ? '质量门槛' : 'Quality Gate', body: isZh ? '这里决定当前 RAG 质量是否可信、是否值得继续对外演示。' : 'This is the read-only quality bar that tells you whether the current RAG system is trustworthy enough to show.' },
+      { title: isZh ? '下一步' : 'Next Action', value: hasFailures ? (isZh ? '看失败项' : 'Inspect Failures') : (isZh ? '看趋势' : 'Review Trend'), body: nextAction },
+    ];
+  }, [isZh, overview, selected]);
 
   return (
     <div className="min-h-full bg-background text-foreground">
@@ -177,6 +208,18 @@ export function Analytics() {
 
         {!loading && !error && overview && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="space-y-8">
+
+            {summaryCards.length > 0 && (
+              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {summaryCards.map((card) => (
+                  <div key={card.title} className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{card.title}</div>
+                    <div className="mt-3 text-lg font-semibold tracking-tight text-foreground">{card.value}</div>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{card.body}</p>
+                  </div>
+                ))}
+              </section>
+            )}
 
             {overview.latest_offline_gate && (() => {
               const gate = overview.latest_offline_gate!;

@@ -30,6 +30,7 @@ interface SearchResultsPanelProps {
   };
   onViewPaper: (paperId: string) => void;
   onAddToLibrary: (result: any) => void;
+  onContinueInChat: (result: any) => void;
   onAuthorClick: (author: AuthorSearchResult) => void;
 }
 
@@ -46,6 +47,7 @@ export function SearchResultsPanel({
   labels,
   onViewPaper,
   onAddToLibrary,
+  onContinueInChat,
   onAuthorClick,
 }: SearchResultsPanelProps) {
   if (isInitialLoading) {
@@ -132,6 +134,7 @@ export function SearchResultsPanel({
                 key={result.id}
                 result={{ ...result, source: 'internal', paperId: result.id }}
                 onViewPaper={onViewPaper}
+                onContinueInChat={onContinueInChat}
               />
             ))}
           </div>
@@ -145,7 +148,13 @@ export function SearchResultsPanel({
           </h2>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             {results.external.map((result, index) => (
-              <SearchResultCard key={`${result.source}-${result.id}-${index}`} result={result} onAddToLibrary={onAddToLibrary} />
+              <SearchResultCard
+                key={`${result.source}-${result.id}-${index}`}
+                result={result}
+                onAddToLibrary={onAddToLibrary}
+                onViewPaper={onViewPaper}
+                onContinueInChat={onContinueInChat}
+              />
             ))}
           </div>
         </div>

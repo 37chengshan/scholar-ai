@@ -25,19 +25,20 @@ ScholarAI 是面向学术阅读与知识工作流的全栈 AI 工程仓库，目
 
 ## Source of Truth
 
-- 架构总览：docs/architecture/system-overview.md
-- API 契约：docs/architecture/api-contract.md
-- 资源域模型：docs/domain/resources.md
-- 开发规范：docs/development/coding-standards.md
-- 文档校验：docs/development/documentation-validation.md
-- PR 流程：docs/development/pr-process.md
-- 测试策略：docs/development/testing-strategy.md
-- 代码边界基线：docs/governance/code-boundary-baseline.md
-- Harness 治理：docs/governance/harness-engineering-playbook.md
-- Phase 台账：docs/governance/phase-delivery-ledger.md
-- 分支生命周期：docs/governance/branch-lifecycle-policy.md
-- 治理 KPI：docs/governance/governance-kpi-spec.md
-- E2E 失败手册：docs/governance/e2e-failure-handbook.md
+- 架构总览：docs/specs/architecture/system-overview.md
+- API 契约：docs/specs/architecture/api-contract.md
+- 前端设计系统与规范：docs/specs/design/frontend/DESIGN_SYSTEM.md
+- 资源域模型：docs/specs/domain/resources.md
+- 开发规范：docs/specs/development/coding-standards.md
+- 文档校验：docs/specs/development/documentation-validation.md
+- PR 流程：docs/specs/development/pr-process.md
+- 测试策略：docs/specs/development/testing-strategy.md
+- 代码边界基线：docs/specs/governance/code-boundary-baseline.md
+- Harness 治理：docs/specs/governance/harness-engineering-playbook.md
+- Phase 台账：docs/specs/governance/phase-delivery-ledger.md
+- 分支生命周期：docs/specs/governance/branch-lifecycle-policy.md
+- 治理 KPI：docs/specs/governance/governance-kpi-spec.md
+- E2E 失败手册：docs/specs/governance/e2e-failure-handbook.md
 - 仓库协同地图：AGENTS.md
 - 架构导航入口：architecture.md
 
@@ -45,6 +46,9 @@ ScholarAI 是面向学术阅读与知识工作流的全栈 AI 工程仓库，目
 
 - 根目录只保留长期核心文件与核心目录，不放 *.pid、cookies.txt、临时日志和测试产物。
 - 新文档统一写入 docs，不再新增 doc、tmp、legacy、_new 平行目录。
+- `docs/` 根层只保留 `README.md`、`specs/`、`plans/`。
+- 规范、设计、治理、参考资料统一放到 `docs/specs/`。
+- 计划、研究、报告、归档统一放到 `docs/plans/`。
 - apps/web 与 apps/api 之外禁止新增平行实现路径。
 - 禁止提交运行时产物、覆盖率目录、本地虚拟环境与嵌套旧仓库快照：
 	- logs/archive、test-results、uploads
@@ -57,12 +61,12 @@ ScholarAI 是面向学术阅读与知识工作流的全栈 AI 工程仓库，目
 
 ## Required Updates
 
-- 变更系统边界：同时更新 docs/architecture/system-overview.md 与 architecture.md。
-- 变更 API 形态：同时更新 docs/architecture/api-contract.md。
-- 变更资源生命周期：同时更新 docs/domain/resources.md。
-- 变更流程与规范：同时更新 docs/development 下对应文档。
-- 调整治理门禁或稳定化策略：同步更新 docs/governance/migration-conditions.md。
-- 调整 phase 追踪、分支生命周期、fallback 或 E2E 策略：同步更新 docs/governance 对应文档。
+- 变更系统边界：同时更新 docs/specs/architecture/system-overview.md 与 architecture.md。
+- 变更 API 形态：同时更新 docs/specs/architecture/api-contract.md。
+- 变更资源生命周期：同时更新 docs/specs/domain/resources.md。
+- 变更流程与规范：同时更新 docs/specs/development 下对应文档。
+- 调整治理门禁或稳定化策略：同步更新 docs/specs/governance/migration-conditions.md。
+- 调整 phase 追踪、分支生命周期、fallback 或 E2E 策略：同步更新 docs/specs/governance 对应文档。
 
 ## Verification
 
@@ -101,7 +105,7 @@ bash scripts/check-branch-lifecycle.sh
 bash scripts/check-contract-gate.sh
 bash scripts/check-fallback-expiry.sh
 bash scripts/check-e2e-gate.sh --mode manifest
-bash scripts/audit-governance-kpi.sh --window 14d --output docs/reports/governance-kpi/latest.md
+bash scripts/audit-governance-kpi.sh --window 14d --output docs/plans/v3_0/reports/governance-kpi/latest.md
 bash scripts/verify-all-phases.sh
 cd apps/web && npm run type-check
 cd apps/web && npm run test:run

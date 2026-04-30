@@ -161,4 +161,40 @@ describe('useKnowledgeBaseQueries', () => {
 
     expect(result.current.papers).toEqual([{ id: 'paper-new', title: 'New Paper' }]);
   });
+
+  it('clears loading state when a silent KB refresh supersedes an initial visible load', async () => {
+    const initialKbRequest = createDeferred<any>();
+    const silentKbRequest = createDeferred<any>();
+
+    vi.mocked(kbApi.get)
+      .mockReturnValueOnce(initialKbRequest.promise)
+      .mockReturnValueOnce(silentKbRequest.promise);
+    vi.mocked(kbApi.listPapers).mockResolvedValue({ papers: [] } as any);
+    vi.mocked(importApi.list).mockResolvedValue({ success: true, data: { jobs: [] } } as any);
+
+    const { result } = renderHook(() => useKnowledgeBaseQueries());
+
+    await waitFor(() => {
+      expect(result.current.loadingKB).toBe(true);
+    });
+
+    await act(async () => {
+      const silentRefresh = result.current.loadKnowledgeBase({ silent: true });
+      silentKbRequest.resolve({ id: 'kb-1', name: 'KB silent' } as any);
+      await silentRefresh;
+    });
+
+    await waitFor(() => {
+      expect(result.current.loadingKB).toBe(false);
+      expect(result.current.kb).toEqual({ id: 'kb-1', name: 'KB silent' });
+    });
+
+    await act(async () => {
+      initialKbRequest.resolve({ id: 'kb-1', name: 'KB initial' } as any);
+      await Promise.resolve();
+    });
+
+    expect(result.current.loadingKB).toBe(false);
+    expect(result.current.kb).toEqual({ id: 'kb-1', name: 'KB silent' });
+  });
 });

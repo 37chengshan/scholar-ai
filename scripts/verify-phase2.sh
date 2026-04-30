@@ -45,8 +45,8 @@ echo "[5/7] 运行前端测试..."
 echo "✓ 前端测试通过"
 
 echo "[6/7] 检查边界规则文档..."
-test -f docs/development/coding-standards.md
-grep -q "app/hooks" docs/development/coding-standards.md
+test -f docs/specs/development/coding-standards.md
+grep -q "app/hooks" docs/specs/development/coding-standards.md
 echo "✓ 文档已覆盖 app/hooks 边界"
 
 echo "[7/7] 检查 kbApi 返回 DTO 约束..."

@@ -30,6 +30,10 @@ from app.utils.logger import logger
 router = APIRouter()
 
 
+def _serialize_result_list(results: list[SearchResult]) -> list[dict[str, Any]]:
+    return [result.model_dump() for result in results]
+
+
 @router.get("/arxiv", response_model=SearchResponse)
 async def search_arxiv(
     query: str,
@@ -62,7 +66,7 @@ async def search_arxiv(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
             response = await client.get(url, params=params)
 
             if response.status_code == 429:
@@ -117,6 +121,8 @@ async def search_arxiv(
                 primary_category.get("term") if primary_category is not None else ""
             )
 
+            resolved_pdf_url = pdf_url or f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+            fields = [category] if category else []
             results.append(
                 SearchResult(
                     id=arxiv_id,
@@ -125,14 +131,17 @@ async def search_arxiv(
                     year=year,
                     abstract=summary,
                     source="arxiv",
-                    pdfUrl=pdf_url or f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+                    pdfUrl=resolved_pdf_url,
                     url=id_url or f"https://arxiv.org/abs/{arxiv_id}",
                     citationCount=None,
                     arxivId=arxiv_id,
+                    openAccess=True,
+                    availability="pdf_available",
+                    fieldsOfStudy=fields,
                 )
             )
 
-        result_data = {"results": results, "total": total}
+        result_data = {"results": _serialize_result_list(results), "total": total}
 
         await set_search_cache(cache_key, result_data)
         logger.info(
@@ -193,11 +202,11 @@ async def search_semantic_scholar(
         "query": query,
         "limit": limit,
         "offset": offset,
-        "fields": "title,authors,year,abstract,openAccessPdf,externalIds,citationCount",
+        "fields": "title,authors,year,abstract,openAccessPdf,externalIds,citationCount,venue,fieldsOfStudy",
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
             response = await client.get(url, params=params, headers=headers)
 
             if response.status_code == 429:
@@ -229,6 +238,9 @@ async def search_semantic_scholar(
 
             external_ids = paper.get("externalIds", {}) or {}
             arxiv_id = external_ids.get("ArXiv")
+            doi = external_ids.get("DOI")
+            venue = paper.get("venue") or ""
+            s2_fields = paper.get("fieldsOfStudy") or []
 
             results.append(
                 SearchResult(
@@ -237,15 +249,21 @@ async def search_semantic_scholar(
                     authors=authors,
                     year=paper.get("year") or 0,
                     abstract=paper.get("abstract") or "No abstract available",
-                    source="semantic-scholar",
+                    source="s2",
                     pdfUrl=pdf_url,
                     url=f"https://www.semanticscholar.org/paper/{paper_id}",
                     citationCount=paper.get("citationCount"),
                     arxivId=arxiv_id,
+                    s2PaperId=paper_id,
+                    doi=doi,
+                    venue=venue,
+                    openAccess=bool(pdf_url),
+                    availability="pdf_available" if (pdf_url or arxiv_id) else "metadata_only",
+                    fieldsOfStudy=s2_fields,
                 )
             )
 
-        result_data = {"results": results, "total": total}
+        result_data = {"results": _serialize_result_list(results), "total": total}
 
         await set_search_cache(cache_key, result_data)
         logger.info(

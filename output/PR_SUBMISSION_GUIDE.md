@@ -78,8 +78,8 @@ git push -u origin fix/pr60-v3-clean-merge
 - `app/api/notes.py`：新增 /api/v1/notes/evidence 端点
 
 **文档（docs）：**
-- `docs/architecture/api-contract.md`：补充 3 个新端点与 answer contract 扩展字段定义
-- `docs/domain/resources.md`：补充 3 个新资源定义
+- `docs/specs/architecture/api-contract.md`：补充 3 个新端点与 answer contract 扩展字段定义
+- `docs/specs/domain/resources.md`：补充 3 个新资源定义
 - 发布报告 4 份：v3_4/v3_5/v3_6/v1_0_release_candidate
 
 ## 影响范围
@@ -112,9 +112,9 @@ git push -u origin fix/pr60-v3-clean-merge
 
 ## 文档是否需要同步
 - [x] 需要，已同步更新
-  - [x] `docs/architecture/api-contract.md`
-  - [x] `docs/domain/resources.md`
-  - [x] `docs/architecture/system-overview.md`
+  - [x] `docs/specs/architecture/api-contract.md`
+  - [x] `docs/specs/domain/resources.md`
+  - [x] `docs/specs/architecture/system-overview.md`
 
 ## 关联 Issue / 背景
 - Milestone: **v1.0-release**
@@ -169,5 +169,5 @@ A: 在本地修改文件 → git add/commit → git push（无需再创建新 PR
 
 如有任何问题，参考：
 - 项目 PR 模版：`.github/pull_request_template.md`
-- 发布流程：`docs/development/pr-process.md`
-- 治理规则：`docs/governance/`
+- 发布流程：`docs/specs/development/pr-process.md`
+- 治理规则：`docs/specs/governance/`

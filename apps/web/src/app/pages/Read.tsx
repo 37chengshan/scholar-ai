@@ -53,6 +53,7 @@ import {
   ZoomOut,
   Maximize2,
   Minimize2,
+  MessageSquare,
   PanelRightClose,
   PanelRightOpen,
   FileText,
@@ -61,6 +62,7 @@ import { useSourceNavigation } from '@/features/read/hooks/useSourceNavigation';
 import { useChunkHighlight } from '@/features/read/hooks/useChunkHighlight';
 import { SourceChunkHighlight } from '@/features/read/components/SourceChunkHighlight';
 import { EvidenceSideNote } from '@/features/read/components/EvidenceSideNote';
+import { navigateToChatWithHandoff } from '@/features/chat/chatHandoff';
 import { useReadPreferencesStore } from '@/features/read/state/readPreferencesStore';
 
 /**
@@ -430,6 +432,40 @@ function ReadContent() {
         </div>
 
         <div className="flex-1" />
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1.5 text-[11px]"
+          onClick={() => {
+            if (!id) {
+              return;
+            }
+            navigateToChatWithHandoff(
+              navigate,
+              { paperId: id },
+              {
+                origin: 'read',
+                promptDraft: isZh
+                  ? `基于《${paper.title || '当前论文'}》和我当前阅读位置，帮我继续分析关键证据、贡献和疑问。`
+                  : `Using "${paper.title || 'this paper'}" and my current reading context, help me continue analyzing the key evidence, contributions, and open questions.`,
+                evidence: sourceNav.sourceId
+                  ? [
+                      {
+                        paperId: id,
+                        sourceChunkId: sourceNav.sourceId,
+                        pageNum: currentPage,
+                      },
+                    ]
+                  : [{ paperId: id, pageNum: currentPage }],
+                returnTo: `/read/${id}?page=${currentPage}`,
+              },
+            );
+          }}
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          {isZh ? '继续问' : 'Continue in Chat'}
+        </Button>
 
         {/* Page Navigation */}
         <div className="flex items-center gap-1">

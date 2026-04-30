@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 
 from app.config import settings
 from app.core.celery_config import celery_app
@@ -347,9 +347,13 @@ def process_import_job(self, job_id: str):
                 # Reuse existing ProcessingTask for this paper when present.
                 # Retries can revisit this stage and must not violate unique paper_id.
                 existing_task_result = await db.execute(
-                    select(ProcessingTask).where(ProcessingTask.paper_id == paper_id)
+                    select(
+                        ProcessingTask.id,
+                        ProcessingTask.status,
+                        ProcessingTask.storage_key,
+                    ).where(ProcessingTask.paper_id == paper_id)
                 )
-                existing_task = existing_task_result.scalar_one_or_none()
+                existing_task = existing_task_result.first()
 
                 if existing_task:
                     processing_task_id = existing_task.id
@@ -380,10 +384,16 @@ def process_import_job(self, job_id: str):
                         return
 
                     if existing_task.status in {"failed", "cancelled", "error"}:
-                        existing_task.status = "pending"
-                        existing_task.error_message = None
-                        existing_task.completed_at = None
-                        existing_task.storage_key = job.storage_key or existing_task.storage_key
+                        await db.execute(
+                            update(ProcessingTask)
+                            .where(ProcessingTask.id == processing_task_id)
+                            .values(
+                                status="pending",
+                                error_message=None,
+                                completed_at=None,
+                                storage_key=job.storage_key or existing_task.storage_key,
+                            )
+                        )
                         job.processing_task_id = processing_task_id
                         await db.commit()
                     else:
@@ -398,13 +408,22 @@ def process_import_job(self, job_id: str):
                         return
                 else:
                     processing_task_id = str(uuid.uuid4())
-                    task = ProcessingTask(
-                        id=processing_task_id,
-                        paper_id=paper_id,
-                        status="pending",
-                        storage_key=job.storage_key or "",
+                    await db.execute(
+                        text(
+                            """INSERT INTO processing_tasks
+                               (id, paper_id, status, storage_key, attempts, checkpoint_version, is_retryable)
+                               VALUES (:id, :paper_id, :status, :storage_key, :attempts, :checkpoint_version, :is_retryable)"""
+                        ),
+                        {
+                            "id": processing_task_id,
+                            "paper_id": paper_id,
+                            "status": "pending",
+                            "storage_key": job.storage_key or "",
+                            "attempts": 0,
+                            "checkpoint_version": 0,
+                            "is_retryable": True,
+                        },
                     )
-                    db.add(task)
                     job.processing_task_id = processing_task_id
                     await db.commit()
 

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 from PIL import Image
 
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.embedding.factory import get_multimodal_embedding_service
 from app.utils.logger import logger
 
 
@@ -43,9 +43,9 @@ class ImageExtractor:
         self._qwen3vl_service = None
 
     def _get_qwen3vl_service(self):
-        """Lazy load Qwen3VL service."""
+        """Lazy load the canonical multimodal embedding service."""
         if self._qwen3vl_service is None:
-            self._qwen3vl_service = get_qwen3vl_service()
+            self._qwen3vl_service = get_multimodal_embedding_service()
         return self._qwen3vl_service
 
     def extract_images_from_pdf(
