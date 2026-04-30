@@ -7,7 +7,8 @@ from pymilvus.exceptions import MilvusException
 from app.core.milvus_service import (
     MilvusService,
     get_milvus_service,
-    retry_with_backoff
+    retry_with_backoff,
+    _truncate_varchar,
 )
 
 
@@ -137,3 +138,44 @@ class TestMilvusService:
         service1 = get_milvus_service()
         service2 = get_milvus_service()
         assert service1 is service2
+
+
+def test_truncate_varchar_leaves_margin_under_schema_limit():
+    text = "x" * 9000
+
+    truncated = _truncate_varchar(text, 8000, reserve=128)
+
+    assert len(truncated) == 7872
+
+
+def test_insert_summaries_batched_truncates_all_string_fields():
+    service = MilvusService()
+    service._connected = True
+
+    mock_collection = MagicMock()
+    mock_result = MagicMock()
+    mock_result.primary_keys = [1]
+    mock_collection.insert.return_value = mock_result
+
+    with patch.object(service, "has_collection", return_value=True):
+        with patch("app.core.milvus_service.Collection", return_value=mock_collection):
+            service.insert_summaries_batched(
+                [
+                    {
+                        "paper_id": "p" * 100,
+                        "user_id": "u" * 100,
+                        "summary_type": "section_summary" * 10,
+                        "section_name": "Methods/" * 100,
+                        "content_data": "c" * 9000,
+                        "embedding": [0.1, 0.2, 0.3],
+                    }
+                ],
+                batch_size=1,
+            )
+
+    inserted = mock_collection.insert.call_args.args[0][0]
+    assert len(inserted["paper_id"]) <= 60
+    assert len(inserted["user_id"]) <= 60
+    assert len(inserted["summary_type"]) <= 30
+    assert len(inserted["section_name"]) <= 192
+    assert len(inserted["content_data"]) <= 7872

@@ -228,6 +228,17 @@ class DoclingParser:
             )
         return self._ocr_converter
 
+    def prewarm(self, include_ocr: bool = False) -> None:
+        """Warm parser internals so first real parse avoids converter cold start."""
+        _ = self.native_converter
+        if include_ocr or self.config.do_ocr:
+            _ = self.ocr_converter
+
+        logger.info(
+            "DoclingParser prewarmed",
+            include_ocr=include_ocr or self.config.do_ocr,
+        )
+
     def _should_retry_with_ocr(self, markdown: str, page_count: int) -> bool:
         """Decide whether to retry parse with OCR based on text density.
         
@@ -1154,3 +1165,14 @@ class DoclingParser:
         logger.info("IMRaD extraction placeholder - to be enhanced with LLM")
 
         return sections
+
+
+_default_docling_parser: Optional[DoclingParser] = None
+
+
+def get_docling_parser() -> DoclingParser:
+    """Return a process-local shared parser to avoid repeated cold initialization."""
+    global _default_docling_parser
+    if _default_docling_parser is None:
+        _default_docling_parser = DoclingParser()
+    return _default_docling_parser

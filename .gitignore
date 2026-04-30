@@ -58,6 +58,7 @@ uat-test-results/
 .pytest_cache/
 .ruff_cache/
 apps/web/test-results/
+apps/web/e2e/.auth/
 apps/web/*.log
 apps/web/.vite/
 apps/api/htmlcov/

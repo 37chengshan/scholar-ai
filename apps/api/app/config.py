@@ -179,6 +179,7 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"
+    RUNTIME_MODE: str = getattr(os.environ, "RUNTIME_MODE", "online")
     EMBEDDING_PROVIDER: str = "qwen3vl"
     EMBEDDING_VARIANT: str = "2b"
     RERANKER_PROVIDER: str = "qwen3vl"
@@ -257,6 +258,12 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_RETRIES: int = 5
+    DASHSCOPE_API_KEY: str = ""
+    DASHSCOPE_BASE_URL: str = "https://dashscope.aliyuncs.com/api/v1"
+    DASHSCOPE_TIMEOUT_SECONDS: float = 30.0
+    DASHSCOPE_EMBEDDING_MODEL_FLASH: str = "text-embedding-v4"
+    DASHSCOPE_EMBEDDING_MODEL_PRO: str = "text-embedding-v4"
+    DASHSCOPE_RERANK_MODEL: str = "qwen3-rerank"
     DEFAULT_MODEL: str = "gpt-4o-mini"
 
     # Embedding Model Configuration
@@ -264,6 +271,11 @@ class Settings(BaseSettings):
     EMBEDDING_QUANTIZATION: str = "int4"
     EMBEDDING_DIMENSION: int = 2048
     EMBEDDING_DEVICE: str = "auto"  # auto | cpu | cuda | mps
+    EMBEDDING_BATCH_SIZE_CPU: int = 8
+    EMBEDDING_BATCH_SIZE_MPS: int = 8
+    EMBEDDING_BATCH_SIZE_CUDA: int = 32
+    EMBEDDING_MPS_EMPTY_CACHE_INTERVAL: int = 0
+    EMBEDDING_WARMUP_ENABLED: bool = True
 
     # Reranker Configuration
     RERANKER_MODEL: str = "bge-reranker"

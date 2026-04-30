@@ -109,6 +109,20 @@ async def create_import_job(
             db=db,
         )
 
+        if request.sourceType != "local_file":
+            from app.workers.import_worker import process_import_job
+
+            try:
+                process_import_job.delay(job.id)
+            except Exception as queue_error:
+                job = await service.set_error(
+                    job=job,
+                    error_code="QUEUE_SUBMIT_FAILED",
+                    error_message="Failed to enqueue import job",
+                    db=db,
+                    error_detail={"reason": str(queue_error)},
+                )
+
         return KBResponse(
             success=True,
             data={

@@ -14,6 +14,7 @@ import os
 import platform
 
 from celery import Celery
+from celery.signals import worker_process_init
 
 
 def _get_broker_url() -> str:
@@ -101,3 +102,36 @@ celery_app.conf.update(
 
 # Export for use in tasks
 __all__ = ["celery_app"]
+
+
+@worker_process_init.connect
+def _prewarm_worker_runtime(**_: object) -> None:
+    """Prewarm heavy runtime surfaces before the first import task arrives."""
+    from app.config import settings
+    from app.core.docling_service import get_docling_parser
+    from app.core.embedding.factory import get_embedding_service
+    from app.core.milvus_service import get_milvus_service
+    from app.utils.logger import logger
+
+    try:
+        parser = get_docling_parser()
+        parser.prewarm()
+    except Exception as exc:
+        logger.warning("Worker Docling prewarm failed", error=str(exc))
+
+    try:
+        embedding_service = get_embedding_service()
+        embedding_service.load_model()
+        if settings.EMBEDDING_WARMUP_ENABLED:
+            warmup = getattr(embedding_service, "warmup_text_encode", None)
+            if callable(warmup):
+                warmup()
+    except Exception as exc:
+        logger.warning("Worker embedding prewarm failed", error=str(exc))
+
+    try:
+        milvus_service = get_milvus_service()
+        milvus_service.connect()
+        milvus_service.create_collections()
+    except Exception as exc:
+        logger.warning("Worker Milvus prewarm failed", error=str(exc))

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 plan_status_file="docs/plans/PLAN_STATUS.md"
-ledger_file="docs/governance/phase-delivery-ledger.md"
+ledger_file="docs/specs/governance/phase-delivery-ledger.md"
 pr_template_file=".github/pull_request_template.md"
 
 required_plan_columns=(

@@ -105,6 +105,15 @@ export function useChatSend({
   clearPlaceholder,
   onSessionCreated,
 }: UseChatSendOptions) {
+  const normalizeSupportStatus = (
+    raw: unknown,
+  ): 'supported' | 'weakly_supported' | 'partially_supported' | 'unsupported' => {
+    const v = String(raw || '').trim();
+    if (v === 'supported') return 'supported';
+    if (v === 'weakly_supported' || v === 'weak' || v === 'partially_supported') return 'weakly_supported';
+    return 'unsupported';
+  };
+
   const normalizeAnswerContract = useCallback((payload: Record<string, unknown> | undefined, fallbackContent: string, fallbackCitations: CitationItem[]): AnswerContractPayload | undefined => {
     if (!payload) {
       return undefined;
@@ -139,6 +148,9 @@ export function useChatSend({
             ? String(row.source_chunk_id)
             : undefined,
         citation_jump_url: row.citation_jump_url ? String(row.citation_jump_url) : undefined,
+        quote_text: row.quote_text ? String(row.quote_text) : undefined,
+        source_offset_start: typeof row.source_offset_start === 'number' ? row.source_offset_start : undefined,
+        source_offset_end: typeof row.source_offset_end === 'number' ? row.source_offset_end : undefined,
         page_num: typeof row.page_num === 'number' ? row.page_num : undefined,
         section_path: row.section_path ? String(row.section_path) : undefined,
         anchor_text: row.anchor_text ? String(row.anchor_text) : undefined,
@@ -169,12 +181,19 @@ export function useChatSend({
       answer: String(payload.answer || fallbackContent || ''),
       claims: claimsRaw.map((item) => {
         const row = item as Record<string, unknown>;
+        const claimText = String(row.claim_text || row.claim || '');
         return {
-          claim: String(row.claim || ''),
-          support_status: (row.support_status as 'supported' | 'partially_supported' | 'unsupported') || 'unsupported',
+          claim_id: row.claim_id ? String(row.claim_id) : undefined,
+          claim_text: claimText,
+          claim_type: row.claim_type ? String(row.claim_type) : undefined,
+          claim: claimText,
+          support_status: normalizeSupportStatus(row.support_status),
+          support_score: typeof row.support_score === 'number' ? row.support_score : undefined,
           supporting_source_chunk_ids: Array.isArray(row.supporting_source_chunk_ids)
             ? row.supporting_source_chunk_ids.map((id) => String(id))
             : [],
+          repairable: typeof row.repairable === 'boolean' ? row.repairable : undefined,
+          repair_hint: row.repair_hint ? String(row.repair_hint) : undefined,
         };
       }),
       citations,
@@ -189,11 +208,12 @@ export function useChatSend({
           section_path: row.section_path ? String(row.section_path) : null,
           content_type: String(row.content_type || 'text'),
           text: String(row.text || row.content || ''),
+          quote_text: row.quote_text ? String(row.quote_text) : undefined,
+          source_offset_start: typeof row.source_offset_start === 'number' ? row.source_offset_start : null,
+          source_offset_end: typeof row.source_offset_end === 'number' ? row.source_offset_end : null,
           score: typeof row.score === 'number' ? row.score : undefined,
           rerank_score: typeof row.rerank_score === 'number' ? row.rerank_score : undefined,
-          support_status: row.support_status
-            ? String(row.support_status) as EvidenceBlock['support_status']
-            : undefined,
+          support_status: row.support_status ? normalizeSupportStatus(row.support_status) as EvidenceBlock['support_status'] : undefined,
           citation_jump_url: String(row.citation_jump_url || ''),
           user_comment: row.user_comment ? String(row.user_comment) : undefined,
         };

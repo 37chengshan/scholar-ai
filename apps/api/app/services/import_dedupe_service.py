@@ -29,6 +29,14 @@ class DedupeResult:
     confidence: int = 100  # 100 for exact matches, fuzzy score for title match
 
 
+@dataclass
+class PaperMatchCandidate:
+    id: str
+    title: str
+    authors: list[str]
+    year: Optional[int]
+
+
 class ImportDedupeService:
     """Deduplication service with CORRECT hash matching logic.
 
@@ -63,7 +71,7 @@ class ImportDedupeService:
             if match:
                 return DedupeResult(
                     match_type=f"{job.external_source}_id",
-                    matched_paper_id=match.id,
+                    matched_paper_id=match,
                     confidence=100
                 )
 
@@ -90,7 +98,7 @@ class ImportDedupeService:
         self,
         job: ImportJob,
         db: AsyncSession
-    ) -> Optional[Paper]:
+    ) -> Optional[str]:
         """Match by DOI, arXiv ID, or S2 paperId on Paper table.
 
         Args:
@@ -98,24 +106,24 @@ class ImportDedupeService:
             db: Database session
 
         Returns:
-            Paper if exact match found, None otherwise
+            Matching paper ID if found, None otherwise
         """
         if job.external_source == "doi":
-            query = select(Paper).where(
+            query = select(Paper.id).where(
                 and_(
                     Paper.doi == job.external_paper_id,
                     Paper.user_id == job.user_id
                 )
             )
         elif job.external_source == "arxiv":
-            query = select(Paper).where(
+            query = select(Paper.id).where(
                 and_(
                     Paper.arxiv_id == job.external_paper_id,
                     Paper.user_id == job.user_id
                 )
             )
         elif job.external_source == "s2":
-            query = select(Paper).where(
+            query = select(Paper.id).where(
                 and_(
                     Paper.s2_paper_id == job.external_paper_id,
                     Paper.user_id == job.user_id
@@ -125,7 +133,10 @@ class ImportDedupeService:
             return None
 
         result = await db.execute(query)
-        return result.scalar_one_or_none()
+        row = result.first()
+        if not row:
+            return None
+        return row[0]
 
     async def _match_by_hash(
         self,
@@ -151,16 +162,21 @@ class ImportDedupeService:
             ImportJob that has same hash and paper_id, or None
         """
         # CORRECTED: Query ImportJob table, NOT Paper.storage_key.contains()
-        query = select(ImportJob).where(
-            and_(
-                ImportJob.file_sha256 == file_sha256,
-                ImportJob.paper_id.isnot(None),  # Has successfully created a paper
-                ImportJob.user_id == user_id,
-                ImportJob.status == "completed"  # Only completed jobs have valid papers
+        query = (
+            select(ImportJob)
+            .where(
+                and_(
+                    ImportJob.file_sha256 == file_sha256,
+                    ImportJob.paper_id.isnot(None),  # Has successfully created a paper
+                    ImportJob.user_id == user_id,
+                    ImportJob.status == "completed",  # Only completed jobs have valid papers
+                )
             )
+            .order_by(ImportJob.updated_at.desc(), ImportJob.created_at.desc())
+            .limit(1)
         )
         result = await db.execute(query)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     async def _match_by_title_fuzzy(
         self,
@@ -168,7 +184,7 @@ class ImportDedupeService:
         db: AsyncSession,
         threshold: int = 85
     ) -> Optional[DedupeResult]:
-        """Fuzzy match by title similarity with author+year constraints.
+        """Fuzzy match by title overlap score with author+year constraints.
 
         Per GPT review: Title-only matching has high false positive rate.
         Must add constraints:
@@ -178,16 +194,24 @@ class ImportDedupeService:
         Args:
             job: ImportJob with resolved_title, resolved_authors, resolved_year
             db: Database session
-            threshold: Minimum similarity score (85% default)
+            threshold: Minimum overlap score (85% default)
 
         Returns:
             DedupeResult with matched paper and confidence score
         """
         # Get candidate papers for user
         candidates = await db.execute(
-            select(Paper).where(Paper.user_id == job.user_id)
+            select(Paper.id, Paper.title, Paper.authors, Paper.year).where(Paper.user_id == job.user_id)
         )
-        papers = candidates.scalars().all()
+        papers = [
+            PaperMatchCandidate(
+                id=row.id,
+                title=row.title or "",
+                authors=list(row.authors or []),
+                year=row.year,
+            )
+            for row in candidates.all()
+        ]
 
         # Extract first author if available
         first_author = None
@@ -205,7 +229,7 @@ class ImportDedupeService:
         best_score = 0
 
         for paper in papers:
-            # Calculate title similarity
+            # Calculate title overlap score
             score = fuzz.ratio(job_title_lower, paper.title.lower())
 
             # Apply constraints to reduce false positives

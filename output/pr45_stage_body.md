@@ -12,7 +12,7 @@
 - 为 eval harness 新增回归测试 apps/api/tests/unit/test_eval_retrieval_harness.py，覆盖 mock 模式下的 paper-level 计分行为。
 - 完成 qwen 双模型在 Milvus 主线的 Dataset-S 三轮真实 benchmark，结果稳定一致。
 - 补齐 Qdrant 本地持久化执行路径、Dataset-S 写入路径与 round-trip 集成测试，完成 Qdrant 同口径三轮 paired benchmark。
-- 新增 docs/reports/2026-04-21_retrieval_benchmark_closeout_report.md，作为本轮 close-out 总报告；并保留 docs/reports/2026-04-21_retrieval_benchmark_validation.md 作为早先阶段性报告。
+- 新增 docs/plans/archive/reports/2026-04-21_retrieval_benchmark_closeout_report.md，作为本轮 close-out 总报告；并保留 docs/plans/archive/reports/2026-04-21_retrieval_benchmark_validation.md 作为早先阶段性报告。
 
 ## Close-out 结论
 - 已完成：qwen3-vl-2b embedding + qwen3-vl-reranker 在 Milvus 主线的三轮真实验证。
@@ -60,15 +60,15 @@
 - [x] 需要，已同步更新
 
 若需要，请说明更新了哪些文档：
-- [x] docs/reports/2026-04-21_retrieval_benchmark_validation.md
-- [x] docs/reports/README.md
-- [x] docs/reports/2026-04-21_retrieval_benchmark_closeout_report.md
+- [x] docs/plans/archive/reports/2026-04-21_retrieval_benchmark_validation.md
+- [x] docs/plans/archive/reports/README.md
+- [x] docs/plans/archive/reports/2026-04-21_retrieval_benchmark_closeout_report.md
 
 ## 截图 / 录屏 / 输出
 - qwen + Milvus：Round 1 / Round 2 / Round 3 Trace 指标一致，Recall@5=100%，Recall@10=100%，MRR=100%，Section Hit Rate=68.75%，Paper Hit Rate=100%
 - qwen + Qdrant：Round 1 / Round 2 / Round 3 Trace 指标一致，Recall@5=93.75%，Recall@10=100%，MRR=100%，Section Hit Rate=68.75%，Paper Hit Rate=100%
 - 差异点：Qdrant 在 ds-cp2 上稳定少 1 个 Top-5 cross-paper 目标论文；当前没有证据支持切换 Milvus 主线。
-- 报告路径：docs/reports/2026-04-21_retrieval_benchmark_closeout_report.md
+- 报告路径：docs/plans/archive/reports/2026-04-21_retrieval_benchmark_closeout_report.md
 
 ## 关联 Issue / 背景
 - Closes #

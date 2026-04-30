@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException, UploadFile
 
-from app.api.imports.jobs import upload_file_to_job
+from app.api.imports.jobs import CreateImportRequest, create_import_job, upload_file_to_job
 
 
 @pytest.mark.asyncio
@@ -42,6 +42,43 @@ async def test_upload_file_endpoint_marks_fallback_path_mode(tmp_path):
     assert response.data["pathMode"] == "fallback_small_file_only"
     assert response.data["status"] == "queued"
     assert response.data["stage"] == "uploaded"
+
+
+@pytest.mark.asyncio
+async def test_create_import_job_enqueues_external_sources():
+    kb = SimpleNamespace(id="kb-1", user_id="user-1")
+    job = SimpleNamespace(
+        id="job-external-1",
+        status="queued",
+        stage="resolving_source",
+        progress=0,
+        next_action=None,
+    )
+
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: kb)
+
+    service_mock = MagicMock()
+    service_mock.create_job = AsyncMock(return_value=job)
+
+    with patch("app.api.imports.jobs.ImportJobService", return_value=service_mock), patch(
+        "app.workers.import_worker.process_import_job"
+    ) as worker_mock:
+        worker_mock.delay = MagicMock(return_value=None)
+
+        response = await create_import_job(
+            kb_id="kb-1",
+            request=CreateImportRequest(
+                sourceType="semantic_scholar",
+                payload={"input": "paper-123", "s2PaperId": "paper-123"},
+            ),
+            user_id="user-1",
+            db=db,
+        )
+
+    assert response.success is True
+    assert response.data["importJobId"] == "job-external-1"
+    worker_mock.delay.assert_called_once_with("job-external-1")
 
 
 @pytest.mark.asyncio

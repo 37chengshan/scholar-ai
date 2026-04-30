@@ -21,8 +21,8 @@ from app.workers.pipeline_context import PipelineContext, PipelineStage
 from app.workers.extraction_pipeline import ExtractionPipeline, PipelineError
 from app.workers.storage_manager import StorageManager
 from app.core.storage import ObjectStorage
-from app.core.docling_service import DoclingParser
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.docling_service import get_docling_parser
+from app.core.embedding.factory import get_multimodal_embedding_service
 from app.core.neo4j_service import Neo4jService
 from app.core.notes_generator import NotesGenerator
 from app.core.milvus_service import get_milvus_service
@@ -48,9 +48,9 @@ class PDFCoordinator:
         Matches existing PDFProcessor initialization for compatibility.
         """
         self.storage = ObjectStorage()
-        self.parser = DoclingParser()
+        self.parser = get_docling_parser()
         self.extraction_pipeline = ExtractionPipeline(max_workers=4)  # Per D-07
-        self.embedding_service = get_qwen3vl_service()
+        self.embedding_service = get_multimodal_embedding_service()
         self.neo4j_service = Neo4jService()
         self.notes_generator = NotesGenerator()
         self.milvus_service = get_milvus_service()

@@ -27,6 +27,7 @@ from typing import Dict, Any
 from app.core.reranker.base import BaseRerankerService
 from app.core.reranker.qwen3vl_reranker import Qwen3VLRerankerService
 from app.config import settings, normalize_reranker_model_name
+from app.core.runtime_contract import RuntimeBinding, build_local_binding
 from app.utils.logger import logger
 
 
@@ -136,6 +137,20 @@ def get_reranker_service() -> BaseRerankerService:
         Reranker service instance
     """
     return RerankerServiceFactory.create()
+
+
+def get_reranker_runtime_binding() -> RuntimeBinding:
+    service = get_reranker_service()
+    info = service.get_model_info()
+    dimension_raw = info.get("dimension")
+    dimension = int(dimension_raw) if str(dimension_raw or "").isdigit() else None
+    return build_local_binding(
+        component="reranker",
+        provider_name=str(getattr(settings, "RERANKER_PROVIDER", "local_reranker")),
+        model=str(info.get("name") or normalize_reranker_model_name(getattr(settings, "RERANKER_MODEL", ""))),
+        dimension=dimension,
+        supports_multimodal=service.supports_multimodal() if hasattr(service, "supports_multimodal") else None,
+    )
 
 
 def get_reranker_service_for_experiment(

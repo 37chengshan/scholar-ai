@@ -1,4 +1,4 @@
-# 06 v3.0 纵览计划：学术严谨性升级 + 外部论文发现入库 + 前端产品化打磨
+# 06 v3.0 纵览计划：学术严谨性升级 + 外部论文发现入库 + RAG 全线上化 + 学术化定制框架升级 + 前端产品化打磨
 
 > 日期：2026-04-28  
 > 状态：overview  
@@ -7,11 +7,14 @@
 
 ## 1. v3.0 定位
 
-v3.0 不应再延续单线推进思路，而应明确为双主线推进：
+v3.0 不应再延续单线推进思路，而应明确为多主线推进：
 
 ```txt
 主线一：学术严谨性升级
 主线二：外部论文发现入库 + 前端产品化打磨
+主线三：RAG 全面转向线上模型与线上服务
+主线四：RAG 前沿技术研究、优秀开源框架吸收与学术化定制框架
+主线五：RAG benchmark 体系升级为持续对比与放行门禁
 ```
 
 统一表达为：
@@ -20,10 +23,13 @@ v3.0 不应再延续单线推进思路，而应明确为双主线推进：
 ScholarAI v3.0 =
 Academic-grade RAG Evaluation
 + External Literature Discovery
++ Online-first RAG Runtime
++ Academic-custom RAG Framework
++ RAG Benchmark and Release Gate
 + Production UX Release
 ```
 
-这意味着 v3.0 的目标不是重写系统，而是在现有真实代码主链上，把 ScholarAI 从“能跑通若干能力”推进到“可对外演示、可持续迭代、可被真实研究者使用”的产品阶段。
+这意味着 v3.0 的目标不是重写系统，而是在现有真实代码主链上，把 ScholarAI 从“能跑通若干能力”推进到“可对外演示、可持续迭代、可被真实研究者使用”的产品阶段；同时把当前仍带有本地实验模型、临时双栈与局部经验优化色彩的 RAG 主链，收敛到线上可运行、可比较、可研究、可学术化演进的统一框架。
 
 ## 2. 项目基线判断
 
@@ -58,6 +64,9 @@ Academic-grade RAG Evaluation
 3. 外部搜索必须复用现有后端代理，不允许前端直接持有第三方 API key。
 4. metadata 入库与全文可检索必须明确区分，不能把“已记录论文”伪装成“已全文索引”。
 5. 每个 phase 先定义结果形态与验收目标，再单独做技术研究和实施拆解。
+6. 核心 RAG 主链默认以线上模型、线上服务、线上可观测链路为生产真源，不再把本地实验模型当作长期默认路径。
+7. RAG 研究创新必须建立在可复现实验、可比较 benchmark、可回退基线之上，不能用“换框架”替代工程验证。
+8. benchmark 不再只服务单点检索命中率，而要覆盖模型栈、检索框架、引用质量、真实链路成功率、成本和延迟。
 
 ## 4. v3.0 Phase 总览
 
@@ -255,6 +264,75 @@ v3.0 的前端目标不是再做一轮孤立的视觉美化，而是把复杂能
 
 本阶段只定义公开演示与 beta 释放方向，不在本文件中展开素材组织、运维细节和发布节奏。
 
+## Phase 3.0-H：RAG Online-first Transition
+
+### 核心思路
+
+把当前仍混有本地模型路径、离线脚本依赖和临时双栈的 RAG 主链，系统性收敛为线上优先、线上可观测、线上可替换的生产架构。
+
+### 这一阶段解决什么
+
+1. 解决 generation 线上而 embedding / reranker / retrieval 仍混用本地模型的架构割裂。
+2. 解决本地权重、模型脚本、设备差异和开发机状态影响主链可复现性的问题。
+3. 解决线上真实验证、成本核算、故障归因与放行口径不一致的问题。
+
+### 结果形态
+
+1. RAG 主链默认模型栈明确为线上 provider，不再依赖本地实验模型作为默认生产路径。
+2. embedding、reranker、generation、routing、fallback 的 provider contract 统一进入可配置网关。
+3. Milvus 继续作为主线向量库，但向量生成、重排和生成链路统一按线上 runtime 口径验证。
+4. 真实环境下可稳定完成 Search / Import / Chat / Review / Compare 的线上模型链路验证。
+
+### 本阶段边界
+
+本阶段聚焦“生产默认路径全面线上化”，不在本文件中展开具体 provider 选型、配额策略、多云切换和细粒度降级规则。
+
+## Phase 3.0-I：Academic-custom RAG Framework Research
+
+### 核心思路
+
+在线上主链稳定后，系统性研究前沿 RAG 技术与优秀开源框架，吸收可落地部分，形成面向 ScholarAI 学术场景的定制化 RAG 框架，而不是继续堆叠零散 patch。
+
+### 这一阶段解决什么
+
+1. 解决当前 RAG 主链更多是工程收口，缺少面向学术任务的统一框架抽象。
+2. 解决 retrieval、citation、claim verification、review synthesis、graph assist、tool trace 之间仍偏拼接式集成的问题。
+3. 解决“跟随前沿”与“真正适配学术研究工作流”之间缺少系统研究的问题。
+
+### 结果形态
+
+1. 形成 ScholarAI 自有的 academic-custom RAG 框架蓝图。
+2. 明确吸收哪些开源框架能力，舍弃哪些不适合学术主链的设计。
+3. 形成 query planning、multi-stage retrieval、claim verification、review synthesis、cost control 的统一运行框架。
+4. 所有创新都能回落到现有 apps/api 与 apps/web 的真实主链，而不是新增平行实验系统。
+
+### 本阶段边界
+
+本阶段以深度研究和框架设计为主，不在本文件中预先承诺具体算法路线、论文清单、模块命名或一次性重构范围。
+
+## Phase 3.0-J：RAG Benchmark and Comparative Gate
+
+### 核心思路
+
+把 benchmark 从单次阶段性评测提升为持续性的 RAG 对比系统，用来比较线上基线、候选框架、检索策略、引用质量与真实工作流成败，并作为后续 release gate 的正式依据。
+
+### 这一阶段解决什么
+
+1. 解决现有 benchmark 更偏单阶段评测，尚不足以支撑线上化前后与框架升级前后的统一比较。
+2. 解决研究创新与生产放行缺少同口径对比的问题。
+3. 解决“感觉更强”但缺少真实 evidence、成本和稳定性对比的风险。
+
+### 结果形态
+
+1. 建立线上基线、框架候选、真实链路样本的统一 benchmark 体系。
+2. benchmark 同时覆盖 retrieval、citation、claim support、review quality、latency、cost、failure rate。
+3. benchmark 结果可直接支撑 Phase H/I 的取舍、回滚与放行。
+4. benchmark 成为后续 release gate、学术质量门禁与回归检测真源。
+
+### 本阶段边界
+
+本阶段只定义 benchmark 体系升级方向，不在本文件中展开数据构建细节、评分脚本实现、指标阈值或 dashboard 形态。
+
 ## 5. 推荐优先级
 
 建议执行顺序：
@@ -263,19 +341,22 @@ v3.0 的前端目标不是再做一轮孤立的视觉美化，而是把复杂能
 1. Phase 3.0-B External Search + Import to KB
 2. Phase 3.0-A Academic Benchmark 3.0
 3. Phase 3.0-C Span-level Citation + Claim Verification
-4. Phase 3.0-D Real-world Validation
-5. Phase 3.0-FR Frontend Reliability Refactor
-6. Phase 3.0-E Reliability / Data / Cost / Speed
-7. Phase 3.0-F Frontend Productization Polish
-8. Phase 3.0-G Public Beta / Demo Release
+4. Phase 3.0-H RAG Online-first Transition
+5. Phase 3.0-D Real-world Validation
+6. Phase 3.0-I Academic-custom RAG Framework Research
+7. Phase 3.0-J RAG Benchmark and Comparative Gate
+8. Phase 3.0-FR Frontend Reliability Refactor
+9. Phase 3.0-E Reliability / Data / Cost / Speed
+10. Phase 3.0-F Frontend Productization Polish
+11. Phase 3.0-G Public Beta / Demo Release
 ```
 
 并行视角：
 
 ```txt
-技术线：Benchmark / Citation / Verification
+技术线：Benchmark / Citation / Verification / Academic-custom RAG
 产品线：External Search / Import / UX Polish
-工程线：Reliability / Cost / Deployment
+工程线：Online-first / Reliability / Cost / Deployment
 ```
 
 ## 6. v3.0 不建议做的事
@@ -287,6 +368,8 @@ v3.0 的前端目标不是再做一轮孤立的视觉美化，而是把复杂能
 5. 不让前端直接调第三方外部 API。
 6. 不把 metadata-only 导入标记成已全文索引。
 7. 不只围绕固定 benchmark 做优化而缺少 blind 验证。
+8. 不继续把本地实验模型路径当作生产默认真源。
+9. 不以“接入某个热门开源框架”替代系统研究、基线对比和真实验证。
 
 ## 7. 后续文档拆分建议
 
@@ -295,8 +378,12 @@ v3.0 的前端目标不是再做一轮孤立的视觉美化，而是把复杂能
 1. `Phase 3.0-B external search / import` 详细研究与实施方案
 2. `Phase 3.0-A benchmark 3.0` 题库、标注、门禁方案
 3. `Phase 3.0-C citation / verification` 数据结构与 UI 方案
-4. `Phase 3.0-E reliability / async jobs / observability` 工程方案
-5. `Phase 3.0-F frontend productization` 页面与交互方案
+4. `Phase 3.0-H online-first RAG transition` provider、runtime、fallback 收口方案
+5. `Phase 3.0-D real-world validation` 样本、执行链路与 close-out 方案
+6. `Phase 3.0-I academic-custom RAG framework` 深度研究与框架设计方案
+7. `Phase 3.0-J benchmark and comparative gate` 指标、对比、放行方案
+8. `Phase 3.0-E reliability / async jobs / observability` 工程方案
+9. `Phase 3.0-F frontend productization` 页面与交互方案
 
 ## 8. 参考信号
 
@@ -320,6 +407,7 @@ v3.0 的前端目标不是再做一轮孤立的视觉美化，而是把复杂能
 
 ```txt
 ScholarAI v3.0 的主战场，不是再开一套新系统，
-而是把外部论文发现、学术严谨性升级和前端产品化，
+而是把外部论文发现、学术严谨性升级、RAG 全线上化、
+学术化定制框架与 benchmark 门禁，
 压到现有 Search / Import / KB / Read / Chat 主链上做成闭环。
 ```

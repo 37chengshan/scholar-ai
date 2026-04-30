@@ -24,8 +24,11 @@ Requirements:
 - RAG-06: Query understanding integration (per D-15)
 """
 
+import hashlib
+import json
 from typing import Any, Dict, List, Optional
 
+from app.core.database import redis_db
 from app.core.embedding.factory import get_embedding_service
 from app.core.reranker.factory import get_reranker_service
 from app.core.modality_fusion import detect_intent as detect_modality_intent, weighted_rrf_fusion, WEIGHT_PRESETS
@@ -41,6 +44,7 @@ from app.core.multi_index_router import route_query, uses_summary_index
 from app.core.citation_hints import build_all_hints
 from app.models.retrieval import RetrievedChunk, SearchConstraints
 from app.config import settings, resolve_model_stack
+from app.utils.cache import CacheError, get_cached_response, set_cached_response
 from app.utils.logger import logger
 
 
@@ -105,6 +109,113 @@ class MultimodalSearchService:
             return None
 
     @staticmethod
+    def _normalize_embedding(vector: Any) -> Optional[List[float]]:
+        if not isinstance(vector, list):
+            return None
+        if vector and isinstance(vector[0], list):
+            return None
+        try:
+            return [float(item) for item in vector]
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _make_cache_hash(payload: Dict[str, Any]) -> str:
+        serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    async def _get_cached_search_response(
+        self,
+        query: str,
+        user_id: str,
+        paper_ids: List[str],
+        query_type: str,
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            return await get_cached_response(
+                user_id=user_id,
+                query=query,
+                paper_ids=paper_ids,
+                query_type=query_type,
+                retrieval_version="phase-3.0e-search",
+                index_version=settings.VECTOR_STORE_BACKEND,
+            )
+        except CacheError as exc:
+            logger.warning("Search cache read skipped", error=str(exc))
+            return None
+
+    async def _set_cached_search_response(
+        self,
+        query: str,
+        user_id: str,
+        paper_ids: List[str],
+        query_type: str,
+        response: Dict[str, Any],
+    ) -> None:
+        try:
+            await set_cached_response(
+                user_id=user_id,
+                query=query,
+                paper_ids=paper_ids,
+                response=response,
+                query_type=query_type,
+                retrieval_version="phase-3.0e-search",
+                index_version=settings.VECTOR_STORE_BACKEND,
+            )
+        except CacheError as exc:
+            logger.warning("Search cache write skipped", error=str(exc))
+
+    async def _get_cached_query_embedding(self, query: str) -> tuple[Optional[List[float]], bool]:
+        cache_key = f"search:embedding:{settings.EMBEDDING_MODEL}:{self._make_cache_hash({'query': query})}"
+        try:
+            cached = await redis_db.get(cache_key)
+            if cached:
+                embedding = self._normalize_embedding(json.loads(cached))
+                if embedding is not None:
+                    return embedding, True
+        except Exception as exc:
+            logger.warning("Embedding cache read skipped", error=str(exc))
+
+        embedding = self._normalize_embedding(self.embedding_service.encode_text(query))
+        if embedding is None:
+            return None, False
+
+        try:
+            await redis_db.set(cache_key, json.dumps(embedding), expire=3600)
+        except Exception as exc:
+            logger.warning("Embedding cache write skipped", error=str(exc))
+        return embedding, False
+
+    async def _get_cached_rerank(
+        self,
+        query: str,
+        documents: List[Any],
+        top_k: int,
+    ) -> tuple[List[Dict[str, Any]], bool]:
+        payload = {
+            "query": query,
+            "documents": documents,
+            "top_k": top_k,
+            "reranker_model": settings.RERANKER_MODEL,
+        }
+        cache_key = f"search:rerank:{self._make_cache_hash(payload)}"
+        try:
+            cached = await redis_db.get(cache_key)
+            if cached:
+                decoded = json.loads(cached)
+                if isinstance(decoded, list):
+                    return decoded, True
+        except Exception as exc:
+            logger.warning("Rerank cache read skipped", error=str(exc))
+
+        reranked = self.reranker.rerank(query, documents, top_k=top_k)
+        try:
+            await redis_db.set(cache_key, json.dumps(reranked), expire=3600)
+        except Exception as exc:
+            logger.warning("Rerank cache write skipped", error=str(exc))
+        return reranked, False
+
+    @staticmethod
     def _raw_score(hit: Dict[str, Any]) -> float:
         """Read vector score from canonical field with compatibility fallback."""
         score = hit.get("score")
@@ -131,6 +242,12 @@ class MultimodalSearchService:
         Returns:
             RetrievedChunk with unified field names
         """
+        evidence_types_raw = hit.get("evidence_types")
+        evidence_types = (
+            [str(item) for item in evidence_types_raw]
+            if isinstance(evidence_types_raw, list)
+            else []
+        )
         return RetrievedChunk(
             paper_id=hit.get("paper_id", ""),
             paper_title=hit.get("paper_title"),
@@ -156,7 +273,7 @@ class MultimodalSearchService:
             metric_direction=hit.get("metric_direction"),
             caption_text=hit.get("caption_text"),
             evidence_bundle_id=hit.get("evidence_bundle_id"),
-            evidence_types=hit.get("evidence_types") if isinstance(hit.get("evidence_types"), list) else [],
+            evidence_types=evidence_types,
             content_type=hit.get("content_type", "text"),
             quality_score=hit.get("quality_score"),
             raw_data=hit.get("raw_data"),
@@ -350,6 +467,24 @@ class MultimodalSearchService:
             paper_count=len(paper_ids),
         )
 
+        cached_response = await self._get_cached_search_response(
+            query=query,
+            user_id=user_id,
+            paper_ids=paper_ids,
+            query_type=query_intent,
+        )
+        if cached_response:
+            cache_stats = dict(cached_response.get("cache_stats") or {})
+            cache_stats["search"] = {"hit": True, "scope": "multimodal_query"}
+            cached_response["cache_stats"] = cache_stats
+            return cached_response
+
+        cache_stats: Dict[str, Any] = {
+            "search": {"hit": False, "scope": "multimodal_query"},
+            "embedding": {"hit": False, "scope": "query", "items": 0},
+            "rerank": {"hit": False, "candidate_count": 0, "top_k": top_k},
+        }
+
         # Step 3: Academic query planning + expansion for hybrid retrieval
         academic_plan = build_academic_query_plan(query, query_intent, paper_ids=paper_ids)
         planner_queries = academic_plan.get("planner_queries") or [query]
@@ -372,7 +507,25 @@ class MultimodalSearchService:
 
         # Step 5: Encode planned queries for dense retrieval
         self._ensure_service_loaded(self.embedding_service)
-        query_embeddings = [self.embedding_service.encode_text(q) for q in expanded_queries]
+        query_embeddings: List[List[float]] = []
+        embedding_cache_hit = True
+        for planned_query in expanded_queries:
+            embedding, cache_hit = await self._get_cached_query_embedding(planned_query)
+            if embedding is None:
+                continue
+            query_embeddings.append(embedding)
+            embedding_cache_hit = embedding_cache_hit and cache_hit
+        if not query_embeddings:
+            fallback_embedding = self._normalize_embedding(self.embedding_service.encode_text(expanded_query))
+            if fallback_embedding is not None:
+                query_embeddings.append(fallback_embedding)
+                embedding_cache_hit = False
+        cache_stats["embedding"] = {
+            "hit": embedding_cache_hit and bool(query_embeddings),
+            "scope": "query",
+            "items": len(query_embeddings),
+            "model": settings.EMBEDDING_MODEL,
+        }
         scientific_query_embeddings = [
             self._encode_scientific_query(q)
             for q in expanded_queries
@@ -381,7 +534,7 @@ class MultimodalSearchService:
 
         # Step 6: Search vector store across modalities with constraints pushdown
         expected_evidence_types = academic_plan.get("expected_evidence_types") or ["text", "image", "table"]
-        content_types = content_types or expected_evidence_types
+        resolved_content_types = list(content_types or expected_evidence_types)
         multimodal_results: Dict[str, List[Dict[str, Any]]] = {}
         branch_results: Dict[str, List[Dict[str, Any]]] = {
             "qwen_multimodal_dense": [],
@@ -389,9 +542,8 @@ class MultimodalSearchService:
             "sparse_bm25": [],
         }
 
-        for content_type in content_types:
+        for content_type in resolved_content_types:
             try:
-                # Run multiple planned dense queries and merge candidates.
                 planned_hits: List[Dict[str, Any]] = []
                 for query_embedding in query_embeddings:
                     results = self.vector_store.search(
@@ -424,11 +576,9 @@ class MultimodalSearchService:
                 )
                 multimodal_results[content_type] = []
 
-        # Dense multimodal branch (Qwen/BGE depending on embedding stack)
         for modality in ("text", "image", "table"):
             branch_results["qwen_multimodal_dense"].extend(multimodal_results.get(modality, []))
 
-        # Scientific text dense branch (prefer text chunks; safe fallback on failure)
         if scientific_query_embeddings:
             scientific_hits: List[Dict[str, Any]] = []
             for scientific_embedding in scientific_query_embeddings[: settings.SCIENTIFIC_TEXT_MAX_QUERIES]:
@@ -455,9 +605,8 @@ class MultimodalSearchService:
                 limit=settings.SCIENTIFIC_TEXT_TOP_K,
             )
 
-        # Sparse BM25 independent recall branch
         sparse_hits: List[Dict[str, Any]] = []
-        for target_type in content_types:
+        for target_type in resolved_content_types:
             try:
                 sparse_rows = self.vector_store.search_sparse(
                     query=query,
@@ -478,7 +627,6 @@ class MultimodalSearchService:
                 sparse_hits.append(item)
         branch_results["sparse_bm25"] = self._dedupe_hits(sparse_hits, limit=settings.SPARSE_RECALL_TOP_K)
 
-        # Step 4: Weighted RRF fusion across modalities and retrieval branches
         dense_modality_fused = weighted_rrf_fusion(multimodal_results, weights)
         branch_results["qwen_multimodal_dense"] = self._dedupe_hits(
             dense_modality_fused,
@@ -501,23 +649,25 @@ class MultimodalSearchService:
             intent=query_intent,
         )
 
-        # Step 5: Hybrid dense+sparse scoring
         self.scoring.annotate_hybrid_scores(query, fused)
         fused.sort(key=lambda x: x.get("hybrid_score", 0.0), reverse=True)
 
-        # Step 5.5: Second-pass rewrite when first pass retrieval is weak
         second_pass_used = False
         second_pass_gain = 0
         if self._is_weak_first_pass(fused):
             fallback_rewrites = academic_plan.get("fallback_rewrites") or []
             if fallback_rewrites:
                 second_pass_used = True
-                extra_embeddings = [self.embedding_service.encode_text(expand_query(rw)) for rw in fallback_rewrites[:2]]
+                extra_embeddings: List[List[float]] = []
+                for rewrite in fallback_rewrites[:2]:
+                    extra_embedding, _ = await self._get_cached_query_embedding(expand_query(rewrite))
+                    if extra_embedding is not None:
+                        extra_embeddings.append(extra_embedding)
                 before_ids = {
                     f"{item.get('paper_id')}:{item.get('source_id') or item.get('id') or item.get('page_num')}"
                     for item in fused
                 }
-                for content_type in content_types:
+                for content_type in resolved_content_types:
                     extra_hits: List[Dict[str, Any]] = []
                     for emb in extra_embeddings:
                         try:
@@ -556,21 +706,18 @@ class MultimodalSearchService:
                 }
                 second_pass_gain = max(len(after_ids - before_ids), 0)
 
-        # Step 5.6: Graph hint retrieval narrowing (Phase 4 lightweight)
         if graph_used and graph_paper_ids:
             preferred = [item for item in fused if str(item.get("paper_id")) in graph_paper_ids]
             others = [item for item in fused if str(item.get("paper_id")) not in graph_paper_ids]
             fused = preferred + others
 
-        # Step 6: Structured ReRanker (optional)
         if use_reranker and len(fused) > 10:
             try:
                 self._ensure_service_loaded(self.reranker)
-                # Build structured payload for reranking.
-                documents = [self.scoring.build_structured_reranker_document(r) for r in fused[:20]]
-                reranked = self.reranker.rerank(query, documents, top_k=top_k)
-
-                # Reorder fused results by reranked scores
+                documents: List[Any] = [self.scoring.build_structured_reranker_document(r) for r in fused[:20]]
+                cache_stats["rerank"]["candidate_count"] = len(documents)
+                reranked, rerank_cache_hit = await self._get_cached_rerank(query, documents, top_k=top_k)
+                cache_stats["rerank"]["hit"] = rerank_cache_hit
                 fused = self.scoring.apply_reranker_scores(fused, reranked)
 
                 logger.info(
@@ -583,7 +730,6 @@ class MultimodalSearchService:
                     error=str(e),
                 )
 
-        # Step 6.5: Iteration 2 — Summary Index for global / survey queries
         query_family = academic_plan.get("query_family", "fact")
         index_plan = route_query(query_family)
         summary_index_results: List[Dict[str, Any]] = []
@@ -610,7 +756,6 @@ class MultimodalSearchService:
                 except Exception as exc:
                     logger.warning("Summary index search failed", error=str(exc))
 
-        # Merge summary index results at the top (they're prioritised for survey/evolution)
         if summary_index_results:
             fused = summary_index_results + fused
 
@@ -714,10 +859,18 @@ class MultimodalSearchService:
 
         if trace_payload is not None:
             response["trace"] = trace_payload
-        
-        # Add intent-specific fields
+
+        response["cache_stats"] = cache_stats
         response.update(additional_fields)
-        
+
+        await self._set_cached_search_response(
+            query=query,
+            user_id=user_id,
+            paper_ids=paper_ids,
+            query_type=query_intent,
+            response=response,
+        )
+
         return response
 
 

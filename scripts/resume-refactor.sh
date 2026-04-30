@@ -18,7 +18,7 @@ for phase in 0 1 2 3 4 5; do
     echo "✓ Phase $phase 已完成"
   else
     echo "✗ Phase $phase 未完成或验收失败"
-    echo "请从 docs/reports/post-migration-stabilization-checklist.md 对应阶段继续执行。"
+    echo "请从 docs/plans/v2_0/reports/release/post-migration-stabilization-checklist.md 对应阶段继续执行。"
     exit 0
   fi
 done

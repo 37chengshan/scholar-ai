@@ -1,506 +1,284 @@
 """Task management API routes.
 
-Migrated from Node.js tasks.ts - provides endpoints for PDF processing task management.
-Migrated to SQLAlchemy ORM from postgres_db.
-
-Endpoints:
-- GET /api/v1/tasks - List tasks for user's papers
-- GET /api/v1/tasks/:id - Get task details
-- POST /api/v1/tasks/:id/retry - Retry failed task
-- GET /api/v1/tasks/:id/progress - Get detailed progress
-- DELETE /api/v1/tasks/:id - Cancel pending task
+Provides task querying and control for PDF processing and long-running jobs.
 """
 
-import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
-from sqlalchemy import select, func, update, delete
+import inspect
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.routing import Router as StarletteRouter
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import ProcessingTask, Paper
-from app.services.auth_service import User
-from app.utils.problem_detail import ProblemDetail, ErrorTypes
-from app.utils.logger import logger
+from app.models.user import User
+from app.services.task_service import TaskService
+
+if "on_startup" not in inspect.signature(StarletteRouter.__init__).parameters:
+    _original_starlette_router_init = StarletteRouter.__init__
+
+    def _compat_starlette_router_init(self, *args, on_startup=None, on_shutdown=None, **kwargs):
+        return _original_starlette_router_init(self, *args, **kwargs)
+
+    StarletteRouter.__init__ = _compat_starlette_router_init
+
+router = APIRouter(tags=["tasks"])
+if not hasattr(router, "on_startup"):
+    router.on_startup = []
+if not hasattr(router, "on_shutdown"):
+    router.on_shutdown = []
 
 
-router = APIRouter(tags=["Tasks"])
+class TaskListItem(BaseModel):
+    id: str
+    paper_id: str
+    paper_title: Optional[str] = None
+    task_type: str
+    status: str
+    currentStage: str
+    progress: int
+    attempts: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    trace_id: Optional[str] = None
 
 
-# =============================================================================
-# Request/Response Models
-# =============================================================================
+class TaskDetailResponse(BaseModel):
+    id: str
+    paper_id: str
+    paper_title: Optional[str] = None
+    task_type: str
+    status: str
+    currentStage: str
+    progress: int
+    attempts: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    checkpoint_stage: Optional[str] = None
+    checkpoint_storage_key: Optional[str] = None
+    checkpoint_version: int = 0
+    stage_timings: Dict[str, Any] = Field(default_factory=dict)
+    failure_stage: Optional[str] = None
+    failure_code: Optional[str] = None
+    failure_message: Optional[str] = None
+    is_retryable: bool = True
+    trace_id: Optional[str] = None
+    retry_trace_id: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
+    cost_breakdown: Dict[str, Any] = Field(default_factory=dict)
+    cache_stats: Dict[str, Any] = Field(default_factory=dict)
+    queue_wait_ms: Optional[int] = None
 
-class TaskResponse(BaseModel):
-    """Task response."""
-    success: bool = True
-    data: dict
+
+class APIResponse(BaseModel):
+    success: bool
+    data: Any
+    message: Optional[str] = None
 
 
-# =============================================================================
-# Helper Functions
-# =============================================================================
+def _resolve_stage(task) -> str:
+    if task.status == "completed":
+        return "completed"
+    if task.status == "failed":
+        return task.failure_stage or task.checkpoint_stage or "failed"
+    if task.status == "cancelled":
+        return "cancelled"
+    return task.checkpoint_stage or task.status or "pending"
 
-def _create_error_response(
-    status_code: int,
-    error_type: str,
-    title: str,
-    detail: str,
-    instance: str,
-) -> HTTPException:
-    """Create HTTPException with RFC 7807 ProblemDetail."""
-    problem = ProblemDetail(
-        type=error_type,
-        title=title,
-        status=status_code,
-        detail=detail,
-        instance=instance,
+
+def _resolve_progress(task) -> int:
+    stage = _resolve_stage(task)
+    if task.status == "completed":
+        return 100
+    stage_progress = 0.0
+    if task.status == "failed" and task.failure_stage:
+        stage_progress = 1.0
+    if task.status == "cancelled":
+        stage_progress = 0.0
+    if stage in TaskService.get_progress_stages():
+        return TaskService.calculate_progress(stage, stage_progress)
+    if stage == "completed":
+        return 100
+    return 0
+
+
+def _task_list_item(task) -> TaskListItem:
+    return TaskListItem(
+        id=task.id,
+        paper_id=task.paper_id,
+        paper_title=getattr(task.paper, "title", None),
+        task_type=task.task_type or "pdf_processing",
+        status=task.status,
+        currentStage=_resolve_stage(task),
+        progress=_resolve_progress(task),
+        attempts=task.attempts or 0,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        completed_at=task.completed_at,
+        error_message=task.error_message,
+        trace_id=task.trace_id,
     )
-    return HTTPException(
-        status_code=status_code,
-        detail=problem.to_dict(),
+
+
+def _task_detail(task) -> TaskDetailResponse:
+    return TaskDetailResponse(
+        id=task.id,
+        paper_id=task.paper_id,
+        paper_title=getattr(task.paper, "title", None),
+        task_type=task.task_type or "pdf_processing",
+        status=task.status,
+        currentStage=_resolve_stage(task),
+        progress=_resolve_progress(task),
+        attempts=task.attempts or 0,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        completed_at=task.completed_at,
+        error_message=task.error_message,
+        checkpoint_stage=task.checkpoint_stage,
+        checkpoint_storage_key=task.checkpoint_storage_key,
+        checkpoint_version=task.checkpoint_version or 0,
+        stage_timings=task.stage_timings or {},
+        failure_stage=task.failure_stage,
+        failure_code=task.failure_code,
+        failure_message=task.failure_message,
+        is_retryable=bool(task.is_retryable),
+        trace_id=task.trace_id,
+        retry_trace_id=task.retry_trace_id,
+        cancelled_at=task.cancelled_at,
+        cancellation_reason=task.cancellation_reason,
+        cost_breakdown=task.cost_breakdown or {},
+        cache_stats=task.cache_stats or {},
+        queue_wait_ms=task.queue_wait_ms,
     )
 
 
-def _get_progress_stages() -> list:
-    """Get processing stages with progress percentages."""
-    return [
-        {"name": "upload", "label": "Uploading", "start": 0, "end": 15, "weight": 15},
-        {"name": "parsing", "label": "Parsing Document", "start": 15, "end": 60, "weight": 45},
-        {"name": "indexing", "label": "Indexing Content", "start": 60, "end": 90, "weight": 30},
-        {"name": "multimodal", "label": "Processing Multimodal", "start": 90, "end": 100, "weight": 10},
-    ]
-
-
-def _get_stage_progress(status: str) -> dict:
-    """Get current stage and progress for a task status."""
-    stage_map = {
-        "pending": {"stage": "upload", "progress": 0},
-        "processing_ocr": {"stage": "parsing", "progress": 20},
-        "parsing": {"stage": "parsing", "progress": 35},
-        "extracting_imrad": {"stage": "parsing", "progress": 50},
-        "generating_notes": {"stage": "indexing", "progress": 65},
-        "storing_vectors": {"stage": "indexing", "progress": 80},
-        "indexing_multimodal": {"stage": "multimodal", "progress": 95},
-        "completed": {"stage": "completed", "progress": 100},
-        "failed": {"stage": "failed", "progress": 0},
-    }
-    return stage_map.get(status, {"stage": "pending", "progress": 0})
-
-
-# =============================================================================
-# Endpoints
-# =============================================================================
-
-@router.get("", response_model=TaskResponse)
+@router.get("", response_model=APIResponse)
 async def list_tasks(
-    request: Request,
-    paperId: Optional[str] = None,
-    status_filter: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
-    current_user: User = Depends(get_current_user),
+    paper_id: Optional[str] = Query(default=None),
+    status_filter: Optional[str] = Query(default=None),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """List tasks for user's papers.
-
-    Query parameters:
-        paperId: Filter by paper ID
-        status: Filter by task status
-        limit: Items per page
-        offset: Offset for pagination
-
-    Returns:
-        List of tasks with pagination.
-    """
-    instance = str(request.url.path)
-    user_id = current_user.id
-
-    # Build query with join
-    query = (
-        select(ProcessingTask, Paper.title)
-        .join(Paper, ProcessingTask.paper_id == Paper.id)
-        .where(Paper.user_id == user_id)
-    )
-
-    if paperId:
-        query = query.where(ProcessingTask.paper_id == paperId)
-
-    if status_filter:
-        query = query.where(ProcessingTask.status == status_filter)
-
-    # Order by created_at desc and apply pagination
-    query = query.order_by(ProcessingTask.created_at.desc()).limit(limit).offset(offset)
-
-    result = await db.execute(query)
-    rows = result.all()
-
-    # Get total count
-    count_query = (
-        select(func.count(ProcessingTask.id))
-        .join(Paper, ProcessingTask.paper_id == Paper.id)
-        .where(Paper.user_id == user_id)
-    )
-
-    if paperId:
-        count_query = count_query.where(ProcessingTask.paper_id == paperId)
-
-    if status_filter:
-        count_query = count_query.where(ProcessingTask.status == status_filter)
-
-    count_result = await db.execute(count_query)
-    total = count_result.scalar() or 0
-
-    # Format response
-    formatted_tasks = []
-    for task, paper_title in rows:
-        stage_info = _get_stage_progress(task.status)
-        task_dict = {
-            "id": task.id,
-            "paper_id": task.paper_id,
-            "status": task.status,
-            "storage_key": task.storage_key,
-            "error_message": task.error_message,
-            "attempts": task.attempts,
-            "created_at": task.created_at,
-            "updated_at": task.updated_at,
-            "completed_at": task.completed_at,
-            "paper_title": paper_title,
-            "currentStage": stage_info["stage"],
-            "progress": stage_info["progress"],
-        }
-        formatted_tasks.append(task_dict)
-
-    return TaskResponse(
-        success=True,
-        data={
-            "tasks": formatted_tasks,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        },
-    )
+    tasks = await TaskService.list_tasks(db, current_user.id, paper_id=paper_id, status=status_filter)
+    items = [_task_list_item(task).model_dump() for task in tasks]
+    return APIResponse(success=True, data={"tasks": items, "total": len(items)})
 
 
-@router.get("/{task_id}", response_model=TaskResponse)
+@router.get("/{task_id}", response_model=APIResponse)
 async def get_task(
-    request: Request,
     task_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
-    """Get task details.
-
-    Path parameters:
-        task_id: Task ID
-
-    Returns:
-        Task details with paper info.
-    """
-    instance = str(request.url.path)
-    user_id = current_user.id
-
-    # Query task with user isolation
-    query = (
-        select(ProcessingTask, Paper.title, Paper.user_id)
-        .join(Paper, ProcessingTask.paper_id == Paper.id)
-        .where(ProcessingTask.id == task_id, Paper.user_id == user_id)
-    )
-
-    result = await db.execute(query)
-    row = result.first()
-
-    if not row:
-        raise _create_error_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            error_type=ErrorTypes.NOT_FOUND,
-            title="Not Found",
-            detail="Task not found",
-            instance=instance,
-        )
-
-    task, paper_title, _ = row
-    stage_info = _get_stage_progress(task.status)
-
-    task_dict = {
-        "id": task.id,
-        "paper_id": task.paper_id,
-        "status": task.status,
-        "storage_key": task.storage_key,
-        "error_message": task.error_message,
-        "attempts": task.attempts,
-        "created_at": task.created_at,
-        "updated_at": task.updated_at,
-        "completed_at": task.completed_at,
-        "paper_title": paper_title,
-        "currentStage": stage_info["stage"],
-        "progress": stage_info["progress"],
-    }
-
-    return TaskResponse(success=True, data=task_dict)
-
-
-@router.post("/{task_id}/retry", response_model=TaskResponse)
-async def retry_task(
-    request: Request,
-    task_id: str,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
-    """Retry a failed task.
-
-    Path parameters:
-        task_id: Task ID
-
-    Returns:
-        Updated task status.
-    """
-    instance = str(request.url.path)
-    user_id = current_user.id
-
-    # Verify task exists and belongs to user's paper
-    query = (
-        select(ProcessingTask.id, ProcessingTask.status, ProcessingTask.paper_id, Paper.user_id)
-        .join(Paper, ProcessingTask.paper_id == Paper.id)
-        .where(ProcessingTask.id == task_id, Paper.user_id == user_id)
-    )
-
-    result = await db.execute(query)
-    row = result.first()
-
-    if not row:
-        raise _create_error_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            error_type=ErrorTypes.NOT_FOUND,
-            title="Not Found",
-            detail="Task not found",
-            instance=instance,
-        )
-
-    task_id_val, task_status, paper_id_val, _ = row
-
-    if task_status != "failed":
-        raise _create_error_response(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            error_type=ErrorTypes.VALIDATION_ERROR,
-            title="Validation Error",
-            detail="Only failed tasks can be retried",
-            instance=instance,
-        )
-
-    # Reset task status
-    now = datetime.now(timezone.utc)
-
-    task_update_stmt = (
-        update(ProcessingTask)
-        .where(ProcessingTask.id == task_id)
-        .values(
-            status="pending",
-            error_message=None,
-            attempts=ProcessingTask.attempts + 1,
-            updated_at=now,
-        )
-    )
-    await db.execute(task_update_stmt)
-
-    # Reset paper status
-    paper_update_stmt = (
-        update(Paper)
-        .where(Paper.id == paper_id_val)
-        .values(status="pending", updated_at=now)
-    )
-    await db.execute(paper_update_stmt)
-
-    logger.info(
-        "Task retry triggered",
-        user_id=user_id,
-        task_id=task_id,
-        paper_id=paper_id_val,
-    )
-
-    return TaskResponse(
-        success=True,
-        data={
-            "taskId": task_id,
-            "status": "pending",
-            "message": "Task retry initiated",
-        },
-    )
+    try:
+        task = await TaskService.get_task(db, task_id, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return APIResponse(success=True, data=_task_detail(task).model_dump())
 
 
-@router.get("/{task_id}/progress", response_model=TaskResponse)
+@router.get("/{task_id}/progress", response_model=APIResponse)
 async def get_task_progress(
-    request: Request,
     task_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Get detailed task progress with stages.
+    try:
+        task = await TaskService.get_task(db, task_id, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    Path parameters:
-        task_id: Task ID
+    stages = []
+    current_stage = _resolve_stage(task)
+    current_progress = _resolve_progress(task)
+    for key, stage in TaskService.get_progress_stages().items():
+        stage_status = "completed" if current_progress >= stage["end"] else "pending"
+        if current_stage == key and task.status not in {"completed", "failed", "cancelled"}:
+            stage_status = "active"
+        stages.append({**stage, "status": stage_status})
 
-    Returns:
-        Detailed progress information with stages.
-    """
-    instance = str(request.url.path)
-    user_id = current_user.id
+    data = {
+        "task_id": task.id,
+        "status": task.status,
+        "currentStage": current_stage,
+        "progress": current_progress,
+        "stages": stages,
+        "error_message": task.error_message,
+        "updated_at": task.updated_at,
+    }
+    return APIResponse(success=True, data=data)
 
-    # Query task with user isolation
-    query = (
-        select(ProcessingTask, Paper.title, Paper.page_count)
-        .join(Paper, ProcessingTask.paper_id == Paper.id)
-        .where(ProcessingTask.id == task_id, Paper.user_id == user_id)
-    )
 
-    result = await db.execute(query)
-    row = result.first()
+@router.post("/{task_id}/retry", response_model=APIResponse)
+async def retry_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        task = await TaskService.retry_task(db, task_id, current_user.id)
+        await db.commit()
+        await db.refresh(task)
+    except ValueError as exc:
+        await db.rollback()
+        message = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if message == "Task not found" else status.HTTP_409_CONFLICT
+        raise HTTPException(status_code=status_code, detail=message) from exc
+    except PermissionError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    if not row:
-        raise _create_error_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            error_type=ErrorTypes.NOT_FOUND,
-            title="Not Found",
-            detail="Task not found",
-            instance=instance,
-        )
-
-    task, paper_title, page_count = row
-
-    # Get stages
-    stages = _get_progress_stages()
-    current_stage_info = _get_stage_progress(task.status)
-    current_stage = current_stage_info["stage"]
-    overall_progress = current_stage_info["progress"]
-
-    # Format stages with completion status
-    formatted_stages = []
-    for stage in stages:
-        is_completed = False
-        is_current = False
-
-        if current_stage == "completed":
-            is_completed = True
-        elif current_stage == "failed":
-            is_current = stage["name"] == current_stage_info["stage"]
-        else:
-            stage_order = ["upload", "parsing", "indexing", "multimodal", "completed"]
-            current_idx = stage_order.index(current_stage) if current_stage in stage_order else -1
-            stage_idx = stage_order.index(stage["name"])
-
-            if stage_idx < current_idx:
-                is_completed = True
-            elif stage_idx == current_idx:
-                is_current = True
-
-        formatted_stages.append({
-            "name": stage["name"],
-            "label": stage["label"],
-            "start": stage["start"],
-            "end": stage["end"],
-            "weight": stage["weight"],
-            "completed": is_completed,
-            "current": is_current,
-        })
-
-    return TaskResponse(
+    return APIResponse(
         success=True,
+        message="Task queued for retry",
         data={
-            "taskId": task.id,
-            "paperId": task.paper_id,
-            "paperTitle": paper_title,
+            "id": task.id,
             "status": task.status,
-            "progress": overall_progress,
-            "currentStage": current_stage,
-            "stages": formatted_stages,
-            "errorMessage": task.error_message,
             "attempts": task.attempts,
-            "pageCount": page_count,
-            "createdAt": task.created_at.isoformat() if task.created_at else None,
-            "updatedAt": task.updated_at.isoformat() if task.updated_at else None,
-            "completedAt": task.completed_at.isoformat() if task.completed_at else None,
+            "retry_trace_id": task.retry_trace_id,
+            "recovery": {
+                "checkpoint_stage": task.checkpoint_stage,
+                "checkpoint_version": task.checkpoint_version,
+                "retry_trace_id": task.retry_trace_id,
+            },
         },
     )
 
 
-@router.delete("/{task_id}")
+@router.delete("/{task_id}", response_model=APIResponse)
 async def cancel_task(
-    request: Request,
     task_id: str,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Cancel a pending task.
+    try:
+        task = await TaskService.cancel_task(db, task_id, current_user.id)
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    Path parameters:
-        task_id: Task ID
-
-    Returns:
-        Success message.
-    """
-    instance = str(request.url.path)
-    user_id = current_user.id
-
-    # Verify task exists and belongs to user's paper
-    query = (
-        select(ProcessingTask.id, ProcessingTask.status, ProcessingTask.paper_id, Paper.user_id)
-        .join(Paper, ProcessingTask.paper_id == Paper.id)
-        .where(ProcessingTask.id == task_id, Paper.user_id == user_id)
-    )
-
-    result = await db.execute(query)
-    row = result.first()
-
-    if not row:
-        raise _create_error_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            error_type=ErrorTypes.NOT_FOUND,
-            title="Not Found",
-            detail="Task not found",
-            instance=instance,
-        )
-
-    task_id_val, task_status, paper_id_val, _ = row
-
-    if task_status != "pending":
-        raise _create_error_response(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            error_type=ErrorTypes.VALIDATION_ERROR,
-            title="Validation Error",
-            detail="Only pending tasks can be cancelled",
-            instance=instance,
-        )
-
-    # Delete task
-    delete_stmt = delete(ProcessingTask).where(ProcessingTask.id == task_id)
-    await db.execute(delete_stmt)
-
-    # Update paper status
-    paper_update_stmt = (
-        update(Paper)
-        .where(Paper.id == paper_id_val)
-        .values(status="cancelled", updated_at=datetime.now(timezone.utc))
-    )
-    await db.execute(paper_update_stmt)
-
-    logger.info(
-        "Task cancelled",
-        user_id=user_id,
-        task_id=task_id,
-        paper_id=paper_id_val,
-    )
-
-    return TaskResponse(
+    return APIResponse(
         success=True,
+        message="Task cancelled",
         data={
-            "message": "Task cancelled successfully",
-            "taskId": task_id,
+            "id": task.id,
+            "status": task.status,
+            "cancelled_at": task.cancelled_at,
+            "cancellation_reason": task.cancellation_reason,
+            "cancellation_requested": True,
         },
     )
-
-
-__all__ = ["router"]

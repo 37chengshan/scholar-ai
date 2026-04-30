@@ -54,6 +54,7 @@ import { useChatScopeController } from '@/features/chat/hooks/useChatScopeContro
 import { useChatSessionController } from '@/features/chat/hooks/useChatSessionController';
 import { useChatRuntimeBridge } from '@/features/chat/hooks/useChatRuntimeBridge';
 import { useRuntime } from '@/features/chat/runtime/useRuntime';
+import { useChatHandoff } from '@/features/chat/hooks/useChatHandoff';
 import type {
   CitationItem,
   ToolTimelineItem,
@@ -62,6 +63,8 @@ import type {
 export function ChatWorkspaceV2() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { language } = useLanguage();
+  const isZh = language === "zh";
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
   const [agentUIState, setAgentUIState] = useState<AgentUIState>("IDLE");
   const [sending, setSending] = useState(false); // 防止重复发送
@@ -116,8 +119,10 @@ export function ChatWorkspaceV2() {
   const safeCitations = (citations?: CitationItem[]) =>
     (citations ?? []).filter(Boolean);
 
-  const { language } = useLanguage();
-  const isZh = language === "zh";
+  const handoffBanner = useChatHandoff({
+    isZh,
+    setComposerDraft: setInput,
+  });
   const comparePaperIds = useMemo(
     () =>
       (searchParams.get('paper_ids') || '')
@@ -608,6 +613,28 @@ export function ChatWorkspaceV2() {
             />
           </div>
         )}
+
+        {handoffBanner ? (
+          <div className="shrink-0 border-b border-border/40 bg-primary/[0.05] px-4 py-2.5 sm:px-6">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+                {isZh ? `来自 ${handoffBanner.originLabel}` : `From ${handoffBanner.originLabel}`}
+              </span>
+              <span>
+                {isZh
+                  ? '已为你预填下一条问题，确认后再发送。'
+                  : 'A follow-up prompt is prefilled for review before sending.'}
+              </span>
+              {handoffBanner.evidenceCount > 0 ? (
+                <span>
+                  {isZh
+                    ? `${handoffBanner.evidenceCount} 条证据上下文已带入`
+                    : `${handoffBanner.evidenceCount} evidence references were carried in`}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {runtime.run && (
           <div className="shrink-0 border-b border-border/40 bg-muted/20">

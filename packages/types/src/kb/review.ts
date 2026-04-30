@@ -26,6 +26,16 @@ export interface ReviewDraftParagraphDto {
   text: string;
   citations: Array<Record<string, unknown>>;
   evidence_blocks: EvidenceBlockDto[];
+  claim_verification?: Array<{
+    claim_id: string;
+    claim_text: string;
+    claim_type?: string;
+    support_status: 'supported' | 'weakly_supported' | 'partially_supported' | 'unsupported';
+    support_score?: number;
+    supporting_evidence_ids?: string[];
+    repairable?: boolean;
+    repair_hint?: string;
+  }>;
   citation_coverage_status: 'covered' | 'insufficient';
 }
 
@@ -67,6 +77,11 @@ export interface CreateReviewDraftRequestDto {
   mode: 'outline_and_draft';
   question?: string;
   target_review_draft_id?: string;
+}
+
+export interface ReviewClaimRepairRequestDto {
+  paragraph_id: string;
+  claim_id: string;
 }
 
 export interface ReviewRunSummaryDto {

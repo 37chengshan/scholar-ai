@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router';
+import { trackWorkflowEvent } from '@/lib/observability/telemetry';
 import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore';
 import {
   mapAgentRunArtifacts,
@@ -77,6 +78,7 @@ function deriveRun(pathname: string, state: unknown, activeRun: ReturnType<typeo
       status: 'running',
       stage: 'import',
       nextAction: 'Monitor import progress',
+      scopeType: 'knowledge-base',
     });
   }
 
@@ -167,10 +169,27 @@ function buildArtifacts(
   return artifacts;
 }
 
+function resolveWorkflowPage(pathname: string): 'chat' | 'search' | 'knowledge-base' | 'read' | 'analytics' {
+  if (pathname.startsWith('/chat')) {
+    return 'chat';
+  }
+  if (pathname.startsWith('/search')) {
+    return 'search';
+  }
+  if (pathname === '/knowledge-bases' || pathname.startsWith('/knowledge-bases/')) {
+    return 'knowledge-base';
+  }
+  if (pathname.startsWith('/read/')) {
+    return 'read';
+  }
+  return 'analytics';
+}
+
 export function useWorkflowHydration(): void {
   const location = useLocation();
   const chatScope = useChatWorkspaceStore((state) => state.scope);
   const activeRun = useChatWorkspaceStore((state) => state.activeRun);
+  const lastTelemetrySignature = useRef<string | null>(null);
 
   const payload = useMemo<WorkflowHydratedPayload>(() => {
     const scope = deriveScope(location.pathname, location.search, chatScope);
@@ -206,4 +225,44 @@ export function useWorkflowHydration(): void {
   useEffect(() => {
     workflowActions.hydrate(payload);
   }, [payload]);
+
+  useEffect(() => {
+    const run = payload.currentRun;
+    const signature = JSON.stringify({
+      path: location.pathname,
+      runId: run?.id ?? null,
+      status: run?.status ?? null,
+      stage: run?.stage ?? null,
+      updatedAt: run?.updatedAt ?? null,
+      pendingActions: payload.pendingActions.length,
+      recoverableTasks: payload.recoverableTasks.length,
+    });
+
+    if (signature === lastTelemetrySignature.current) {
+      return;
+    }
+    lastTelemetrySignature.current = signature;
+
+    trackWorkflowEvent({
+      event: run ? 'workflow_hydrated' : 'workflow_scope_viewed',
+      page: resolveWorkflowPage(location.pathname),
+      scopeType: payload.scope.type,
+      scopeId: payload.scope.id,
+      runId: run?.id ?? null,
+      traceId: run?.traceId ?? null,
+      sessionId: run?.sessionId ?? null,
+      messageId: run?.messageId ?? null,
+      status: run?.status,
+      stage: run?.stage,
+      durationMs: run?.durationMs ?? null,
+      tokensUsed: run?.tokensUsed,
+      cost: run?.cost,
+      metadata: {
+        pendingActions: payload.pendingActions.length,
+        recoverableTasks: payload.recoverableTasks.length,
+        artifacts: payload.artifacts.length,
+        timelineItems: payload.timeline.length,
+      },
+    });
+  }, [location.pathname, payload]);
 }

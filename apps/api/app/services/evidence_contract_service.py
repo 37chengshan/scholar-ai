@@ -50,6 +50,18 @@ def load_chunk_index() -> dict[str, dict[str, Any]]:
                 )
                 content = str(chunk.get("text") or chunk.get("content") or "")
                 anchor_text = str(chunk.get("anchor_text") or content)[:300]
+                quote_text = str(chunk.get("quote_text") or anchor_text or content)[:600]
+                offset_start = chunk.get("source_offset_start")
+                if not isinstance(offset_start, int):
+                    offset_start = chunk.get("offset_start")
+                if not isinstance(offset_start, int):
+                    offset_start = None
+
+                offset_end = chunk.get("source_offset_end")
+                if not isinstance(offset_end, int):
+                    offset_end = chunk.get("offset_end")
+                if not isinstance(offset_end, int):
+                    offset_end = None
                 content_type = str(chunk.get("content_type") or "text")
                 citation_jump_url = build_citation_jump_url(
                     paper_id=paper_id,
@@ -66,6 +78,9 @@ def load_chunk_index() -> dict[str, dict[str, Any]]:
                     "section_path": section_path,
                     "content_type": content_type,
                     "anchor_text": anchor_text,
+                    "quote_text": quote_text,
+                    "source_offset_start": offset_start,
+                    "source_offset_end": offset_end,
                     "content": content,
                     "pdf_url": f"/api/v1/papers/{paper_id}/pdf",
                     "citation_jump_url": citation_jump_url,

@@ -17,6 +17,7 @@ import re
 from typing import Dict, Optional
 
 from app.core.semantic_scholar_service import SemanticScholarService
+from app.services.source_adapters.arxiv_adapter import ArxivAdapter
 from app.services.source_adapters.base_adapter import (
     BaseSourceAdapter,
     SourceResolution,
@@ -42,6 +43,7 @@ class S2Adapter(BaseSourceAdapter):
 
     def __init__(self):
         self.s2_service = SemanticScholarService()
+        self.arxiv_adapter = ArxivAdapter()
 
     def _parse_paper_id(self, input: str) -> Dict[str, Optional[str]]:
         """Parse paper ID from various input formats.
@@ -191,16 +193,21 @@ class S2Adapter(BaseSourceAdapter):
         if cached:
             logger.info("S2 metadata cache hit", paper_id=paper_id)
             data = json.loads(cached)
+            external_ids = data.get("external_ids", {})
+            pdf_available = data.get("pdf_available", False) or bool(external_ids.get("arxiv"))
+            pdf_source = data.get("pdf_source")
+            if not pdf_source and external_ids.get("arxiv"):
+                pdf_source = "arxiv"
             return MetadataPreview(
                 title=data.get("title"),
                 authors=data.get("authors", []),
                 year=data.get("year"),
                 abstract=data.get("abstract"),
                 venue=data.get("venue"),
-                pdf_available=data.get("pdf_available", False),
-                pdf_source=data.get("pdf_source"),
+                pdf_available=pdf_available,
+                pdf_source=pdf_source,
                 citation_count=data.get("citation_count"),
-                external_ids=data.get("external_ids", {}),
+                external_ids=external_ids,
             )
 
         # Apply rate limiter
@@ -245,6 +252,10 @@ class S2Adapter(BaseSourceAdapter):
             if ext_ids.get("DOI"):
                 external_ids["doi"] = ext_ids["DOI"]
 
+            if not pdf_available and external_ids.get("arxiv"):
+                pdf_available = True
+                pdf_source = "arxiv"
+
             # Cache result
             cache_data = {
                 "title": title,
@@ -254,6 +265,7 @@ class S2Adapter(BaseSourceAdapter):
                 "venue": venue,
                 "pdf_available": pdf_available,
                 "pdf_source": pdf_source,
+                "open_access_pdf_url": pdf_url,
                 "citation_count": citation_count,
                 "external_ids": external_ids,
             }
@@ -303,40 +315,53 @@ class S2Adapter(BaseSourceAdapter):
         if not metadata.pdf_available:
             raise Exception("NO_OPEN_ACCESS_PDF: This paper has no open access PDF")
 
+        arxiv_id = metadata.external_ids.get("arxiv")
+        if metadata.pdf_source == "arxiv" and arxiv_id:
+            arxiv_resolution = await self.arxiv_adapter.resolve(arxiv_id)
+            if not arxiv_resolution.resolved:
+                raise Exception("ARXIV_FALLBACK_RESOLVE_FAILED")
+            return await self.arxiv_adapter.acquire_pdf(arxiv_resolution, storage_path, storage_key)
+
         # Get PDF URL from cache or API
         paper_id = resolution.canonical_id
         cache = await get_import_cache()
         cache_key = cache.make_s2_cache_key(paper_id)
 
         cached = await cache.get(cache_key)
+        pdf_url = None
+        cached_payload = None
         if cached:
-            data = json.loads(cached)
-            # Need to re-fetch to get actual URL
-            pass
+            cached_payload = json.loads(cached)
+            pdf_url = cached_payload.get("open_access_pdf_url")
 
-        # Fetch paper details to get PDF URL
-        limiter = get_s2_import_limiter()
-        await limiter.acquire()
+        if not pdf_url:
+            limiter = get_s2_import_limiter()
+            await limiter.acquire()
 
-        try:
-            paper = await self.s2_service.get_paper_details(
-                paper_id=paper_id,
-                fields="openAccessPdf",
-                redis_client=None,
-            )
-            limiter.record_success()
+            try:
+                paper = await self.s2_service.get_paper_details(
+                    paper_id=paper_id,
+                    fields="openAccessPdf",
+                    redis_client=None,
+                )
+                limiter.record_success()
 
-            open_access = paper.get("openAccessPdf", {}) or {}
-            pdf_url = open_access.get("url")
+                open_access = paper.get("openAccessPdf", {}) or {}
+                pdf_url = open_access.get("url")
 
-            if not pdf_url:
-                raise Exception("NO_OPEN_ACCESS_PDF: openAccessPdf URL is empty")
+                if not pdf_url:
+                    raise Exception("NO_OPEN_ACCESS_PDF: openAccessPdf URL is empty")
 
-        except Exception as e:
-            limiter.record_failure()
-            raise
+                if cached_payload is not None:
+                    cached_payload["open_access_pdf_url"] = pdf_url
+                    await cache.set(cache_key, json.dumps(cached_payload), ttl_seconds=604800)
+
+            except Exception as e:
+                limiter.record_failure()
+                raise
 
         # Apply rate limiter for download
+        limiter = get_s2_import_limiter()
         await limiter.acquire()
 
         # Download PDF

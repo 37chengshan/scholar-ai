@@ -114,7 +114,10 @@ async def create_paper_from_job(job, db) -> str:
     if job.external_ids:
         paper.doi = job.external_ids.get("doi")
         paper.arxiv_id = job.external_ids.get("arxiv")
-        paper.s2_paper_id = job.external_ids.get("s2")
+        paper.s2_paper_id = await _resolve_s2_paper_id_for_insert(
+            db=db,
+            candidate_s2_paper_id=job.external_ids.get("s2"),
+        )
 
     db.add(paper)
     await db.commit()
@@ -178,6 +181,31 @@ async def _ensure_unique_paper_title(db, user_id: str, base_title: str) -> str:
             return next_candidate
 
     return f"{candidate} ({str(uuid.uuid4())[:8]})"
+
+
+async def _resolve_s2_paper_id_for_insert(db, candidate_s2_paper_id: str | None) -> str | None:
+    """Avoid cross-user global unique collisions on papers.s2_paper_id.
+
+    The current schema keeps s2_paper_id globally unique, while import dedupe is
+    intentionally user-scoped. When another user imports the same S2 paper, we
+    should still materialize a new Paper record instead of hanging/failing on the
+    global unique constraint.
+    """
+
+    if not candidate_s2_paper_id:
+        return None
+
+    existing = await db.execute(
+        select(Paper.id).where(Paper.s2_paper_id == candidate_s2_paper_id)
+    )
+    if existing.scalar_one_or_none() is not None:
+        logger.info(
+            "Cross-user duplicate s2_paper_id detected; omitting s2_paper_id on cloned paper",
+            s2_paper_id=candidate_s2_paper_id,
+        )
+        return None
+
+    return candidate_s2_paper_id
 
 
 async def attach_paper_to_kb(job, paper_id: str, db):

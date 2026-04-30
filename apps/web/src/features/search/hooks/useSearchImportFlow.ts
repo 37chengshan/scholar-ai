@@ -6,6 +6,18 @@ import { toast } from 'sonner';
 import { trackImportEvent, trackSearchEvent } from '@/lib/observability/telemetry';
 
 const IMPORT_JOB_STORAGE_KEY = 'search_import_active_job';
+const IMPORT_STAGE_LABELS: Record<string, string> = {
+  queued: '排队中',
+  resolving: '解析来源',
+  downloading: '下载 PDF',
+  parsing: '解析文档',
+  indexing: '建立索引',
+  completed_fulltext_ready: '导入完成',
+  completed_metadata_only: '元数据已入库',
+  failed: '导入失败',
+  cancelled: '已取消',
+};
+
 
 type ImportRuntimeStatus = {
   jobId: string;
@@ -30,6 +42,7 @@ export function useSearchImportFlow() {
   const [showKBSelectModal, setShowKBSelectModal] = useState(false);
   const [pendingImportPaper, setPendingImportPaper] = useState<any>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<any[]>([]);
+  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null);
   const [loadingKBs, setLoadingKBs] = useState(false);
   const [importingPaperId, setImportingPaperId] = useState<string | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<ImportRuntimeStatus | null>(null);
@@ -50,6 +63,39 @@ export function useSearchImportFlow() {
       }
     };
   }, []);
+
+  const clearTracking = useCallback(() => {
+    streamUnsubscribeRef.current?.();
+    streamUnsubscribeRef.current = null;
+    if (fallbackPollingRef.current) {
+      clearTimeout(fallbackPollingRef.current);
+      fallbackPollingRef.current = null;
+    }
+  }, []);
+
+  const finalizeCompletedImport = useCallback(
+    async (jobId: string, kbId: string, fallbackPaperId?: string) => {
+      let paperId = fallbackPaperId;
+
+      if (!paperId) {
+        try {
+          const latest = await importApi.get(jobId);
+          paperId = latest.data.paper?.paperId ?? undefined;
+        } catch {
+          paperId = undefined;
+        }
+      }
+
+      navigateToKnowledgeBase(kbId, {
+        importJobId: jobId,
+        justImported: true,
+        paperId,
+      });
+      window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
+      clearTracking();
+    },
+    [clearTracking, navigateToKnowledgeBase]
+  );
 
   useEffect(() => {
     const raw = window.sessionStorage.getItem(IMPORT_JOB_STORAGE_KEY);
@@ -75,13 +121,12 @@ export function useSearchImportFlow() {
           error: job.error?.message ?? null,
           nextAction: job.nextAction,
         });
-        if (job.status === 'completed' && job.paper?.paperId) {
-          navigateToKnowledgeBase(persisted.kbId as string, {
-            importJobId: persisted.jobId as string,
-            justImported: true,
-            paperId: job.paper.paperId,
-          });
-          window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
+        if (job.status === 'completed') {
+          void finalizeCompletedImport(
+            persisted.jobId as string,
+            persisted.kbId as string,
+            job.paper?.paperId ?? persisted.paperId,
+          );
         }
       }).catch(() => {
         window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
@@ -89,16 +134,7 @@ export function useSearchImportFlow() {
     } catch {
       window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
     }
-  }, [navigateToKnowledgeBase]);
-
-  const clearTracking = useCallback(() => {
-    streamUnsubscribeRef.current?.();
-    streamUnsubscribeRef.current = null;
-    if (fallbackPollingRef.current) {
-      clearTimeout(fallbackPollingRef.current);
-      fallbackPollingRef.current = null;
-    }
-  }, []);
+  }, [finalizeCompletedImport]);
 
   const pollUntilTerminal = useCallback(
     async (jobId: string, kbId: string, isActiveRequest: () => boolean) => {
@@ -123,12 +159,13 @@ export function useSearchImportFlow() {
 
           if (job.status === 'completed' && job.paper?.paperId) {
             trackImportEvent({ event: 'import_completed', jobId, paperId: job.paper.paperId });
-            navigateToKnowledgeBase(kbId, {
-              importJobId: jobId,
-              justImported: true,
-              paperId: job.paper.paperId,
-            });
-            window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
+            await finalizeCompletedImport(jobId, kbId, job.paper.paperId);
+            return;
+          }
+
+          if (job.status === 'completed') {
+            trackImportEvent({ event: 'import_completed', jobId, paperId: 'unknown' });
+            await finalizeCompletedImport(jobId, kbId);
             return;
           }
 
@@ -151,7 +188,7 @@ export function useSearchImportFlow() {
 
       await runOnce();
     },
-    [navigateToKnowledgeBase]
+    [finalizeCompletedImport]
   );
 
   const trackImportJob = useCallback(
@@ -174,13 +211,8 @@ export function useSearchImportFlow() {
           nextAction: snapshot.nextAction,
         });
 
-        if (snapshot.status === 'completed' && snapshot.paper?.paperId) {
-          navigateToKnowledgeBase(kbId, {
-            importJobId: jobId,
-            justImported: true,
-            paperId: snapshot.paper.paperId,
-          });
-          window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
+        if (snapshot.status === 'completed') {
+          await finalizeCompletedImport(jobId, kbId, snapshot.paper?.paperId ?? undefined);
           return;
         }
       } catch {
@@ -199,6 +231,9 @@ export function useSearchImportFlow() {
             error: prev?.error ?? null,
             nextAction: payload.nextAction ?? prev?.nextAction ?? null,
           }));
+          if (payload.status === 'completed') {
+            void finalizeCompletedImport(jobId, kbId);
+          }
         },
         onStageChange: (payload) => {
           if (!isActiveRequest()) {
@@ -221,13 +256,7 @@ export function useSearchImportFlow() {
           }
           const paperId = payload.paperId;
           trackImportEvent({ event: 'import_completed', jobId, paperId: paperId || 'unknown' });
-          navigateToKnowledgeBase(kbId, {
-            importJobId: jobId,
-            justImported: true,
-            paperId,
-          });
-          window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
-          clearTracking();
+          void finalizeCompletedImport(jobId, kbId, paperId);
         },
         onError: (payload) => {
           if (!isActiveRequest()) {
@@ -268,8 +297,9 @@ export function useSearchImportFlow() {
           void pollUntilTerminal(jobId, kbId, isActiveRequest);
         },
       });
+      void pollUntilTerminal(jobId, kbId, isActiveRequest);
     },
-    [clearTracking, navigateToKnowledgeBase, pollUntilTerminal]
+    [clearTracking, finalizeCompletedImport, pollUntilTerminal]
   );
 
   const loadKnowledgeBases = useCallback(async () => {
@@ -277,10 +307,12 @@ export function useSearchImportFlow() {
     trackSearchEvent({ event: 'import_kb_list_loading_started' });
     try {
       const response = await kbApi.list({ limit: 100 });
-      setKnowledgeBases(response.knowledgeBases || []);
+      const bases = response.knowledgeBases || [];
+      setKnowledgeBases(bases);
+      setSelectedKnowledgeBaseId((current) => current ?? bases[0]?.id ?? null);
       trackSearchEvent({
         event: 'import_kb_list_loaded',
-        count: response.knowledgeBases?.length || 0,
+        count: bases.length,
       });
     } catch {
       toast.error('加载知识库列表失败');
@@ -293,12 +325,18 @@ export function useSearchImportFlow() {
   const startImportSelection = useCallback(async (paper: any) => {
     trackImportEvent({ event: 'import_selection_started', paperId: paper?.id });
     setPendingImportPaper(paper);
+    setSelectedKnowledgeBaseId(null);
     setShowKBSelectModal(true);
     await loadKnowledgeBases();
   }, [loadKnowledgeBases]);
 
-  const importToKnowledgeBase = useCallback(async (kbId: string) => {
+  const importToKnowledgeBase = useCallback(async (kbId?: string) => {
     if (!pendingImportPaper) {
+      return;
+    }
+    const targetKbId = kbId ?? selectedKnowledgeBaseId;
+    if (!targetKbId) {
+      toast.error('请选择目标知识库');
       return;
     }
 
@@ -311,7 +349,7 @@ export function useSearchImportFlow() {
       clearTracking();
       setImportingPaperId(pendingImportPaper.id);
 
-      let sourceType: 'arxiv' | 'pdf_url';
+      let sourceType: 'arxiv' | 'pdf_url' | 'semantic_scholar';
       let payload: Record<string, unknown>;
 
       if (pendingImportPaper.source === 'arxiv' && pendingImportPaper.externalId) {
@@ -320,6 +358,15 @@ export function useSearchImportFlow() {
         payload = {
           arxivId,
           input: arxivId,
+        };
+      } else if (
+        (pendingImportPaper.source === 'semantic_scholar' || pendingImportPaper.source === 's2') &&
+        pendingImportPaper.s2PaperId
+      ) {
+        sourceType = 'semantic_scholar';
+        payload = {
+          s2PaperId: pendingImportPaper.s2PaperId,
+          input: pendingImportPaper.s2PaperId,
         };
       } else if (pendingImportPaper.pdfUrl) {
         sourceType = 'pdf_url';
@@ -332,27 +379,24 @@ export function useSearchImportFlow() {
         return;
       }
 
-      const createResponse = await importApi.create(kbId, { sourceType, payload });
+      const createResponse = await importApi.create(targetKbId, { sourceType, payload });
       if (!isActiveRequest()) {
         return;
       }
       const jobId = createResponse.data.importJobId;
-      trackImportEvent({ event: 'import_job_created', jobId, kbId });
+      trackImportEvent({ event: 'import_job_created', jobId, kbId: targetKbId });
 
       toast.success('论文导入任务已创建');
       setShowKBSelectModal(false);
       setPendingImportPaper(null);
+      setSelectedKnowledgeBaseId(null);
 
       if (createResponse.data.paper?.paperId) {
-        navigateToKnowledgeBase(kbId, {
-          importJobId: jobId,
-          justImported: true,
-          paperId: createResponse.data.paper.paperId,
-        });
+        await finalizeCompletedImport(jobId, targetKbId, createResponse.data.paper.paperId);
         return;
       }
 
-      await trackImportJob(jobId, kbId, isActiveRequest);
+      await trackImportJob(jobId, targetKbId, isActiveRequest);
     } catch (error: any) {
       if (isActiveRequest()) {
         toast.error(error?.response?.data?.error?.detail || '导入失败');
@@ -363,13 +407,21 @@ export function useSearchImportFlow() {
         setImportingPaperId(null);
       }
     }
-  }, [clearTracking, navigateToKnowledgeBase, pendingImportPaper, trackImportJob]);
+  }, [
+    clearTracking,
+    finalizeCompletedImport,
+    pendingImportPaper,
+    selectedKnowledgeBaseId,
+    trackImportJob,
+  ]);
 
   return {
     showKBSelectModal,
     setShowKBSelectModal,
     pendingImportPaper,
     knowledgeBases,
+    selectedKnowledgeBaseId,
+    setSelectedKnowledgeBaseId,
     loadingKBs,
     importingPaperId,
     runtimeStatus,
@@ -384,5 +436,6 @@ export function useSearchImportFlow() {
       }
     },
     clearPendingImport: () => setPendingImportPaper(null),
+    stageLabel: runtimeStatus?.stage ? (IMPORT_STAGE_LABELS[runtimeStatus.stage] ?? runtimeStatus.stage) : null,
   };
 }

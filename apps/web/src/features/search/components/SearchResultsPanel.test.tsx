@@ -55,6 +55,7 @@ describe('SearchResultsPanel', () => {
         labels={labels}
         onViewPaper={vi.fn()}
         onAddToLibrary={vi.fn()}
+        onContinueInChat={vi.fn()}
         onAuthorClick={vi.fn()}
       />,
     );
@@ -93,6 +94,7 @@ describe('SearchResultsPanel', () => {
         labels={labels}
         onViewPaper={vi.fn()}
         onAddToLibrary={vi.fn()}
+        onContinueInChat={vi.fn()}
         onAuthorClick={vi.fn()}
       />,
     );

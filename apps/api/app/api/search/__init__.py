@@ -69,33 +69,47 @@ class V3SearchRequest(BaseModel):
 
 @router.post("/evidence")
 async def search_evidence_v3(request: V3SearchRequest):
-	payload = build_answer_contract_payload(
-		query=request.query,
-		user_id="search-system",
-		paper_scope=[request.paper_id] if request.paper_id else None,
-		query_family=request.query_family,
-		stage="rule",
-		top_k=request.top_k,
-		section_paths=request.section_paths,
-		page_from=request.page_from,
-		page_to=request.page_to,
-		content_types=request.content_types,
-	)
+	try:
+		payload = build_answer_contract_payload(
+			query=request.query,
+			user_id="search-system",
+			paper_scope=[request.paper_id] if request.paper_id else None,
+			query_family=request.query_family,
+			stage="rule",
+			top_k=request.top_k,
+			section_paths=request.section_paths,
+			page_from=request.page_from,
+			page_to=request.page_to,
+			content_types=request.content_types,
+		)
 
-	citations = payload.get("citations", [])[: request.top_k]
-	evidence = payload.get("evidence_blocks", [])[: request.top_k]
-	papers = sorted({c.get("paper_id") for c in citations if c.get("paper_id")})
-	sections = sorted({c.get("section_path") for c in citations if c.get("section_path")})
+		citations = payload.get("citations", [])[: request.top_k]
+		evidence = payload.get("evidence_blocks", [])[: request.top_k]
+		papers = sorted({c.get("paper_id") for c in citations if c.get("paper_id")})
+		sections = sorted({c.get("section_path") for c in citations if c.get("section_path")})
 
-	return {
-		"paper_results": papers,
-		"section_matches": sections,
-		"evidence_matches": evidence,
-		"relation_matches": [],
-		"answer_mode": payload.get("answer_mode"),
-		"retrieval_trace_id": payload.get("retrieval_trace_id"),
-		"quality": payload.get("quality", {}),
-	}
+		return {
+			"paper_results": papers,
+			"section_matches": sections,
+			"evidence_matches": evidence,
+			"relation_matches": [],
+			"answer_mode": payload.get("answer_mode"),
+			"retrieval_trace_id": payload.get("retrieval_trace_id") or payload.get("trace_id"),
+			"quality": payload.get("quality", {}),
+		}
+	except Exception as exc:
+		return {
+			"paper_results": [],
+			"section_matches": [],
+			"evidence_matches": [],
+			"relation_matches": [],
+			"answer_mode": "abstain",
+			"retrieval_trace_id": None,
+			"quality": {
+				"error": "search_evidence_unavailable",
+				"message": str(exc),
+			},
+		}
 
 
 def _extract_data(result: Any) -> Dict[str, Any]:

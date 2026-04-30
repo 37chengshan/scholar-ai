@@ -29,6 +29,7 @@ from typing import Dict
 from app.core.embedding.base import BaseEmbeddingService
 from app.core.embedding.qwen3vl_embedding import Qwen3VLEmbeddingService
 from app.config import settings, normalize_embedding_model_name
+from app.core.runtime_contract import RuntimeBinding, build_local_binding
 from app.utils.logger import logger
 
 
@@ -135,6 +136,32 @@ def get_embedding_service() -> BaseEmbeddingService:
         Embedding service instance
     """
     return EmbeddingServiceFactory.create()
+
+
+def get_multimodal_embedding_service() -> BaseEmbeddingService:
+    """Return the canonical multimodal embedding service for runtime-critical paths."""
+    service = get_embedding_service()
+    if not service.supports_multimodal():
+        info = service.get_model_info()
+        raise RuntimeError(
+            "Multimodal embedding path requires image/table capable provider, "
+            f"but EMBEDDING_MODEL resolved to {info.get('name', 'unknown')}"
+        )
+    return service
+
+
+def get_embedding_runtime_binding(*, require_multimodal: bool = False) -> RuntimeBinding:
+    service = get_multimodal_embedding_service() if require_multimodal else get_embedding_service()
+    info = service.get_model_info()
+    dimension_raw = info.get("dimension")
+    dimension = int(dimension_raw) if str(dimension_raw or "").isdigit() else None
+    return build_local_binding(
+        component="embedding",
+        provider_name=str(getattr(settings, "EMBEDDING_PROVIDER", "local_embedding")),
+        model=str(info.get("name") or normalize_embedding_model_name(getattr(settings, "EMBEDDING_MODEL", ""))),
+        dimension=dimension,
+        supports_multimodal=service.supports_multimodal(),
+    )
 
 
 async def create_embedding_service() -> BaseEmbeddingService:

@@ -170,17 +170,17 @@ feat: v3 Release - Complete Evidence Audit + Backend Integration + Frontend UI +
 ### 文档改动
 
 **生成的报告：**
-- `docs/reports/v3_1_result_trust_audit.md` - 可信度审计报告
-- `docs/reports/v3_2_milvus_fallback_cleanup.md` - Milvus 清理报告
-- `docs/reports/v3_3_backend_main_path_integration.md` - 后端集成报告
-- `docs/reports/v3_4_frontend_evidence_ui_pretext.md` - 前端 Evidence UI 报告
-- `docs/reports/v3_5_trace_cost_error_state.md` - 可观测性报告
-- `docs/reports/v3_6_release_gate_report.md` - Release gate 报告
-- `docs/reports/v1_0_release_candidate_report.md` - v1.0 候选汇总报告
+- `docs/plans/archive/reports/v3_1_result_trust_audit.md` - 可信度审计报告
+- `docs/plans/archive/reports/v3_2_milvus_fallback_cleanup.md` - Milvus 清理报告
+- `docs/plans/archive/reports/v3_3_backend_main_path_integration.md` - 后端集成报告
+- `docs/plans/archive/reports/v3_4_frontend_evidence_ui_pretext.md` - 前端 Evidence UI 报告
+- `docs/plans/archive/reports/v3_5_trace_cost_error_state.md` - 可观测性报告
+- `docs/plans/archive/reports/v3_6_release_gate_report.md` - Release gate 报告
+- `docs/plans/archive/reports/v1_0_release_candidate_report.md` - v1.0 候选汇总报告
 
 **同步的合同文档：**
-- `docs/architecture/api-contract.md` - 3 个新端点 + answer contract 扩展
-- `docs/domain/resources.md` - 3 个新资源定义
+- `docs/specs/architecture/api-contract.md` - 3 个新端点 + answer contract 扩展
+- `docs/specs/domain/resources.md` - 3 个新资源定义
 
 ### 发布产物
 
@@ -254,15 +254,15 @@ feat: v3 Release - Complete Evidence Audit + Backend Integration + Frontend UI +
 - [x] Integration tests 标记 `@pytest.mark.integration` → 无阻塞
 
 ### 文档同步 ✅
-- [x] `docs/architecture/api-contract.md` - 新增 3 端点
-- [x] `docs/domain/resources.md` - 新增 3 资源
+- [x] `docs/specs/architecture/api-contract.md` - 新增 3 端点
+- [x] `docs/specs/domain/resources.md` - 新增 3 资源
 - [x] v3.1-v3.6 报告生成完毕
 
 ## 文档是否需要同步
 - [x] 需要，已同步更新
-  - [x] `docs/architecture/api-contract.md`
-  - [x] `docs/domain/resources.md`
-  - [x] `docs/architecture/system-overview.md`
+  - [x] `docs/specs/architecture/api-contract.md`
+  - [x] `docs/specs/domain/resources.md`
+  - [x] `docs/specs/architecture/system-overview.md`
   - [x] v3 完整报告体系
 
 ## 截图 / 输出

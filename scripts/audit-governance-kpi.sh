@@ -27,8 +27,8 @@ if [[ -z "$output_file" ]]; then
 fi
 
 plan_status_file="docs/plans/PLAN_STATUS.md"
-ledger_file="docs/governance/phase-delivery-ledger.md"
-fallback_file="docs/governance/fallback-register.yaml"
+ledger_file="docs/specs/governance/phase-delivery-ledger.md"
+fallback_file="docs/specs/governance/fallback-register.yaml"
 
 for file in "$plan_status_file" "$ledger_file" "$fallback_file"; do
   if [[ ! -f "$file" ]]; then
@@ -125,8 +125,8 @@ puts [active.length, expired, format("%.2f", avg_age)].join("|")
 
 IFS='|' read -r fallback_active_count fallback_expired_active fallback_active_days_avg <<<"$fallback_metrics"
 
-if [[ -f docs/reports/governance-kpi/e2e-history.csv ]]; then
-  e2e_counts="$(awk -F',' 'NR>1 { if ($2 == "pass") p++; if ($2 == "fail") f++; } END { printf "%d|%d", p+0, f+0 }' docs/reports/governance-kpi/e2e-history.csv)"
+if [[ -f docs/plans/v3_0/reports/governance-kpi/e2e-history.csv ]]; then
+  e2e_counts="$(awk -F',' 'NR>1 { if ($2 == "pass") p++; if ($2 == "fail") f++; } END { printf "%d|%d", p+0, f+0 }' docs/plans/v3_0/reports/governance-kpi/e2e-history.csv)"
   IFS='|' read -r e2e_pass e2e_fail <<<"$e2e_counts"
 else
   e2e_pass=0

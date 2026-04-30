@@ -1,6 +1,7 @@
 import { createKnowledgeReviewApi } from '@scholar-ai/sdk';
 import type {
   CreateReviewDraftRequestDto,
+  ReviewClaimRepairRequestDto,
   ReviewDraftDto,
   ReviewRunDetailDto,
   ReviewRunSummaryDto,
@@ -15,6 +16,8 @@ export const kbReviewApi = {
   listDrafts: (kbId: string, params?: { limit?: number; offset?: number }) => reviewSdk.listDrafts(kbId, params),
   getDraft: (kbId: string, draftId: string): Promise<ReviewDraftDto> => reviewSdk.getDraft(kbId, draftId),
   retryDraft: (kbId: string, draftId: string): Promise<ReviewDraftDto> => reviewSdk.retryDraft(kbId, draftId),
+  repairClaim: (kbId: string, draftId: string, request: ReviewClaimRepairRequestDto): Promise<ReviewDraftDto> =>
+    reviewSdk.repairClaim(kbId, draftId, request),
   listRuns: (kbId: string, params?: { limit?: number; offset?: number }): Promise<{ items: ReviewRunSummaryDto[]; total: number; limit: number; offset: number }> =>
     reviewSdk.listRuns(kbId, params),
   getRunDetail: (runId: string): Promise<ReviewRunDetailDto> => reviewSdk.getRunDetail(runId),

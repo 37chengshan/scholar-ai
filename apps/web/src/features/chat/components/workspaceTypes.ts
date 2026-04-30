@@ -19,6 +19,9 @@ export interface CitationItem {
   source_chunk_id?: string;
   source_id?: string;
   citation_jump_url?: string;
+  quote_text?: string;
+  source_offset_start?: number;
+  source_offset_end?: number;
   page_num?: number;
   section_path?: string;
   anchor_text?: string;
@@ -34,9 +37,15 @@ export interface CitationItem {
 }
 
 export interface AnswerClaim {
+  claim_id?: string;
+  claim_text?: string;
+  claim_type?: string;
   claim: string;
-  support_status: 'supported' | 'partially_supported' | 'unsupported';
+  support_status: 'supported' | 'weakly_supported' | 'partially_supported' | 'unsupported';
+  support_score?: number;
   supporting_source_chunk_ids: string[];
+  repairable?: boolean;
+  repair_hint?: string;
 }
 
 export type EvidenceBlock = EvidenceBlockDto;

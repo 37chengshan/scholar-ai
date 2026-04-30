@@ -107,19 +107,43 @@ _s2_rate_limiter = RateLimiter(min_interval=1.0, max_backoff=30.0)
 
 
 class SearchResult(BaseModel):
-    """Unified external search result format."""
+        """Unified external search result format (canonical ExternalPaper shape).
 
-    id: str
-    title: str
-    authors: List[str]
-    year: int
-    abstract: str
-    source: str
-    pdfUrl: Optional[str] = None
-    url: str
-    citationCount: Optional[int] = None
-    arxivId: Optional[str] = None
-    in_library: bool = False  # Track if paper is in user's library
+        WP0: This is the canonical ExternalPaper model shared by search results
+        and import preview. availability and libraryStatus are the two key fields
+        that front-end uses to decide which CTA to show.
+
+        availability:
+            metadata_only     - no PDF source found
+            pdf_available     - open-access PDF exists
+            pdf_unavailable   - PDF exists in provider but is not open-access
+
+        libraryStatus:
+            not_imported            - paper not in user's KB
+            importing               - ImportJob in progress
+            imported_metadata_only  - paper in KB but not fulltext-indexed
+            imported_fulltext_ready - paper fully indexed (chunk+embed+milvus)
+        """
+
+        id: str
+        title: str
+        authors: List[str]
+        year: int
+        abstract: str
+        source: str  # arxiv | s2
+        pdfUrl: Optional[str] = None
+        url: str
+        citationCount: Optional[int] = None
+        arxivId: Optional[str] = None
+        # WP0 canonical fields
+        s2PaperId: Optional[str] = None
+        doi: Optional[str] = None
+        venue: Optional[str] = None
+        openAccess: bool = False
+        fieldsOfStudy: List[str] = []
+        availability: str = "metadata_only"  # metadata_only | pdf_available | pdf_unavailable
+        libraryStatus: str = "not_imported"  # not_imported | importing | imported_metadata_only | imported_fulltext_ready
+        in_library: bool = False  # legacy field kept for backward compat
 
 
 class SearchResponse(BaseModel):
@@ -145,7 +169,7 @@ class LibrarySearchResult(BaseModel):
     )
     page: Optional[int] = Field(None, description="Page number")
     rrf_score: float = Field(..., description="RRF fusion score")
-    dense_score: float = Field(0.0, description="Dense vector similarity score")
+    dense_score: float = Field(0.0, description="Dense vector relevance score")
     sparse_score: float = Field(0.0, description="Sparse text search score")
     dense_rank: Optional[int] = Field(None, description="Rank in dense results")
     sparse_rank: Optional[int] = Field(None, description="Rank in sparse results")
@@ -240,10 +264,20 @@ async def set_search_cache(
     """
     try:
         redis_client = await get_redis_client()
-        await redis_client.setex(cache_key, ttl, json.dumps(results))
+        await redis_client.setex(cache_key, ttl, json.dumps(_json_safe(results)))
         logger.debug("Search cache set", cache_key=cache_key, ttl=ttl)
     except Exception as e:
         logger.warning("Redis cache set failed", error=str(e), cache_key=cache_key)
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, BaseModel):
+        return value.model_dump()
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 # =============================================================================
@@ -288,11 +322,11 @@ def calculate_paper_score(
 
 
 def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
-    """Remove duplicates using arXiv ID + title similarity.
+    """Remove duplicates using arXiv ID + title overlap score.
 
     Strategy:
     1. Exact arXiv ID match (highest priority)
-    2. Title similarity > 90% (fallback)
+    2. Title overlap score > 90% (fallback)
 
     Prefers Semantic Scholar results when available (more metadata).
 
@@ -323,13 +357,13 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
                 continue
             seen_arxiv_ids.add(result.arxivId)
 
-        # Tier 2: Title similarity > 90%
+        # Tier 2: Title overlap score > 90%
         is_duplicate = any(
             fuzz.ratio(result.title.lower(), seen_title.lower()) > 90
             for seen_title in seen_titles
         )
         if is_duplicate:
-            logger.debug("Deduplicating by title similarity", title=result.title[:50])
+            logger.debug("Deduplicating by title overlap score", title=result.title[:50])
             continue
 
         seen_titles.append(result.title)

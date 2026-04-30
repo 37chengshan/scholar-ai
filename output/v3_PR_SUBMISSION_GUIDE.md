@@ -223,15 +223,15 @@ feat: v3 Release - Complete Evidence Audit + Backend Integration + Frontend UI +
 
 ## 文档同步
 - [x] 需要，已同步更新
-  - [x] `docs/architecture/api-contract.md`
-  - [x] `docs/domain/resources.md`
+  - [x] `docs/specs/architecture/api-contract.md`
+  - [x] `docs/specs/domain/resources.md`
   - [x] v3.1-v3.6 报告体系完成
 
 ## 发布产物
 - ✅ `artifacts/release/v1_0/e2e_results.json` - E2E 场景验证
 - ✅ `artifacts/release/v1_0/manual_evidence_audit.json` - 手工审计结果
-- ✅ `docs/reports/v3_*.md` - 7 份完整报告
-- ✅ `docs/reports/v1_0_release_candidate_report.md` - v1.0 候选汇总
+- ✅ `docs/plans/archive/reports/v3_*.md` - 7 份完整报告
+- ✅ `docs/plans/archive/reports/v1_0_release_candidate_report.md` - v1.0 候选汇总
 
 ## 关联 Issue
 - Milestone: **v1.0-release**

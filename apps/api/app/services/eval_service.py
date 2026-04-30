@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-PHASE6_ROOT = Path(__file__).resolve().parents[2] / "artifacts" / "benchmarks" / "phase6"
+ARTIFACTS_BENCHMARK_ROOT = Path(__file__).resolve().parents[2] / "artifacts" / "benchmarks"
+PHASE6_ROOT = ARTIFACTS_BENCHMARK_ROOT / "phase6"
+V3_ACADEMIC_ROOT = ARTIFACTS_BENCHMARK_ROOT / "v3_0_academic"
 
 PHASE6_MIN_PAPER_COUNT = 50
 PHASE6_MIN_QUERY_COUNT = 128
@@ -39,21 +41,94 @@ PHASE6_NON_REGRESSION_METRICS = (
     "recall_at_5",
 )
 
+V3_MIN_PAPER_COUNT = 200
+V3_MIN_QUERY_COUNT = 500
+V3_MAX_QUERY_COUNT = 800
+V3_MAX_FALLBACK_USED_COUNT = 5
+V3_REQUIRED_QUERY_FAMILIES = {
+    "fact",
+    "method",
+    "experiment_result",
+    "numeric",
+    "table",
+    "figure",
+    "formula",
+    "limitation",
+    "compare",
+    "cross_paper_synthesis",
+    "citation_trace",
+    "kb_global",
+    "no_answer",
+    "conflict_verification",
+}
+V3_REQUIRED_CLAIMS_FAMILIES = {
+    "compare",
+    "cross_paper_synthesis",
+    "numeric",
+    "conflict_verification",
+    "limitation",
+}
+V3_REQUIRED_RUN_FILES = (
+    "meta.json",
+    "retrieval.json",
+    "evidence.json",
+    "answer_quality.json",
+    "abstain_quality.json",
+    "family_breakdown.json",
+    "domain_breakdown.json",
+    "dashboard_summary.json",
+    "diff_from_baseline.json",
+)
+V3_NON_REGRESSION_METRICS = (
+    "retrieval_hit_rate",
+    "answer_supported_rate",
+    "groundedness",
+    "citation_jump_valid_rate",
+    "abstain_precision",
+    "recall_at_5",
+)
+V3_ALLOWED_RUNTIME_MODES = {"online", "local", "shim", "lite", "public_offline", "blind_offline", "offline"}
+
+
+def _validate_benchmark_name(benchmark: str) -> str:
+    if benchmark not in {"phase6", "v3_0_academic"}:
+        return "phase6"
+    return benchmark
+
+
+def _benchmark_root(benchmark: str = "phase6") -> Path:
+    name = _validate_benchmark_name(benchmark)
+    if name == "v3_0_academic":
+        return V3_ACADEMIC_ROOT
+    return _phase6_root()
+
 
 def _phase6_root() -> Path:
+    # Keep this helper for backward compatibility with existing tests.
     return PHASE6_ROOT
 
 
-def _runs_dir() -> Path:
-    return _phase6_root() / "runs"
+def _runs_dir(benchmark: str = "phase6") -> Path:
+    return _benchmark_root(benchmark) / "runs"
 
 
-def _run_dir(run_id: str) -> Path:
-    return _runs_dir() / run_id
+def _run_dir(run_id: str, benchmark: str = "phase6") -> Path:
+    if _validate_benchmark_name(benchmark) == "phase6":
+        return _runs_dir() / run_id
+    return _runs_dir(benchmark) / run_id
 
 
-def _corpus_path() -> Path:
-    return _phase6_root() / "corpus.json"
+def _citation_detail_path(run_dir: Path, benchmark: str = "phase6") -> Path:
+    if _validate_benchmark_name(benchmark) == "v3_0_academic":
+        return run_dir / "evidence.json"
+    return run_dir / "citation_jump.json"
+
+
+def _corpus_path(benchmark: str = "phase6") -> Path:
+    root = _benchmark_root(benchmark)
+    if _validate_benchmark_name(benchmark) == "v3_0_academic":
+        return root / "corpus_public.json"
+    return root / "corpus.json"
 
 
 def _load_json(path: Path) -> Optional[Any]:
@@ -105,9 +180,24 @@ def _i(src: Dict[str, Any], key: str, default: int = 0) -> int:
     return int(value) if value is not None else default
 
 
-def _evaluate_gate(metrics: NormalizedMetrics) -> tuple[str, list[str]]:
+def _evaluate_gate(metrics: NormalizedMetrics, benchmark: str = "phase6") -> tuple[str, list[str]]:
     failures: list[str] = []
-    for key, bounds in PHASE6_THRESHOLDS.items():
+    name = _validate_benchmark_name(benchmark)
+    thresholds = PHASE6_THRESHOLDS
+    fallback_limit = PHASE6_MAX_FALLBACK_USED_COUNT
+    if name == "v3_0_academic":
+        thresholds = {
+            "retrieval_hit_rate": {"min": 0.80},
+            "recall_at_5": {"min": 0.75},
+            "citation_jump_valid_rate": {"min": 0.85},
+            "answer_supported_rate": {"min": 0.80},
+            "groundedness": {"min": 0.70},
+            "abstain_precision": {"min": 0.80},
+            "latency_p95": {"max": 8.0},
+        }
+        fallback_limit = V3_MAX_FALLBACK_USED_COUNT
+
+    for key, bounds in thresholds.items():
         value = getattr(metrics, key, None)
         if value is None:
             continue
@@ -116,9 +206,9 @@ def _evaluate_gate(metrics: NormalizedMetrics) -> tuple[str, list[str]]:
         if "max" in bounds and float(value) > bounds["max"]:
             failures.append(f"{key}={value:.3f} above max={bounds['max']}")
 
-    if metrics.fallback_used_count > PHASE6_MAX_FALLBACK_USED_COUNT:
+    if metrics.fallback_used_count > fallback_limit:
         failures.append(
-            f"fallback_used_count={metrics.fallback_used_count} above max={PHASE6_MAX_FALLBACK_USED_COUNT}"
+            f"fallback_used_count={metrics.fallback_used_count} above max={fallback_limit}"
         )
     if not metrics.cost_per_answer_present:
         failures.append("cost_per_answer missing from run summary")
@@ -127,12 +217,12 @@ def _evaluate_gate(metrics: NormalizedMetrics) -> tuple[str, list[str]]:
     return verdict, failures
 
 
-def _normalize_run(run_id: str, meta: Dict[str, Any]) -> NormalizedMetrics:
-    run_dir = _run_dir(run_id)
+def _normalize_run(run_id: str, meta: Dict[str, Any], benchmark: str = "phase6") -> NormalizedMetrics:
+    run_dir = _run_dir(run_id, benchmark)
     summary = _load_json(run_dir / "dashboard_summary.json") or {}
     retrieval = _load_json(run_dir / "retrieval.json") or {}
     answer_quality = _load_json(run_dir / "answer_quality.json") or {}
-    citation_jump = _load_json(run_dir / "citation_jump.json") or {}
+    citation_jump = _load_json(_citation_detail_path(run_dir, benchmark)) or {}
     top_k = summary.get("top_k_recall") or retrieval.get("top_k_recall") or {}
 
     metrics = NormalizedMetrics(
@@ -151,7 +241,7 @@ def _normalize_run(run_id: str, meta: Dict[str, Any]) -> NormalizedMetrics:
         cost_per_answer_present="cost_per_answer" in summary,
     )
 
-    verdict, failures = _evaluate_gate(metrics)
+    verdict, failures = _evaluate_gate(metrics, benchmark)
     metrics.overall_verdict = verdict
     metrics.gate_failures = failures
     return metrics
@@ -164,32 +254,46 @@ def _metric_from_detail(detail: Dict[str, Any], key: str) -> float:
     return float(metrics.get(key, 0.0))
 
 
-def _validate_corpus(corpus: Dict[str, Any] | None) -> list[str]:
+def _validate_corpus(corpus: Dict[str, Any] | None, benchmark: str = "phase6") -> list[str]:
+    name = _validate_benchmark_name(benchmark)
     if not isinstance(corpus, dict):
+        if name == "v3_0_academic":
+            return ["v3_0_academic corpus_public.json missing or unreadable"]
         return ["phase6 corpus.json missing or unreadable"]
 
     failures: list[str] = []
     version = corpus.get("version") or corpus.get("dataset_version")
     if not version:
-        failures.append("phase6 corpus version missing")
+        if name == "v3_0_academic":
+            failures.append("v3_0_academic corpus version missing")
+        else:
+            failures.append("phase6 corpus version missing")
 
     paper_count = int(corpus.get("paper_count") or corpus.get("total_papers") or 0)
     query_count = int(corpus.get("query_count") or corpus.get("total_queries") or 0)
-    if paper_count < PHASE6_MIN_PAPER_COUNT:
-        failures.append(
-            f"paper_count={paper_count} below min={PHASE6_MIN_PAPER_COUNT}"
-        )
-    if query_count < PHASE6_MIN_QUERY_COUNT:
-        failures.append(
-            f"query_count={query_count} below min={PHASE6_MIN_QUERY_COUNT}"
-        )
+    min_papers = PHASE6_MIN_PAPER_COUNT
+    min_queries = PHASE6_MIN_QUERY_COUNT
+    max_queries: int | None = None
+    required_families = PHASE6_REQUIRED_QUERY_FAMILIES
+    if name == "v3_0_academic":
+        min_papers = V3_MIN_PAPER_COUNT
+        min_queries = V3_MIN_QUERY_COUNT
+        max_queries = V3_MAX_QUERY_COUNT
+        required_families = V3_REQUIRED_QUERY_FAMILIES
+
+    if paper_count < min_papers:
+        failures.append(f"paper_count={paper_count} below min={min_papers}")
+    if query_count < min_queries:
+        failures.append(f"query_count={query_count} below min={min_queries}")
+    if max_queries is not None and query_count > max_queries:
+        failures.append(f"query_count={query_count} above max={max_queries}")
 
     families = {
         str(family)
         for family in (corpus.get("query_families") or [])
         if str(family).strip()
     }
-    missing_families = sorted(PHASE6_REQUIRED_QUERY_FAMILIES - families)
+    missing_families = sorted(required_families - families)
     if missing_families:
         failures.append(f"query_families missing required entries: {missing_families}")
 
@@ -208,26 +312,87 @@ def _validate_corpus(corpus: Dict[str, Any] | None) -> list[str]:
         for query in queries
         if isinstance(query, dict) and str(query.get("family") or "").strip()
     }
-    missing_actual_families = sorted(PHASE6_REQUIRED_QUERY_FAMILIES - actual_families)
+    missing_actual_families = sorted(required_families - actual_families)
     if missing_actual_families:
         failures.append(
             f"queries[] missing required family coverage: {missing_actual_families}"
         )
 
+    if name == "v3_0_academic":
+        split = str(corpus.get("split") or "")
+        if split not in {"public_dev", "public_test", "blind_test"}:
+            failures.append(f"split={split!r} is invalid for v3_0_academic corpus")
+
+        disciplines = {
+            str(item.get("discipline"))
+            for item in (corpus.get("papers") or [])
+            if isinstance(item, dict) and str(item.get("discipline") or "").strip()
+        }
+        required_disciplines = {
+            "computer_science",
+            "medicine",
+            "economics",
+            "mathematics",
+            "education",
+            "interdisciplinary",
+        }
+        missing_disciplines = sorted(required_disciplines - disciplines)
+        if missing_disciplines:
+            failures.append(
+                f"papers[] missing required discipline coverage: {missing_disciplines}"
+            )
+
+        for query in queries:
+            if not isinstance(query, dict):
+                continue
+            family = str(query.get("family") or "")
+            must_abstain = bool(query.get("must_abstain", False))
+            if family in V3_REQUIRED_CLAIMS_FAMILIES and not must_abstain:
+                claims = query.get("claims")
+                if not isinstance(claims, list) or len(claims) == 0:
+                    qid = query.get("query_id", "unknown")
+                    failures.append(
+                        f"query_id={qid} family={family} must include non-empty claims[]"
+                    )
+
     return failures
 
 
-def _validate_run_artifacts(run_id: str) -> list[str]:
-    run_dir = _run_dir(run_id)
+def _validate_run_artifacts(run_id: str, benchmark: str = "phase6") -> list[str]:
+    run_dir = _run_dir(run_id, benchmark)
+    required_files = PHASE6_REQUIRED_RUN_FILES
+    if _validate_benchmark_name(benchmark) == "v3_0_academic":
+        required_files = V3_REQUIRED_RUN_FILES
     failures: list[str] = []
-    for filename in PHASE6_REQUIRED_RUN_FILES:
+    for filename in required_files:
         if not (run_dir / filename).exists():
             failures.append(f"{run_id} missing artifact: {filename}")
     return failures
 
 
-def _select_offline_baseline_and_candidate() -> tuple[Optional[str], Optional[str], list[str]]:
-    offline_runs = [run for run in list_run_summaries() if run.get("mode") == "offline"]
+def _validate_runtime_truth(meta: Dict[str, Any], benchmark: str = "phase6") -> list[str]:
+    if _validate_benchmark_name(benchmark) != "v3_0_academic":
+        return []
+
+    failures: list[str] = []
+    runtime_mode = str(meta.get("mode") or "").strip()
+    if runtime_mode not in V3_ALLOWED_RUNTIME_MODES:
+        failures.append(f"runtime mode missing or invalid in meta.json: {runtime_mode!r}")
+
+    runtime_truth = meta.get("runtime_truth")
+    if not isinstance(runtime_truth, dict):
+        failures.append("runtime_truth missing from meta.json")
+        return failures
+
+    baseline_run_id = str(meta.get("baseline_for") or "").strip()
+    parity = runtime_truth.get("mode_parity_with_baseline")
+    if baseline_run_id and parity not in {True, False}:
+        failures.append("runtime_truth.mode_parity_with_baseline missing for candidate run")
+    return failures
+
+
+def _select_offline_baseline_and_candidate(benchmark: str = "phase6") -> tuple[Optional[str], Optional[str], list[str]]:
+    offline_runs = [run for run in list_run_summaries(benchmark) if run.get("mode") in {"offline", "public_offline", "blind_offline"}]
     if not offline_runs:
         return None, None, ["no offline runs found in manifest"]
 
@@ -243,39 +408,40 @@ def _select_offline_baseline_and_candidate() -> tuple[Optional[str], Optional[st
     return baseline_run_id, candidate_run_id, []
 
 
-def load_corpus() -> Dict[str, Any]:
-    corpus = _load_json(_corpus_path())
+def load_corpus(benchmark: str = "phase6") -> Dict[str, Any]:
+    corpus = _load_json(_corpus_path(benchmark))
     return corpus if isinstance(corpus, dict) else {}
 
 
-def load_manifest() -> Dict[str, Any]:
-    manifest = _load_json(_phase6_root() / "manifest.json")
+def load_manifest(benchmark: str = "phase6") -> Dict[str, Any]:
+    manifest = _load_json(_benchmark_root(benchmark) / "manifest.json")
     return manifest if isinstance(manifest, dict) else {"runs": []}
 
 
-def list_run_summaries() -> List[Dict[str, Any]]:
-    manifest = load_manifest()
+def list_run_summaries(benchmark: str = "phase6") -> List[Dict[str, Any]]:
+    manifest = load_manifest(benchmark)
     runs = manifest.get("runs", [])
     return list(reversed(runs)) if isinstance(runs, list) else []
 
 
-def get_latest_offline_run_id() -> Optional[str]:
-    for run in list_run_summaries():
-        if run.get("mode") == "offline":
+def get_latest_offline_run_id(benchmark: str = "phase6") -> Optional[str]:
+    for run in list_run_summaries(benchmark):
+        if run.get("mode") in {"offline", "public_offline", "blind_offline"}:
             run_id = run.get("run_id")
             return str(run_id) if run_id else None
     return None
 
 
-def get_run_detail(run_id: str) -> Optional[Dict[str, Any]]:
-    meta = _load_json(_run_dir(run_id) / "meta.json")
+def get_run_detail(run_id: str, benchmark: str = "phase6") -> Optional[Dict[str, Any]]:
+    meta = _load_json(_run_dir(run_id, benchmark) / "meta.json")
     if not isinstance(meta, dict):
         return None
 
-    metrics = _normalize_run(run_id, meta)
-    retrieval = _load_json(_run_dir(run_id) / "retrieval.json") or {}
-    answer_quality = _load_json(_run_dir(run_id) / "answer_quality.json") or {}
-    citation_jump = _load_json(_run_dir(run_id) / "citation_jump.json") or {}
+    metrics = _normalize_run(run_id, meta, benchmark)
+    run_dir = _run_dir(run_id, benchmark)
+    retrieval = _load_json(run_dir / "retrieval.json") or {}
+    answer_quality = _load_json(run_dir / "answer_quality.json") or {}
+    citation_jump = _load_json(_citation_detail_path(run_dir, benchmark)) or {}
 
     return {
         "run_id": run_id,
@@ -305,13 +471,15 @@ def get_run_detail(run_id: str) -> Optional[Dict[str, Any]]:
             "invalid": citation_jump.get("invalid_citations", 0),
             "invalid_reasons": citation_jump.get("invalid_reasons", {}),
         },
-        "artifact_failures": _validate_run_artifacts(run_id),
+        "artifact_failures": _validate_run_artifacts(run_id, benchmark),
     }
 
 
-def get_overview() -> Dict[str, Any]:
-    runs = list_run_summaries()
-    passed, gate = run_offline_gate()
+def get_overview(benchmark: str = "phase6") -> Dict[str, Any]:
+    runs = list_run_summaries(benchmark)
+    offline_modes = {"offline", "public_offline", "blind_offline"}
+    online_modes = {"online", "public_online", "blind_online"}
+    passed, gate = run_offline_gate(benchmark)
     latest_gate = None
     if gate.get("run_id"):
         latest_gate = {
@@ -324,15 +492,15 @@ def get_overview() -> Dict[str, Any]:
     return {
         "latest_offline_gate": latest_gate,
         "run_count": len(runs),
-        "offline_count": sum(1 for run in runs if run.get("mode") == "offline"),
-        "online_count": sum(1 for run in runs if run.get("mode") == "online"),
+        "offline_count": sum(1 for run in runs if run.get("mode") in offline_modes),
+        "online_count": sum(1 for run in runs if run.get("mode") in online_modes),
         "recent_runs": runs[:5],
     }
 
 
-def compute_diff(base_run_id: str, candidate_run_id: str) -> Optional[Dict[str, Any]]:
-    base_detail = get_run_detail(base_run_id)
-    candidate_detail = get_run_detail(candidate_run_id)
+def compute_diff(base_run_id: str, candidate_run_id: str, benchmark: str = "phase6") -> Optional[Dict[str, Any]]:
+    base_detail = get_run_detail(base_run_id, benchmark)
+    candidate_detail = get_run_detail(candidate_run_id, benchmark)
     if base_detail is None or candidate_detail is None:
         return None
 
@@ -372,13 +540,21 @@ def compute_diff(base_run_id: str, candidate_run_id: str) -> Optional[Dict[str, 
         - int(base_detail["metrics"].get("fallback_used_count", 0))
     )
 
+    non_regression_metrics = PHASE6_NON_REGRESSION_METRICS
+    thresholds = PHASE6_THRESHOLDS
+    if _validate_benchmark_name(benchmark) == "v3_0_academic":
+        non_regression_metrics = V3_NON_REGRESSION_METRICS
+        thresholds = {
+            "latency_p95": {"max": 8.0},
+        }
+
     non_regression_failures = [
-        key for key in PHASE6_NON_REGRESSION_METRICS
+        key for key in non_regression_metrics
         if deltas.get(key, {}).get("status") == "regressed"
     ]
     latency_regression_requires_justification = (
         deltas["latency_p95"]["status"] == "regressed"
-        and candidate_detail["metrics"].get("latency_p95", 0.0) <= PHASE6_THRESHOLDS["latency_p95"]["max"]
+        and candidate_detail["metrics"].get("latency_p95", 0.0) <= thresholds["latency_p95"]["max"]
     )
 
     return {
@@ -398,32 +574,33 @@ def compute_diff(base_run_id: str, candidate_run_id: str) -> Optional[Dict[str, 
     }
 
 
-def run_offline_gate() -> tuple[bool, Dict[str, Any]]:
-    corpus_failures = _validate_corpus(load_corpus())
-    baseline_run_id, candidate_run_id, manifest_failures = _select_offline_baseline_and_candidate()
-    run_id = candidate_run_id or get_latest_offline_run_id()
+def run_offline_gate(benchmark: str = "phase6") -> tuple[bool, Dict[str, Any]]:
+    corpus_failures = _validate_corpus(load_corpus(benchmark), benchmark)
+    baseline_run_id, candidate_run_id, manifest_failures = _select_offline_baseline_and_candidate(benchmark)
+    run_id = candidate_run_id or get_latest_offline_run_id(benchmark)
 
-    candidate_detail = get_run_detail(run_id) if run_id else None
+    candidate_detail = get_run_detail(run_id, benchmark) if run_id else None
     metrics = candidate_detail["metrics"] if candidate_detail else {}
 
     failures = list(corpus_failures)
     failures.extend(manifest_failures)
 
     if baseline_run_id:
-        failures.extend(_validate_run_artifacts(baseline_run_id))
+        failures.extend(_validate_run_artifacts(baseline_run_id, benchmark))
     if run_id:
-        failures.extend(_validate_run_artifacts(run_id))
+        failures.extend(_validate_run_artifacts(run_id, benchmark))
 
     if candidate_detail is None:
         failures.append("candidate run artifacts missing or unreadable")
     else:
+        failures.extend(_validate_runtime_truth(candidate_detail.get("meta", {}), benchmark))
         failures.extend(candidate_detail.get("artifact_failures", []))
         failures.extend(metrics.get("gate_failures", []))
 
     diff = None
     if baseline_run_id and run_id:
-        diff = compute_diff(baseline_run_id, run_id)
-        diff_artifact_path = _run_dir(run_id) / "diff_from_baseline.json"
+        diff = compute_diff(baseline_run_id, run_id, benchmark)
+        diff_artifact_path = _run_dir(run_id, benchmark) / "diff_from_baseline.json"
         if not diff_artifact_path.exists():
             failures.append(f"{run_id} missing artifact: diff_from_baseline.json")
         if diff is None:

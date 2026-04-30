@@ -28,7 +28,7 @@
 - 回滚方式：
 
 ## 交付单元追踪
-<!-- 与 docs/governance/phase-delivery-ledger.md 保持一致 -->
+<!-- 与 docs/specs/governance/phase-delivery-ledger.md 保持一致 -->
 - Phase ID:
 - Deliverable Unit:
 - Migration-Task:
@@ -68,11 +68,11 @@
 - [ ] 需要，已同步更新
 
 若需要，请说明更新了哪些文档：
-- [ ] `docs/architecture/system-overview.md`
-- [ ] `docs/architecture/api-contract.md`
-- [ ] `docs/domain/resources.md`
-- [ ] `docs/development/*`
-- [ ] `docs/governance/*`
+- [ ] `docs/specs/architecture/system-overview.md`
+- [ ] `docs/specs/architecture/api-contract.md`
+- [ ] `docs/specs/domain/resources.md`
+- [ ] `docs/specs/development/*`
+- [ ] `docs/specs/governance/*`
 - [ ] `architecture.md`
 - [ ] `AGENTS.md`
 

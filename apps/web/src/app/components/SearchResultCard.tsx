@@ -9,7 +9,7 @@
  * - Click to view details
  */
 
-import { Plus, ExternalLink as ExternalLinkIcon } from 'lucide-react';
+import { ArrowRight, Plus, ExternalLink as ExternalLinkIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Link } from 'react-router';
 
@@ -20,19 +20,41 @@ export interface SearchResultCardProps {
     authors?: string[];
     abstract?: string;
     year?: number;
-    source: 'internal' | 'arxiv' | 's2';
+    source: 'internal' | 'arxiv' | 's2' | 'semantic_scholar';
     paperId?: string;
     externalId?: string;
     pdfUrl?: string;
     citations?: number;
+    arxivId?: string;
+    s2PaperId?: string;
+    doi?: string;
+    availability?: 'metadata_only' | 'pdf_available' | 'pdf_unavailable';
+    libraryStatus?: 'not_imported' | 'importing' | 'imported_metadata_only' | 'imported_fulltext_ready';
   };
   onAddToLibrary?: (result: any) => void;
   onViewPaper?: (paperId: string) => void;
+  onContinueInChat?: (result: any) => void;
 }
 
-export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: SearchResultCardProps) {
+export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContinueInChat }: SearchResultCardProps) {
   const isInternal = result.source === 'internal';
-  const paperHref = isInternal && result.paperId ? `/read/${result.paperId}` : null;
+  const libraryStatus = result.libraryStatus ?? 'not_imported';
+  const canOpenRead = Boolean(result.paperId) && (isInternal || libraryStatus === 'imported_fulltext_ready');
+  const paperHref = canOpenRead && result.paperId ? `/read/${result.paperId}` : null;
+  const canImport = !isInternal && onAddToLibrary && libraryStatus === 'not_imported';
+  const canContinueInChat = Boolean(onContinueInChat && result.paperId && (isInternal || libraryStatus === 'imported_fulltext_ready'));
+  const resultStateLabel = canOpenRead
+    ? '可立即阅读'
+    : canImport
+      ? '可加入 KB'
+      : '仅外部发现';
+
+  const LIBRARY_STATUS_LABEL: Record<string, string> = {
+    importing: '导入中…',
+    imported_metadata_only: '元数据已入库',
+    imported_fulltext_ready: '已在文库',
+  };
+  const libraryStatusLabel = LIBRARY_STATUS_LABEL[libraryStatus];
 
   return (
     <div
@@ -48,6 +70,9 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: Search
             isInternal ? "border-primary/15 bg-primary/10" : "border-primary/10 bg-primary/[0.07] text-foreground/75"
           )}>
             {result.source === 's2' ? 'Semantic Scholar' : result.source}
+          </span>
+          <span className="rounded-sm border border-border/60 bg-background/70 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-foreground/65">
+            {resultStateLabel}
           </span>
           {result.year && (
             <span className="text-muted-foreground font-mono">{result.year}</span>
@@ -90,7 +115,17 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: Search
       )}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border/30 pt-3">
-        {!isInternal && onAddToLibrary && (
+        {libraryStatusLabel && (
+          <span className={clsx(
+            "text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-sm border",
+            libraryStatus === 'imported_fulltext_ready' && "border-green-500/40 bg-green-500/10 text-green-600",
+            libraryStatus === 'imported_metadata_only' && "border-amber-500/40 bg-amber-500/10 text-amber-600",
+            libraryStatus === 'importing' && "border-blue-500/40 bg-blue-500/10 text-blue-600",
+          )}>
+            {libraryStatusLabel}
+          </span>
+        )}
+        {canImport && (
           <button
             type="button"
             onClick={() => onAddToLibrary(result)}
@@ -98,6 +133,26 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper }: Search
             aria-label="Import paper into library"
           >
             <Plus className="w-3 h-3" /> Import
+          </button>
+        )}
+        {onContinueInChat && (
+          <button
+            type="button"
+            onClick={() => {
+              if (canContinueInChat) {
+                onContinueInChat(result);
+              }
+            }}
+            disabled={!canContinueInChat}
+            className={clsx(
+              "flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-colors",
+              canContinueInChat
+                ? "border border-border/70 bg-background text-foreground shadow-sm hover:border-primary/50 hover:text-primary"
+                : "cursor-not-allowed border border-dashed border-border/60 bg-muted/25 text-muted-foreground/70",
+            )}
+          >
+            <ArrowRight className="h-3 w-3" />
+            {canContinueInChat ? 'Continue in Chat' : 'Import to KB first'}
           </button>
         )}
         {paperHref && (

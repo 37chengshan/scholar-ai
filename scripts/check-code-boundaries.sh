@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-baseline_file="docs/governance/code-boundary-baseline.md"
+baseline_file="docs/specs/governance/code-boundary-baseline.md"
 fail_count=0
 
 if [[ ! -f "$baseline_file" ]]; then

@@ -10,6 +10,7 @@ export type EvidenceContentType =
 
 export type EvidenceSupportStatus =
   | 'supported'
+  | 'weakly_supported'
   | 'partially_supported'
   | 'unsupported';
 
@@ -22,6 +23,9 @@ export interface EvidenceBlockDto {
   section_path?: string | null;
   content_type: EvidenceContentType | string;
   text: string;
+  quote_text?: string;
+  source_offset_start?: number | null;
+  source_offset_end?: number | null;
   score?: number | null;
   rerank_score?: number | null;
   support_status?: EvidenceSupportStatus | null;

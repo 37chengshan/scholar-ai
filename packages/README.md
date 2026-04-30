@@ -17,7 +17,7 @@ Planned package scopes:
 
 Move code into packages only when all conditions are met:
 
-1. Contract is stable and documented in docs/architecture/api-contract.md.
+1. Contract is stable and documented in docs/specs/architecture/api-contract.md.
 2. At least two consumers need the same module.
 3. Ownership and versioning strategy are defined.
 4. CI coverage exists for the extracted package.

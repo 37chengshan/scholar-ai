@@ -3,7 +3,7 @@
  *
  * Runs once before all tests. Ensures:
  * 1. Test user exists (via API).
- * 2. Logs in and saves storageState to e2e/.auth/user.json.
+ * 2. Logs in and saves storageState to e2e/.auth/e2e-auth-state.json.
  * 3. All tests reuse this storageState — no per-test login needed.
  */
 import { chromium, FullConfig } from '@playwright/test';
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const AUTH_FILE = path.resolve(__dirname, '.auth/user.json');
+export const AUTH_FILE = path.resolve(__dirname, '.auth/e2e-auth-state.json');
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5173';
 

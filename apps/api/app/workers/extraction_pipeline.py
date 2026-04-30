@@ -24,7 +24,7 @@ from app.core.imrad_extractor import (
     extract_imrad_structure,
     extract_metadata,
 )
-from app.core.qwen3vl_service import get_qwen3vl_service
+from app.core.embedding.factory import get_multimodal_embedding_service
 from app.core.image_extractor import ImageExtractor
 from app.core.table_extractor import TableExtractor
 from app.core.storage import ObjectStorage
@@ -55,7 +55,7 @@ class ExtractionPipeline:
             max_workers=max_workers,
             thread_name_prefix="extraction_worker"
         )
-        self.qwen3vl = get_qwen3vl_service()
+        self.qwen3vl = get_multimodal_embedding_service()
         self.image_extractor = ImageExtractor()
         self.table_extractor = TableExtractor()
         self.storage = ObjectStorage()

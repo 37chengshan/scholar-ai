@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-register_file="docs/governance/fallback-register.yaml"
+register_file="docs/specs/governance/fallback-register.yaml"
 
 if [[ ! -f "$register_file" ]]; then
   echo "[fallback-expiry] missing required file: $register_file" >&2
