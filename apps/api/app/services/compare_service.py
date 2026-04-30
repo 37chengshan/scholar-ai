@@ -383,6 +383,7 @@ def build_compare_contract(
     )
     truthfulness_summary = {
         **truthfulness_report.get("summary", {}),
+        "citation_coverage": supported / max(total, 1),
         "answer_mode": resolved_answer_mode,
     }
 

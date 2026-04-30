@@ -81,6 +81,22 @@ def _collect_runtime_events(bindings: list[dict[str, Any]]) -> tuple[list[str], 
     return degraded_conditions, fallback_events
 
 
+def _resolve_runtime_execution_mode(
+    *,
+    requested_execution_mode: str,
+    paper_scope: list[str] | None,
+) -> tuple[str, list[str]]:
+    degraded_conditions: list[str] = []
+    if requested_execution_mode != "global_review":
+        return requested_execution_mode, degraded_conditions
+
+    # The current main-path service remains a local evidence answer path.
+    degraded_conditions.append("global_review_fallback_to_local_evidence")
+    if len(paper_scope or []) > 1:
+        return "local_compare", degraded_conditions
+    return "local_evidence", degraded_conditions
+
+
 @lru_cache(maxsize=3)
 def _get_retriever(stage: str, embedding_model: str) -> HierarchicalRetriever:
     from pymilvus import connections
@@ -261,6 +277,10 @@ def build_answer_contract_payload(
         query_family=query_family,
         paper_scope=paper_scope,
     )
+    resolved_execution_mode, execution_mode_degraded_conditions = _resolve_runtime_execution_mode(
+        requested_execution_mode=routing.execution_mode,
+        paper_scope=paper_scope,
+    )
 
     t0 = perf_counter()
     pack = retrieve_evidence(
@@ -345,6 +365,10 @@ def build_answer_contract_payload(
     )
     answer_mode = truthfulness_report.get("answerMode") or contract.answer_mode
     claims = get_truthfulness_service().report_to_answer_claims(truthfulness_report)
+    truthfulness_summary = {
+        **truthfulness_report.get("summary", {}),
+        "citation_coverage": quality.citation_support_score,
+    }
 
     fallback_used = bool(pack.diagnostics.get("dense_fallback_used", 0.0) > 0)
     runtime_truth = pack.diagnostics.get("runtime_truth", {})
@@ -382,15 +406,19 @@ def build_answer_contract_payload(
         "fallback_used": fallback_used,
         "fallback_reason": "unsupported_field_type" if fallback_used else None,
         "fallback_events": runtime_truth.get("fallback_events", []),
-        "degraded_conditions": runtime_truth.get("degraded_conditions", []),
+        "degraded_conditions": runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
         "cost_estimate": round(candidate_count * 0.00002, 6),
         "answer_mode": answer_mode,
         "error_state": error_state,
         "task_family": routing.task_family,
-        "execution_mode": routing.execution_mode,
+        "execution_mode": resolved_execution_mode,
         "truthfulness_required": routing.truthfulness_required,
-        "truthfulness_report_summary": truthfulness_report.get("summary", {}),
-        "retrieval_plane_policy": routing.retrieval_plane_policy,
+        "truthfulness_report_summary": truthfulness_summary,
+        "retrieval_plane_policy": {
+            **routing.retrieval_plane_policy,
+            "requested_execution_mode": routing.execution_mode,
+            "mode": resolved_execution_mode,
+        },
         "spans": {
             "rag.request": round(total_latency_ms, 3),
             "rag.query_planner": 0.0,
@@ -433,10 +461,10 @@ def build_answer_contract_payload(
         "cost_estimate": trace_payload["cost_estimate"],
         "error_state": error_state,
         "task_family": routing.task_family,
-        "execution_mode": routing.execution_mode,
+        "execution_mode": resolved_execution_mode,
         "truthfulness_required": routing.truthfulness_required,
-        "truthfulness_summary": truthfulness_report.get("summary", {}),
+        "truthfulness_summary": truthfulness_summary,
         "truthfulness_report": truthfulness_report,
-        "retrieval_plane_policy": routing.retrieval_plane_policy,
-        "degraded_conditions": runtime_truth.get("degraded_conditions", []),
+        "retrieval_plane_policy": trace_payload["retrieval_plane_policy"],
+        "degraded_conditions": trace_payload["degraded_conditions"],
     }

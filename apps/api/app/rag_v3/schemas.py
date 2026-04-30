@@ -138,7 +138,7 @@ class EvidencePack(BaseModel):
     query_family: QueryFamily
     stage: str
     candidates: list[EvidenceCandidate] = Field(default_factory=list)
-    diagnostics: dict[str, float] = Field(default_factory=dict)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class AnswerClaim(BaseModel):
