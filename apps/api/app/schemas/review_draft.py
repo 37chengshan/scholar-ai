@@ -25,6 +25,8 @@ class OutlineSection(BaseModel):
 
     title: str
     intent: str
+    perspective: str = ""
+    retrieval_mode: str = "local_evidence"
     supporting_paper_ids: list[str] = Field(default_factory=list)
     seed_evidence: list[EvidenceBlock] = Field(default_factory=list)
 
@@ -44,6 +46,9 @@ class DraftParagraph(BaseModel):
     text: str
     citations: list[dict] = Field(default_factory=list)
     evidence_blocks: list[EvidenceBlock] = Field(default_factory=list)
+    claim_verification: list[dict] = Field(default_factory=list)
+    truthfulness_summary: dict = Field(default_factory=dict)
+    benchmark_hooks: dict = Field(default_factory=dict)
     citation_coverage_status: CoverageStatus
 
 
@@ -68,6 +73,12 @@ class ReviewQuality(BaseModel):
     unsupported_paragraph_rate: float = 0.0
     graph_assist_used: bool = False
     fallback_used: bool = False
+    execution_mode: str = "global_review"
+    kernel_profile: str = "global_kernel"
+    storm_lite_used: bool = False
+    adaptive_routing_used: bool = False
+    truthfulness_backend: str = "rarr_cove_scifact_lite"
+    benchmark_hooks: dict = Field(default_factory=dict)
 
 
 class ReviewDraftDto(BaseModel):
@@ -102,6 +113,13 @@ class ReviewDraftRetryRequest(BaseModel):
 
     # Reserve for future controls while keeping endpoint extensible.
     force: bool = False
+
+
+class ReviewClaimRepairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paragraph_id: str = Field(..., min_length=1)
+    claim_id: str = Field(..., min_length=1)
 
 
 class ReviewDraftListResponse(BaseModel):

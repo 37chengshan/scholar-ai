@@ -40,6 +40,11 @@ def test_answer_contract_shape(monkeypatch) -> None:
     assert payload["retrieval_trace_id"] == "trace-1"
     assert payload["evidence_blocks"][0]["evidence_id"] == "sid-1"
     assert "citation_jump_url" in payload["evidence_blocks"][0]
+    assert payload["task_family"] == "single_paper_fact"
+    assert payload["execution_mode"] == "local_evidence"
+    assert payload["truthfulness_required"] is True
+    assert "truthfulness_summary" in payload
+    assert "truthfulness_report" in payload
 
 
 def test_answer_contract_payload_honors_top_k(monkeypatch) -> None:

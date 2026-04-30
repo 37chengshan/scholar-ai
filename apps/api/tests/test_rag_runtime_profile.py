@@ -11,6 +11,7 @@ from app.core.rag_runtime_profile import (
     assert_no_deprecated_runtime_tokens,
     find_deprecated_runtime_tokens,
     get_active_rag_runtime_profile,
+    get_embedding_model_for_policy,
     get_embedding_model_for_query_family,
 )
 
@@ -83,3 +84,8 @@ def test_active_runtime_tokens_pass_guard():
 def test_query_family_policy_uses_flash_and_pro_tiers():
     assert get_embedding_model_for_query_family("fact") == ACTIVE_EMBEDDING_MODEL_FLASH
     assert get_embedding_model_for_query_family("compare") == ACTIVE_EMBEDDING_MODEL_PRO
+
+
+def test_explicit_retrieval_model_policy_overrides_query_family():
+    assert get_embedding_model_for_policy("flash", query_family="compare") == ACTIVE_EMBEDDING_MODEL_FLASH
+    assert get_embedding_model_for_policy("pro", query_family="fact") == ACTIVE_EMBEDDING_MODEL_PRO

@@ -49,6 +49,7 @@ from app.utils.logger import logger
 from app.deps import CurrentUserId
 from app.utils.problem_detail import Errors
 from app.rag_v3.main_path_service import build_answer_contract_payload
+from app.services.phase_i_routing_service import get_phase_i_routing_service
 
 # Task 1.4: Import new modules for dual-layer routing
 from app.core.complexity_router import ComplexityRouter
@@ -71,9 +72,12 @@ def _extract_context_paper_ids(context: Dict[str, Any] | None) -> list[str]:
 
 
 def _infer_scoped_query_family(message: str, paper_ids: list[str]) -> str:
-    if len(paper_ids) > 1 or _COMPARE_HINT_PATTERN.search(message or ""):
-        return "compare"
-    return "fact"
+    hinted_family = "compare" if len(paper_ids) > 1 or _COMPARE_HINT_PATTERN.search(message or "") else None
+    return get_phase_i_routing_service().route(
+        query=message,
+        query_family=hinted_family,
+        paper_scope=paper_ids,
+    ).query_family
 
 
 @router.post("")
@@ -288,6 +292,11 @@ async def chat_stream(
                 routing_start = time.perf_counter()
                 routing_result = await complexity_router.route_async(request.message)
                 routing_decision_ready_at = time.perf_counter()
+                phase_i_route = get_phase_i_routing_service().route(
+                    query=request.message,
+                    query_family=_infer_scoped_query_family(request.message, scoped_paper_ids),
+                    paper_scope=scoped_paper_ids,
+                )
 
                 logger.info(
                     "Query routed",
@@ -359,6 +368,9 @@ async def chat_stream(
                                     "confidence": routing_result["confidence"],
                                     "reasoning": routing_result.get("reasoning", ""),
                                     "query_preview": request.message[:100],
+                                    "task_family": phase_i_route.task_family,
+                                    "execution_mode": phase_i_route.execution_mode,
+                                    "truthfulness_required": phase_i_route.truthfulness_required,
                                     "message_id": assistant_message_id,
                                 },
                             )
@@ -409,6 +421,12 @@ async def chat_stream(
                             "citations": payload.get("citations", []),
                             "evidence_blocks": payload.get("evidence_blocks", []),
                             "quality": payload.get("quality"),
+                            "task_family": payload.get("task_family"),
+                            "execution_mode": payload.get("execution_mode"),
+                            "truthfulness_required": payload.get("truthfulness_required"),
+                            "truthfulness_summary": payload.get("truthfulness_summary"),
+                            "retrieval_plane_policy": payload.get("retrieval_plane_policy"),
+                            "degraded_conditions": payload.get("degraded_conditions", []),
                             "retrieval_trace_id": payload.get("retrieval_trace_id"),
                             "error_state": payload.get("error_state"),
                             "compare_matrix": payload.get("compare_matrix"),
@@ -458,6 +476,9 @@ async def chat_stream(
                                     "confidence": routing_result["confidence"],
                                     "reasoning": routing_result.get("reasoning", ""),
                                     "query_preview": request.message[:100],
+                                    "task_family": phase_i_route.task_family,
+                                    "execution_mode": phase_i_route.execution_mode,
+                                    "truthfulness_required": phase_i_route.truthfulness_required,
                                     "message_id": assistant_message_id,
                                 },
                             )
@@ -552,6 +573,12 @@ async def chat_stream(
                                             if has_rag_fields
                                             else normalized_payload.get("response_type", "general")
                                         )
+                                        normalized_payload.setdefault("task_family", phase_i_route.task_family)
+                                        normalized_payload.setdefault("execution_mode", phase_i_route.execution_mode)
+                                        normalized_payload.setdefault(
+                                            "truthfulness_required",
+                                            phase_i_route.truthfulness_required,
+                                        )
 
                                     # Buffer normalized event payload
                                     buffered_event = await event_buffer.emit(
@@ -580,6 +607,9 @@ async def chat_stream(
                                                 "confidence": routing_result["confidence"],
                                                 "reasoning": routing_result.get("reasoning", ""),
                                                 "query_preview": request.message[:100],
+                                                "task_family": phase_i_route.task_family,
+                                                "execution_mode": phase_i_route.execution_mode,
+                                                "truthfulness_required": phase_i_route.truthfulness_required,
                                                 "message_id": normalized_payload.get("message_id"),
                                             },
                                         )
