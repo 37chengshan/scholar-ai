@@ -61,6 +61,7 @@ import { useSourceNavigation } from '@/features/read/hooks/useSourceNavigation';
 import { useChunkHighlight } from '@/features/read/hooks/useChunkHighlight';
 import { SourceChunkHighlight } from '@/features/read/components/SourceChunkHighlight';
 import { EvidenceSideNote } from '@/features/read/components/EvidenceSideNote';
+import { useReadPreferencesStore } from '@/features/read/state/readPreferencesStore';
 
 /**
  * Internal Read component that uses Router hooks
@@ -69,7 +70,6 @@ import { EvidenceSideNote } from '@/features/read/components/EvidenceSideNote';
 function ReadContent() {
   const MIN_PANEL_WIDTH = 320;
   const MAX_PANEL_WIDTH = 620;
-  const PANEL_WIDTH_STORAGE_KEY = 'scholarai-read-panel-width';
 
   const { id } = useParams<{ id?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -87,10 +87,6 @@ function ReadContent() {
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [scale, setScale] = useState(1.0);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [rightTab, setRightTab] = useState("notes");
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(360);
   const [isResizingPanel, setIsResizingPanel] = useState(false);
   const [selectedText, setSelectedText] = useState("");
   const [selectionPosition, setSelectionPosition] = useState<{
@@ -106,6 +102,16 @@ function ReadContent() {
   const [noteSaveStatus, setNoteSaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
   const [noteLastSaved, setNoteLastSaved] = useState<Date | null>(null);
   const [pageInputValue, setPageInputValue] = useState('1');
+  const {
+    rightTab,
+    isPanelOpen,
+    isFullscreen,
+    panelWidth,
+    setRightTab,
+    setIsPanelOpen,
+    setIsFullscreen,
+    setPanelWidth,
+  } = useReadPreferencesStore();
 
   const clampPage = useCallback(
     (page: number) => {
@@ -136,19 +142,11 @@ function ReadContent() {
   );
 
   useEffect(() => {
-    const savedWidth = localStorage.getItem(PANEL_WIDTH_STORAGE_KEY);
-    if (!savedWidth) {
-      return;
+    const clampedWidth = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, panelWidth));
+    if (clampedWidth !== panelWidth) {
+      setPanelWidth(clampedWidth);
     }
-    const parsed = Number(savedWidth);
-    if (!Number.isNaN(parsed)) {
-      setPanelWidth(Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, parsed)));
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(panelWidth));
-  }, [panelWidth]);
+  }, [panelWidth, setPanelWidth]);
 
   // Handle ?page= URL parameter for PDF reference jumps from notes
   useEffect(() => {
@@ -171,13 +169,12 @@ function ReadContent() {
       setRightTab(panel);
       return;
     }
+
     const source = searchParams.get('source');
     if (source === 'chat') {
       setRightTab('annotations');
     } else if (source === 'search') {
       setRightTab('summary');
-    } else {
-      setRightTab('notes');
     }
   }, [searchParams]);
 
@@ -362,6 +359,7 @@ function ReadContent() {
     const onFullscreenChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
     };
+    onFullscreenChange();
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
@@ -644,7 +642,7 @@ function ReadContent() {
             >
             <Tabs
               value={rightTab}
-              onValueChange={setRightTab}
+              onValueChange={(value) => setRightTab(value as 'notes' | 'annotations' | 'summary')}
               className="h-full flex flex-col"
             >
               <div className="border-b border-border/50 bg-background/80 backdrop-blur-md px-5 py-4">
