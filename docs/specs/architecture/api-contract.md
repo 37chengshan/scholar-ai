@@ -10,9 +10,9 @@
 
 ## Source of Truth
 
-- 仓库级契约：docs/architecture/api-contract.md
+- 仓库级契约：docs/specs/architecture/api-contract.md
 - 后端实现细节：apps/api/docs/API_CONTRACT.md
-- 资源生命周期：docs/domain/resources.md
+- 资源生命周期：docs/specs/domain/resources.md
 - 跨端共享契约：packages/types
 - 跨端 typed client：packages/sdk
 
@@ -130,6 +130,14 @@ Import Pipeline 契约补充：
 - 批量创建导入任务：`POST /api/v1/knowledge-bases/{kb_id}/imports/batch`
 - 批量本地文件上传：`POST /api/v1/import-batches/{batch_id}/files`
 - dedupe 决策：`POST /api/v1/import-jobs/{job_id}/dedupe-decision`
+
+External discovery/import 主链补充（Phase B）：
+
+- `GET /api/v1/search/unified` 是外部论文发现唯一正式搜索入口；Phase B 不再以 source-specific import 路由作为主路径。
+- `POST /api/v1/knowledge-bases/{kb_id}/imports` 是单篇 external import 唯一正式导入入口。
+- `POST /api/v1/knowledge-bases/{kb_id}/imports/batch` 是批量 external import 唯一正式导入入口。
+- Semantic Scholar API key 只允许存在于后端环境变量；前端不得直连第三方 provider。
+- `POST /api/v1/knowledge-bases/{kb_id}/import-arxiv`、`POST /api/v1/knowledge-bases/{kb_id}/import-url` 若仍保留，只允许视为兼容/迁移入口，不得作为 Phase B 主链继续扩展。
 
 批量本地文件上传响应要求：
 
@@ -348,10 +356,32 @@ Notes 资源契约补充：
 Search API 契约补充：
 
 - `GET /api/v1/search/unified`：统一搜索接口
-  - 查询参数：`query`、`limit`、`offset`、`year_from`（可选）、`year_to`（可选）
+  - 查询参数：`query`、`limit`、`offset`、`source`（可选，`local_kb | arxiv | semantic_scholar | all`）、`year_from`（可选）、`year_to`（可选）
   - 响应格式：返回 `data.results[]` 与 `meta.limit/offset/total`
   - 客户端实现：支持 AbortSignal 用于请求取消（frontend request cancellation）
   - 前端额外功能：支持会话搜索（session-side filtering）与结果缓存（react-query keepPreviousData）
+  - `data.results[]` 必须统一返回 canonical search result，不允许前端自行拼装 source-specific 字段
+  - external result 最小字段：
+    - `resultType = external_paper`
+    - `externalId`
+    - `source`（`arxiv | semantic_scholar`）
+    - `title`
+    - `authors[]`
+    - `abstract`
+    - `year`
+    - `venue`
+    - `doi`
+    - `arxivId`
+    - `s2PaperId`
+    - `url`
+    - `pdfUrl`
+    - `openAccess`
+    - `citationCount`
+    - `referencesCount`
+    - `fieldsOfStudy[]`
+    - `availability`（`metadata_only | pdf_available | pdf_unavailable`）
+    - `libraryStatus`（`not_imported | importing | imported_metadata_only | imported_fulltext_ready`）
+  - local result 继续返回既有 paper/document 字段，但当结果对应已入库论文时，`libraryStatus` 必须与外部结果的投影语义保持一致
 
 - `POST /api/v1/search/multimodal`：库内多模态检索接口
   - 请求体：`query`、`paper_ids[]`、`top_k`、`use_reranker`、`content_types[]`、`enable_clustering`
@@ -382,9 +412,10 @@ Evidence/Notes 扩展契约补充（v3.4-v3.5）：
 Chat v3 Done 事件契约补充（Frontend Evidence UI）：
 
 - `chat/stream` 的 `done` 事件在既有字段基础上允许返回：
-  - `response_type`、`answer_mode`、`claims[]`、`citations[]`、`evidence_blocks[]`、`quality`、`trace_id`、`run_id`
-  - `compare_matrix`：当 `response_type=compare` 时必须保留，不允许在 SDK 或前端 normalizer 中丢失
-  - `trace{}`（包含 `runtime_profile`、`spans[]`、`fallback`、`cost_estimate`）
+- `response_type`、`answer_mode`、`claims[]`、`citations[]`、`evidence_blocks[]`、`quality`、`trace_id`、`run_id`
+- `compare_matrix`：当 `response_type=compare` 时必须保留，不允许在 SDK 或前端 normalizer 中丢失
+- `trace{}`（包含 `runtime_profile`、`spans[]`、`fallback`、`cost_estimate`）
+- Phase I 首批新增：`task_family`、`execution_mode`、`truthfulness_required`、`truthfulness_summary`、`truthfulness_report`、`retrieval_plane_policy`、`degraded_conditions`
   - `cost_estimate`、`error_state`（取值允许 `fallback_used|partial_answer|abstain`）
 - SSE `done` 字段扩展必须向后兼容：老客户端仅消费 `answer`/`citations` 时不可崩溃。
 
@@ -397,14 +428,15 @@ Chat v3 Done 事件契约补充（Frontend Evidence UI）：
   - `dimensions[]`：允许子集 `{problem, method, dataset, metrics, results, limitations, innovation}`
   - `question`：可选研究问题，用于引导 retrieval
 - 响应字段要求：
-  - `response_type` 固定为 `compare`
-  - `compare_matrix` 必须存在，且其所有 cell 均来自真实 evidence candidates；证据不足时仅允许 `support_status=not_enough_evidence`
+- `response_type` 固定为 `compare`
+- `compare_matrix` 必须存在，且其所有 cell 均来自真实 evidence candidates；证据不足时仅允许 `support_status=not_enough_evidence`
+- compare / review / rag 共享同一 claim truthfulness substrate；若返回 claim 级校验结果，字段语义必须与 `truthfulness_report.results[]` 对齐，不允许各服务私有命名漂移。
   - `evidence_blocks[]` / `citations[]` 必须可回跳到 Read 页，不得返回 synthetic lexical placeholder 作为生产证据
 
 Plan C 契约治理约束：
 
-- 契约表面改动（apps/api/app/api, apps/api/app/models, apps/web/src/services, packages/types, packages/sdk）必须同步更新本文件与 `docs/domain/resources.md`。
-- 任何 fallback 契约兼容必须在 `docs/governance/fallback-register.yaml` 登记到期时间与删除计划。
+- 契约表面改动（apps/api/app/api, apps/api/app/models, apps/web/src/services, packages/types, packages/sdk）必须同步更新本文件与 `docs/specs/domain/resources.md`。
+- 任何 fallback 契约兼容必须在 `docs/specs/governance/fallback-register.yaml` 登记到期时间与删除计划。
 - UploadHistory 是 ImportJob/UploadSession/ProcessingTask 的投影视图，不作为并行真源。
 
 前端主链路补充：
@@ -416,7 +448,7 @@ Plan C 契约治理约束：
 
 - 新增接口：同步校验是否符合本契约。
 - 改动响应格式：同步更新本文件与调用方。
-- 改动 SSE 事件：同步更新 docs/architecture/system-overview.md。
+- 改动 SSE 事件：同步更新 docs/specs/architecture/system-overview.md。
 
 上传会话（PR19）接口补充：
 
@@ -453,6 +485,35 @@ ImportJob `nextAction` 补充：
   - `progress`
   - `nextAction`（可空）
   - `error`（可空，结构为 `{ code, message }`）
+
+External import 请求/状态语义补充（Phase B）：
+
+- `POST /api/v1/knowledge-bases/{kb_id}/imports`
+  - `sourceType` 允许值：`local_file | arxiv | pdf_url | doi | semantic_scholar`
+  - 当 `sourceType = arxiv | semantic_scholar` 时，请求体 `payload` 至少允许携带：
+    - `externalId`
+    - `source`
+    - `title`
+    - `doi`（可选）
+    - `arxivId`（可选）
+    - `s2PaperId`（可选）
+    - `pdfUrl`（可选）
+    - `metadata`（可选，保留 provider 归一化后的补充字段）
+- `ImportJob.status` 仍使用资源状态机冻结集合：`created | queued | running | awaiting_user_action | completed | failed | cancelled`
+- `ImportJob.stage` 用于表达导入过程进度，Phase B 外部导入最小阶段集合冻结为：
+  - `queued`
+  - `resolving`
+  - `downloading`
+  - `parsing`
+  - `indexing`
+  - `completed_metadata_only`
+  - `completed_fulltext_ready`
+  - `failed`
+  - `cancelled`
+- `availability`、`libraryStatus`、`ImportJob.stage` 为三个不同层级字段，禁止互相替代：
+  - `availability` 只表达外部结果的 PDF 可用性
+  - `libraryStatus` 只表达该论文在当前用户文库中的可消费状态
+  - `ImportJob.stage` 只表达当前这次导入任务的进度
 
 导入兜底上传契约补充：
 

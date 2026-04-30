@@ -92,6 +92,8 @@ async def test_simple_query_routes_to_fast_path_and_bypasses_orchestrator():
     assert "message" in event_names
     assert "done" in event_names
     assert routing_payload.get("message_id") == "assistant-fast-1"
+    assert routing_payload.get("task_family") == "single_paper_fact"
+    assert routing_payload.get("execution_mode") == "local_evidence"
     mock_execute_with_streaming.assert_not_called()
 
 
@@ -338,6 +340,7 @@ async def test_context_paper_ids_use_scoped_rag_path():
     assert done_payload.get("diagnostics", {}).get("path") == "scoped_paper_rag"
     assert done_payload.get("citations") == scoped_payload["citations"]
     assert done_payload.get("message_id") == "assistant-scoped-1"
+    assert done_payload.get("task_family") == scoped_payload.get("task_family")
 
 
 @pytest.mark.asyncio

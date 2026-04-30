@@ -20,6 +20,31 @@ class QueryPlan:
     rerank_top_k: int
 
 
+_DEPTH_OVERRIDES: dict[str, dict[str, int]] = {
+    "shallow": {
+        "paper_top_k": 6,
+        "section_top_k_per_paper": 3,
+        "dense_chunk_top_k": 24,
+        "candidate_pool_max": 24,
+        "rerank_top_k": 8,
+    },
+    "medium": {
+        "paper_top_k": 10,
+        "section_top_k_per_paper": 4,
+        "dense_chunk_top_k": 40,
+        "candidate_pool_max": 40,
+        "rerank_top_k": 12,
+    },
+    "deep": {
+        "paper_top_k": 16,
+        "section_top_k_per_paper": 6,
+        "dense_chunk_top_k": 72,
+        "candidate_pool_max": 72,
+        "rerank_top_k": 20,
+    },
+}
+
+
 def build_query_plan(query: str, query_family: str | None = None) -> QueryPlan:
     family = normalize_query_family(query_family) if query_family else infer_query_family(query)
 
@@ -53,3 +78,13 @@ def build_query_plan(query: str, query_family: str | None = None) -> QueryPlan:
         candidate_pool_max=candidate_pool_max,
         rerank_top_k=rerank_top_k,
     )
+
+
+def apply_retrieval_depth_override(plan: QueryPlan, retrieval_depth: str | None) -> QueryPlan:
+    override = _DEPTH_OVERRIDES.get(str(retrieval_depth or "").strip().lower())
+    if not override:
+        return plan
+
+    payload = plan.__dict__.copy()
+    payload.update(override)
+    return QueryPlan(**payload)

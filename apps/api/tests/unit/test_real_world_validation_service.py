@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.services.real_world_validation_service import (
+    build_phase_j_workflow_bundle,
     render_markdown_report,
     summarize_real_world_validation,
     validate_real_world_payload,
@@ -233,3 +234,37 @@ def test_full_chain_runs_require_all_standard_steps_to_pass() -> None:
     summary = summarize_real_world_validation(payload)
 
     assert summary["run_summary"]["full_chain_runs"] == 0
+
+
+def test_build_phase_j_workflow_bundle_exposes_comparative_entries() -> None:
+    payload = {
+        "schema_version": "v3.0-d-p0",
+        "sample_registry": [_sample("D-001", "external_import")],
+        "runs": [
+            {
+                **_run("RW-001", ["D-001"], bucket="degrading"),
+                "runtime_truth": {
+                    "runtime_mode": "online",
+                    "mode_parity_with_baseline": True,
+                    "provider_identity": {"embedding": "dashscope_qwen"},
+                },
+                "workflow_steps": [
+                    {"step_name": "read", "status": "passed", "consumed_by_next": True, "latency_ms": 800},
+                    {"step_name": "chat", "status": "passed", "consumed_by_next": True, "latency_ms": 1200},
+                    {"step_name": "review", "status": "passed", "consumed_by_next": True, "latency_ms": 1500},
+                ],
+            }
+        ],
+    }
+
+    bundle = build_phase_j_workflow_bundle(payload)
+
+    assert bundle["comparative_bundle_type"] == "phase_j_workflow_bundle"
+    assert bundle["dataset_version"] == "v3.0-d-p0"
+    assert len(bundle["entries"]) == 2
+    review_entry = next(entry for entry in bundle["entries"] if entry["task_family"] == "Review")
+    assert review_entry["case_source"] == "workflow"
+    assert review_entry["runtime_truth"]["runtime_mode"] == "online"
+    assert review_entry["mode_parity_with_baseline"] is True
+    assert review_entry["total_latency_ms"] == 1500.0
+    assert review_entry["degraded_conditions"] == ["unsupported claim visible in review"]

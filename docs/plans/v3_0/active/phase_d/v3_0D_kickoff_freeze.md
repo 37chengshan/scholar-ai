@@ -66,7 +66,7 @@ external search
 
 ### Freeze-06：close-out 报告是唯一输出真源
 
-- Phase D 的结论必须收口成 `docs/reports/v3_0_real_world_validation.md`。
+- Phase D 的结论必须收口成 `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md`。
 - 不以 raw logs / 截图 / 口头结论替代正式报告。
 - 后续 Phase G Public Beta 必须引用此报告，不重新做结论。
 
@@ -112,4 +112,4 @@ external search
 2. 至少 20 个完整 workflow run 被正式记录。
 3. 所有失败被分桶为 blocking / degrading / paper_cut，无散落记录。
 4. `metadata-only / fulltext-ready` 诚实性已显式检查。
-5. close-out 报告已写入 `docs/reports/v3_0_real_world_validation.md`。
+5. close-out 报告已写入 `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md`。

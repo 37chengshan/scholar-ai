@@ -145,7 +145,12 @@ class AnswerClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     claim: str
-    support_status: Literal["supported", "partially_supported", "unsupported"]
+    claim_id: str = ""
+    claim_type: str = "factual"
+    support_status: Literal["supported", "weakly_supported", "partially_supported", "unsupported"]
+    support_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    repairable: bool = True
+    repair_hint: Optional[str] = None
     supporting_source_chunk_ids: list[str] = Field(default_factory=list)
     citation_ids: list[str] = Field(default_factory=list)
 
@@ -159,6 +164,9 @@ class AnswerCitation(BaseModel):
     section_path: Optional[str] = None
     title: str = ""
     anchor_text: str = ""
+    quote_text: str = ""
+    source_offset_start: Optional[int] = None
+    source_offset_end: Optional[int] = None
     text_preview: str = ""
     score: Optional[float] = None
     content_type: str = "text"
@@ -176,10 +184,13 @@ class EvidenceBlock(BaseModel):
     section_path: Optional[str] = None
     content_type: str = "text"
     text: str = ""
+    quote_text: str = ""
+    source_offset_start: Optional[int] = None
+    source_offset_end: Optional[int] = None
     score: Optional[float] = None
     rerank_score: Optional[float] = None
     support_status: Optional[
-        Literal["supported", "partially_supported", "unsupported"]
+        Literal["supported", "weakly_supported", "partially_supported", "unsupported"]
     ] = None
     citation_jump_url: str = ""
     user_comment: Optional[str] = None
@@ -258,3 +269,10 @@ class AnswerContract(BaseModel):
     trace_id: str = ""
     run_id: str = ""
     compare_matrix: Optional[CompareMatrix] = None
+    task_family: str = ""
+    execution_mode: str = ""
+    truthfulness_required: bool = False
+    truthfulness_summary: dict[str, Any] = Field(default_factory=dict)
+    truthfulness_report: dict[str, Any] = Field(default_factory=dict)
+    retrieval_plane_policy: dict[str, Any] = Field(default_factory=dict)
+    degraded_conditions: list[str] = Field(default_factory=list)

@@ -10,8 +10,8 @@
 
 ## Source of Truth
 
-- API 契约：docs/architecture/api-contract.md
-- 系统总览：docs/architecture/system-overview.md
+- API 契约：docs/specs/architecture/api-contract.md
+- 系统总览：docs/specs/architecture/system-overview.md
 - 后端模型：apps/api/app/models
 - 后端服务：apps/api/app/services
 
@@ -34,6 +34,7 @@
 - EvidenceSourceView：按 `source_chunk_id` 回查证据原文与定位信息的只读资源视图
 - EvidenceNote：由 claim+citation 落盘生成的用户可编辑笔记资源（归属 Note 主模型）
 - ClaimVerificationReport：RAG 回答阶段的 claim 级验证结果资源（支持/弱支持/不支持）
+- TruthfulnessReport：Phase I 首批统一 truthfulness substrate 资源，服务于 rag/chat/compare/review 共享 claim 校验与 repair
 - GraphRetrievalResult：图增强检索候选与融合统计资源（compare/evolution/numeric 场景）
 - ReviewDraft：KB 级正式综述草稿资源（outlineDoc + draftDoc 同源承载）
 - ReviewRun：KB 级综述生成运行记录资源（steps/tool_events/artifacts/evidence/recovery）
@@ -50,6 +51,7 @@
 - EvidenceSourceView 由 Chunk/索引产物投影生成，必须提供 `citation_jump_url` 作为统一跳转字段，并兼容回跳到 Read 页面定位参数（`paper_id`、`page_num`、`source_chunk_id`）。
 - EvidenceNote 是 Note 的受控创建路径之一，必须绑定 `paper_id` 与 `source_chunk_id`，并把 EvidenceBlock 2.0 写入 `linkedEvidence[]`，不得创建并行笔记模型。
 - ClaimVerificationReport 绑定单次 RAG 响应，引用 EvidenceBundle/Chunk 作为 claim 证据来源。
+- TruthfulnessReport 可绑定单次 RAG/Compare/Review 段落响应，最小字段为 `totalClaims`、四档 support count、`unsupportedClaimRate`、`answerMode` 与 `results[]`。
 - GraphRetrievalResult 绑定单次检索计划，作为 vector 检索的约束与重排辅助，不独立替代 Chunk。
 - ReviewDraft 归属 KnowledgeBase，可选绑定 `sourcePaperIds[]` 子集；同一 draft 可被多次 retry/run 覆盖更新。
 - ReviewRun 归属 KnowledgeBase 且可回链到 ReviewDraft；Run 是执行轨迹真源，禁止用 session 列表投影伪装。
@@ -99,6 +101,7 @@ Paper 交互资源补充：
 - PaperStar：用户与 Paper 的收藏关系资源，操作入口为 `/api/v1/papers/{paperId}/star`。
 - PaperBatchOperation：批量操作结果资源，至少包含 `successItems` 与 `failedItems`。
 - SearchResult：搜索结果资源，支持论文与知识片段的统一搜索，包括请求取消与前端缓存策略。
+- ExternalPaper：外部论文发现的 canonical 只读投影视图，由统一搜索接口返回，不单独要求数据库真源。
 
 关键生命周期事件：
 
@@ -109,6 +112,9 @@ Paper 交互资源补充：
 - task.finished
 - task.failed
 - session.closed
+- external_paper.discovered
+- import_job.completed_metadata_only
+- import_job.completed_fulltext_ready
 - review_draft.created
 - review_draft.run_started
 - review_draft.completed
@@ -127,6 +133,39 @@ Paper 交互资源补充：
 - EvidenceBundle（重建、去重、字段回填）
 - ReviewDraft（outline/draft 覆盖更新、quality/errorState 回写）
 - ReviewRun（步骤状态、恢复动作、trace 元数据写入）
+
+Phase B 外部发现/导入资源补充：
+
+- `ExternalPaper` 是 SearchResult 的 external branch canonical shape，最小字段包括：
+  - `external_id`
+  - `source(arxiv|semantic_scholar)`
+  - `title`
+  - `authors[]`
+  - `abstract`
+  - `year`
+  - `venue`
+  - `doi`
+  - `arxiv_id`
+  - `s2_paper_id`
+  - `url`
+  - `pdf_url`
+  - `open_access`
+  - `citation_count`
+  - `references_count`
+  - `fields_of_study[]`
+  - `availability(metadata_only|pdf_available|pdf_unavailable)`
+  - `library_status(not_imported|importing|imported_metadata_only|imported_fulltext_ready)`
+- `ExternalPaper` 与 `Paper` 不是并行真源关系：
+  - `ExternalPaper` 是发现态投影
+  - `Paper` 是入库后的持久资源
+  - 两者通过 dedupe / import matching 关联
+- Phase B 状态分层冻结如下，执行者不得混用：
+  - `ImportJob.status`：任务级终态/运行态，继续使用 `created -> queued -> running -> awaiting_user_action -> completed | failed | cancelled`
+  - `ImportJob.stage`：过程级进度，最小集合为 `queued | resolving | downloading | parsing | indexing | completed_metadata_only | completed_fulltext_ready | failed | cancelled`
+  - `ExternalPaper.availability`：外部可得性，固定为 `metadata_only | pdf_available | pdf_unavailable`
+  - `ExternalPaper.library_status`：文库消费态，固定为 `not_imported | importing | imported_metadata_only | imported_fulltext_ready`
+- `imported_metadata_only` 表示 metadata 已入库但全文不可消费；不得被 Chat / Read 全文证据链路当作 `fulltext_ready`。
+- `imported_fulltext_ready` 表示 PDF 获取、解析、chunk、embedding/index 已完成，可进入 KB / Read / Chat / Notes / Compare 主链。
 
 EvidenceBundle 最小字段契约：
 
@@ -157,6 +196,7 @@ ReviewDraft 最小字段契约（Phase 5）：
 - `outline_doc.sections[]`：`title`、`intent`、`supporting_paper_ids[]`、`seed_evidence[]`
 - `draft_doc.sections[]`：`heading`、`paragraphs[]`、`omitted_reason`
 - `draft_doc.sections[].paragraphs[]`：`paragraph_id`、`text`、`citations[]`、`evidence_blocks[]`、`citation_coverage_status(covered|insufficient)`
+- `draft_doc.sections[].paragraphs[]` 可选补充 `claim_verification[]` 与 `truthfulness_summary{}`，且两者必须来自统一 truthfulness substrate。
 - `quality`：`citation_coverage`、`unsupported_paragraph_rate`、`graph_assist_used`、`fallback_used`
 - `trace_id`、`run_id`、`error_state`、`created_at`、`updated_at`
 
@@ -176,10 +216,10 @@ ReviewRun 最小字段契约（Phase 5）：
 
 ## Required Updates
 
-- 新增资源类型：同步更新本文件与 docs/architecture/api-contract.md。
+- 新增资源类型：同步更新本文件与 docs/specs/architecture/api-contract.md。
 - 资源状态迁移变化：同步更新 apps/api/app/models 与本文件。
 - 新增异步任务：同步补充可修改资源列表。
-- 资源契约边界变化：同步更新 docs/governance/fallback-register.yaml 与相关 gate 脚本规则（如适用）。
+- 资源契约边界变化：同步更新 docs/specs/governance/fallback-register.yaml 与相关 gate 脚本规则（如适用）。
 
 ## Verification
 
@@ -224,6 +264,27 @@ ReviewRun 最小字段契约（Phase 5）：
   - `fallback_used_count <= 5`
   - `cost_per_answer` 必须存在
   - diff 在 `retrieval_hit_rate`、`answer_supported_rate`、`groundedness`、`citation_jump_valid_rate`、`abstain_precision`、`recall_at_5` 上不得回退
+
+## Phase D 真实验证资源（文件系统模型）
+
+以下资源均以文件系统产物形式存储于 `artifacts/validation-results/phase_d/`，**无 DB 表**，通过 `scripts/evals/v3_0_real_world_validation_report.py` 读取并汇总到正式报告。
+
+### RealWorldValidationPayload（真实验证载荷）
+- 文件：`phase_d/real_world_validation.json`
+- 字段：`schema_version`、`generated_at`、`notes[]`、`sample_registry[]`、`runs[]`
+- `sample_registry[]` 最小字段：`sample_id`、`title`、`sample_type`、`source_type`、`discipline`、`document_complexity`、`language_mix`、`expected_risk`
+- `runs[]` 最小字段：`run_id`、`sample_ids[]`、`workflow_steps[]`、`success_state`、`failure_points[]`、`recovery_actions[]`、`evidence_reviews[]`、`honesty_checks{}`、`user_visible_confusions[]`
+- 状态：append-only；真实 run 一旦记录，不允许删除，只允许追加或补充分析字段
+
+### RealWorldValidationSummary（真实验证汇总）
+- 文件：`phase_d/real_world_validation.summary.json`
+- 字段：`sample_summary`、`run_summary`、`workflow_summary`、`failure_summary`、`evidence_summary`、`honesty_summary`、`recommendation`
+- 语义：由脚本生成的归一化统计快照，不作为手工编辑真源
+
+### RealWorldValidationReport（正式 close-out 报告）
+- 文件：`docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md`
+- 内容至少包含：样本组成、workflow 覆盖、失败分桶、evidence 质量、honesty 检查、release 建议
+- 状态：report-only；结论必须由 `real_world_validation.json` 与 `real_world_validation.summary.json` 推导，不允许手工写出与载荷不一致的结论
 
 ## Open Questions
 

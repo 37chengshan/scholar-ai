@@ -139,7 +139,7 @@
 
 ### 4.5 Phase D 明确未完成，而且仓库自己已经给出否定结论
 
-`docs/reports/v3_0_real_world_validation.md` 与 `artifacts/validation-results/phase_d/real_world_validation.summary.json` 一致表明：
+`docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md` 与 `artifacts/validation-results/phase_d/real_world_validation.summary.json` 一致表明：
 
 1. `total_samples = 8`
 2. `total_runs = 2`

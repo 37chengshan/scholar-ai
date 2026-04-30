@@ -24,7 +24,7 @@
 当前仓库已经具备三类与 `Phase D` 强相关的基础：
 
 1. benchmark / gate 侧已有更正式的学术评测基础：
-   - `docs/reports/v3_0_academic_adoption_report.md`
+   - `docs/plans/v3_0/reports/validation/v3_0_academic_adoption_report.md`
 2. 真实代码主链已具备 Search / Import / KB / Read / Chat / Review 的可复用入口：
    - `apps/web/src/features/search/components/SearchWorkspace.tsx`
    - `apps/web/src/features/kb/components/KnowledgeWorkspaceShell.tsx`
@@ -327,7 +327,7 @@ retrieval 看起来很好，
 
 `Phase D` 的正式输出应固定为：
 
-1. `docs/reports/v3_0_real_world_validation.md`
+1. `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md`
 
 建议报告包含：
 

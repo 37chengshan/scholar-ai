@@ -88,4 +88,4 @@
 1. 执行一个模板
 2. 立即把真实结果写入 `real_world_validation.json` 的 `runs[]`
 3. 执行 `python3 scripts/evals/v3_0_real_world_validation_report.py`
-4. 检查 `docs/reports/v3_0_real_world_validation.md` 与 summary JSON 是否同步刷新
+4. 检查 `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md` 与 summary JSON 是否同步刷新

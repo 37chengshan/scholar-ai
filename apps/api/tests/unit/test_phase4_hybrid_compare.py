@@ -259,6 +259,29 @@ class TestCompareService:
         assert contract.response_type == "compare"
         assert contract.compare_matrix is not None
 
+    def test_compare_contract_truthfulness_tracks_compare_output_not_raw_evidence_concat(self):
+        paper_ids = ["p-001", "p-002"]
+        dims = [CompareDimension(id="method", label="Method"), CompareDimension(id="dataset", label="Dataset")]
+        pack = self._make_pack_for_papers(paper_ids)
+        paper_meta = {
+            "p-001": {"title": "Paper 1", "year": 2020},
+            "p-002": {"title": "Paper 2", "year": 2021},
+        }
+
+        contract = build_compare_contract(
+            paper_ids=paper_ids,
+            paper_meta=paper_meta,
+            pack=pack,
+            dimensions=dims,
+        )
+
+        assert contract.answer_mode in {"full", "partial"}
+        assert len(contract.claims) >= 2
+        assert contract.truthfulness_summary["total_claims"] >= 2
+        assert contract.execution_mode == "local_compare"
+        assert contract.truthfulness_required is True
+        assert "answer_mode" in contract.truthfulness_summary
+
     def test_compare_matrix_all_required_fields(self):
         """CompareMatrix must expose paper_ids, dimensions, rows, summary, cross_paper_insights."""
         paper_ids = ["p-001", "p-002"]

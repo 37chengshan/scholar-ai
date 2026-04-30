@@ -9,7 +9,7 @@ files_reviewed_list:
   - apps/api/tests/unit/test_real_world_validation_service.py
   - artifacts/validation-results/phase_d/real_world_validation.json
   - docs/specs/domain/resources.md
-  - docs/reports/v3_0_real_world_validation.md
+  - docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md
 findings:
   critical: 1
   warning: 2

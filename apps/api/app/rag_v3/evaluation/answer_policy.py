@@ -18,7 +18,7 @@ def build_answer_contract(pack: EvidencePack, quality: EvidenceQualityScore) -> 
 
     for candidate in pack.candidates[:10]:
         claim_text = candidate.anchor_text or candidate.source_chunk_id
-        support_status = "supported" if candidate.rerank_score >= 0.7 else "partially_supported"
+        support_status = "supported" if candidate.rerank_score >= 0.7 else "weakly_supported"
         if candidate.rerank_score < 0.4:
             support_status = "unsupported"
             unsupported_claims.append(claim_text)
@@ -75,7 +75,7 @@ def build_answer_contract(pack: EvidencePack, quality: EvidenceQualityScore) -> 
     critical_claim_supported_rate = critical_supported / max(total_claims, 1)
 
     unsupported_count = sum(1 for c in claims if c["support_status"] == "unsupported")
-    has_partial = any(c["support_status"] == "partially_supported" for c in claims)
+    has_partial = any(c["support_status"] in {"partially_supported", "weakly_supported"} for c in claims)
 
     if critical_supported == 0:
         final_answer_mode = "abstain"

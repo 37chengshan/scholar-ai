@@ -134,6 +134,23 @@ def get_embedding_model_for_query_family(query_family: str | None) -> str:
     return ACTIVE_PROFILE.embedding_model_flash
 
 
+def get_embedding_model_for_policy(
+    retrieval_model_policy: str | None,
+    *,
+    query_family: str | None = None,
+) -> str:
+    """Resolve the official retrieval embedding policy by explicit route policy.
+
+    Falls back to the query-family mapping so old call sites remain stable.
+    """
+    policy = str(retrieval_model_policy or "").strip().lower()
+    if policy == "pro":
+        return ACTIVE_PROFILE.embedding_model_pro
+    if policy == "flash":
+        return ACTIVE_PROFILE.embedding_model_flash
+    return get_embedding_model_for_query_family(query_family)
+
+
 def get_collection_for_stage(stage: str) -> str:
     """Resolve the canonical Milvus collection for a retrieval stage."""
     normalized = str(stage or "rule").strip().lower()
