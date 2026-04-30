@@ -34,6 +34,7 @@ class TruthfulnessService:
             "weakly_supported_claims": report["weaklySupportedClaimCount"],
             "partially_supported_claims": report["partiallySupportedClaimCount"],
             "unsupported_claims": report["unsupportedClaimCount"],
+            "unsupported_claim_rate": report["unsupportedClaimRate"],
             "answer_mode": report["answerMode"],
             "verifier_backend": report.get("verifierBackend", "lexical_overlap"),
         }

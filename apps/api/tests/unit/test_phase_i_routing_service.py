@@ -26,6 +26,15 @@ def test_phase_i_router_maps_survey_to_global_review() -> None:
     assert decision.retrieval_model_policy == "pro"
 
 
+def test_phase_i_router_detects_chinese_survey_terms() -> None:
+    decision = get_phase_i_routing_service().route(
+        query="请基于这些论文做一个研究现状综述",
+    )
+
+    assert decision.query_family == "survey"
+    assert decision.execution_mode == "global_review"
+
+
 def test_phase_i_router_maps_claim_repair_to_truthfulness_repair() -> None:
     decision = get_phase_i_routing_service().route(
         query="repair this claim",

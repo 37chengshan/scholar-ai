@@ -29,15 +29,27 @@ def normalize_query_family(value: str | None) -> str:
 def infer_query_family(query: str) -> str:
     text = str(query or "").lower()
 
-    if re.search(r"\b(conflict|contradict|inconsistent|disagree|争议|矛盾|冲突)\b", text):
+    if re.search(r"\b(conflict|contradict|inconsistent|disagree)\b", text) or re.search(
+        r"争议|矛盾|冲突",
+        text,
+    ):
         return "conflicting_evidence"
-    if re.search(r"\b(survey|literature review|related work|综述|研究现状)\b", text):
+    if re.search(r"\b(survey|literature review|related work)\b", text) or re.search(
+        r"综述|研究现状",
+        text,
+    ):
         if "related work" in text:
             return "related_work"
         return "survey"
-    if re.search(r"\b(evolution|timeline|history|发展脉络|演进)\b", text):
+    if re.search(r"\b(evolution|timeline|history)\b", text) or re.search(
+        r"发展脉络|演进",
+        text,
+    ):
         return "method_evolution"
-    if re.search(r"\b(hard|open problem|why is .* difficult|挑战|难点)\b", text):
+    if re.search(r"\b(hard|open problem|why is .* difficult)\b", text) or re.search(
+        r"挑战|难点",
+        text,
+    ):
         return "hard"
     if re.search(r"\b(table|tab\.|rows?|columns?|figure|fig\.|caption)\b", text):
         if "figure" in text or "fig." in text:

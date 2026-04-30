@@ -48,6 +48,7 @@ def test_truthfulness_service_builds_four_level_report() -> None:
     assert report["weaklySupportedClaimCount"] + report["partiallySupportedClaimCount"] >= 1
     assert report["summary"]["answer_mode"] == "abstain"
     assert report["summary"]["verifier_backend"] == "rarr_cove_scifact_lite"
+    assert report["summary"]["unsupported_claim_rate"] == report["unsupportedClaimRate"]
 
 
 def test_truthfulness_service_repair_claim_returns_hint() -> None:

@@ -27,7 +27,7 @@ real sample intake
 3. `docs/plans/v3_0/active/phase_c/09_v3_0C_execution_plan.md`
 4. `docs/plans/v3_0/active/phase_b/08_v3_0B_execution_plan.md`
 5. `docs/plans/v3_0/active/phase_a/07_v3_0A_execution_plan.md`
-6. `docs/plans/v3_0/reports/validation/v3_0_academic_adoption_report.md`
+6. `docs/reports/v3_0_academic_adoption_report.md`
 7. `docs/plans/v3_0/reports/validation/2026-04-22_retrieval_benchmark_large_real_report.md`
 8. `docs/plans/v3_0/reports/release/v3_6_release_gate_report.md`
 9. `apps/web/src/features/search/components/SearchWorkspace.tsx`
@@ -153,7 +153,7 @@ real sample intake
 
 执行方式：
 
-1. 固定输出到 `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md`
+1. 固定输出到 `docs/reports/v3_0_real_world_validation.md`
 2. 报告至少包含样本组成、workflow 覆盖、成功率、失败分桶、高风险复盘、release 建议
 3. 不以 raw logs 代替 close-out 报告
 

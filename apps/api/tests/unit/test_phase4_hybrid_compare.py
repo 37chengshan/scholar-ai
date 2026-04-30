@@ -281,6 +281,8 @@ class TestCompareService:
         assert contract.execution_mode == "local_compare"
         assert contract.truthfulness_required is True
         assert "answer_mode" in contract.truthfulness_summary
+        assert contract.quality["unsupported_claim_rate"] == contract.truthfulness_report["unsupportedClaimRate"]
+        assert contract.quality["citation_coverage"] == contract.truthfulness_summary["citation_coverage"]
 
     def test_compare_matrix_all_required_fields(self):
         """CompareMatrix must expose paper_ids, dimensions, rows, summary, cross_paper_insights."""
