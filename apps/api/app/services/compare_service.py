@@ -17,10 +17,13 @@ from functools import lru_cache
 from typing import Any
 from uuid import uuid4
 
-from pymilvus import connections
-
 from app.config import get_settings
 from app.core.model_gateway import create_embedding_provider
+from app.core.rag_runtime_profile import (
+    get_active_rag_runtime_profile,
+    get_collection_for_stage,
+    get_embedding_model_for_query_family,
+)
 from app.rag_v3.retrieval.dense_evidence_retriever import DenseEvidenceRetriever
 from app.rag_v3.retrieval.hybrid_retriever import HybridRetriever
 from app.rag_v3.retrieval.sparse_evidence_retriever import SparseEvidenceRetriever
@@ -41,10 +44,11 @@ from app.services.evidence_contract_service import (
     build_citation_jump_url,
     get_evidence_source_payload,
 )
+from app.services.phase_i_routing_service import get_phase_i_routing_service
+from app.services.truthfulness_service import get_truthfulness_service
 
 COMPARE_STAGE = "rule"
-COMPARE_COLLECTION = "paper_contents_v2_api_tongyi_flash_rule_v2_3"
-COMPARE_EMBEDDING_MODEL = "tongyi-embedding-vision-flash-2026-03-06"
+RUNTIME_PROFILE = get_active_rag_runtime_profile()
 
 # ---------------------------------------------------------------------------
 # Default dimension catalogue for compare matrix
@@ -85,6 +89,8 @@ class _NoopSparseRetriever(SparseEvidenceRetriever):
 @lru_cache(maxsize=1)
 def get_compare_retriever() -> HybridRetriever:
     """Return the canonical compare retriever wired to the real dense index."""
+    from pymilvus import connections
+
     settings = get_settings()
     alias = f"v3_compare_{COMPARE_STAGE}"
     connections.connect(
@@ -93,10 +99,13 @@ def get_compare_retriever() -> HybridRetriever:
         port=settings.MILVUS_PORT,
     )
 
-    provider = create_embedding_provider("tongyi", COMPARE_EMBEDDING_MODEL)
+    provider = create_embedding_provider(
+        RUNTIME_PROFILE.embedding_provider,
+        get_embedding_model_for_query_family("compare"),
+    )
     dense = DenseEvidenceRetriever(
         embedding_provider=provider,
-        collection_name=COMPARE_COLLECTION,
+        collection_name=get_collection_for_stage(COMPARE_STAGE),
         milvus_alias=alias,
         output_fields=[
             "source_chunk_id",
@@ -254,6 +263,49 @@ def build_compare_matrix(
     )
 
 
+def _build_truthfulness_text(
+    *,
+    matrix: CompareMatrix,
+    paper_meta: dict[str, dict[str, Any]],
+) -> str:
+    dimension_labels = {dimension.id: dimension.label for dimension in matrix.dimensions}
+    sentences: list[str] = []
+
+    for row in matrix.rows:
+        paper_title = str(paper_meta.get(row.paper_id, {}).get("title") or row.title or row.paper_id)
+        for cell in row.cells:
+            if not cell.content or cell.support_status == "not_enough_evidence":
+                continue
+            dimension_label = dimension_labels.get(cell.dimension_id, cell.dimension_id)
+            sentences.append(f"{paper_title} {dimension_label}: {cell.content}.")
+
+    for insight in matrix.cross_paper_insights:
+        if not insight.claim:
+            continue
+        sentences.append(f"{insight.claim}.")
+
+    return " ".join(sentences).strip()
+
+
+def _resolve_compare_answer_mode(
+    *,
+    truthfulness_claims: list[dict[str, Any]],
+    fallback_mode: str,
+) -> str:
+    if not truthfulness_claims:
+        return fallback_mode
+
+    supported = sum(1 for claim in truthfulness_claims if claim.get("support_status") == "supported")
+    unsupported = sum(1 for claim in truthfulness_claims if claim.get("support_status") == "unsupported")
+    total = len(truthfulness_claims)
+
+    if supported == total:
+        return "full"
+    if unsupported == total:
+        return "abstain"
+    return "partial"
+
+
 def build_compare_contract(
     *,
     paper_ids: list[str],
@@ -264,6 +316,11 @@ def build_compare_contract(
     run_id: str | None = None,
 ) -> AnswerContract:
     """Build a full AnswerContract with response_type='compare'."""
+    routing = get_phase_i_routing_service().route(
+        query=pack.query,
+        query_family=pack.query_family,
+        paper_scope=paper_ids,
+    )
     matrix = build_compare_matrix(
         paper_ids=paper_ids,
         paper_meta=paper_meta,
@@ -314,12 +371,26 @@ def build_compare_contract(
         else "partial" if total > 0
         else "abstain"
     )
+    truthfulness_text = _build_truthfulness_text(matrix=matrix, paper_meta=paper_meta)
+    truthfulness_report = get_truthfulness_service().evaluate_text(
+        text=truthfulness_text,
+        evidence_blocks=deduped_blocks,
+    )
+    claim_rows = get_truthfulness_service().report_to_answer_claims(truthfulness_report)
+    resolved_answer_mode = _resolve_compare_answer_mode(
+        truthfulness_claims=claim_rows,
+        fallback_mode=answer_mode,
+    )
+    truthfulness_summary = {
+        **truthfulness_report.get("summary", {}),
+        "answer_mode": resolved_answer_mode,
+    }
 
     return AnswerContract(
         response_type="compare",
-        answer_mode=answer_mode,
+        answer_mode=resolved_answer_mode,
         answer="",
-        claims=claims,
+        claims=claim_rows,
         citations=citations,
         evidence_blocks=deduped_blocks,
         quality={
@@ -330,4 +401,10 @@ def build_compare_contract(
         trace_id=trace_id or uuid4().hex,
         run_id=run_id or uuid4().hex,
         compare_matrix=matrix,
+        task_family=routing.task_family,
+        execution_mode=routing.execution_mode,
+        truthfulness_required=routing.truthfulness_required,
+        truthfulness_summary=truthfulness_summary,
+        truthfulness_report=truthfulness_report,
+        retrieval_plane_policy=routing.retrieval_plane_policy,
     )

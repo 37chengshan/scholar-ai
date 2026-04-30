@@ -16,9 +16,16 @@ from app.rag_v3.fusion.rrf_fusion import rrf_fuse, trim_candidates
 from app.rag_v3.indexes.paper_index import PaperSummaryIndex
 from app.rag_v3.indexes.section_index import SectionSummaryIndex
 from app.rag_v3.planner.query_family_router import normalize_query_family
-from app.rag_v3.planner.query_plan import build_query_plan
+from app.rag_v3.planner.query_plan import apply_retrieval_depth_override, build_query_plan
+from app.rag_v3.rerank.qwen3vl_rerank_adapter import rerank_candidates
 from app.rag_v3.retrieval.dense_evidence_retriever import DenseEvidenceRetriever, extract_paper_ids_from_query
 from app.rag_v3.schemas import EvidenceCandidate, EvidencePack
+
+_RETRIEVAL_DEPTH_RANK = {
+    "shallow": 1.0,
+    "medium": 2.0,
+    "deep": 3.0,
+}
 
 
 class HierarchicalRetriever:
@@ -42,19 +49,21 @@ class HierarchicalRetriever:
         query_family: str,
         stage: str,
         top_k: int = 10,
+        retrieval_depth: str | None = None,
         section_paths: list[str] | None = None,
         page_from: int | None = None,
         page_to: int | None = None,
         content_types: list[str] | None = None,
     ) -> EvidencePack:
         plan = build_query_plan(query=query, query_family=query_family)
+        plan = apply_retrieval_depth_override(plan, retrieval_depth)
         family = normalize_query_family(plan.query_family)
 
         # Step 0: Extract paper ID literals from query
         query_paper_ids = extract_paper_ids_from_query(query)
 
         # Level 0: Paper-level TF-IDF retrieval → identify candidate paper set
-        top_paper_artifacts = self._paper_index.search(query=query, top_k=8)
+        top_paper_artifacts = self._paper_index.search(query=query, top_k=plan.paper_top_k)
         paper_candidate_ids = {art.paper_id for art in top_paper_artifacts}
 
         # Combine: query-extracted IDs take priority (they are explicit references)
@@ -67,7 +76,7 @@ class HierarchicalRetriever:
             all_filter_ids = list(paper_candidate_ids)[:10]
 
         # Level 2: Dense Milvus search with optional paper filter
-        dense_top_k = min(plan.candidate_pool_max, 100)
+        dense_top_k = min(plan.dense_chunk_top_k, 100)
         if effective_paper_ids:
             # Primary: filter by query-referenced papers
             dense_candidates = self._dense_retriever.retrieve(
@@ -83,7 +92,7 @@ class HierarchicalRetriever:
             if len(dense_candidates) < top_k:
                 extra = self._dense_retriever.retrieve(
                     query=query,
-                    top_k=top_k * 2,
+                    top_k=min(plan.dense_chunk_top_k, max(top_k * 2, top_k)),
                     section_paths=section_paths,
                     page_from=page_from,
                     page_to=page_to,
@@ -109,6 +118,7 @@ class HierarchicalRetriever:
             query=query,
             paper_ids=set(effective_paper_ids or []) | paper_candidate_ids,
             dense_candidates=dense_candidates,
+            section_top_k_per_paper=plan.section_top_k_per_paper,
         )
 
         # Merge source candidates for RRF fusion
@@ -125,7 +135,7 @@ class HierarchicalRetriever:
             max_candidates=plan.candidate_pool_max,
         )
 
-        reranked = self._simple_rerank(balanced)
+        reranked = rerank_candidates(query=query, candidates=balanced)
         final_candidates = trim_candidates(reranked, min(top_k, plan.rerank_top_k))
 
         # Guarantee: if query named specific papers but none appear in top results,
@@ -174,6 +184,15 @@ class HierarchicalRetriever:
                 "dense_fallback_used": float(1 if self._dense_retriever.last_trace.get("fallback_used") else 0),
                 "dense_unsupported_field_type_count": float(self._dense_retriever.unsupported_field_type_count),
                 "dense_fallback_used_count": float(self._dense_retriever.fallback_used_count),
+                "retrieval_depth_rank": _RETRIEVAL_DEPTH_RANK.get(
+                    str(retrieval_depth or "").strip().lower(),
+                    0.0,
+                ),
+                "paper_top_k": float(plan.paper_top_k),
+                "section_top_k_per_paper": float(plan.section_top_k_per_paper),
+                "dense_chunk_top_k": float(plan.dense_chunk_top_k),
+                "candidate_pool_max": float(plan.candidate_pool_max),
+                "rerank_top_k": float(plan.rerank_top_k),
             },
         )
 
@@ -194,6 +213,7 @@ class HierarchicalRetriever:
         query: str,
         paper_ids: set[str],
         dense_candidates: list[EvidenceCandidate],
+        section_top_k_per_paper: int,
     ) -> list[EvidenceCandidate]:
         """Generate section-level candidates anchored to the identified paper set."""
         if not paper_ids and not dense_candidates:
@@ -204,7 +224,11 @@ class HierarchicalRetriever:
 
         section_candidates: list[EvidenceCandidate] = []
         for pid in all_paper_ids:
-            sections = self._section_index.search_for_paper(pid, query=query, top_k=5)
+            sections = self._section_index.search_for_paper(
+                pid,
+                query=query,
+                top_k=section_top_k_per_paper,
+            )
             for sec in sections:
                 for chunk_id in sec.source_chunk_ids[:3]:
                     section_candidates.append(
@@ -218,14 +242,6 @@ class HierarchicalRetriever:
                         )
                     )
         return section_candidates
-
-    @staticmethod
-    def _simple_rerank(candidates: list[EvidenceCandidate]) -> list[EvidenceCandidate]:
-        ranked = sorted(candidates, key=lambda item: item.rrf_score, reverse=True)
-        for index, item in enumerate(ranked, start=1):
-            item.post_rerank_rank = index
-            item.rerank_score = max(0.0, min(1.0, 1.0 - ((index - 1) / max(len(ranked), 1))))
-        return ranked
 
     @staticmethod
     def _compute_paper_hit_rate(candidates: list[EvidenceCandidate]) -> float:
@@ -252,4 +268,3 @@ def retrieve_evidence(query: str, query_family: str, stage: str, top_k: int = 10
         stage=stage,
         top_k=top_k,
     )
-
