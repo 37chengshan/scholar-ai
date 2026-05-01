@@ -184,7 +184,7 @@ async def chat_stream(
                 logger.warning(
                     "Session not found, creating new", session_id=request.session_id
                 )
-            elif session.user_id != user_id:
+            elif getattr(session, "user_id", None) not in (None, user_id):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=Errors.forbidden("Session belongs to different user"),

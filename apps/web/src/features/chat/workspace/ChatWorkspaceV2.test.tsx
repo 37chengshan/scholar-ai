@@ -8,10 +8,21 @@ let mockSessionMessages: any[];
 let mockCreateSession: any;
 let mockWorkspaceState: any;
 
-vi.mock('react-router', () => ({
-  useNavigate: () => vi.fn(),
-  useSearchParams: () => [new URLSearchParams(), vi.fn()],
-}));
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual<typeof import('react-router')>('react-router');
+  return {
+    ...actual,
+    useNavigate: () => vi.fn(),
+    useSearchParams: () => [new URLSearchParams(), vi.fn()],
+    useLocation: () => ({
+      pathname: '/chat',
+      search: '',
+      hash: '',
+      state: null,
+      key: 'test-location',
+    }),
+  };
+});
 
 vi.mock('@/app/contexts/LanguageContext', () => ({
   useLanguage: () => ({ language: 'zh' }),

@@ -122,6 +122,7 @@ SSE 事件规范：
 - done 为唯一完成事件，不得与错误事件混用。
 - Chat 流式接口仅接受 canonical 事件类型，不再支持 legacy alias 映射。
 - 除 heartbeat 外，所有业务事件必须携带 `message_id`。
+- `POST /api/v1/chat/stream` 在携带 `Last-Event-ID` 的重连场景下必须进入 replay-only 模式：只允许在会话归属校验通过后回放既有事件，不得重新执行路由、重新持久化消息或重新启动 agent 业务流。
 
 Import Pipeline 契约补充：
 

@@ -14,6 +14,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@scholar-ai/types': path.resolve(__dirname, '../../packages/types/src'),
+      '@scholar-ai/sdk': path.resolve(__dirname, '../../packages/sdk/src'),
     },
   },
 });
