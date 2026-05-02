@@ -380,11 +380,17 @@ def build_phase_j_workflow_bundle(
                 else 0.0
             )
 
+            case_evidence_reviews = [
+                review
+                for review in evidence_reviews
+                if str(review.get("surface") or "").strip().lower() in {name.lower() for name in required_steps}
+                or not review.get("surface")
+            ]
             citation_review_hits = [
-                review for review in evidence_reviews if review.get("citation_jump_passed") is True
+                review for review in case_evidence_reviews if review.get("citation_jump_passed") is True
             ]
             citation_coverage = 1.0 if citation_review_hits else 0.0
-            if not evidence_reviews and honesty_checks.get("citation_jump_honest") is True:
+            if not case_evidence_reviews and honesty_checks.get("citation_jump_honest") is True:
                 citation_coverage = 1.0
             elif honesty_checks.get("citation_jump_honest") is False:
                 citation_coverage = 0.0
@@ -410,7 +416,7 @@ def build_phase_j_workflow_bundle(
             if cost_estimate == 0.0 and task_latency_ms > 0:
                 cost_estimate = round(task_latency_ms / 1000000.0, 6)
 
-            task_success_state = "blocked" if blocking_conditions else success_state
+            task_success_state = "blocked" if blocking_conditions else (success_state or "unknown")
             if task_success_state == "pass" and degraded_conditions:
                 task_success_state = "partial"
 

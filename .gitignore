@@ -102,6 +102,7 @@ build/
 # Misc
 *.bak
 *.cache
+.tmp_pr_body*
 *.pid
 *.seed
 *.pid.lock
