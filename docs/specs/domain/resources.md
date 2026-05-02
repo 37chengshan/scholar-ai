@@ -67,6 +67,7 @@ ChatSession/ChatMessage 读取契约约束：
 - Chat SSE 除 heartbeat 外必须携带 `message_id`，并且与历史消息回读中的 `ChatMessage.id` 可追踪关联。
 - Chat SSE 事件集合冻结为：`session_start`、`routing_decision`、`phase`、`reasoning`、`message`、`tool_call`、`tool_result`、`citation`、`confirmation_required`、`cancel`、`done`、`heartbeat`、`error`。
 - `tool_result` 产生的工具执行结果必须作为 `ChatMessage(role=tool)` 持久化到同一 `ChatSession`，不得只存在于瞬时 SSE 流中。
+- `POST /api/v1/chat/stream` 在携带 `Last-Event-ID` 的重连场景下必须进入 replay-only 模式：仅允许在会话归属校验通过后回放既有 `ChatMessage`/SSE 事件，不得重新执行路由、重新持久化消息或重新启动 agent 流程。
 
 认证与会话资源约束：
 

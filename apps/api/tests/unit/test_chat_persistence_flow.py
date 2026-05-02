@@ -30,11 +30,15 @@ async def test_chat_api_stream_only_persists_user_message():
         yield 'event: done\ndata: {"finish_reason":"stop"}\n\n'
 
     mock_save_message = AsyncMock(return_value="user-msg-id")
+    mock_create_assistant_message = AsyncMock(return_value="assistant-msg-id")
+    mock_safe_update_assistant_message = AsyncMock()
 
     with patch.object(chat_api.message_service, "save_message", mock_save_message), \
          patch.object(chat_api.session_manager, "get_session", AsyncMock(return_value=None)), \
          patch.object(chat_api.session_manager, "create_session", AsyncMock(return_value=type("S", (), {"id": "session-1"})())), \
          patch.object(chat_api.complexity_router, "route_async", AsyncMock(return_value={"complexity": "simple", "method": "rules", "confidence": 1.0})), \
+         patch.object(chat_api.chat_orchestrator, "_create_assistant_message", mock_create_assistant_message), \
+         patch.object(chat_api.chat_orchestrator, "_safe_update_assistant_message", mock_safe_update_assistant_message), \
          patch.object(chat_api.chat_orchestrator, "execute_with_streaming", return_value=_mock_stream()):
 
         response = await chat_api.chat_stream(
@@ -50,6 +54,8 @@ async def test_chat_api_stream_only_persists_user_message():
     call_kwargs = mock_save_message.await_args.kwargs
     assert call_kwargs["role"] == "user"
     assert call_kwargs["content"] == "hi"
+    mock_create_assistant_message.assert_awaited()
+    mock_safe_update_assistant_message.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -63,7 +69,7 @@ async def test_chat_api_reconnect_is_replay_only_without_rerun():
     mock_execute = AsyncMock()
     mock_route = AsyncMock()
 
-    with patch.object(chat_api.session_manager, "get_session", AsyncMock(return_value=type("S", (), {"id": "session-1"})())), \
+    with patch.object(chat_api.session_manager, "get_session", AsyncMock(return_value=type("S", (), {"id": "session-1", "user_id": "user-1"})())), \
          patch.object(chat_api.sse_manager, "handle_reconnect", new=_mock_replay), \
          patch.object(chat_api.message_service, "save_message", mock_save_message), \
          patch.object(chat_api.chat_orchestrator, "execute_with_streaming", mock_execute), \

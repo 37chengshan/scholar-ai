@@ -278,8 +278,12 @@ class TestTaskService:
         task.paper_id = str(uuid4())
         task.status = "pending"
         task.attempts = 0
+        task.is_retryable = True
         task.storage_key = "test/file.pdf"
         task.created_at = datetime.now(timezone.utc)
+        task.paper = MagicMock()
+        task.paper.status = "processing"
+        task.paper.updated_at = datetime.now(timezone.utc)
         return task
 
     @pytest.mark.asyncio
@@ -322,6 +326,7 @@ class TestTaskService:
         """TaskService.retry_task resets status and increments attempts."""
         from app.services.task_service import TaskService
 
+        mock_task.status = "failed"
         mock_db = AsyncMock()
         mock_db.flush = AsyncMock()
 
@@ -334,14 +339,18 @@ class TestTaskService:
 
             assert result.status == "pending"
             assert result.attempts == 1
+            assert result.error_message is None
+            assert result.failure_message is None
+            assert result.paper.status == "pending"
 
     @pytest.mark.asyncio
     async def test_cancel_task_for_pending(self, mock_task):
         """TaskService.cancel_task cancels pending task."""
         from app.services.task_service import TaskService
 
+        mock_task.status = "pending"
         mock_db = AsyncMock()
-        mock_db.delete = AsyncMock()
+        mock_db.flush = AsyncMock()
 
         with patch.object(TaskService, 'get_task', return_value=mock_task):
             result = await TaskService.cancel_task(
@@ -350,18 +359,20 @@ class TestTaskService:
                 user_id="test-user-id",
             )
 
-            assert result is True
+            assert result.status == "cancelled"
+            assert result.cancellation_reason == "user_request"
+            assert result.paper.status == "cancelled"
 
     @pytest.mark.asyncio
     async def test_cancel_task_fails_for_non_pending(self, mock_task):
         """TaskService.cancel_task fails for non-pending task."""
         from app.services.task_service import TaskService
 
-        mock_task.status = "processing"
+        mock_task.status = "completed"
         mock_db = AsyncMock()
 
         with patch.object(TaskService, 'get_task', return_value=mock_task):
-            with pytest.raises(ValueError, match="Cannot cancel task"):
+            with pytest.raises(RuntimeError, match="Cannot cancel task"):
                 await TaskService.cancel_task(
                     db=mock_db,
                     task_id=mock_task.id,

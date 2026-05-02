@@ -111,52 +111,42 @@ class MessageService:
         Returns:
             List of message dictionaries
         """
-        session_context = db if db else AsyncSessionLocal()
+        try:
+            query = select(ChatMessage).where(ChatMessage.session_id == session_id)
 
-        async with session_context if not db else session_context:
-            try:
-                query = (
-                    select(ChatMessage)
-                    .where(ChatMessage.session_id == session_id)
-                )
+            if order == "asc":
+                query = query.order_by(ChatMessage.created_at.asc())
+            else:
+                query = query.order_by(ChatMessage.created_at.desc())
 
-                if order == "asc":
-                    query = query.order_by(ChatMessage.created_at.asc())
-                else:
-                    query = query.order_by(ChatMessage.created_at.desc())
+            query = query.limit(limit).offset(offset)
 
-                query = query.limit(limit).offset(offset)
+            if db:
+                result = await db.execute(query)
+            else:
+                async with AsyncSessionLocal() as session:
+                    result = await session.execute(query)
 
-                if db:
-                    result = await db.execute(
-                        query
-                    )
-                else:
-                    async with AsyncSessionLocal() as session:
-                        result = await session.execute(
-                            query
-                        )
+            messages = result.scalars().all()
 
-                messages = result.scalars().all()
-
-                return [
-                    {
-                        "id": msg.id,
-                        "session_id": msg.session_id,
-                        "role": msg.role,
-                        "content": msg.content,
-                        "tool_name": msg.tool_name,
-                        "created_at": msg.created_at.isoformat()
-                        if msg.created_at
-                        else None,
-                    }
-                    for msg in messages
-                ]
-            except Exception as e:
-                logger.error(
-                    "Failed to get messages", error=str(e), session_id=session_id
-                )
-                raise
+            return [
+                {
+                    "id": msg.id,
+                    "session_id": msg.session_id,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "tool_name": msg.tool_name,
+                    "created_at": msg.created_at.isoformat()
+                    if msg.created_at
+                    else None,
+                }
+                for msg in messages
+            ]
+        except Exception as e:
+            logger.error(
+                "Failed to get messages", error=str(e), session_id=session_id
+            )
+            raise
 
     async def count_messages(
         self,

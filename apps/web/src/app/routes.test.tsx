@@ -12,11 +12,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { ProtectedRoute, router } from './routes';
-import { useAuth } from '@/contexts/AuthContext';
+import { hasWarmAuthHint, useAuth } from '@/contexts/AuthContext';
 
 // Mock AuthContext
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(),
+  hasWarmAuthHint: vi.fn(() => false),
 }));
 
 vi.mock('@/app/hooks/useSessions', () => ({
@@ -91,6 +92,7 @@ function createAppRouter(initialPath: string) {
 describe('ProtectedRoute', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(hasWarmAuthHint).mockReturnValue(false);
   });
 
   it('should redirect to login when not authenticated', async () => {
@@ -188,7 +190,7 @@ describe('ProtectedRoute', () => {
     expect(childPaths).not.toContain('upload');
   });
 
-  it('should render landing page at root path', async () => {
+  it('should redirect root path to login when user is unauthenticated', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: null,
       isAuthenticated: false,
@@ -206,7 +208,7 @@ describe('ProtectedRoute', () => {
     });
   });
 
-  it('should redirect unknown routes back to landing page', async () => {
+  it('should redirect unknown routes to login through root/dashboard guard when user is unauthenticated', async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: null,
       isAuthenticated: false,

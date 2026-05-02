@@ -33,7 +33,7 @@
 | A | implementation-complete / verification-pending | ai-platform | academic gate 跑数、artifact 链、回填台账 | 待读取 Wave 0 与 gate 结果 |
 | B | implementation-complete / verification-pending | product-engineering | external search/import 主链、统一 `libraryStatus`/job stage | 主链阻断修复中 |
 | C | implementation-complete / verification-pending | ai-runtime | claim/evidence canonical payload、repair contract | sidecar 降级与契约统一中 |
-| D | closeout-required | product-engineering | `real_world_validation.{json,summary.json}` + `docs/reports/v3_0_real_world_validation.md` | 仍为 `not_ready`，需新一轮完整 run |
+| D | closeout-required | product-engineering | `real_world_validation.{json,summary.json}` + `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md` | 仍为 `not_ready`，需新一轮完整 run |
 | E | closeout-required | product-engineering | async/error/recovery 最小实现 + 文档 | 已建执行文档，待验证 |
 | F | closeout-required | web-platform | Dashboard/Search/KB/Read/Chat/Review 产品化收口 | 已建执行文档，待验证 |
 | FR | implementation-complete / verification-pending | web-platform | 前端可靠性收口证据 | 待与 E/F 合并验证 |
@@ -67,5 +67,5 @@
 | Beta quickstart | pending | Phase G plan / strict close-out report |
 | Demo dataset | pending | Phase G plan / strict close-out report |
 | Demo account | pending | Phase G plan / strict close-out report |
-| Known limitations | pending | `docs/reports/v3_0_real_world_validation.md` / Phase G |
+| Known limitations | pending | `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md` / Phase G |
 | 15-30 分钟 walkthrough | pending | Phase G plan / strict close-out report |

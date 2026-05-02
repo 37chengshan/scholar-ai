@@ -173,11 +173,13 @@ describe('AuthContext', () => {
     // Suppress console.error for this test
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(() => {
-      render(<TestComponent />);
-    }).toThrow('useAuth must be used within AuthProvider');
-
-    consoleSpy.mockRestore();
+    try {
+      expect(() => {
+        render(<TestComponent />);
+      }).toThrow('useAuth must be used within AuthProvider');
+    } finally {
+      consoleSpy.mockRestore();
+    }
   });
 
   it('should handle checkAuth explicitly', async () => {
