@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildKnowledgeBaseReadinessItems, buildReviewOrCompareCommand, sortResearchCommands } from './commandCenter';
+import { buildHandoffCommand, buildKnowledgeBaseReadinessItems, buildReviewOrCompareCommand, sortResearchCommands } from './commandCenter';
 
 describe('commandCenter', () => {
   it('prioritizes blocked KB readiness items ahead of active and ready items', () => {
@@ -81,5 +81,22 @@ describe('commandCenter', () => {
     ]);
 
     expect(sorted.map((item) => item.id)).toEqual(['blocked', 'active', 'ready', 'recent']);
+  });
+
+  it('builds a durable chat command from persisted handoff context', () => {
+    const command = buildHandoffCommand({
+      scope: { kbId: 'kb-1' },
+      handoff: {
+        origin: 'review',
+        promptDraft: 'Check the current draft against the cited evidence.',
+        evidence: [{ paperId: 'paper-1' }, { paperId: 'paper-2' }],
+        returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
+      },
+    });
+
+    expect(command.category).toBe('chat');
+    expect(command.priority).toBe('active');
+    expect(command.targetHref).toBe('/chat?kbId=kb-1&handoff=1');
+    expect(command.metadata?.evidenceCount).toBe(2);
   });
 });

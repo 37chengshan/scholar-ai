@@ -4,6 +4,7 @@ import { useWorkflowHydration } from './useWorkflowHydration';
 import { useWorkflowStore } from '@/features/workflow/state/workflowStore';
 import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore';
 import { createInitialRun } from '@/features/chat/runtime/chatRuntime';
+import { persistChatHandoff } from '@/features/chat/chatHandoff';
 
 let mockedLocation = {
   pathname: '/chat',
@@ -21,6 +22,7 @@ vi.mock('react-router', async () => {
 
 describe('useWorkflowHydration', () => {
   beforeEach(() => {
+    window.sessionStorage.clear();
     mockedLocation = { pathname: '/chat', search: '', state: null };
     useWorkflowStore.setState({
       scope: {
@@ -82,5 +84,27 @@ describe('useWorkflowHydration', () => {
     expect(state.currentRun).toBeNull();
     expect(state.scope.title).toBe('Discovery Workflow');
     expect(state.timeline[0]?.title).toBe('Scope Updated');
+  });
+
+  it('hydrates a durable handoff as a waiting workflow when there is no active run', () => {
+    mockedLocation = { pathname: '/chat', search: '?kbId=kb-1&handoff=1', state: null };
+    persistChatHandoff(
+      { kbId: 'kb-1' },
+      {
+        origin: 'review',
+        promptDraft: 'Continue from the review evidence.',
+        evidence: [{ paperId: 'paper-1' }],
+        returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
+      },
+    );
+
+    renderHook(() => useWorkflowHydration());
+
+    const state = useWorkflowStore.getState();
+    expect(state.currentRun?.status).toBe('waiting');
+    expect(state.currentRun?.stage).toBe('handoff_ready');
+    expect(state.pendingActions.map((action) => action.label)).toEqual(['Continue in Chat', 'Return to Source']);
+    expect(state.artifacts[0]?.title).toBe('Prepared Chat Handoff');
+    expect(state.timeline[0]?.title).toBe('Handoff Restored');
   });
 });

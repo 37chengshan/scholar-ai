@@ -24,7 +24,7 @@
 | CO-BLK-002 | C/D | ai-runtime | verified | Search evidence sidecar 后端异常需降级返回，不再 500 静默失败 | `cd apps/api && python3.12 -m pytest -q apps/api/tests/unit/test_search_evidence_api.py apps/api/tests/unit/test_real_world_validation_service.py` | 本文件 / Phase D report |
 | CO-BLK-003 | B/C | ai-runtime | verified | `apps/api/app/api/search/library.py` 直接 DB 访问违反 code-boundary | `bash scripts/check-code-boundaries.sh` | 本文件 / governance close-out |
 | CO-BLK-004 | FR/Gov | ai-platform | verified | legacy-freeze 需要严格 doc trail 替代 commit marker 补救 | `bash scripts/check-legacy-freeze.sh` | 本文件 / governance close-out |
-| CO-BLK-005 | F/Gate | ai-runtime | open | 后端目标单测 `tests/unit/test_services.py` 在 Python 3.12 下失败，当前失败点为 `TaskService.retry_task` 仅允许 `failed` 任务重试，而现有测试夹具仍构造 `pending` 任务 | `cd apps/api && python3.12 -m pytest -q tests/unit/test_services.py --maxfail=1` | 本文件 / strict close-out report |
+| CO-BLK-005 | F/Gate | ai-runtime | verified | 后端目标单测 `tests/unit/test_services.py` 已在 v4.0 Phase 0 启动时复测通过；正式语义保持 `TaskService.retry_task` 只允许 `failed` 任务重试 | `cd apps/api && python3 -m pytest -q tests/unit/test_services.py --maxfail=1` | 本文件 / strict close-out report / v4.0 Phase 0 |
 
 ## Phase Close-out
 
@@ -44,7 +44,7 @@
 | gate | status | owner | evidence |
 |---|---|---|---|
 | `apps/web` type-check | passed | web-platform | `cd apps/web && npm run type-check` |
-| `apps/api` Python 3.11+ target tests | failed | ai-runtime | `python3.12 -m pytest -q tests/unit/test_services.py --maxfail=1` -> `TaskService.retry_task` mismatch |
+| `apps/api` Python 3.11+ target tests | passed | ai-runtime | `cd apps/api && python3 -m pytest -q tests/unit/test_services.py --maxfail=1` -> 16 passed on 2026-05-02 |
 | `bash scripts/check-doc-governance.sh` | passed | ai-platform | `bash scripts/check-governance.sh` |
 | `bash scripts/check-structure-boundaries.sh` | passed | ai-platform | `bash scripts/check-governance.sh` |
 | `bash scripts/check-code-boundaries.sh` | passed | ai-platform | `bash scripts/check-code-boundaries.sh` |
@@ -58,14 +58,14 @@
 | external search -> import -> KB papers -> read | pending | 至少 1 次 fresh-account 成功跑通 |
 | read -> chat | pending | 真实回答流 + composer 恢复 |
 | KB -> review draft -> review trace | pending | runId 回跳与 review trace 可见 |
-| Search -> Import -> KB -> Read -> Chat -> Notes -> Compare -> Review | pending | 至少 1 条完整 full-chain run |
+| Search -> Import -> KB -> Read -> Chat -> Notes -> Compare -> Review | carried-forward | v4.0 Phase 0 已完成证据边界回读：RW-004/RW-005 覆盖 `search -> import -> read -> chat -> notes -> review` 子链，compare 有 Phase J workflow bundle 证据，但仍缺单次 fresh-state 全链 closeout，已转交 v4.0 Phase 4.0-2 / 4.0-7 |
 
 ## 发布材料
 
 | item | status | 回填位置 |
 |---|---|---|
-| Beta quickstart | pending | Phase G plan / strict close-out report |
-| Demo dataset | pending | Phase G plan / strict close-out report |
-| Demo account | pending | Phase G plan / strict close-out report |
-| Known limitations | pending | `docs/plans/v3_0/reports/validation/v3_0_real_world_validation.md` / Phase G |
-| 15-30 分钟 walkthrough | pending | Phase G plan / strict close-out report |
+| Beta quickstart | carried-forward | v4.0 Phase 0 beta asset inventory / Phase 4.0-2 |
+| Demo dataset | carried-forward | v4.0 Phase 0 beta asset inventory / Phase 4.0-2 |
+| Demo account | carried-forward | v4.0 Phase 0 beta asset inventory / Phase 4.0-2 |
+| Known limitations | carried-forward | `docs/plans/v4_0/reports/2026-05-02_v4_0_phase_0_closeout_report.md` / Phase 4.0-2 |
+| 15-30 分钟 walkthrough | carried-forward | v4.0 Phase 0 beta asset inventory / Phase 4.0-2 |

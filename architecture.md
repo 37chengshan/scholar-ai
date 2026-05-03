@@ -16,6 +16,7 @@
 - 共享契约（types）：packages/types
 - 共享 SDK：packages/sdk
 - 资源模型：docs/specs/domain/resources.md
+- v4.0 草案：docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md
 - v2.0 收尾标准：docs/plans/v2_0/reports/2026-04-28_v2_0_closeout_pass_framework.md
 - 开发规范：docs/specs/development/coding-standards.md
 - 文档校验：docs/specs/development/documentation-validation.md
@@ -35,6 +36,7 @@
 - 禁止在本文件复制粘贴完整规范，避免双份真相。
 - Phase 5 起，KB 综述草稿能力以 `ReviewDraft/ReviewRun` 为真源，边界定义统一落在 system-overview 与 api-contract。
 - Phase 6 起，v2.0 发版门禁以 `scripts/evals/phase6_gate.py` + `/analytics` artifact-backed eval surface 为真源。
+- v4.0 草案当前以 `docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md` 为讨论入口；正式执行边界需用户确认后再落定。
 
 ## Required Updates
 
