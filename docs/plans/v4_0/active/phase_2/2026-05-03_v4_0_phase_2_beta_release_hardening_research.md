@@ -85,6 +85,20 @@ repeatable demo dataset
 4. 前端视觉重做 phase。
 5. 用文档宣称替代真实 walkthrough 的 phase。
 
+## 4.1 术语边界
+
+Phase 2 后续文档和 closeout 只能使用以下术语：
+
+| term | allowed meaning | forbidden meaning |
+|---|---|---|
+| `controlled-beta-ready` | 内部或受控试用者可按 quickstart 跑一条明确脚本，并能反馈问题 | 公开 beta、生产可用、无需人工陪跑 |
+| `demo-ready` | 指定 dataset / account / walkthrough 可复现 | 任意用户任意数据都能稳定跑通 |
+| `fresh-state-pass` | 从重置后的账号/环境执行单次全链并留下证据 | 复用历史 Phase D/J 或局部测试结果 |
+| `known-limitation` | 用户可见、可解释、可反馈的当前能力边界 | 隐藏失败或把 partial 说成成功 |
+| `release-pass` | 仅由 Phase 4.0-7 或后续 release gate 给出 | Phase 2 自行宣布发布完成 |
+
+这组术语的目的不是降低标准，而是避免 Phase 2 把资产补齐误写成正式发布完成。
+
 ## 5. 最小 Beta Asset 研究结论
 
 ### 5.1 Demo Dataset
@@ -107,6 +121,17 @@ repeatable demo dataset
 1. `docs/plans/v4_0/active/phase_2/demo_dataset.md`
 2. 后续如果要机器可读，再补 `artifacts/demo/v4_0_beta_dataset.json`，但研究阶段不强制创建 artifact。
 
+建议字段：
+
+| field | purpose |
+|---|---|
+| `dataset_id` | 固定样本组标识，避免每次 demo 临时换数据 |
+| `source_query_or_ids` | Search/import 的可复现入口 |
+| `expected_workflow_steps` | 本样本必须覆盖的页面和动作 |
+| `expected_evidence` | 至少一处 citation / evidence 检查点 |
+| `known_degraded_cases` | 允许出现 partial 的地方与解释口径 |
+| `reset_requirements` | 运行前必须清理或隔离的状态 |
+
 ### 5.2 Demo Account / Environment
 
 目标是 resettable。
@@ -125,6 +150,14 @@ repeatable demo dataset
 
 1. Phase 2 第一波先做 local controlled beta。
 2. staging/cloud beta 只在 local full-chain walkthrough pass 后进入。
+
+环境策略：
+
+| environment | Phase 2 first-wave status | condition to expand |
+|---|---|---|
+| local controlled beta | allowed | demo dataset、reset policy、quickstart 和 fresh-state script 齐全 |
+| staging controlled beta | gated | local fresh-state run pass，且账号/数据清理策略可重复 |
+| public beta | out of scope | 需要 Phase 4.0-7 release/eval gate 或后续 release plan |
 
 ### 5.3 Beta Quickstart
 
@@ -186,6 +219,19 @@ Phase 2 的 walkthrough script 必须是硬门槛。
    - evidence artifact
 4. 执行后必须产出 closeout report，不能只保留口头结论。
 
+建议证据字段：
+
+| field | requirement |
+|---|---|
+| `run_id` | 一次 walkthrough 一个唯一编号 |
+| `environment` | local / staging / cloud，禁止混用 |
+| `reset_proof` | 运行前账号、KB、import job、artifact 状态说明 |
+| `step_results` | 每个 workflow step 的 pass / partial / fail |
+| `evidence_artifacts` | 截图、日志、测试输出、生成物路径 |
+| `limitations_observed` | 本次真实触发的 limitation |
+| `triage_items` | 进入反馈/修复队列的问题 |
+| `verdict` | `demo-ready` / `controlled-beta-ready` / `blocked` |
+
 ## 6. Release Hardening Gate
 
 Phase 2 应采用三层 gate：
@@ -197,6 +243,34 @@ Phase 2 应采用三层 gate：
 | Controlled release gate | 是否可给 beta 用户试用 | 访问控制、reset、known limitations、feedback triage、rollback/pause 明确 | 只允许内部 demo，不允许外部 beta |
 
 Phase 2 的 `beta-ready` 只允许表示 controlled beta ready，不等于 public release ready。
+
+## 6.1 Gate 责任边界
+
+| gate item | Phase 2 responsibility | Phase 4.0-7 responsibility |
+|---|---|---|
+| asset completeness | 定义并补齐 demo dataset/account/quickstart/limitations/feedback/script | 复核资产是否仍匹配 release gate |
+| fresh-state walkthrough | 跑通一条受控全链并记录 partial/fail | 扩展成可重复测试矩阵和 release verdict |
+| evidence quality | 至少检查一个 citation/evidence 点，记录 unsupported 风险 | 量化 citation coverage、unsupported claim rate、degraded runtime |
+| frontend quality | 只检查 walkthrough 是否可执行 | 视觉一致性、响应式、可访问性、性能感知 gate |
+| RAG quality | 不做新技术升级，只诚实记录 limitations | 对 Phase 4.0-6 的优化做 baseline/candidate/diff |
+
+## 6.2 Phase 2 产物目录建议
+
+Phase 2 后续执行不应把材料散落到根目录或临时目录。建议固定为：
+
+| artifact | proposed path | owner |
+|---|---|---|
+| research doc | `docs/plans/v4_0/active/phase_2/2026-05-03_v4_0_phase_2_beta_release_hardening_research.md` | product-engineering |
+| execution plan | `docs/plans/v4_0/active/phase_2/21_v4_0_phase_2_execution_plan.md` | product-engineering |
+| demo dataset | `docs/plans/v4_0/active/phase_2/demo_dataset.md` | product-engineering |
+| demo environment policy | `docs/plans/v4_0/active/phase_2/demo_environment_policy.md` | product-engineering |
+| beta quickstart | `docs/plans/v4_0/active/phase_2/beta_quickstart.md` | product-engineering |
+| known limitations | `docs/plans/v4_0/active/phase_2/known_limitations.md` | product-engineering |
+| feedback template | `docs/plans/v4_0/active/phase_2/feedback_triage_template.md` | product-engineering |
+| walkthrough script | `docs/plans/v4_0/active/phase_2/fresh_state_walkthrough_script.md` | product-engineering |
+| closeout report | `docs/plans/v4_0/reports/2026-05-03_v4_0_phase_2_closeout_report.md` | product-engineering |
+
+机器可读 artifact 如后续需要，应进入 `artifacts/` 的既有验证/演示命名空间，并确保 `.gitignore` 与治理脚本允许或明确忽略；研究阶段先不创建运行时 artifact。
 
 ## 7. 建议 Work Packages
 
@@ -214,6 +288,18 @@ Phase 2 的 `beta-ready` 只允许表示 controlled beta ready，不等于 publi
    - 产出 feedback template、severity taxonomy、owner SLA。
 6. WP6：Controlled Beta Gate
    - 产出 closeout report 模板、go/no-go 规则、rollback/pause 口径。
+
+## 7.1 执行顺序建议
+
+Phase 2 不应先跑 walkthrough，再回头补资产。合理顺序是：
+
+1. 先冻结 asset contract 和术语边界。
+2. 再补 demo dataset 与 demo environment reset policy。
+3. 然后写 quickstart、known limitations 和 feedback template。
+4. 最后写 fresh-state walkthrough script 并执行。
+5. 只有 walkthrough 产出证据后，才能写 closeout report。
+
+如果执行中发现主链代码阻断，应按 `blocked` 记录并回到对应模块修复；不得通过修改 quickstart 文案绕过产品缺口。
 
 ## 8. 不进入 Phase 2 的内容
 
@@ -233,6 +319,16 @@ Phase 2 的 `beta-ready` 只允许表示 controlled beta ready，不等于 publi
 | Known limitations 写得过轻 | 用户误信 AI 输出或误判 partial 成功 | limitations 必须进入 quickstart 和 walkthrough |
 | 外部 beta 过早 | support 与 reset 不成熟，反馈无法闭环 | 第一波只允许 local controlled beta，staging 需 gate 通过 |
 | Phase 2 扩大成技术升级 | 阶段失焦 | RAG 优化转交 Phase 4.0-6，测试评测转交 Phase 4.0-7 |
+
+## 9.1 Phase 2 到后续阶段的交接
+
+| downstream phase | Phase 2 hands off | not handed off |
+|---|---|---|
+| Phase 4.0-3 Citation-backed Review Artifacts | known limitations、review partial 证据、citation/evidence 检查点 | Review artifact 产品化实现 |
+| Phase 4.0-4 Frontend Experience Craft | walkthrough 中暴露的视觉/状态表达问题 | 全站视觉重做 |
+| Phase 4.0-5 Frontend Interaction Quality | walkthrough 中暴露的交互、恢复、响应式问题 | 完整 a11y/performance sweep |
+| Phase 4.0-6 Academic RAG Optimization | evidence quality limitation 与 degraded runtime 记录 | 新 RAG 技术实施 |
+| Phase 4.0-7 Testing and Evaluation Gate | demo assets、fresh-state evidence、blocked/partial case | public release verdict |
 
 ## 10. 研究结论
 
