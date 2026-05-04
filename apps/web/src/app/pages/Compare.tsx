@@ -42,6 +42,7 @@ import {
   Save,
 } from 'lucide-react';
 import type { Paper } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -288,6 +289,7 @@ export function Compare() {
   const [searchParams] = useSearchParams();
   const { language } = useLanguage();
   const isZh = language === 'zh';
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   // --- paper selection state
   const [selectedPapers, setSelectedPapers] = useState<Paper[]>([]);
@@ -315,6 +317,10 @@ export function Compare() {
     let cancelled = false;
 
     const loadSelectedPapers = async () => {
+      if (authLoading || !isAuthenticated) {
+        return;
+      }
+
       const paperIds = (searchParams.get('paper_ids') || '')
         .split(',')
         .map((id) => id.trim())
@@ -356,7 +362,7 @@ export function Compare() {
     return () => {
       cancelled = true;
     };
-  }, [isZh, searchParams]);
+  }, [authLoading, isAuthenticated, isZh, searchParams]);
 
   // ---- Handlers ------------------------------------------------------------
 
@@ -364,12 +370,9 @@ export function Compare() {
     if (!searchQuery.trim()) return;
     setSearchLoading(true);
     try {
-      const response = await papersApi.list({
+      const response = await papersApi.search(searchQuery.trim(), {
         page: 1,
         limit: 10,
-        search: searchQuery.trim(),
-        sortBy: 'updatedAt',
-        sortOrder: 'desc',
       });
       setSearchResults(
         response.data.papers.filter((paper) => !selectedPapers.some((selected) => selected.id === paper.id)),

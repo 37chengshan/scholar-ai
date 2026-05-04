@@ -11,8 +11,8 @@ const SYSTEM_LOGS_EN = [
   "[SYS] Initializing system environment...",
   "[SYS] Initializing vector database...",
   "[OK] Graph DB connected. Latency: 12ms",
-  "[SYS] Loading local embedding models...",
-  "[OK] Qwen3-VL-Embedding loaded into VRAM",
+  "[SYS] Binding online embedding and rerank runtime...",
+  "[OK] DashScope text-embedding-v4 and qwen3-rerank ready",
   "[SYS] Awaiting user authentication...",
 ];
 
@@ -20,8 +20,8 @@ const SYSTEM_LOGS_ZH = [
   "[SYS] 正在初始化系统环境...",
   "[SYS] 正在初始化向量数据库...",
   "[OK] 图数据库已连接。延迟: 12ms",
-  "[SYS] 正在加载本地嵌入模型...",
-  "[OK] Qwen3-VL-Embedding 已载入显存",
+  "[SYS] 正在绑定在线 embedding / rerank 运行时...",
+  "[OK] DashScope text-embedding-v4 与 qwen3-rerank 已就绪",
   "[SYS] 等待用户身份验证...",
 ];
 
@@ -53,7 +53,7 @@ export function Login() {
     title1: isZh ? "知识" : "Knowledge",
     title2: isZh ? "引擎." : "Engine.",
     auth: isZh ? "身份验证" : "Authentication",
-    authDesc: isZh ? "ScholarAI智读系统基于智谱GLM-5推理引擎与Qwen3-VL-Embedding向量模型，为研究人员提供高效的论文阅读与分析服务。所有查询将被绝对保密，打造您的私人文献库。" : "ScholarAI Reading System powered by GLM-5 inference engine and Qwen3-VL-Embedding model, providing efficient paper reading and analysis for researchers. All queries are kept strictly confidential, creating your private literature library.",
+    authDesc: isZh ? "ScholarAI智读系统当前以智谱 GLM 推理栈配合 DashScope 在线 embedding / rerank 主链运行，为研究人员提供可检索、可追溯的论文阅读与分析服务。所有查询将被绝对保密，打造您的私人文献库。" : "ScholarAI Reading System currently runs on a GLM inference stack with DashScope online embedding and rerank on the main path, providing traceable paper reading and analysis for researchers. All queries are kept strictly confidential, creating your private literature library.",
     index: isZh ? "全局索引" : "Global Index",
     indexDesc: isZh ? "目前已为 ArXiv、Semantic Scholar 和 PubMed 中的 1420 万篇论文建立索引。系统运行于具备实时向量同步功能的分布式节点架构之上。" : "Currently indexing 14.2M papers across ArXiv, Semantic Scholar, and PubMed. System runs on distributed Node architecture with real-time vector synchronization.",
     activeNodes: isZh ? "向量维度" : "Vector Dimensions",
@@ -210,8 +210,8 @@ export function Login() {
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-border/50 pb-6">
             {[
-              { label: t.activeNodes, value: "2048", icon: Activity },
-              { label: t.graphSize, value: "Qwen3-VL-Embedding", icon: Database },
+              { label: t.activeNodes, value: "1024", icon: Activity },
+              { label: t.graphSize, value: "DashScope text-embedding-v4", icon: Database },
               { label: t.inference, value: "智谱 GLM-5", icon: Cpu },
               { label: t.vectorDB, value: t.synced, icon: Command }
             ].map((stat, i) => (

@@ -27,8 +27,9 @@ Usage:
 
 from typing import Dict
 from app.core.embedding.base import BaseEmbeddingService
+from app.core.dashscope_runtime import DashScopeEmbeddingProvider
 from app.core.embedding.qwen3vl_embedding import Qwen3VLEmbeddingService
-from app.config import settings, normalize_embedding_model_name
+from app.config import settings, canonical_embedding_dimension, normalize_embedding_model_name
 from app.core.runtime_contract import RuntimeBinding, build_local_binding
 from app.utils.logger import logger
 
@@ -67,11 +68,12 @@ class EmbeddingServiceFactory:
         model_type = normalize_embedding_model_name(
             getattr(settings, "EMBEDDING_MODEL", "qwen3-vl-2b")
         )
+        provider_name = str(getattr(settings, "EMBEDDING_PROVIDER", "") or "").strip().lower()
         quantization = getattr(settings, "EMBEDDING_QUANTIZATION", "int4")
         device = "auto"  # Auto-detect device
 
         # Create cache key
-        cache_key = f"{model_type}:{device}:{quantization}"
+        cache_key = f"{provider_name or 'local'}:{model_type}:{device}:{quantization}"
 
         # Return cached instance if exists
         if cache_key in cls._instances:
@@ -90,7 +92,18 @@ class EmbeddingServiceFactory:
             quantization=quantization,
         )
 
-        if model_type == "bge-m3":
+        if provider_name == "dashscope_qwen" or model_type in {"qwen_flash", "qwen_pro"}:
+            resolved_model = model_type
+            if model_type == "qwen_flash":
+                resolved_model = settings.DASHSCOPE_EMBEDDING_MODEL_FLASH
+            elif model_type == "qwen_pro":
+                resolved_model = settings.DASHSCOPE_EMBEDDING_MODEL_PRO
+            service = DashScopeEmbeddingProvider(
+                model=resolved_model,
+                provider_name="dashscope_qwen",
+                dimension=canonical_embedding_dimension(model_type, settings.EMBEDDING_DIMENSION),
+            )
+        elif model_type == "bge-m3":
             from app.core.embedding.bge_embedding import BGEEmbeddingService
             service = BGEEmbeddingService()
         elif model_type == "qwen3-vl-2b":

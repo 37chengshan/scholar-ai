@@ -71,6 +71,18 @@ def _extract_context_paper_ids(context: Dict[str, Any] | None) -> list[str]:
     return [str(paper_id) for paper_id in raw_paper_ids if str(paper_id).strip()]
 
 
+def _extract_scoped_paper_ids(
+    scope: Dict[str, Any] | None,
+    context: Dict[str, Any] | None,
+) -> list[str]:
+    scope_type = str((scope or {}).get("type") or "").strip().lower()
+    if scope_type == "paper":
+        paper_id = str((scope or {}).get("paper_id") or "").strip()
+        if paper_id:
+            return [paper_id]
+    return _extract_context_paper_ids(context)
+
+
 def _infer_scoped_query_family(message: str, paper_ids: list[str]) -> str:
     hinted_family = "compare" if len(paper_ids) > 1 or _COMPARE_HINT_PATTERN.search(message or "") else None
     return get_phase_i_routing_service().route(
@@ -85,8 +97,8 @@ async def chat_v3_query(request: ChatStreamRequest, user_id: str = CurrentUserId
     """Blocking chat endpoint backed by v3 hierarchical retriever contract."""
     trace_id = str(uuid4())
     try:
-        scoped_paper_ids = _extract_context_paper_ids(request.context)
-        payload = build_answer_contract_payload(
+        scoped_paper_ids = _extract_scoped_paper_ids(request.scope, request.context)
+        payload = await build_answer_contract_payload(
             query=request.message,
             user_id=user_id,
             query_family=_infer_scoped_query_family(request.message, scoped_paper_ids),
@@ -232,7 +244,7 @@ async def chat_stream(
         auto_confirm = False
         if request.context:
             auto_confirm = request.context.get("auto_confirm", False)
-        scoped_paper_ids = _extract_context_paper_ids(request.context)
+        scoped_paper_ids = _extract_scoped_paper_ids(request.scope, request.context)
 
         async def event_generator() -> AsyncIterator[str]:
             """Generate SSE events from Agent execution with message persistence.
@@ -377,7 +389,7 @@ async def chat_stream(
                             yield routing_event.to_sse_format()
                             routing_emitted = True
 
-                        payload = build_answer_contract_payload(
+                        payload = await build_answer_contract_payload(
                             query=request.message,
                             user_id=user_id,
                             paper_scope=scoped_paper_ids,

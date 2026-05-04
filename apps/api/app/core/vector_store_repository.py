@@ -77,6 +77,18 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
             score = 1 - float(hit.get("distance", 0.5))
 
         raw_data = hit.get("raw_data") or {}
+        is_summary_hit = str(hit.get("index_type") or "") == "summary"
+        explicit_source_chunk_id = (
+            raw_data.get("source_chunk_id")
+            or raw_data.get("chunk_id")
+            or hit.get("source_chunk_id")
+            or hit.get("chunk_id")
+        )
+        if explicit_source_chunk_id is None and not is_summary_hit:
+            explicit_source_chunk_id = hit.get("source_id")
+        source_chunk_id = explicit_source_chunk_id
+        if source_chunk_id is None and not is_summary_hit:
+            source_chunk_id = hit.get("id")
 
         evidence_types = hit.get("evidence_types") or raw_data.get("evidence_types")
         if isinstance(evidence_types, str):
@@ -91,7 +103,7 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
             text_span=hit.get("text_span") or raw_data.get("text_span"),
             score=max(0.0, min(float(score), 1.0)),
             backend=hit.get("backend", "milvus"),
-            source_id=(str(hit.get("id")) if hit.get("id") is not None else None),
+            source_id=(str(source_chunk_id) if source_chunk_id is not None else None),
             page_num=hit.get("page_num") or hit.get("page"),
             section_path=hit.get("section_path"),
             content_subtype=hit.get("content_subtype"),
@@ -162,6 +174,7 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
                 "section",
                 "content_data",
                 "quality_score",
+                "raw_data",
             ],
             limit=max(top_k, prefetch_limit),
         )
@@ -184,7 +197,7 @@ class MilvusVectorStoreRepository(VectorStoreRepository):
                     "score": sparse_score,
                     "sparse_score": sparse_score,
                     "backend": "milvus",
-                    "raw_data": {},
+                    "raw_data": row.get("raw_data") or {},
                 }
             )
 

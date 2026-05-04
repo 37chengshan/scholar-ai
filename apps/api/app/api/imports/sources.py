@@ -23,7 +23,7 @@ from app.services.source_resolver_service import (
 from app.utils.logger import logger
 
 
-router = APIRouter()
+router = APIRouter(prefix="/imports/sources")
 
 
 # =============================================================================

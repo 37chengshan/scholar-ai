@@ -50,7 +50,14 @@ class PDFCoordinator:
         self.storage = ObjectStorage()
         self.parser = get_docling_parser()
         self.extraction_pipeline = ExtractionPipeline(max_workers=4)  # Per D-07
-        self.embedding_service = get_multimodal_embedding_service()
+        self.embedding_service = None
+        try:
+            self.embedding_service = get_multimodal_embedding_service()
+        except RuntimeError as error:
+            logger.warning(
+                "Multimodal embedding unavailable; PDF pipeline will skip auxiliary multimodal stages",
+                error=str(error),
+            )
         self.neo4j_service = Neo4jService()
         self.notes_generator = NotesGenerator()
         self.milvus_service = get_milvus_service()

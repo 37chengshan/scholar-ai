@@ -18,12 +18,8 @@ export function useKnowledgeBaseWorkspace() {
   const {
     activeTab: storeTab,
     isImportDialogOpen,
-    searchDraft,
-    searchResults,
     setActiveTab,
     setImportDialogOpen,
-    setSearchDraft,
-    setSearchResults,
   } = useKBWorkspaceStore();
   const queries = useKnowledgeBaseQueries();
   const search = useKnowledgeBaseSearch(queries.kbId);
@@ -45,14 +41,6 @@ export function useKnowledgeBaseWorkspace() {
       setActiveTab(activeTab);
     }
   }, [activeTab, setActiveTab, storeTab]);
-
-  useEffect(() => {
-    setSearchDraft(search.searchDraft);
-  }, [search.searchDraft, setSearchDraft]);
-
-  useEffect(() => {
-    setSearchResults(search.results || []);
-  }, [search.results, setSearchResults]);
 
   useEffect(() => {
     if (!navigationState?.justImported) {
@@ -78,8 +66,6 @@ export function useKnowledgeBaseWorkspace() {
     activeTab,
     isImportDialogOpen,
     importedPaperId,
-    searchDraft,
-    searchResults,
     queries,
     search,
     setImportDialogOpen,

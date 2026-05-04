@@ -16,7 +16,7 @@ import math
 from functools import wraps
 from typing import Any, Dict, List, Optional
 
-from app.config import settings
+from app.config import canonical_embedding_dimension, settings
 from app.core.runtime_contract import RuntimeBinding, build_vector_store_binding
 from app.utils.logger import logger
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
@@ -32,6 +32,28 @@ def _is_missing_collection_error(error: Exception) -> bool:
 def _is_unsupported_field_type_error(error: Exception) -> bool:
     """Return True when Milvus search result parsing fails on field types."""
     return "unsupported field type" in str(error).lower()
+
+
+def _get_collection_embedding_dim(collection: Collection) -> Optional[int]:
+    """Return the configured embedding dimension for a collection, if present."""
+    schema = getattr(collection, "schema", None)
+    fields = getattr(schema, "fields", None) or []
+    try:
+        fields = list(fields)
+    except TypeError:
+        return None
+    for field in fields:
+        if getattr(field, "name", None) != "embedding":
+            continue
+        params = getattr(field, "params", None) or {}
+        dim = params.get("dim")
+        if dim is None:
+            dim = getattr(field, "dim", None)
+        try:
+            return int(dim) if dim is not None else None
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
@@ -162,9 +184,12 @@ class MilvusService:
         self.mode = "online"
         self._degraded_conditions: list[str] = []
 
-        # Use embedding dimension from config (per Phase 18)
-        # Supports: Qwen3-VL (2048), BGE-M3 (1024), or other models
-        self.embedding_dim = settings.EMBEDDING_DIMENSION
+        # Resolve dimension from the active embedding model so stale env values
+        # do not invalidate otherwise-correct runtime embeddings.
+        self.embedding_dim = canonical_embedding_dimension(
+            settings.EMBEDDING_MODEL,
+            settings.EMBEDDING_DIMENSION,
+        )
 
         # Create paper_contents_v2 collection if not exists per D-09
         # This happens on first use, not on instantiation
@@ -455,7 +480,7 @@ class MilvusService:
             self.create_collection_v2()
 
         try:
-            return Collection(name, using=self._alias)
+            collection = Collection(name, using=self._alias)
         except MilvusException as e:
             if (
                 name == settings.MILVUS_COLLECTION_CONTENTS_V2
@@ -469,6 +494,43 @@ class MilvusService:
                 self.create_collection_v2()
                 return Collection(name, using=self._alias)
             raise
+
+        recreate_handlers = {
+            settings.MILVUS_COLLECTION_CONTENTS: self.create_paper_contents_collection,
+            settings.MILVUS_COLLECTION_CONTENTS_V2: self.create_collection_v2,
+            self.SUMMARY_COLLECTION_NAME: self.create_summary_index_collection,
+        }
+        recreate = recreate_handlers.get(name)
+        if recreate is None:
+            return collection
+
+        if name == self.SUMMARY_COLLECTION_NAME:
+            field_names = {
+                getattr(field, "name", "")
+                for field in getattr(collection.schema, "fields", [])
+            }
+            if "source_chunk_id" not in field_names:
+                logger.warning(
+                    "Milvus summary collection missing canonical source field, recreating collection",
+                    collection=name,
+                )
+                self.drop_collection(name)
+                recreate()
+                return Collection(name, using=self._alias)
+
+        actual_dim = _get_collection_embedding_dim(collection)
+        if actual_dim in {None, self.embedding_dim}:
+            return collection
+
+        logger.warning(
+            "Milvus collection embedding dimension mismatch, recreating collection",
+            collection=name,
+            expected_dim=self.embedding_dim,
+            actual_dim=actual_dim,
+        )
+        self.drop_collection(name)
+        recreate()
+        return Collection(name, using=self._alias)
 
     def search_images(
         self, embedding: List[float], user_id: Optional[str] = None, top_k: int = 10
@@ -640,7 +702,7 @@ class MilvusService:
             )
 
     def create_collection_v2(self) -> None:
-        """Create paper_contents_v2 collection with 2048-dim embeddings per D-09.
+        """Create paper_contents_v2 collection with the active embedding dimension.
 
         Per D-09: Added indexable and embedding_status fields for embedding failure handling.
         """
@@ -715,6 +777,7 @@ class MilvusService:
             FieldSchema(name="user_id", dtype=DataType.VARCHAR, max_length=64),
             FieldSchema(name="summary_type", dtype=DataType.VARCHAR, max_length=32),
             FieldSchema(name="section_name", dtype=DataType.VARCHAR, max_length=200),
+            FieldSchema(name="source_chunk_id", dtype=DataType.VARCHAR, max_length=128),
             FieldSchema(name="content_data", dtype=DataType.VARCHAR, max_length=8000),
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim),
         ]
@@ -755,8 +818,12 @@ class MilvusService:
         if not self.has_collection(self.SUMMARY_COLLECTION_NAME):
             self.create_summary_index_collection()
 
-        collection = Collection(self.SUMMARY_COLLECTION_NAME, using=self._alias)
+        collection = self.get_collection(self.SUMMARY_COLLECTION_NAME)
         all_ids: List[int] = []
+        schema_fields = {
+            getattr(field, "name", "")
+            for field in getattr(collection.schema, "fields", [])
+        }
 
         for i in range(0, len(data), batch_size):
             batch = data[i:i + batch_size]
@@ -765,14 +832,22 @@ class MilvusService:
                 embedding = item.get("embedding")
                 if not embedding or all(v == 0.0 for v in embedding):
                     continue
-                entities.append({
+                entity = {
                     "paper_id": str(item.get("paper_id", "")),
                     "user_id": str(item.get("user_id", "")),
                     "summary_type": str(item.get("summary_type", "section_summary"))[:32],
                     "section_name": str(item.get("section_name", ""))[:200],
+                    "source_chunk_id": str(item.get("source_chunk_id", ""))[:128],
                     "content_data": str(item.get("content_data", ""))[:8000],
                     "embedding": embedding,
-                })
+                }
+                if schema_fields:
+                    entity = {
+                        key: value
+                        for key, value in entity.items()
+                        if key in schema_fields
+                    }
+                entities.append(entity)
             if entities:
                 result = collection.insert(entities)
                 all_ids.extend(result.primary_keys)
@@ -806,7 +881,7 @@ class MilvusService:
         if not self.has_collection(self.SUMMARY_COLLECTION_NAME):
             return []
 
-        collection = Collection(self.SUMMARY_COLLECTION_NAME, using=self._alias)
+        collection = self.get_collection(self.SUMMARY_COLLECTION_NAME)
 
         # Build filter expression
         exprs: List[str] = [f'user_id == "{user_id}"']
@@ -826,7 +901,14 @@ class MilvusService:
                 param=search_params,
                 limit=top_k,
                 expr=expr,
-                output_fields=["paper_id", "user_id", "summary_type", "section_name", "content_data"],
+                output_fields=[
+                    "paper_id",
+                    "user_id",
+                    "summary_type",
+                    "section_name",
+                    "source_chunk_id",
+                    "content_data",
+                ],
             )
         except Exception as exc:
             logger.warning("Summary index search failed", error=str(exc))
@@ -842,6 +924,7 @@ class MilvusService:
                     "user_id": hit.entity.get("user_id", ""),
                     "summary_type": hit.entity.get("summary_type", ""),
                     "section_name": hit.entity.get("section_name", ""),
+                    "source_chunk_id": hit.entity.get("source_chunk_id", ""),
                     "content_type": "text",
                     "content_data": hit.entity.get("content_data", ""),
                     "section": hit.entity.get("section_name", ""),
@@ -1407,6 +1490,7 @@ class MilvusService:
                     "section",
                     "content_data",
                     "quality_score",
+                    "raw_data",
                     "embedding",
                 ],
                 limit=max(top_k * 20, 200),
@@ -1425,7 +1509,7 @@ class MilvusService:
                         "content_type": row.get("content_type"),
                         "section": row.get("section"),
                         "content_data": row.get("content_data"),
-                        "raw_data": {},
+                        "raw_data": row.get("raw_data") or {},
                         "quality_score": row.get("quality_score"),
                     }
                 )
@@ -1449,6 +1533,7 @@ class MilvusService:
                     "section",
                     "content_data",
                     "quality_score",
+                    "raw_data",
                 ],
             )
 
@@ -1465,7 +1550,7 @@ class MilvusService:
                             "content_type": hit.entity.get("content_type"),
                             "section": hit.entity.get("section"),
                             "content_data": hit.entity.get("content_data"),
-                            "raw_data": {},
+                            "raw_data": hit.entity.get("raw_data") or {},
                             "quality_score": hit.entity.get("quality_score"),
                         }
                     )

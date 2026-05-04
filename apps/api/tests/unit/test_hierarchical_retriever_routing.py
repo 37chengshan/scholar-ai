@@ -46,6 +46,7 @@ class _StubSectionIndex:
 class _StubDenseRetriever:
     def __init__(self) -> None:
         self.last_top_k: int | None = None
+        self.calls: list[dict[str, object]] = []
         self.last_trace: dict[str, object] = {"fallback_used": False}
         self.unsupported_field_type_count = 0
         self.fallback_used_count = 0
@@ -60,8 +61,15 @@ class _StubDenseRetriever:
         page_to: int | None = None,
         content_types: list[str] | None = None,
     ) -> list[EvidenceCandidate]:
-        _ = (query, paper_id_filter, section_paths, page_from, page_to, content_types)
+        _ = (query, section_paths, page_from, page_to, content_types)
         self.last_top_k = top_k
+        self.calls.append(
+            {
+                "query": query,
+                "top_k": top_k,
+                "paper_id_filter": list(paper_id_filter or []),
+            }
+        )
         return [
             EvidenceCandidate(
                 source_chunk_id=f"chunk-{idx}",
@@ -114,3 +122,29 @@ def test_retrieval_depth_override_changes_candidate_pool(monkeypatch) -> None:
     assert shallow_pack.diagnostics["candidate_pool_max"] == 24.0
     assert deep_pack.diagnostics["candidate_pool_max"] == 72.0
     assert deep_pack.diagnostics["section_top_k_per_paper"] == 6.0
+
+
+def test_explicit_paper_scope_is_pushed_into_dense_retrieval_without_global_fallback(monkeypatch) -> None:
+    dense = _StubDenseRetriever()
+    retriever = HierarchicalRetriever(
+        paper_index=_StubPaperIndex(),
+        section_index=_StubSectionIndex(),
+        dense_retriever=dense,
+    )
+    monkeypatch.setattr(
+        "app.rag_v3.retrieval.hierarchical_retriever.rerank_candidates",
+        lambda query, candidates: candidates,
+    )
+
+    pack = retriever.retrieve_evidence(
+        query="请总结这篇论文的核心贡献",
+        query_family="fact",
+        stage="rule",
+        top_k=10,
+        paper_scope=["paper-2"],
+    )
+
+    assert len(dense.calls) == 1
+    assert dense.calls[0]["paper_id_filter"] == ["paper-2"]
+    assert pack.diagnostics["explicit_paper_scope_count"] == 1.0
+    assert pack.diagnostics["paper_filter_applied"] == 1.0

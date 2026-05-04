@@ -68,6 +68,7 @@ export interface KnowledgeBaseSearchHitDto {
   section?: string;
   page?: number;
   score: number;
+  sourceChunkId?: string | null;
 }
 
 export interface StorageStatsDto {

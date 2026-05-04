@@ -24,6 +24,9 @@ class TestIntentFieldVerification:
                 "app.core.multimodal_search_service.get_embedding_service"
             ) as mock_embedding,
             patch(
+                "app.core.multimodal_search_service.create_embedding_provider"
+            ) as mock_query_embedding_provider,
+            patch(
                 "app.core.multimodal_search_service.get_vector_store_repository"
             ) as mock_vector_store,
             patch(
@@ -37,6 +40,10 @@ class TestIntentFieldVerification:
             mock_embedding_instance.is_loaded.return_value = True
             mock_embedding_instance.encode_text.return_value = [0.1] * 2048
             mock_embedding.return_value = mock_embedding_instance
+
+            mock_query_embedding_instance = MagicMock()
+            mock_query_embedding_instance.embed_texts.return_value = [[0.1] * 1024]
+            mock_query_embedding_provider.return_value = mock_query_embedding_instance
 
             mock_vector_store_instance = MagicMock()
             mock_vector_store_instance.search.return_value = []
@@ -55,6 +62,7 @@ class TestIntentFieldVerification:
 
             yield {
                 "embedding": mock_embedding_instance,
+                "query_embedding": mock_query_embedding_instance,
                 "vector_store": mock_vector_store_instance,
                 "reranker": mock_reranker_instance,
             }
@@ -166,6 +174,9 @@ class TestIntentFieldStructure:
                 "app.core.multimodal_search_service.get_embedding_service"
             ) as mock_embedding,
             patch(
+                "app.core.multimodal_search_service.create_embedding_provider"
+            ) as mock_query_embedding_provider,
+            patch(
                 "app.core.multimodal_search_service.get_vector_store_repository"
             ) as mock_vector_store,
             patch(
@@ -179,6 +190,10 @@ class TestIntentFieldStructure:
             mock_embedding_instance.is_loaded.return_value = True
             mock_embedding_instance.encode_text.return_value = [0.1] * 2048
             mock_embedding.return_value = mock_embedding_instance
+
+            mock_query_embedding_instance = MagicMock()
+            mock_query_embedding_instance.embed_texts.return_value = [[0.1] * 1024]
+            mock_query_embedding_provider.return_value = mock_query_embedding_instance
 
             mock_vector_store_instance = MagicMock()
             mock_vector_store_instance.search.return_value = []

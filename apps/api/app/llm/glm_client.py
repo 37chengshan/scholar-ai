@@ -39,7 +39,7 @@ class GLM45AirClient:
     
     def __init__(
         self,
-        model: str = "glm-4.5-air",
+        model: Optional[str] = None,
         max_tokens: int = 2048,
         temperature: float = 0.7,
         max_retries: int = 5
@@ -52,7 +52,7 @@ class GLM45AirClient:
             temperature: Sampling temperature (0.0-1.0)
             max_retries: Maximum retries for rate limits
         """
-        self.model = model
+        self.model = model or settings.LLM_MODEL
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.max_retries = max_retries
@@ -62,7 +62,7 @@ class GLM45AirClient:
         
         logger.info(
             "GLM-4.5-Air client initialized",
-            model=model,
+            model=self.model,
             max_tokens=max_tokens,
             temperature=temperature
         )

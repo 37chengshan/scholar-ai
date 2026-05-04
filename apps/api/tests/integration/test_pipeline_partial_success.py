@@ -30,6 +30,7 @@ class TestPipelinePartialSuccess:
         # 创建 mock db_pool
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=None)
 
         mock_db_pool = MagicMock()
         mock_db_pool.acquire = MagicMock()
@@ -120,6 +121,7 @@ class TestPipelinePartialSuccess:
         # 创建 mock db_pool
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=None)
 
         mock_db_pool = MagicMock()
         mock_db_pool.acquire = MagicMock()
@@ -191,6 +193,68 @@ class TestPipelinePartialSuccess:
         # 而 is_notes_ready = FALSE（稍后补充）
 
     @pytest.mark.asyncio
+    async def test_notes_provider_error_falls_back_without_retry_storm(self):
+        """验证: Provider 配额/429错误时生成 deterministic fallback，不阻塞存储。"""
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=None)
+
+        mock_db_pool = MagicMock()
+        mock_db_pool.acquire = MagicMock()
+        mock_db_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_db_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        mock_notes_gen = Mock()
+        mock_notes_gen.generate_notes = AsyncMock(
+            return_value="## 1. Research Question & Motivation\n- fallback notes"
+        )
+
+        mock_milvus = Mock()
+        mock_milvus.insert_contents_batched = Mock(return_value=[1])
+
+        mock_neo4j = Mock()
+        mock_neo4j.create_chunk_nodes = AsyncMock()
+        mock_neo4j.create_section_nodes = AsyncMock()
+        mock_neo4j.create_paper_node = AsyncMock()
+
+        mock_parser = Mock()
+        mock_parser.chunk_by_semantic = Mock(return_value=[
+            {"text": "chunk 1", "page_start": 1, "section": "intro"},
+        ])
+
+        mock_qwen3vl = Mock()
+        mock_qwen3vl.is_loaded = Mock(return_value=True)
+        mock_qwen3vl.encode_text = Mock(return_value=[[0.1] * 2048])
+
+        ctx = PipelineContext(
+            task_id="test-task-004",
+            paper_id="test-paper-004",
+            user_id="test-user-004",
+            storage_key="test/key.pdf",
+        )
+        ctx.parse_result = {
+            "page_count": 10,
+            "markdown": "test content",
+            "items": [{"text": "item 1", "page_start": 1}],
+        }
+        ctx.imrad = {"introduction": {"content": "intro"}}
+        ctx.metadata = {"title": "Test Paper 4"}
+
+        storage_manager = StorageManager(
+            db_pool=mock_db_pool,
+            milvus_service=mock_milvus,
+            neo4j_service=mock_neo4j,
+            notes_generator=mock_notes_gen,
+        )
+        storage_manager.parser = mock_parser
+        storage_manager.qwen3vl_service = mock_qwen3vl
+
+        result_ctx = await storage_manager.store(ctx)
+
+        assert result_ctx.notes == "## 1. Research Question & Motivation\n- fallback notes"
+        mock_notes_gen.generate_notes.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_neo4j_failure_is_non_blocking(self):
         """验证: Neo4j 图数据库失败不影响 Paper 可用状态。
 
@@ -201,6 +265,7 @@ class TestPipelinePartialSuccess:
         # 创建 mock db_pool
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=None)
 
         mock_db_pool = MagicMock()
         mock_db_pool.acquire = MagicMock()

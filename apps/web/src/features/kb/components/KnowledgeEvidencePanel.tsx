@@ -8,7 +8,7 @@ interface KnowledgeEvidencePanelProps {
   papersEmpty: boolean;
   onSearchQueryChange: (value: string) => void;
   onSearchSubmit: () => void;
-  onOpenPaper: (paperId: string, page?: number | null) => void;
+  onOpenPaper: (paperId: string, page?: number | null, sourceChunkId?: string | null) => void;
 }
 
 export function KnowledgeEvidencePanel({
@@ -20,6 +20,9 @@ export function KnowledgeEvidencePanel({
   onSearchSubmit,
   onOpenPaper,
 }: KnowledgeEvidencePanelProps) {
+  const buildResultKey = (result: KBSearchResult, index: number) =>
+    [result.id, result.paperId, result.page ?? 'na', index].join(':');
+
   return (
     <div className="space-y-8 max-w-4xl">
       <form
@@ -64,11 +67,11 @@ export function KnowledgeEvidencePanel({
             <div className="h-px bg-border flex-1"></div>
           </div>
 
-          {results.map((result) => (
+          {results.map((result, index) => (
             <div
-              key={result.id}
+              key={buildResultKey(result, index)}
               className="group relative cursor-pointer border border-border/80 bg-paper-1 p-6 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
-              onClick={() => onOpenPaper(result.paperId, result.page)}
+              onClick={() => onOpenPaper(result.paperId, result.page, result.sourceChunkId)}
             >
               <div className="absolute -left-2 -top-2 border border-primary/20 bg-primary/[0.08] px-2 py-1 font-mono text-xs font-bold text-primary">
                 相关度: {(result.score * 100).toFixed(1)}%

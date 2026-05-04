@@ -9,6 +9,7 @@ Tests verify:
 import pytest
 from typing import Tuple
 
+from app.config import settings
 from app.utils.agent_init import initialize_agent_components
 from app.core.agent_runner import AgentRunner
 from app.core.tool_registry import ToolRegistry
@@ -100,6 +101,7 @@ class TestAgentInit:
         assert runner.tool_registry == registry
         assert runner.context_manager == context_manager
         assert runner.safety_layer == safety_layer
+        assert runner.llm_client.model == settings.LLM_MODEL
 
     def test_max_iterations_parameter(self):
         """Test that max_iterations parameter is correctly passed."""

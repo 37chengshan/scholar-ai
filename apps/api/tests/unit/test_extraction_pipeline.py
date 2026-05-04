@@ -28,9 +28,39 @@ class TestExtractionPipeline:
 
         assert pipeline.executor is not None
         assert pipeline.executor._max_workers == 4
-        assert pipeline.qwen3vl is not None
+        assert hasattr(pipeline, "qwen3vl")
         assert pipeline.image_extractor is not None
         assert pipeline.table_extractor is not None
+
+    @pytest.mark.asyncio
+    async def test_extract_degrades_when_multimodal_provider_unavailable(self):
+        """Test auxiliary stages degrade when multimodal provider cannot initialize."""
+        with patch(
+            "app.workers.extraction_pipeline.get_multimodal_embedding_service",
+            side_effect=RuntimeError("multimodal unavailable"),
+        ):
+            pipeline = ExtractionPipeline()
+
+        ctx = PipelineContext(
+            task_id="test-task",
+            paper_id="test-paper",
+            user_id="test-user",
+            storage_key="test-key"
+        )
+
+        ctx.parse_result = {"items": [], "markdown": ""}
+        ctx.local_path = "/tmp/test.pdf"
+
+        with patch("app.workers.extraction_pipeline.extract_imrad_enhanced", new_callable=AsyncMock, return_value={}):
+            with patch("app.workers.extraction_pipeline.extract_metadata", return_value={}):
+                result = await pipeline.extract(ctx)
+
+        assert result.imrad == {}
+        assert result.metadata == {}
+        assert result.image_results == []
+        assert result.table_results == []
+        assert "Images extraction failed: multimodal unavailable" in result.errors
+        assert "Tables extraction failed: multimodal unavailable" in result.errors
 
     def test_singleton(self):
         """Test singleton pattern."""

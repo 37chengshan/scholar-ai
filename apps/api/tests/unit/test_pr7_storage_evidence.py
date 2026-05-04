@@ -53,6 +53,14 @@ def test_build_evidence_metadata_extracts_references_and_span():
     assert metadata["source_span"]["end_char"] <= 200
 
 
+def test_truncate_summary_text_clamps_to_milvus_limit():
+    overlong = "x" * (StorageManager.MAX_SUMMARY_CONTENT_LEN + 24)
+    truncated = StorageManager._truncate_summary_text(overlong)
+
+    assert len(truncated) == StorageManager.MAX_SUMMARY_CONTENT_LEN
+    assert truncated == overlong[: StorageManager.MAX_SUMMARY_CONTENT_LEN]
+
+
 @pytest.mark.asyncio
 async def test_store_vectors_backfills_quality_gate_even_when_nothing_indexed():
     manager = StorageManager.__new__(StorageManager)

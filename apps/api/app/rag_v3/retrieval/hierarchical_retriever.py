@@ -49,6 +49,7 @@ class HierarchicalRetriever:
         query_family: str,
         stage: str,
         top_k: int = 10,
+        paper_scope: list[str] | None = None,
         retrieval_depth: str | None = None,
         section_paths: list[str] | None = None,
         page_from: int | None = None,
@@ -59,7 +60,8 @@ class HierarchicalRetriever:
         plan = apply_retrieval_depth_override(plan, retrieval_depth)
         family = normalize_query_family(plan.query_family)
 
-        # Step 0: Extract paper ID literals from query
+        # Step 0: Extract explicit scope and any paper ID literals from query.
+        scoped_paper_ids = [paper_id for paper_id in dict.fromkeys(paper_scope or []) if paper_id]
         query_paper_ids = extract_paper_ids_from_query(query)
 
         # Level 0: Paper-level TF-IDF retrieval → identify candidate paper set
@@ -68,7 +70,10 @@ class HierarchicalRetriever:
 
         # Combine: query-extracted IDs take priority (they are explicit references)
         effective_paper_ids: list[str] | None = None
-        if query_paper_ids:
+        if scoped_paper_ids:
+            effective_paper_ids = scoped_paper_ids
+            all_filter_ids = scoped_paper_ids[:10]
+        elif query_paper_ids:
             effective_paper_ids = query_paper_ids
             # Also include TF-IDF neighbors (cross-paper queries may reference multiple)
             all_filter_ids = list(dict.fromkeys(query_paper_ids + list(paper_candidate_ids)))[:10]
@@ -88,8 +93,9 @@ class HierarchicalRetriever:
                 page_to=page_to,
                 content_types=content_types,
             )
-            # Fallback: if not enough results, also search without filter
-            if len(dense_candidates) < top_k:
+            # Query-literal references can broaden to global recall if the filtered
+            # branch comes back thin. Explicit API paper scope must stay scoped.
+            if len(dense_candidates) < top_k and not scoped_paper_ids:
                 extra = self._dense_retriever.retrieve(
                     query=query,
                     top_k=min(plan.dense_chunk_top_k, max(top_k * 2, top_k)),
@@ -180,6 +186,7 @@ class HierarchicalRetriever:
                 "paper_index_size": float(len(self._paper_index)),
                 "section_index_size": float(len(self._section_index)),
                 "query_paper_ids_count": float(len(query_paper_ids)),
+                "explicit_paper_scope_count": float(len(scoped_paper_ids)),
                 "paper_filter_applied": float(1 if effective_paper_ids else 0),
                 "dense_fallback_used": float(1 if self._dense_retriever.last_trace.get("fallback_used") else 0),
                 "dense_unsupported_field_type_count": float(self._dense_retriever.unsupported_field_type_count),

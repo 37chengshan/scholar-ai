@@ -108,12 +108,11 @@ def get_compare_retriever() -> HybridRetriever:
         collection_name=get_collection_for_stage(COMPARE_STAGE),
         milvus_alias=alias,
         output_fields=[
-            "source_chunk_id",
             "paper_id",
-            "normalized_section_path",
             "content_type",
-            "anchor_text",
+            "section",
             "page_num",
+            "content_data",
         ],
     )
 

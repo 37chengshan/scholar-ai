@@ -14,6 +14,7 @@ from typing import Dict
 
 from app.core.embedding.base import BaseEmbeddingService
 from app.core.embedding.bge_embedding import BGEEmbeddingService
+from app.core.dashscope_runtime import DashScopeEmbeddingProvider
 from app.core.embedding.qwen3vl_embedding import Qwen3VLEmbeddingService
 from app.core.embedding.factory import EmbeddingServiceFactory, get_embedding_service
 
@@ -56,6 +57,21 @@ class TestEmbeddingServiceFactoryCreation:
             
             assert isinstance(service, Qwen3VLEmbeddingService)
             assert isinstance(service, BaseEmbeddingService)
+
+    @patch('app.core.embedding.factory.settings')
+    def test_create_dashscope_service_when_provider_is_online(self, mock_settings):
+        """Factory should create DashScope embedding provider for online qwen runtime."""
+        mock_settings.EMBEDDING_PROVIDER = "dashscope_qwen"
+        mock_settings.EMBEDDING_MODEL = "qwen_flash"
+        mock_settings.EMBEDDING_DIMENSION = 1024
+        mock_settings.EMBEDDING_QUANTIZATION = "fp16"
+        mock_settings.DASHSCOPE_EMBEDDING_MODEL_FLASH = "text-embedding-v4"
+        mock_settings.DASHSCOPE_EMBEDDING_MODEL_PRO = "text-embedding-v4"
+
+        service = EmbeddingServiceFactory.create()
+
+        assert isinstance(service, DashScopeEmbeddingProvider)
+        assert service.model == "text-embedding-v4"
 
     @patch('app.core.embedding.factory.settings')
     def test_raises_valueerror_for_unknown_model(self, mock_settings):
@@ -238,12 +254,17 @@ class TestEmbeddingServiceFactoryEdgeCases:
 
     @patch('app.core.embedding.factory.settings')
     def test_case_sensitive_model_names(self, mock_settings):
-        """Model names should be case-sensitive."""
+        """Factory should normalize common model aliases case-insensitively."""
         mock_settings.EMBEDDING_MODEL = "BGE-M3"  # Wrong case
         mock_settings.EMBEDDING_QUANTIZATION = "fp16"
-        
-        with pytest.raises(ValueError):
-            EmbeddingServiceFactory.create()
+
+        with patch('app.core.embedding.bge_embedding.get_bge_m3_service') as mock_get:
+            mock_bge = Mock()
+            mock_get.return_value = mock_bge
+
+            service = EmbeddingServiceFactory.create()
+
+        assert isinstance(service, BGEEmbeddingService)
 
     @patch('app.core.embedding.factory.settings')
     def test_cache_key_includes_all_params(self, mock_settings):

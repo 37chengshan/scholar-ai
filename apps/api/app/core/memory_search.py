@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 
 from app.utils.logger import logger
-from app.core.bge_m3_service import BGEM3Service
+from app.core.embedding.factory import get_embedding_service
 from app.core.milvus_service import MilvusService
 from app.database import AsyncSessionLocal
 from app.models.user_memory import UserMemory
@@ -49,7 +49,7 @@ class MemorySearch:
     def __init__(
         self,
         db_pool: Any = None,
-        embedding_service: Optional[BGEM3Service] = None,
+        embedding_service: Optional[Any] = None,
         milvus_service: Optional[MilvusService] = None,
     ):
         """Initialize MemorySearch service.
@@ -93,16 +93,16 @@ class MemorySearch:
                 top_k=top_k,
             )
 
-            # Generate query embedding using BGE-M3
+            # Generate query embedding using the configured embedding runtime.
             if not self.embedding_service:
-                self.embedding_service = BGEM3Service()
+                self.embedding_service = get_embedding_service()
 
-            query_embedding = await self.embedding_service.encode(query)
+            query_embedding = self.embedding_service.encode_text(query)
 
             # Search in Milvus
             if not self.milvus_service:
                 self.milvus_service = MilvusService()
-                await self.milvus_service.connect()
+                self.milvus_service.connect()
 
             # Build filter expression
             filter_expr = f'user_id == "{user_id}"'
@@ -110,13 +110,24 @@ class MemorySearch:
                 types_str = ", ".join([f'"{t}"' for t in memory_types])
                 filter_expr += f" and memory_type in [{types_str}]"
 
-            # Search Milvus
-            results = await self.milvus_service.search(
-                collection_name=self.COLLECTION_NAME,
-                query_vector=query_embedding,
-                top_k=top_k,
-                filter_expr=filter_expr,
-            )
+            # Search vector store.
+            # The current MilvusService does not expose a generic search() method
+            # for user memories, so we degrade cleanly until that index is wired.
+            search_fn = getattr(self.milvus_service, "search", None)
+            if callable(search_fn):
+                results = await search_fn(
+                    collection_name=self.COLLECTION_NAME,
+                    query_vector=query_embedding,
+                    top_k=top_k,
+                    filter_expr=filter_expr,
+                )
+            else:
+                logger.info(
+                    "Memory vector search unavailable, returning empty memory set",
+                    user_id=user_id,
+                    collection=self.COLLECTION_NAME,
+                )
+                results = []
 
             # Fetch full memory data from PostgreSQL using SQLAlchemy
             memories = []
@@ -189,11 +200,11 @@ class MemorySearch:
                 content_length=len(content),
             )
 
-            # Generate embedding using BGE-M3
+            # Generate embedding using the configured embedding runtime.
             if not self.embedding_service:
-                self.embedding_service = BGEM3Service()
+                self.embedding_service = get_embedding_service()
 
-            embedding = await self.embedding_service.encode(content)
+            embedding = self.embedding_service.encode_text(content)
 
             # Insert into PostgreSQL using SQLAlchemy
             async with AsyncSessionLocal() as session:
@@ -211,7 +222,7 @@ class MemorySearch:
             # Insert into Milvus
             if not self.milvus_service:
                 self.milvus_service = MilvusService()
-                await self.milvus_service.connect()
+                self.milvus_service.connect()
 
             await self.milvus_service.insert(
                 collection_name=self.COLLECTION_NAME,

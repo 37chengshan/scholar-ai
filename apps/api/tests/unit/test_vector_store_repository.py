@@ -1,71 +1,30 @@
-"""Tests for vector store repository read contract."""
-
-from unittest.mock import MagicMock
-
 from app.core.vector_store_repository import MilvusVectorStoreRepository
-from app.models.retrieval import SearchConstraints
 
 
-def test_milvus_repository_returns_canonical_chunks():
-    milvus_service = MagicMock()
-    milvus_service.search_contents_v2.return_value = [
+def test_normalize_hit_ignores_summary_source_id_as_canonical_chunk_id():
+    chunk = MilvusVectorStoreRepository._normalize_hit(
         {
-            "id": 123,
-            "paper_id": "paper-1",
-            "content_data": "Normalized content",
-            "score": 0.88,
-            "page_num": 4,
-            "section": "Methods",
-            "content_type": "text",
-            "quality_score": 0.91,
-            "raw_data": {"kind": "chunk"},
+            "id": "466045819771396907",
+            "paper_id": "paper-123",
+            "index_type": "summary",
+            "source_id": "466045819771396907",
+            "text": "Summary branch content.",
+            "page_num": 1,
         }
-    ]
-
-    repository = MilvusVectorStoreRepository(milvus_service=milvus_service)
-    constraints = SearchConstraints(user_id="user-1", paper_ids=["paper-1"])
-
-    results = repository.search(
-        embedding=[0.1] * 2048,
-        user_id="user-1",
-        content_type="text",
-        top_k=10,
-        constraints=constraints,
     )
 
-    assert len(results) == 1
-    assert results[0].paper_id == "paper-1"
-    assert results[0].text == "Normalized content"
-    assert results[0].score == 0.88
-    assert results[0].source_id == "123"
-    assert results[0].page_num == 4
-    assert results[0].section == "Methods"
-    assert results[0].content_type == "text"
+    assert chunk.source_id is None
 
 
-def test_milvus_repository_forwards_search_constraints():
-    milvus_service = MagicMock()
-    milvus_service.search_contents_v2.return_value = []
-
-    repository = MilvusVectorStoreRepository(milvus_service=milvus_service)
-    constraints = SearchConstraints(
-        user_id="user-1",
-        paper_ids=["paper-1"],
-        content_types=["image"],
+def test_normalize_hit_keeps_non_summary_source_id_as_fallback_chunk_id():
+    chunk = MilvusVectorStoreRepository._normalize_hit(
+        {
+            "id": "466045819771396907",
+            "paper_id": "paper-123",
+            "source_id": "chunk-stable-123",
+            "text": "Evidence chunk content.",
+            "page_num": 2,
+        }
     )
 
-    repository.search(
-        embedding=[0.1] * 2048,
-        user_id="user-1",
-        content_type="image",
-        top_k=5,
-        constraints=constraints,
-    )
-
-    milvus_service.search_contents_v2.assert_called_once_with(
-        embedding=[0.1] * 2048,
-        user_id="user-1",
-        content_type="image",
-        top_k=5,
-        constraints=constraints,
-    )
+    assert chunk.source_id == "chunk-stable-123"

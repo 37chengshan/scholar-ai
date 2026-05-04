@@ -1,6 +1,6 @@
 # 计划状态总览
 
-最后更新：2026-05-03
+最后更新：2026-05-04
 
 ## 使用规则
 
@@ -51,7 +51,7 @@
 |---|---|---|---|---|---|
 | 0 | product-engineering | closeout-complete / readiness-conditional | 2026-05-02 | docs/plans/v4_0/active/phase_0/19_v4_0_phase_0_execution_plan.md | Phase 0 已完成：研究文档、执行计划、closeout 报告、Beta asset inventory 与治理台账已回填；Phase 4.0-1 允许进入研究/契约设计，但仍禁止把当前状态写成 Beta-ready 或 full-chain release-pass |
 | 1 | product-engineering | closeout-complete / first-wave-shipped | 2026-05-02 | docs/plans/v4_0/active/phase_1/20_v4_0_phase_1_execution_plan.md | A 主线第一波已完成：durable handoff、workflow shell continuity、Dashboard command center continuity 与 artifact / return-path 首批闭环已落地；Beta-ready、视觉精修与更深 workflow truth 升级仍留后续 phase |
-| 2 | product-engineering | plan-ready / execution-pending | 2026-05-03 | docs/plans/v4_0/active/phase_2/21_v4_0_phase_2_execution_plan.md | C 主线：Beta Release Hardening；执行计划已生成，后续按 asset contract -> demo dataset/account -> quickstart/limitations -> feedback -> fresh-state walkthrough -> controlled beta closeout 顺序执行，不宣称 public beta 或 release-pass |
+| 2 | product-engineering | walkthrough-complete / demo-ready | 2026-05-04 | docs/plans/v4_0/active/phase_2/21_v4_0_phase_2_execution_plan.md | C 主线：Beta Release Hardening；fresh-state import/search probe 已重跑通过，browser walkthrough 已验证 landing/login、KB / Read / highlight / single-paper Chat / Notes / Compare / upload workspace，主链 embedding/rerank 已收口为在线 provider。当前可宣称 `demo-ready`，但仍不宣称 `controlled-beta-ready`、public beta 或 release-pass |
 | 3 | product-engineering | direction-confirmed / plan-required | 2026-05-02 | docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md | A+C 交叉：Citation-backed Review Artifacts，形成可交付研究产物 |
 | 4 | web-platform | direction-confirmed / plan-required | 2026-05-02 | docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md | 前端打磨 phase 1：Frontend Experience Craft，细致打磨视觉、状态、排版和展示质量 |
 | 5 | web-platform | direction-confirmed / plan-required | 2026-05-02 | docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md | 前端打磨 phase 2：Frontend Interaction Quality，细致打磨交互、响应式、可访问性和性能感知 |
@@ -98,7 +98,7 @@
 | 19_v4_0_phase_0_execution_plan | product-engineering | done | 18_v4_0_overview_plan,2026-04-29_v3_0_closeout_checklist | 2026-05-02 | historical-v4-0-phase-0-closeout | V4.0-0 | DU-20260502-002 | pending | docs/plans,apps/api,apps/web,scripts,artifacts | high | Phase 0 已完成 close-out：walkthrough evidence 边界、Beta minimal asset inventory、Phase 4.0-1 readiness verdict 已入 repo；结论为 conditional，不宣称 full-chain release-pass |
 | 20_v4_0_phase_1_execution_plan | product-engineering | done | 19_v4_0_phase_0_execution_plan,18_v4_0_overview_plan | 2026-05-02 | historical-v4-0-phase-1-workflow-closeout | V4.0-1 | DU-20260502-003 | pending | apps/web,docs | high | Phase 4.0-1 第一波 closeout 已完成：durable handoff、Chat 恢复 continuity、WorkflowHydration waiting-state、Dashboard command center continuity 与 artifact / return-path 首批闭环已落地；不等于 Beta-ready 或后续前端精修完成 |
 | v4_0_phase_2_beta_release_hardening_research | product-engineering | done | 20_v4_0_phase_1_execution_plan,19_v4_0_phase_0_execution_plan | 2026-05-03 | working-tree-v4-0-phase-2-research | V4.0-2 | DU-20260503-001 | pending | docs/plans | high | Phase 4.0-2 研究已完成：controlled beta hardening，定义 demo dataset/account、quickstart、known limitations、feedback loop、fresh-state walkthrough 和 controlled beta gate |
-| 21_v4_0_phase_2_execution_plan | product-engineering | in-progress | v4_0_phase_2_beta_release_hardening_research,20_v4_0_phase_1_execution_plan | 2026-05-03 | working-tree-v4-0-phase-2-execution-plan | V4.0-2 | DU-20260503-002 | pending | docs/plans | high | Phase 4.0-2 执行计划已生成：按 WP1 asset contract、WP2 demo dataset、WP3 demo environment、WP4 quickstart/limitations、WP5 feedback triage、WP6 fresh-state walkthrough、WP7 controlled beta closeout 推进 |
+| 21_v4_0_phase_2_execution_plan | product-engineering | done | v4_0_phase_2_beta_release_hardening_research,20_v4_0_phase_1_execution_plan | 2026-05-04 | working-tree-v4-0-phase-2-execution-plan,working-tree-v4-0-phase-2-assets,working-tree-v4-0-phase-2-closeout | V4.0-2 | DU-20260503-002 | pending | docs/plans,apps/api,apps/web | high | Phase 4.0-2 closeout 已完成：online provider mainline、fresh-state import/search probe、browser walkthrough 与 closeout report 均已回填；结论推进到 `walkthrough-complete / demo-ready`，但 controlled beta 与 release gate 仍留后续 phase |
 | PR11_Harness_Observability_文件级实施方案 | ai-platform | done | PR10 | 2026-04-17 | 89a9d9a | PR11 | DU-20260417-009 | historical | scripts,docs | medium | 已完成，进入维护态 |
 | PR12_Benchmark_基线评测_文件级实施方案 | ai-platform | done | PR11 | 2026-04-17 | 84fd597 | PR12 | DU-20260417-010 | historical | scripts/docs/reports | medium | 已完成，进入阈值维护态 |
 | PlanA_前端架构与交互重构 | web-platform | done | PR10,PR7_PR8 | 2026-04-18 | 9f58bb9,9a2fc2c,0b01076,43fe5c9,e02c880 | PlanA | DU-20260418-004 | PR22 | apps/web,docs | high | W0-W6 全部完成，进入维护态 |

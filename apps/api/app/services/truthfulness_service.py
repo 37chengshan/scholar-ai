@@ -9,6 +9,14 @@ from app.rag_v3.schemas import EvidenceBlock
 
 
 class TruthfulnessService:
+    _LEXICAL_ABSTAIN_MARKERS = (
+        "insufficient evidence",
+        "证据不足",
+        "无法基于所提供的证据",
+        "无法根据提供的证据",
+        "cannot answer confidently",
+    )
+
     def evaluate_text(
         self,
         *,
@@ -16,6 +24,13 @@ class TruthfulnessService:
         evidence_blocks: list[EvidenceBlock] | None = None,
     ) -> dict[str, Any]:
         claims = get_claim_extractor().extract(text)
+        if not claims:
+            fallback_report = self._fallback_report_for_unstructured_answer(
+                text=text,
+                evidence_blocks=evidence_blocks or [],
+            )
+            if fallback_report is not None:
+                return fallback_report
         return self.evaluate_claims(claims=claims, evidence_blocks=evidence_blocks or [])
 
     def evaluate_claims(
@@ -120,6 +135,85 @@ class TruthfulnessService:
         if supported == total:
             return "full"
         return "partial"
+
+    def _fallback_report_for_unstructured_answer(
+        self,
+        *,
+        text: str,
+        evidence_blocks: list[EvidenceBlock],
+    ) -> dict[str, Any] | None:
+        normalized = (text or "").strip().lower()
+        if not normalized:
+            return None
+
+        has_evidence = any((block.text or block.quote_text or "").strip() for block in evidence_blocks)
+        if not has_evidence:
+            return {
+                "results": [],
+                "totalClaims": 0,
+                "supportedClaimCount": 0,
+                "weaklySupportedClaimCount": 0,
+                "partiallySupportedClaimCount": 0,
+                "unsupportedClaimCount": 0,
+                "unsupportedClaimRate": 1.0,
+                "answerMode": "abstain",
+                "verifierBackend": "no_claims_without_evidence",
+                "summary": {
+                    "total_claims": 0,
+                    "supported_claims": 0,
+                    "weakly_supported_claims": 0,
+                    "partially_supported_claims": 0,
+                    "unsupported_claims": 0,
+                    "unsupported_claim_rate": 1.0,
+                    "answer_mode": "abstain",
+                    "verifier_backend": "no_claims_without_evidence",
+                },
+            }
+
+        if any(marker in normalized for marker in self._LEXICAL_ABSTAIN_MARKERS):
+            return {
+                "results": [],
+                "totalClaims": 1,
+                "supportedClaimCount": 0,
+                "weaklySupportedClaimCount": 0,
+                "partiallySupportedClaimCount": 0,
+                "unsupportedClaimCount": 1,
+                "unsupportedClaimRate": 1.0,
+                "answerMode": "abstain",
+                "verifierBackend": "lexical_abstain_guard",
+                "summary": {
+                    "total_claims": 1,
+                    "supported_claims": 0,
+                    "weakly_supported_claims": 0,
+                    "partially_supported_claims": 0,
+                    "unsupported_claims": 1,
+                    "unsupported_claim_rate": 1.0,
+                    "answer_mode": "abstain",
+                    "verifier_backend": "lexical_abstain_guard",
+                },
+            }
+
+        return {
+            "results": [],
+            "totalClaims": 1,
+            "supportedClaimCount": 0,
+            "weaklySupportedClaimCount": 1,
+            "partiallySupportedClaimCount": 0,
+            "unsupportedClaimCount": 0,
+            "unsupportedClaimRate": 0.0,
+            "answerMode": "partial",
+            "verifierBackend": "fallback_unstructured_answer",
+            "summary": {
+                "total_claims": 1,
+                "supported_claims": 0,
+                "weakly_supported_claims": 1,
+                "partially_supported_claims": 0,
+                "unsupported_claims": 0,
+                "unsupported_claim_rate": 0.0,
+                "answer_mode": "partial",
+                "verifier_backend": "fallback_unstructured_answer",
+            },
+        }
 
 
 _truthfulness_service: TruthfulnessService | None = None

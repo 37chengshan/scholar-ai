@@ -1,12 +1,13 @@
 ---
 owner: product-engineering
-status: execution-plan
+status: done
 depends_on:
   - 20_v4_0_phase_1_execution_plan
   - 2026-05-03_v4_0_phase_2_beta_release_hardening_research
-last_verified_at: 2026-05-03
+last_verified_at: 2026-05-04
 evidence_commits:
   - working-tree-v4-0-phase-2-execution-plan
+  - working-tree-v4-0-phase-2-closeout
 ---
 
 # 21 v4.0-2 执行计划：Beta Release Hardening
@@ -97,7 +98,19 @@ Phase 2 完成后最多只能声明 `controlled-beta-ready`。它不能声明 pu
 4. `docs/plans/v4_0/active/phase_2/known_limitations.md`
 5. `docs/plans/v4_0/active/phase_2/feedback_triage_template.md`
 6. `docs/plans/v4_0/active/phase_2/fresh_state_walkthrough_script.md`
-7. `docs/plans/v4_0/reports/2026-05-03_v4_0_phase_2_closeout_report.md`
+7. `docs/plans/v4_0/reports/2026-05-04_v4_0_phase_2_closeout_report.md`
+
+`asset-ready` 判定表：
+
+| asset | owner | status field | acceptance condition |
+|---|---|---|---|
+| `demo_dataset.md` | product-engineering | `asset-ready / blocked` | 至少 1 组 dataset_id、固定 search/import 入口、evidence probe、degraded/fallback 已定义 |
+| `demo_environment_policy.md` | product-engineering | `asset-ready / blocked` | local controlled beta、reset proof、环境变量边界、staging/cloud gate 已定义 |
+| `beta_quickstart.md` | product-engineering | `asset-ready / blocked` | happy path、degraded path、timing、recovery、not supported 已写明 |
+| `known_limitations.md` | product-engineering | `asset-ready / blocked` | partial / insufficient evidence、prefill-only handoff、AI 审查约束等限制已显式用户可见 |
+| `feedback_triage_template.md` | product-engineering | `asset-ready / blocked` | reporter、workflow step、artifact、severity、owner、decision 字段齐全 |
+| `fresh_state_walkthrough_script.md` | product-engineering | `walkthrough-complete / blocked` | 15-30 分钟脚本、reset proof 模板、逐步 pass/partial/fail 记录位已定义，并已回填真实执行证据 |
+| `2026-05-04_v4_0_phase_2_closeout_report.md` | product-engineering | `demo-ready / controlled-beta-ready / blocked` | 仅在真实 fresh-state run 完成后生成，禁止由历史 Phase D/J 证据替代 |
 
 验收：
 

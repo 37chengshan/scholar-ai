@@ -232,6 +232,18 @@ class TestBGEEmbeddingServiceBackwardCompatibility:
         # Verify dimension
         assert len(result) == 1024
 
+    @patch('app.core.embedding.bge_embedding.get_bge_m3_service')
+    def test_get_device_delegates_to_underlying_service(self, mock_get_service):
+        """Should preserve get_device() for callers expecting the old API."""
+        mock_bge = Mock()
+        mock_bge.get_device.return_value = "mps"
+        mock_get_service.return_value = mock_bge
+
+        service = BGEEmbeddingService()
+
+        assert service.get_device() == "mps"
+        mock_bge.get_device.assert_called_once()
+
     def test_singleton_pattern_preserved(self):
         """Should use singleton pattern via get_bge_m3_service()."""
         # Both instances should use same underlying singleton

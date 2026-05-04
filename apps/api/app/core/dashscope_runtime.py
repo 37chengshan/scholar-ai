@@ -77,9 +77,41 @@ class DashScopeEmbeddingProvider:
     model: str
     provider_name: str = "dashscope_qwen"
     dimension: int = 1024
-    supports_multimodal: bool = False
+    multimodal_capable: bool = False
     _resolved_mode: str = "online"
     _degraded_conditions: list[str] = field(default_factory=list)
+
+    def load_model(self) -> None:
+        """Online providers do not need local model loading."""
+        self._resolved_mode = "online"
+
+    def is_loaded(self) -> bool:
+        """Treat the remote provider binding as always ready."""
+        return True
+
+    def get_device(self) -> str:
+        """Expose a device-like marker for code paths that log backend state."""
+        return "online"
+
+    def get_model_info(self) -> dict[str, str]:
+        """Return model metadata using the local adapter contract."""
+        return {
+            "name": self.model,
+            "version": "remote",
+            "type": "text-only",
+            "dimension": str(self.dimension),
+            "provider": self.provider_name,
+        }
+
+    def supports_multimodal(self) -> bool:
+        return self.multimodal_capable
+
+    def encode_text(self, text: str | list[str]) -> list[float] | list[list[float]]:
+        texts = [text] if isinstance(text, str) else list(text)
+        vectors = self.embed_texts(texts)
+        if isinstance(text, str):
+            return vectors[0] if vectors else []
+        return vectors
 
     def embed_texts(self, texts: list[str], timeout_s: float | None = None) -> list[list[float]]:
         if not texts:
@@ -117,7 +149,7 @@ class DashScopeEmbeddingProvider:
                 provider_name=self.provider_name,
                 model=self.model,
                 dimension=self.dimension,
-                supports_multimodal=self.supports_multimodal,
+                supports_multimodal=self.multimodal_capable,
             )
         return RuntimeBinding(
             component="embedding",
@@ -127,7 +159,7 @@ class DashScopeEmbeddingProvider:
             provider_kind="api_provider",
             model=self.model,
             dimension=self.dimension,
-            supports_multimodal=self.supports_multimodal,
+            supports_multimodal=self.multimodal_capable,
             degraded_conditions=tuple(self._degraded_conditions),
         )
 
@@ -139,7 +171,31 @@ class DashScopeRerankService:
     _resolved_mode: str = "online"
     _degraded_conditions: list[str] = field(default_factory=list)
 
-    def rerank(self, *, query: str, documents: list[str], top_n: int | None = None) -> list[dict[str, Any]]:
+    def load_model(self) -> None:
+        """Online providers do not need local model loading."""
+        self._resolved_mode = "online"
+
+    def is_loaded(self) -> bool:
+        return True
+
+    def get_model_info(self) -> dict[str, str]:
+        return {
+            "name": self.model,
+            "version": "remote",
+            "type": "text-only",
+            "provider": self.provider_name,
+        }
+
+    def supports_multimodal(self) -> bool:
+        return False
+
+    def rerank(
+        self,
+        query: str,
+        documents: list[str],
+        top_k: int = 10,
+        top_n: int | None = None,
+    ) -> list[dict[str, Any]]:
         if not documents:
             return []
 
@@ -150,7 +206,7 @@ class DashScopeRerankService:
                 "documents": documents,
             },
             "parameters": {
-                "top_n": top_n or len(documents),
+                "top_n": top_n or top_k or len(documents),
             },
         }
         try:

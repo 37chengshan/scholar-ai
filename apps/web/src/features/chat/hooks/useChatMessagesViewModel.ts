@@ -36,6 +36,59 @@ function dedupeMessages(messages: SessionChatMessage[]): ExtendedChatMessage[] {
   return Array.from(new Map(messages.map((message) => [message.id, { ...message }])).values());
 }
 
+function mergeServerMessages(
+  localMessages: ExtendedChatMessage[],
+  sessionMessages: SessionChatMessage[],
+  placeholderId: string | null,
+  streamingMessageId: string | null,
+): ExtendedChatMessage[] {
+  const serverMessages = dedupeMessages(sessionMessages);
+  const serverMap = new Map(serverMessages.map((message) => [message.id, message]));
+  const merged: ExtendedChatMessage[] = [];
+  const preservedIds = new Set<string>();
+
+  for (const localMessage of localMessages) {
+    const isProtectedStreamingMessage = Boolean(
+      localMessage.id
+      && (
+        localMessage.id === placeholderId
+        || localMessage.id === streamingMessageId
+        || localMessage.streamStatus === 'streaming'
+      ),
+    );
+
+    const serverMessage = serverMap.get(localMessage.id);
+    if (serverMessage) {
+      merged.push({
+        ...serverMessage,
+        reasoningBuffer: localMessage.reasoningBuffer ?? (serverMessage as ExtendedChatMessage).reasoningBuffer,
+        toolTimeline: localMessage.toolTimeline ?? (serverMessage as ExtendedChatMessage).toolTimeline,
+        citations: localMessage.citations ?? (serverMessage as ExtendedChatMessage).citations,
+        streamStatus: isProtectedStreamingMessage
+          ? localMessage.streamStatus
+          : (localMessage.streamStatus ?? (serverMessage as ExtendedChatMessage).streamStatus),
+        answerContract: localMessage.answerContract ?? (serverMessage as ExtendedChatMessage).answerContract,
+        responseType: localMessage.responseType ?? (serverMessage as ExtendedChatMessage).responseType,
+      });
+      preservedIds.add(localMessage.id);
+      continue;
+    }
+
+    if (isProtectedStreamingMessage || localMessage.streamStatus === 'completed' || localMessage.role === 'user') {
+      merged.push(localMessage);
+      preservedIds.add(localMessage.id);
+    }
+  }
+
+  for (const serverMessage of serverMessages) {
+    if (!preservedIds.has(serverMessage.id)) {
+      merged.push(serverMessage);
+    }
+  }
+
+  return merged;
+}
+
 export function useChatMessagesViewModel({
   sessionMessages,
   streamState,
@@ -45,11 +98,8 @@ export function useChatMessagesViewModel({
   const [placeholderId, setPlaceholderId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (placeholderId) {
-      return;
-    }
-    setLocalMessages(dedupeMessages(sessionMessages));
-  }, [sessionMessages, placeholderId]);
+    setLocalMessages((prev) => mergeServerMessages(prev, sessionMessages, placeholderId, streamingMessageId));
+  }, [placeholderId, sessionMessages, streamingMessageId]);
 
   const resetForSessionSwitch = useCallback(() => {
     setLocalMessages([]);

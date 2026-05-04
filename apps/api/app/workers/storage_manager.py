@@ -42,6 +42,7 @@ class StorageManager:
     EMBEDDING_DIM = 2048  # Qwen3VL dimension
     MIN_CHUNK_QUALITY = 0.25
     MAX_INDEXED_TITLE_LEN = 240
+    MAX_SUMMARY_CONTENT_LEN = 8000
 
     @staticmethod
     def _embedding_batch_size_for_device(device: str) -> int:
@@ -98,6 +99,14 @@ class StorageManager:
         if "\x00" in value:
             return value.replace("\x00", "")
         return value
+
+    @classmethod
+    def _truncate_summary_text(cls, value: str) -> str:
+        """Clamp summary payloads to Milvus VARCHAR limits without breaking UTF-8."""
+        text = cls._sanitize_text(value) or ""
+        if len(text) <= cls.MAX_SUMMARY_CONTENT_LEN:
+            return text
+        return text[: cls.MAX_SUMMARY_CONTENT_LEN].rstrip()
 
     @classmethod
     def _sanitize_obj(cls, value: Any) -> Any:
@@ -345,8 +354,9 @@ class StorageManager:
         # 3. Store all content vectors in Milvus (batched)
         chunk_ids = await self._store_vectors(ctx)
 
-        # 4. Persist reading card from section-aware chunk metadata
+        # 4. Persist chunk rows and reading card from section-aware chunk metadata
         async with self.db_pool.acquire() as conn:
+            await self._store_chunk_rows(conn, ctx)
             await self._store_reading_card(conn, ctx)
 
         # 5. Store graph nodes in Neo4j
@@ -657,22 +667,39 @@ class StorageManager:
                 skipped_low_quality += 1
                 continue
 
+            record_chunk_id = str(chunk.get("chunk_id") or "")
+            record_page_num = int(chunk.get("page_num") or chunk.get("page_start") or 0)
+            record_char_start = int(chunk.get("char_start") or 0)
+            record_char_end = int(
+                chunk.get("char_end") or max(record_char_start + len(raw_text), record_char_start + 1)
+            )
+            record_anchor_text = str(
+                chunk.get("anchor_text") or raw_text.replace("\n", " ").strip()[:200]
+            )
+            record_raw_section_path = str(chunk.get("raw_section_path") or chunk.get("section") or "")
+            record_normalized_section_path = str(chunk.get("normalized_section_path") or "")
+            record_normalized_leaf = str(
+                chunk.get("normalized_section_leaf") or section_leaf(normalize_section_path(record_raw_section_path))
+            )
+            record_section_level = int(chunk.get("section_level") or 0)
+            record_parent_path = str(chunk.get("parent_section_path") or "")
+
             raw_data = self._build_evidence_metadata(chunk, raw_text, parse_metadata)
 
             text_record = {
-                "chunk_id": chunk_id,
+                "chunk_id": record_chunk_id,
                 "paper_id": ctx.paper_id,
                 "user_id": ctx.user_id,
                 "content_type": "text",
-                "page_num": page_num,
-                "char_start": char_start,
-                "char_end": char_end,
-                "anchor_text": anchor_text,
-                "raw_section_path": raw_section_path,
-                "normalized_section_path": normalized_section_path,
-                "normalized_section_leaf": normalized_leaf,
-                "section_level": section_level,
-                "parent_section_path": parent_path,
+                "page_num": record_page_num,
+                "char_start": record_char_start,
+                "char_end": record_char_end,
+                "anchor_text": record_anchor_text,
+                "raw_section_path": record_raw_section_path,
+                "normalized_section_path": record_normalized_section_path,
+                "normalized_section_leaf": record_normalized_leaf,
+                "section_level": record_section_level,
+                "parent_section_path": record_parent_path,
                 "section": section,
                 "text": raw_text,
                 # Iteration 2: use contextual chunk text for embedding + BM25
@@ -733,6 +760,90 @@ class StorageManager:
 
         return []
 
+    async def _store_chunk_rows(
+        self, conn: asyncpg.Connection, ctx: PipelineContext
+    ) -> None:
+        """Persist text chunks into PostgreSQL for workspace counts and reading APIs."""
+        chunk_records = ctx.chunk_results or []
+
+        await conn.execute(
+            'DELETE FROM paper_chunks WHERE "paperId" = $1',
+            ctx.paper_id,
+        )
+
+        rows = []
+        seen_chunk_ids: set[str] = set()
+        deduped_conflicts = 0
+        for record in chunk_records:
+            content = self._sanitize_text(
+                record.get("text")
+                or record.get("raw_text")
+                or record.get("content_data")
+                or ""
+            )
+            if not content:
+                continue
+
+            page_start = record.get("page_start") or record.get("page_num")
+            page_end = record.get("page_end") or page_start
+            chunk_id = str(record.get("chunk_id") or "")
+            if not chunk_id:
+                continue
+            if chunk_id in seen_chunk_ids:
+                deduped_conflicts += 1
+                continue
+            seen_chunk_ids.add(chunk_id)
+
+            rows.append(
+                (
+                    chunk_id,
+                    content,
+                    self._sanitize_text(record.get("section")),
+                    int(page_start) if page_start is not None else None,
+                    int(page_end) if page_end is not None else None,
+                    False,
+                    False,
+                    bool(record.get("has_equations", False)),
+                    ctx.paper_id,
+                )
+            )
+
+        if not rows:
+            logger.info("Paper chunk rows cleared", task_id=ctx.task_id, count=0)
+            return
+
+        await conn.executemany(
+            '''INSERT INTO paper_chunks (
+                   id,
+                   content,
+                   section,
+                   "pageStart",
+                   "pageEnd",
+                   "isTable",
+                   "isFigure",
+                   "isFormula",
+                   "paperId"
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+               ON CONFLICT (id) DO UPDATE SET
+                   content = EXCLUDED.content,
+                   section = EXCLUDED.section,
+                   "pageStart" = EXCLUDED."pageStart",
+                   "pageEnd" = EXCLUDED."pageEnd",
+                   "isTable" = EXCLUDED."isTable",
+                   "isFigure" = EXCLUDED."isFigure",
+                   "isFormula" = EXCLUDED."isFormula",
+                   "paperId" = EXCLUDED."paperId"''',
+            rows,
+        )
+
+        logger.info(
+            "Paper chunk rows stored",
+            task_id=ctx.task_id,
+            count=len(rows),
+            deduped_conflicts=deduped_conflicts,
+            paper_id=ctx.paper_id,
+        )
+
     async def _store_summary_index(
         self,
         ctx: PipelineContext,
@@ -768,12 +879,14 @@ class StorageManager:
                 chunks=section_chunks,
                 paper_title=paper_title,
             )
+            summary_text = self._truncate_summary_text(summary_text)
             summary_texts.append(summary_text)
             summary_entries.append({
                 "paper_id": ctx.paper_id,
                 "user_id": ctx.user_id,
                 "summary_type": "section_summary",
                 "section_name": section_name,
+                "source_chunk_id": str(section_chunks[0].get("chunk_id") or ""),
                 "content_data": summary_text,
             })
 
@@ -785,12 +898,14 @@ class StorageManager:
             paper_summary_text = (
                 f"[Paper Summary: {paper_title or 'unknown'}]\n{all_text}"
             )
+            paper_summary_text = self._truncate_summary_text(paper_summary_text)
             summary_texts.append(paper_summary_text)
             summary_entries.append({
                 "paper_id": ctx.paper_id,
                 "user_id": ctx.user_id,
                 "summary_type": "paper_summary",
                 "section_name": "_paper",
+                "source_chunk_id": str(text_contents[0].get("chunk_id") or ""),
                 "content_data": paper_summary_text,
             })
 

@@ -2,10 +2,108 @@
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
+from app.config import settings
+from app.core.embedding.factory import get_embedding_service
+from app.core.reranker.factory import get_reranker_service
+from app.core.milvus_service import MilvusService
 from app.services.system_service import get_services_health
 from app.utils.problem_detail import Errors
 
 router = APIRouter()
+
+
+def _provider_status(service: object | None, *, component: str) -> dict:
+    if service is None:
+        return {
+            "status": "not_ready",
+            "mode": "lazy",
+            "note": "Will be initialized on first use",
+        }
+
+    get_runtime_binding = getattr(service, "get_runtime_binding", None)
+    if callable(get_runtime_binding):
+        binding = get_runtime_binding()
+        return {
+            "status": "available" if binding.resolved_mode in {"online", "shim"} else "loaded",
+            "mode": binding.resolved_mode,
+            "provider": binding.provider_name,
+            "model": binding.model,
+            "dimension": binding.dimension,
+            "supports_multimodal": binding.supports_multimodal,
+            "component": component,
+        }
+
+    payload = {
+        "status": "loaded",
+        "mode": "local",
+        "component": component,
+    }
+    model_info = getattr(service, "get_model_info", None)
+    if callable(model_info):
+        info = model_info()
+        payload.update(
+            {
+                "model": info.get("name", "unknown"),
+                "type": info.get("type", "unknown"),
+                "dimension": info.get("dimension"),
+                "provider": info.get("provider"),
+            }
+        )
+
+    is_loaded = getattr(service, "is_loaded", None)
+    if callable(is_loaded):
+        payload["initialized"] = bool(is_loaded())
+
+    device = getattr(service, "get_device", None)
+    if callable(device):
+        payload["device"] = device()
+    elif hasattr(service, "device"):
+        payload["device"] = getattr(service, "device")
+
+    if hasattr(service, "_initialized"):
+        payload["initialized"] = getattr(service, "_initialized")
+
+    return payload
+
+
+def _resolve_runtime_service(request: Request, attr_name: str, factory) -> object | None:
+    service = getattr(request.app.state, attr_name, None)
+    if service is not None:
+        return service
+
+    try:
+        service = factory()
+    except Exception as exc:
+        return {
+            "status": "error",
+            "component": attr_name.removesuffix("_service"),
+            "message": str(exc),
+        }
+
+    setattr(request.app.state, attr_name, service)
+    return service
+
+
+def _milvus_status(request: Request) -> dict:
+    service = getattr(request.app.state, "milvus_service", None)
+    if service is None:
+        try:
+            service = MilvusService()
+            service.connect()
+            request.app.state.milvus_service = service
+        except Exception as exc:
+            return {
+                "status": "error",
+                "connected": False,
+                "message": str(exc),
+            }
+
+    return {
+        "status": "available" if getattr(service, "_connected", False) else "not_ready",
+        "connected": bool(getattr(service, "_connected", False)),
+        "mode": getattr(service, "mode", "unknown"),
+        "collection": settings.MILVUS_COLLECTION_CONTENTS_V2,
+    }
 
 
 @router.get("/live", status_code=status.HTTP_200_OK)
@@ -35,51 +133,31 @@ async def readiness_check(request: Request):
     services_status = {}
 
     # Check Milvus (lazy loaded, may not be initialized yet)
-    if (
-        hasattr(request.app.state, "milvus_service")
-        and request.app.state.milvus_service
-    ):
-        services_status["milvus"] = {
-            "status": "ready",
-            "connected": True,
-        }
-    else:
-        services_status["milvus"] = {
-            "status": "not_ready",
-            "note": "Will be initialized on first use",
-        }
+    services_status["milvus"] = _milvus_status(request)
 
     # Check ReRanker (lazy loaded)
-    if (
-        hasattr(request.app.state, "reranker_service")
-        and request.app.state.reranker_service
-    ):
-        reranker = request.app.state.reranker_service
-        services_status["reranker"] = {
-            "status": "ready",
-            "initialized": reranker._initialized,
-        }
-    else:
-        services_status["reranker"] = {
-            "status": "not_ready",
-            "note": "Will be initialized on first use",
-        }
+    reranker_service = _resolve_runtime_service(
+        request,
+        "reranker_service",
+        get_reranker_service,
+    )
+    services_status["reranker"] = (
+        reranker_service
+        if isinstance(reranker_service, dict)
+        else _provider_status(reranker_service, component="reranker")
+    )
 
     # Check Embedding (lazy loaded)
-    if (
-        hasattr(request.app.state, "embedding_service")
-        and request.app.state.embedding_service
-    ):
-        embedding = request.app.state.embedding_service
-        services_status["embedding"] = {
-            "status": "ready",
-            "initialized": embedding.is_loaded(),
-        }
-    else:
-        services_status["embedding"] = {
-            "status": "not_ready",
-            "note": "Will be initialized on first use",
-        }
+    embedding_service = _resolve_runtime_service(
+        request,
+        "embedding_service",
+        get_embedding_service,
+    )
+    services_status["embedding"] = (
+        embedding_service
+        if isinstance(embedding_service, dict)
+        else _provider_status(embedding_service, component="embedding")
+    )
 
     # Basic service is ready if DB connections are established
     # AI services will be initialized lazily
@@ -140,57 +218,32 @@ async def health_check(request: Request):
 
     services_status = {}
 
-    if (
-        hasattr(request.app.state, "milvus_service")
-        and request.app.state.milvus_service
-    ):
-        services_status["milvus"] = {
-            "status": "loaded",
-            "connected": True,
-        }
-    else:
-        services_status["milvus"] = {
-            "status": "not_loaded",
-            "connected": False,
-        }
+    services_status["milvus"] = _milvus_status(request)
 
-    if (
-        hasattr(request.app.state, "reranker_service")
-        and request.app.state.reranker_service
-    ):
-        reranker = request.app.state.reranker_service
-        services_status["reranker"] = {
-            "status": "loaded",
-            "model": reranker.MODEL_NAME,
-            "device": reranker.device,
-            "initialized": reranker._initialized,
-        }
-    else:
-        services_status["reranker"] = {
-            "status": "not_loaded",
-        }
+    reranker_service = _resolve_runtime_service(
+        request,
+        "reranker_service",
+        get_reranker_service,
+    )
+    services_status["reranker"] = (
+        reranker_service
+        if isinstance(reranker_service, dict)
+        else _provider_status(reranker_service, component="reranker")
+    )
 
-    if (
-        hasattr(request.app.state, "embedding_service")
-        and request.app.state.embedding_service
-    ):
-        embedding = request.app.state.embedding_service
-        model_info = embedding.get_model_info()
-        services_status["embedding"] = {
-            "status": "loaded",
-            "model": model_info.get("name", "unknown"),
-            "type": model_info.get("type", "unknown"),
-            "dimension": model_info.get("dimension", "unknown"),
-            "device": getattr(embedding, "device", "unknown"),
-            "initialized": embedding.is_loaded(),
-        }
-    else:
-        services_status["embedding"] = {
-            "status": "not_loaded",
-        }
+    embedding_service = _resolve_runtime_service(
+        request,
+        "embedding_service",
+        get_embedding_service,
+    )
+    services_status["embedding"] = (
+        embedding_service
+        if isinstance(embedding_service, dict)
+        else _provider_status(embedding_service, component="embedding")
+    )
 
     all_loaded = all(
-        s.get("status") in ["loaded", "available"] for s in services_status.values()
+        s.get("status") in ["loaded", "available", "ready"] for s in services_status.values()
     )
 
     return {

@@ -609,7 +609,7 @@ class AgentRunner:
 
                     cost = await self.token_tracker.track_usage(
                         user_id=user_id,
-                        model="glm-4.5-air",
+                        model=settings.LLM_MODEL,
                         input_tokens=prompt_tokens,
                         output_tokens=completion_tokens,
                         session_id=session_id,

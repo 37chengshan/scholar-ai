@@ -287,7 +287,16 @@ export function KnowledgeWorkspaceShell() {
               papersEmpty={!papersLoading && papers.length === 0}
               onSearchQueryChange={search.setSearchDraft}
               onSearchSubmit={() => void search.search(search.searchDraft)}
-              onOpenPaper={(paperId, page) => navigate(`/read/${paperId}?page=${page || 1}`)}
+              onOpenPaper={(paperId, page, sourceChunkId) => {
+                const params = new URLSearchParams({
+                  page: String(page || 1),
+                  source: 'evidence',
+                });
+                if (sourceChunkId) {
+                  params.set('source_id', sourceChunkId);
+                }
+                navigate(`/read/${paperId}?${params.toString()}`);
+              }}
             />
           </TabsContent>
 

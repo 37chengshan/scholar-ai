@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping
 
 
-ACTIVE_RAG_RUNTIME_PROFILE = "dashscope_qwen_online__qwen_rerank__glm_air"
+ACTIVE_RAG_RUNTIME_PROFILE = "dashscope_qwen_online__qwen_rerank__glm_46v_flashx"
 
 ACTIVE_EMBEDDING_PROVIDER = "dashscope_qwen"
 ACTIVE_EMBEDDING_MODEL_FLASH = "qwen_flash"
@@ -22,13 +22,13 @@ ACTIVE_RERANKER_PROVIDER = "dashscope_qwen"
 ACTIVE_RERANKER_MODEL = "qwen_rerank"
 
 ACTIVE_LLM_PROVIDER = "zhipu"
-ACTIVE_LLM_MODEL = "glm-4.5-air"
+ACTIVE_LLM_MODEL = "glm-4.6v-flashx"
 
 ACTIVE_VECTOR_STORE_BACKEND = "milvus"
 ACTIVE_COLLECTIONS = {
-    "raw": "paper_contents_v2_api_tongyi_flash_raw_v2_3",
-    "rule": "paper_contents_v2_api_tongyi_flash_rule_v2_3",
-    "llm": "paper_contents_v2_api_tongyi_flash_llm_v2_3",
+    "raw": "paper_contents_v2",
+    "rule": "paper_contents_v2",
+    "llm": "paper_contents_v2",
 }
 
 PRO_QUERY_FAMILIES = {

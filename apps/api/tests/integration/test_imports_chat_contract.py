@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import UploadFile
+from httpx import AsyncClient
 
 from app.api.chat import chat_stream
 from app.api.imports.batches import upload_batch_local_files
@@ -52,6 +53,44 @@ async def test_resolve_batch_contract_fields_are_stable():
     assert response.data["resolvedCount"] == 1
     assert response.data["items"][0]["resolved"] is True
     assert response.data["items"][1]["errorCode"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_resolve_source_frontend_route_is_available(client: AsyncClient):
+    class _Resolver:
+        async def resolve(self, input, source_type=None):
+            return SimpleNamespace(
+                resolution=SimpleNamespace(
+                    resolved=True,
+                    source_type=source_type or "arxiv",
+                    canonical_id="1706.03762",
+                    canonical_pdf_url="https://arxiv.org/pdf/1706.03762.pdf",
+                    version=None,
+                    external_ids={"arxiv": "1706.03762"},
+                ),
+                metadata=SimpleNamespace(
+                    title="Attention Is All You Need",
+                    authors=["Ashish Vaswani"],
+                    year=2017,
+                    abstract="Transformer paper",
+                    venue="NeurIPS",
+                    pdf_available=True,
+                    pdf_source="arxiv",
+                    citation_count=1000,
+                ),
+            )
+
+    with patch("app.api.imports.sources.get_source_resolver_service", return_value=_Resolver()):
+        response = await client.post(
+            "/api/v1/imports/sources/resolve",
+            json={"input": "1706.03762", "sourceType": "arxiv"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["resolved"] is True
+    assert payload["data"]["normalizedSource"]["canonicalId"] == "1706.03762"
 
 
 @pytest.mark.asyncio

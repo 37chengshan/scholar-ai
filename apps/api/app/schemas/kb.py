@@ -48,3 +48,4 @@ class KnowledgeBaseSearchHitDto(BaseModel):
     section: Optional[str] = None
     page: Optional[int] = None
     score: float
+    source_chunk_id: Optional[str] = None

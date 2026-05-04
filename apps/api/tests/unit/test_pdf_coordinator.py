@@ -11,7 +11,7 @@ Tests for the parallel PDF processing pipeline foundation:
 """
 
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from app.workers.pipeline_context import PipelineContext, PipelineStage
 from app.workers.pdf_coordinator import PDFCoordinator, get_pdf_coordinator
@@ -154,10 +154,28 @@ class TestPDFCoordinator:
 
         assert coordinator.storage is not None
         assert coordinator.parser is not None
-        assert coordinator.embedding_service is not None
+        assert hasattr(coordinator, "embedding_service")
         assert coordinator.milvus_service is not None
         assert coordinator._db_pool is None  # Not initialized until init_db
         assert coordinator._storage_manager is None  # Lazy init
+
+    def test_coordinator_init_degrades_when_multimodal_provider_unavailable(self):
+        """Test coordinator still initializes when multimodal provider is unavailable."""
+        with patch(
+            "app.workers.extraction_pipeline.get_multimodal_embedding_service",
+            side_effect=RuntimeError("multimodal unavailable"),
+        ):
+            with patch(
+                "app.workers.pdf_coordinator.get_multimodal_embedding_service",
+                side_effect=RuntimeError("multimodal unavailable"),
+            ):
+                coordinator = PDFCoordinator()
+
+        assert coordinator.storage is not None
+        assert coordinator.parser is not None
+        assert coordinator.extraction_pipeline is not None
+        assert coordinator.embedding_service is None
+        assert coordinator.extraction_pipeline.qwen3vl is None
 
     def test_coordinator_has_all_services(self):
         """Test that coordinator has all required services."""

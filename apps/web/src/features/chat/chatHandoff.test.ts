@@ -25,7 +25,7 @@ describe('chatHandoff', () => {
       },
     );
 
-    expect(navigate).toHaveBeenCalledWith('/chat?kbId=kb-1&handoff=1', {
+    expect(navigate).toHaveBeenCalledWith('/chat?kbId=kb-1&handoff=1&new=1', {
       state: {
         handoff: {
           origin: 'review',

@@ -36,9 +36,9 @@ async def test_store_vectors_uses_device_batch_size_without_forced_mps_cache_cle
     manager.MIN_CHUNK_QUALITY = 0.0
     manager.parser = Mock()
     manager.parser.chunk_by_semantic.return_value = [
-        {"text": "chunk 1", "page_start": 1, "section": "intro"},
-        {"text": "chunk 2", "page_start": 1, "section": "intro"},
-        {"text": "chunk 3", "page_start": 2, "section": "method"},
+        {"text": "chunk 1", "page_start": 1, "section": "intro", "char_start": 0, "char_end": 7},
+        {"text": "chunk 2", "page_start": 1, "section": "intro", "char_start": 8, "char_end": 15},
+        {"text": "chunk 3", "page_start": 2, "section": "method", "char_start": 0, "char_end": 7},
     ]
     manager.qwen3vl_service = SimpleNamespace(
         is_loaded=lambda: True,
@@ -82,4 +82,7 @@ async def test_store_vectors_uses_device_batch_size_without_forced_mps_cache_cle
     assert manager.qwen3vl_service.encode_text.call_count == 2
     assert len(manager.qwen3vl_service.encode_text.call_args_list[0].args[0]) == 2
     assert len(manager.qwen3vl_service.encode_text.call_args_list[1].args[0]) == 1
+    assert len({record["chunk_id"] for record in ctx.chunk_results}) == 3
+    assert [record["page_num"] for record in ctx.chunk_results] == [1, 1, 2]
+    assert [record["char_start"] for record in ctx.chunk_results] == [0, 8, 0]
     mock_empty_cache.assert_not_called()

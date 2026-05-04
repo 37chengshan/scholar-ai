@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -38,12 +39,11 @@ class DenseEvidenceRetriever:
         self._collection_name = collection_name
         self._milvus_alias = milvus_alias
         self._output_fields = output_fields or [
-            "source_chunk_id",
             "paper_id",
-            "normalized_section_path",
             "content_type",
-            "anchor_text",
+            "section",
             "page_num",
+            "content_data",
         ]
         self.last_trace: dict[str, Any] = {}
 
@@ -65,7 +65,7 @@ class DenseEvidenceRetriever:
         if section_paths:
             normalized = [str(path).strip().lower() for path in section_paths if str(path).strip()]
             if normalized:
-                clauses = [f'normalized_section_path like "{path}%"' for path in dict.fromkeys(normalized)]
+                clauses = [f'section like "{path}%"' for path in dict.fromkeys(normalized)]
                 parts.append(f"({' || '.join(clauses)})")
 
         if page_from is not None:
@@ -134,11 +134,11 @@ class DenseEvidenceRetriever:
                 "search_path": "fallback",
                 "fallback_used": True,
                 "error_type": "unsupported_field_type" if unsupported_field else "search_error",
-                "output_fields": ["source_chunk_id", "paper_id"],
+                "output_fields": ["paper_id", "page_num", "content_type", "section", "content_data"],
             }
 
             try:
-                return self._milvus_search(
+                return self._query_fallback(
                     query=query,
                     top_k=top_k,
                     paper_id_filter=paper_id_filter,
@@ -146,7 +146,6 @@ class DenseEvidenceRetriever:
                     page_from=page_from,
                     page_to=page_to,
                     content_types=content_types,
-                    output_fields=["source_chunk_id", "paper_id"],
                 )
             except Exception:
                 return []
@@ -194,11 +193,84 @@ class DenseEvidenceRetriever:
                     EvidenceCandidate(
                         source_chunk_id=source_chunk_id,
                         paper_id=paper_id,
-                        section_id=str(e.get("normalized_section_path") or e.get("section_path") or ""),
+                        section_id=str(e.get("section") or e.get("normalized_section_path") or e.get("section_path") or ""),
                         content_type=_safe_content_type(e.get("content_type")),
-                        anchor_text=str(e.get("anchor_text") or "")[:300],
+                        anchor_text=str(e.get("content_data") or e.get("anchor_text") or "")[:300],
                         candidate_sources=["dense"],
                         dense_score=float(1 - getattr(hit, "distance", 0.0)),
                     )
                 )
         return candidates
+
+    def _query_fallback(
+        self,
+        query: str,
+        top_k: int,
+        paper_id_filter: list[str] | None = None,
+        section_paths: list[str] | None = None,
+        page_from: int | None = None,
+        page_to: int | None = None,
+        content_types: list[str] | None = None,
+    ) -> list[EvidenceCandidate]:
+        from pymilvus import Collection
+
+        vec = self._embedding_provider.embed_texts([query])[0]
+        col = Collection(self._collection_name, using=self._milvus_alias)
+        col.load()
+
+        expr = self._build_filter_expression(
+            paper_id_filter=paper_id_filter,
+            section_paths=section_paths,
+            page_from=page_from,
+            page_to=page_to,
+            content_types=content_types,
+        )
+        rows = col.query(
+            expr=expr,
+            output_fields=[
+                "id",
+                "paper_id",
+                "page_num",
+                "content_type",
+                "section",
+                "content_data",
+                "embedding",
+            ],
+            limit=max(top_k * 24, 240),
+        )
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for row in rows:
+            row_vec = row.get("embedding") or []
+            score = self._cosine_similarity(vec, row_vec)
+            if score <= 0.0:
+                continue
+            scored.append((score, row))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        candidates: list[EvidenceCandidate] = []
+        for rank, (score, row) in enumerate(scored[:top_k], start=1):
+            source_chunk_id = str(row.get("id") or "")
+            candidates.append(
+                EvidenceCandidate(
+                    source_chunk_id=source_chunk_id,
+                    paper_id=str(row.get("paper_id") or ""),
+                    section_id=str(row.get("section") or ""),
+                    content_type=_safe_content_type(row.get("content_type")),
+                    anchor_text=str(row.get("content_data") or "")[:300],
+                    candidate_sources=["dense", "python_cosine_fallback"],
+                    dense_score=score,
+                    pre_rerank_rank=rank,
+                )
+            )
+        return candidates
+
+    @staticmethod
+    def _cosine_similarity(left: list[float], right: list[float]) -> float:
+        if not left or not right or len(left) != len(right):
+            return 0.0
+        dot = sum(a * b for a, b in zip(left, right))
+        left_norm = math.sqrt(sum(a * a for a in left))
+        right_norm = math.sqrt(sum(b * b for b in right))
+        if left_norm == 0.0 or right_norm == 0.0:
+            return 0.0
+        return dot / (left_norm * right_norm)
