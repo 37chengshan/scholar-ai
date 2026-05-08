@@ -24,12 +24,14 @@ test.describe('Critical E2E - Knowledge Base', () => {
     await page.locator('div[role="dialog"] button:has-text("创建知识库")').click();
 
     const createResponse = await createResponsePromise;
+    expect(createResponse.status()).toBe(201);
     const payload = await createResponse.json();
-    const createdKbId = payload?.id || payload?.data?.id;
-
+    const createdKbId = payload?.data?.id;
     expect(createdKbId).toBeTruthy();
 
-    const kbCard = page.locator(`[data-kb-id="${createdKbId}"]`);
-    await expect(kbCard).toBeVisible({ timeout: 30000 });
+    const createdCard = page.locator(`[data-kb-id="${createdKbId}"]`).first();
+    await expect(createdCard).toBeVisible({ timeout: 30000 });
+    await createdCard.click();
+    await expect(page).toHaveURL(new RegExp(`/knowledge-bases/${createdKbId}`), { timeout: 15000 });
   });
 });

@@ -29,16 +29,47 @@ function buildE2EUser(): E2EUser {
   };
 }
 
+function isDashboardUrl(url: string): boolean {
+  return /\/dashboard(?:[/?#]|$)/.test(url);
+}
+
+function isLoginUrl(url: string): boolean {
+  return /\/login(?:[/?#]|$)/.test(url);
+}
+
 async function createAuthState(page: Page, request: APIRequestContext): Promise<CachedAuthState> {
   void request;
   const user = buildE2EUser();
 
-  await page.goto('/login');
+  await page.goto('/dashboard');
   await page.waitForLoadState('domcontentloaded');
 
   // A fresh page can still inherit valid cookies from an earlier attempt.
-  // If /login immediately redirects to /dashboard, reuse that authenticated state.
-  if (/\/dashboard(?:[/?#]|$)/.test(page.url())) {
+  // If protected routes open successfully, reuse that authenticated state.
+  if (isDashboardUrl(page.url())) {
+    await page.locator('#root').waitFor({ timeout: 20000 });
+    return {
+      user,
+      cookies: await page.context().cookies(),
+    };
+  }
+
+  if (!isLoginUrl(page.url())) {
+    await page.goto('/login');
+    await page.waitForLoadState('domcontentloaded');
+  }
+
+  // The login page can asynchronously redirect to /dashboard once auth state
+  // is restored. Give that transition a brief chance to settle before typing.
+  try {
+    await page.waitForURL((url) => isDashboardUrl(url.toString()) || isLoginUrl(url.toString()), {
+      timeout: 5000,
+    });
+  } catch {
+    // Fall through and let field waits produce a concrete failure.
+  }
+
+  if (isDashboardUrl(page.url())) {
     await page.locator('#root').waitFor({ timeout: 20000 });
     return {
       user,
@@ -78,12 +109,8 @@ async function createAuthState(page: Page, request: APIRequestContext): Promise<
 async function readPersistedAuthState(): Promise<CachedAuthState | null> {
   try {
     const content = await fs.readFile(AUTH_STATE_PATH, 'utf-8');
-    const parsed = JSON.parse(content) as CachedAuthState;
-    if (!parsed?.user?.email || !Array.isArray(parsed?.cookies)) {
-      return null;
-    }
-    const hasWarmHintCookie = parsed.cookies.some((cookie) => cookie.name === 'authHint' && cookie.value === '1');
-    if (!hasWarmHintCookie) {
+    const parsed = JSON.parse(content) as Partial<CachedAuthState> & { cookies?: AuthCookie[] };
+    if (!Array.isArray(parsed?.cookies) || parsed.cookies.length === 0) {
       return null;
     }
     return parsed;
@@ -132,6 +159,18 @@ async function getAuthState(page: Page, request: APIRequestContext): Promise<Cac
 }
 
 export async function registerAndLogin(page: Page, request: APIRequestContext): Promise<E2EUser> {
+  const user = buildE2EUser();
+
+  // Tests already load shared Playwright storageState. Prefer that state first
+  // so we do not race the login page against an async auth redirect.
+  await page.goto('/dashboard');
+  try {
+    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+    return user;
+  } catch {
+    // Fall back to worker-level cookie bootstrap below.
+  }
+
   let authState = await getAuthState(page, request);
 
   // Reuse the authenticated browser cookies after the first login in this worker.
