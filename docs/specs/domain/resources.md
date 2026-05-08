@@ -55,6 +55,8 @@
 - GraphRetrievalResult 绑定单次检索计划，作为 vector 检索的约束与重排辅助，不独立替代 Chunk。
 - ReviewDraft 归属 KnowledgeBase，可选绑定 `sourcePaperIds[]` 子集；同一 draft 可被多次 retry/run 覆盖更新。
 - ReviewRun 归属 KnowledgeBase 且可回链到 ReviewDraft；Run 是执行轨迹真源，禁止用 session 列表投影伪装。
+- ReviewDraft 的正式输出还需携带 `knownLimitations[]`，作为 citation-backed artifact bundle 的一等组成部分。
+- ReviewRun 的 `artifacts[]` 必须使用统一 artifact contract，最小类型集为 `review_draft|citation_audit|evidence_note|compare_matrix|known_limitations|run_trace`。
 
 ChatSession/ChatMessage 读取契约约束：
 

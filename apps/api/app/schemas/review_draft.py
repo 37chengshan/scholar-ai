@@ -92,6 +92,7 @@ class ReviewDraftDto(BaseModel):
     outlineDoc: OutlineDoc
     draftDoc: DraftDoc
     quality: ReviewQuality
+    knownLimitations: list[str] = Field(default_factory=list)
     traceId: str = ""
     runId: str = ""
     errorState: Optional[ReviewErrorState] = None

@@ -301,7 +301,7 @@ Phase 5 ReviewDraft 与 KB Runs 契约（冻结）：
   - 响应：`data.items[]` + `meta(limit, offset, total)`。
 
 - `GET /api/v1/knowledge-bases/{kb_id}/review-drafts/{draft_id}`
-  - 语义：返回完整 `ReviewDraftDto`（含 `outline_doc`、`draft_doc`、`quality`、`error_state`、`trace_id`、`run_id`）。
+  - 语义：返回完整 `ReviewDraftDto`（含 `outline_doc`、`draft_doc`、`quality`、`known_limitations`、`error_state`、`trace_id`、`run_id`）。
 
 - `POST /api/v1/knowledge-bases/{kb_id}/review-drafts/{draft_id}/retry`
   - 语义：复用同一输入范围与问题，触发新 run，更新同一 draft。
@@ -314,6 +314,14 @@ Phase 5 ReviewDraft 与 KB Runs 契约（冻结）：
 - `GET /api/v1/runs/{run_id}`
   - 语义：返回完整 run 详情。
   - 响应最小字段：`steps[]`、`tool_events[]`、`artifacts[]`、`evidence[]`、`recovery_actions[]`、`trace_id`、`error_state`。
+  - `artifacts[]` 需使用统一 artifact contract，至少包含：
+    - `artifact_id`
+    - `run_id`
+    - `type`（`review_draft|citation_audit|evidence_note|compare_matrix|known_limitations|run_trace`）
+    - `title`
+    - `content`
+    - `url`
+    - `metadata`
 
 Review Agent Pipeline 契约（Phase 5）：
 

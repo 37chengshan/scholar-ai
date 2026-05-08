@@ -274,6 +274,7 @@ function ReviewParagraphCard({
 export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeReviewPanelProps) {
   const { language } = useLanguage();
   const isZh = language === 'zh';
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -557,6 +558,19 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
                 </div>
               ) : null}
 
+              {displayDraft.knownLimitations.length > 0 ? (
+                <div className="mt-4 rounded-lg border border-border/60 bg-background/70 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {isZh ? '已知限制' : 'Known Limitations'}
+                  </div>
+                  <ul className="mt-2 space-y-1 text-sm text-foreground">
+                    {displayDraft.knownLimitations.map((item) => (
+                      <li key={item}>- {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               <div className="mt-3 text-sm">
                 <div className="font-medium">{isZh ? '研究问题' : 'Research Question'}</div>
                 <div className="mt-1 text-muted-foreground">{displayDraft.outlineDoc.research_question}</div>
@@ -642,6 +656,42 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
                   </div>
                 ))}
               </div>
+              {runDetail.artifacts.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {isZh ? '产物包' : 'Artifact Bundle'}
+                  </div>
+                  {runDetail.artifacts.map((artifact) => (
+                    <div key={artifact.artifact_id} className="rounded-md border border-border/50 px-2 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-medium">{artifact.title}</div>
+                        {artifact.url ? (
+                          <button
+                            type="button"
+                            className="rounded-md border border-border/70 px-2 py-1 text-[11px] hover:border-primary hover:text-primary"
+                            onClick={() => {
+                              if (!isSafeNavigationTarget(artifact.url!)) {
+                                return;
+                              }
+                              if (artifact.url!.startsWith('/')) {
+                                navigate(artifact.url!);
+                              } else {
+                                openSafeExternalLink(artifact.url!);
+                              }
+                            }}
+                          >
+                            {isZh ? '打开' : 'Open'}
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 text-muted-foreground">{artifact.type}</div>
+                      {artifact.content ? (
+                        <div className="mt-1 whitespace-pre-line text-foreground/80">{artifact.content}</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
         </div>

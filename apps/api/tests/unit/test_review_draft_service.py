@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.models.review_draft import ReviewDraft
+from app.models.review_draft import ReviewDraft, ReviewRun
 from app.rag_v3.schemas import EvidenceCandidate
 from app.schemas.review_draft import (
     DraftDoc,
@@ -153,6 +153,85 @@ def test_finalize_sets_fallback_when_graph_unavailable():
 
     assert quality.fallback_used is True
     assert error_state in {"insufficient_evidence", "partial_draft"}
+
+
+def test_review_dto_includes_known_limitations_and_run_artifacts():
+    service = ReviewDraftService(db=MagicMock())
+    draft = ReviewDraft(
+        id="draft-1",
+        knowledge_base_id="kb-1",
+        user_id="user-1",
+        title="Related Work Draft",
+        status="completed",
+        source_paper_ids=["paper-1"],
+        question="q",
+        outline_doc={"research_question": "q", "themes": [], "sections": []},
+        draft_doc={"sections": []},
+        quality={
+            "citation_coverage": 0.5,
+            "unsupported_paragraph_rate": 0.5,
+            "graph_assist_used": False,
+            "fallback_used": False,
+        },
+    )
+    draft.error_state = "partial_draft"
+    draft.trace_id = "trace-1"
+    draft.run_id = "run-1"
+
+    dto = service.to_review_dto(draft)
+
+    assert dto.knownLimitations[0] == "部分段落仍需要更强证据支撑"
+    assert "当前草稿为部分完成状态，不能视为全文闭环" in dto.knownLimitations
+    assert dto.runId == "run-1"
+
+
+def test_run_detail_preserves_phase3_artifact_bundle_links():
+    run = ReviewRun(
+        id="run-1",
+        knowledge_base_id="kb-1",
+        review_draft_id="draft-1",
+        user_id="user-1",
+        status="completed",
+        scope="full_kb",
+        input_payload={},
+        steps=[],
+        tool_events=[],
+        artifacts=[
+            {
+                "artifact_id": "run-1:evidence_note",
+                "run_id": "run-1",
+                "type": "evidence_note",
+                "title": "Evidence Note",
+                "url": "/notes?paperId=paper-1&sourceChunkId=chunk-1",
+                "metadata": {
+                    "available": True,
+                    "paper_id": "paper-1",
+                    "source_chunk_id": "chunk-1",
+                },
+            },
+            {
+                "artifact_id": "run-1:compare_matrix",
+                "run_id": "run-1",
+                "type": "compare_matrix",
+                "title": "Compare Matrix",
+                "url": "/compare?paper_ids=paper-1,paper-2",
+                "metadata": {
+                    "available": True,
+                    "paper_ids": ["paper-1", "paper-2"],
+                },
+            },
+        ],
+        evidence=[],
+        recovery_actions=[],
+        trace_id="trace-1",
+    )
+
+    payload = ReviewDraftService.to_run_detail(run)
+
+    assert payload["artifacts"][0]["type"] == "evidence_note"
+    assert payload["artifacts"][0]["url"] == "/notes?paperId=paper-1&sourceChunkId=chunk-1"
+    assert payload["artifacts"][1]["type"] == "compare_matrix"
+    assert payload["artifacts"][1]["url"] == "/compare?paper_ids=paper-1,paper-2"
 
 
 def test_candidate_to_evidence_block_prefers_source_payload_content(mocker):
