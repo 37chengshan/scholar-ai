@@ -107,7 +107,9 @@ async def create_session(
     try:
         payload = session_data or SessionCreate()
         session = await session_manager.create_session(
-            user_id=user_id, title=payload.title
+            user_id=user_id,
+            title=payload.title,
+            metadata=payload.metadata,
         )
 
         logger.info(f"Created session {session.id} via API")

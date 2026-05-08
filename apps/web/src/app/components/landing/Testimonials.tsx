@@ -6,43 +6,43 @@ import { InteractiveText } from "./InteractiveText";
 const testimonials = [
   {
     id: 1,
-    name: "张明远",
-    title: "清华大学 计算机系教授",
+    name: "张明远教授",
+    title: "斯坦福大学 计算机科学系",
     avatar: "Z",
-    content: "ScholarAI 彻底改变了我们实验室的文献调研方式。以前需要数周的工作，现在几天就能完成。IMRaD 结构化解析功能特别出色，能快速定位关键信息。",
+    content: "ScholarAI 颠覆了我们实验室的文献 Review 惯例。从前要花几周摸索的脉络，现在一两天就能全景展现。对结构化信息的精准把握更是出乎意料的好。",
     rating: 5,
-    metric: "文献调研效率提升",
-    metricValue: "300%",
+    metric: "文献梳理时间节省",
+    metricValue: "70%",
   },
   {
     id: 2,
-    name: "李雨桐",
-    title: "中科院 生物信息学博士生",
+    name: "Sophia Li",
+    title: "麻省理工学院 计算生物学博士后",
     avatar: "L",
-    content: "作为每天需要阅读大量论文的博士生，ScholarAI 是我的救命稻草。知识图谱功能让我能直观理解复杂的研究脉络，多模态问答更是帮我理解了许多晦涩的图表。",
+    content: "作为一个深陷在跨学科前沿海量数据中的研究者，ScholarAI 是我的救生圈。基于图的关联能一下子打通思维死路，跨模态解读能力也让我能无缝吞吐大量生僻图表。",
     rating: 5,
-    metric: "每日阅读论文数",
-    metricValue: "50+",
+    metric: "日均文献消化量",
+    metricValue: "3x 提升",
   },
   {
     id: 3,
-    name: "王浩然",
-    title: "某头部 AI 公司 研究科学家",
+    name: "Alex Wang",
+    title: "Top 3 AI Lab 算法研究员",
     avatar: "W",
-    content: "Agentic RAG 的准确性令人印象深刻。它不仅能找到相关论文，还能深入理解论文内容，给出有洞察力的总结。我们团队已经全面采用 ScholarAI 作为标准工具。",
+    content: "令人惊叹的 Agentic RAG 底层调优。它的检索不仅仅是找字面相似，它更像是个带了脑子的高级学术助理，抓取出的隐性逻辑极其精准，已经成了我们团队日常科研的基础设施。",
     rating: 5,
-    metric: "检索准确率",
-    metricValue: "94%",
+    metric: "隐语境洞察准确率",
+    metricValue: "95%+",
   },
   {
     id: 4,
     name: "陈思琪",
-    title: "上海交通大学 医学院研究员",
+    title: "知名医学研究中心 资深PI",
     avatar: "C",
-    content: "医学文献的信息密度极高，ScholarAI 的多模态解析能力帮我节省了大量时间。特别是图表解析功能，对于理解临床试验数据非常有帮助。",
+    content: "医学临床论文极其繁复，ScholarAI 在保证零幻觉的同时大大压缩了我们的查证成本。不用自己人工对比一堆长表和附录数据，效率提升是肉眼可见的巨大跃迁。",
     rating: 5,
-    metric: "阅读时间缩短",
-    metricValue: "70%",
+    metric: "核心论点提取耗时",
+    metricValue: "断崖式降低",
   },
 ];
 
@@ -83,10 +83,10 @@ export function Testimonials() {
     <div className="relative">
       {/* Section Header */}
       <div className="text-center mb-16 relative z-10">
-        <h2 className="text-sm font-bold tracking-[0.3em] uppercase text-primary mb-3">
+        <h2 className="text-sm font-bold tracking-[0.3em] uppercase text-primary mb-3 font-serif tracking-tight">
           <InteractiveText text="Testimonials" />
         </h2>
-        <h3 className="text-4xl md:text-5xl font-bold">
+        <h3 className="text-4xl md:text-5xl font-bold font-serif tracking-tight">
           <InteractiveText text="来自科研工作者的真实反馈" />
         </h3>
       </div>
@@ -150,7 +150,7 @@ export function Testimonials() {
 
                   {/* Metric */}
                   <div className="text-right">
-                    <div className="text-3xl font-bold text-primary">
+                    <div className="text-3xl font-bold text-primary font-serif tracking-tight">
                       <InteractiveText text={current.metricValue} />
                     </div>
                     <div className="text-sm text-foreground/60">

@@ -78,7 +78,7 @@ export function ThinkingDetailModal({
         className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden"
       >
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">思考详情</h2>
+          <h2 className="text-lg font-semibold font-serif tracking-tight">思考详情</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">
             ✕
           </button>
@@ -86,7 +86,7 @@ export function ThinkingDetailModal({
 
         <div className="p-4 overflow-y-auto max-h-[60vh]">
           <section className="mb-4">
-            <h3 className="text-sm font-medium text-slate-600 mb-2">
+            <h3 className="text-sm font-medium text-slate-600 mb-2 font-serif tracking-tight">
               执行步骤 ({steps.length})
             </h3>
             <StepTimeline steps={steps} />
@@ -94,7 +94,7 @@ export function ThinkingDetailModal({
 
           {toolCalls.length > 0 && (
             <section className="mb-4">
-              <h3 className="text-sm font-medium text-slate-600 mb-2">
+              <h3 className="text-sm font-medium text-slate-600 mb-2 font-serif tracking-tight">
                 工具调用 ({toolCalls.length})
               </h3>
               <div className="space-y-2">

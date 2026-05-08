@@ -11,7 +11,7 @@
  * Requirements: D-11, D-13, D-05
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -22,6 +22,7 @@ import { Separator } from './ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from './ui/tooltip';
 import { Bold, Italic, List, ListOrdered, Link as LinkIcon } from 'lucide-react';
 import { clsx } from 'clsx';
+import { LinkUrlDialog } from './LinkUrlDialog';
 
 interface NotesEditorProps {
   content: any; // Tiptap JSON
@@ -38,6 +39,7 @@ export function NotesEditor({
   readOnly = false,
   hideToolbar = false,
 }: NotesEditorProps) {
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -48,6 +50,7 @@ export function NotesEditor({
         dropcursor: false,
         gapcursor: false,
         hardBreak: false,
+        link: false,
       }),
       Link.configure({
         openOnClick: false,
@@ -66,7 +69,8 @@ export function NotesEditor({
     }, [onChange]),
     editorProps: {
       attributes: {
-        class: 'prose prose-sm focus:outline-none max-w-none',
+        class:
+          'editorial-reading-surface prose prose-sm max-w-none text-[15px] leading-7 text-foreground focus:outline-none',
       },
     },
   });
@@ -92,13 +96,7 @@ export function NotesEditor({
 
   const handleAddLink = () => {
     if (!editor) return;
-    const url = window.prompt('输入链接地址:');
-    if (url === null) return; // cancelled
-    if (url === '') {
-      editor.chain().focus().unsetLink().run();
-      return;
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    setLinkDialogOpen(true);
   };
 
   if (!editor) {
@@ -106,8 +104,9 @@ export function NotesEditor({
   }
 
   return (
-    <TooltipProvider>
-      <div className="flex flex-col h-full bg-white border border-border rounded-lg overflow-hidden">
+    <>
+      <TooltipProvider>
+        <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-white">
         {/* Toolbar */}
         {!hideToolbar && (
           <div className="flex items-center gap-1 p-2 border-b border-border bg-muted/30">
@@ -203,7 +202,7 @@ export function NotesEditor({
         )}
 
         {/* Editor Content */}
-        <div className="flex-1 overflow-auto p-4 min-h-[300px]">
+        <div className="min-h-[300px] flex-1 overflow-auto bg-background/35 p-4">
           <EditorContent editor={editor} />
         </div>
 
@@ -211,7 +210,25 @@ export function NotesEditor({
         <div className="px-3 py-1.5 border-t border-border text-xs text-muted-foreground text-right bg-muted/20">
           {editor.storage.characterCount.characters()} 字符
         </div>
-      </div>
-    </TooltipProvider>
+        </div>
+      </TooltipProvider>
+
+      <LinkUrlDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        title="插入链接"
+        description="输入链接地址后，当前选中文本会附加该链接。"
+        inputLabel="链接地址"
+        placeholder="https://example.com"
+        confirmLabel="确认插入"
+        clearLabel="移除链接"
+        cancelLabel="取消"
+        initialValue={String(editor.getAttributes('link').href || '')}
+        onConfirm={(value) => {
+          editor.chain().focus().extendMarkRange('link').setLink({ href: value }).run();
+        }}
+        onClear={editor.isActive('link') ? () => editor.chain().focus().unsetLink().run() : undefined}
+      />
+    </>
   );
 }

@@ -80,10 +80,10 @@ class EntityExtractor:
         Initialize entity extractor.
 
         Args:
-            model: ZhipuAI model name for extraction (defaults to glm-4.5-air)
+            model: ZhipuAI model name for extraction (defaults to current LLM_MODEL)
             max_text_length: Maximum text length to send to LLM
         """
-        self.model = model or os.getenv("LLM_MODEL", "glm-4.5-air")
+        self.model = model or os.getenv("LLM_MODEL", "glm-4.6v-flashx")
         self.max_text_length = max_text_length
         self.llm_client = ZhipuLLMClient(model=self.model)
 

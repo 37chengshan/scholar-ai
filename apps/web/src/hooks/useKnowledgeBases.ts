@@ -13,6 +13,7 @@ import { kbApi, KnowledgeBase, KBListParams, KBCreateData } from '@/services/kbA
 
 interface UseKnowledgeBasesParams extends KBListParams {
   autoFetch?: boolean;
+  enabled?: boolean;
 }
 
 interface UseKnowledgeBasesReturn {
@@ -33,6 +34,7 @@ export function useKnowledgeBases(params?: UseKnowledgeBasesParams): UseKnowledg
     limit = 50,
     offset = 0,
     autoFetch = true,
+    enabled = true,
   } = params || {};
 
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -41,6 +43,14 @@ export function useKnowledgeBases(params?: UseKnowledgeBasesParams): UseKnowledg
   const [error, setError] = useState<string | null>(null);
 
   const fetchKBs = useCallback(async (): Promise<void> => {
+    if (!enabled) {
+      setKnowledgeBases([]);
+      setTotal(0);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -55,13 +65,21 @@ export function useKnowledgeBases(params?: UseKnowledgeBasesParams): UseKnowledg
     } finally {
       setLoading(false);
     }
-  }, [search, category, sortBy, limit, offset]);
+  }, [enabled, search, category, sortBy, limit, offset]);
 
   useEffect(() => {
+    if (!enabled) {
+      setKnowledgeBases([]);
+      setTotal(0);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     if (autoFetch) {
       void fetchKBs();
     }
-  }, [autoFetch, fetchKBs]);
+  }, [autoFetch, enabled, fetchKBs]);
 
   const createKB = useCallback(async (data: KBCreateData): Promise<KnowledgeBase> => {
     try {

@@ -1,0 +1,802 @@
+{
+  "schema_version": "1.0",
+  "document_type": "frontend_page_test_record",
+  "record_round": "round1",
+  "recorded_at": "2026-05-06",
+  "status_note": "Round1 backfill after live browser verification of landing/login, dashboard, search, KB list/detail, read, chat, notes, compare, analytics, settings, and global shell. Main verified pages pass; remaining open items are seeded KB/sidebar content leakage and compare-scoped evidence quality.",
+  "evidence_sources": [
+    "docs/plans/v4_0/reports/2026-05-04_v4_0_phase_2_closeout_report.md",
+    "docs/plans/v4_0/reports/2026-05-04_v4_0_top_level_status_report.md",
+    "docs/plans/phase-text/2026-05-04_frontend_full_test_plan.md"
+  ],
+  "pages": [
+    {
+      "route_key": "landing",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "operator-led browser walkthrough",
+      "viewport": "desktop",
+      "account_state": "logged-out",
+      "summary": "Landing page remained reachable after fixes, login CTA behavior stayed correct, and console warnings were cleared.",
+      "content_checks": {
+        "brand_positioning_copy": "passed",
+        "cta_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "partial"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "hero_and_section_hierarchy": "passed",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "navigate_to_login": "passed",
+        "navigate_to_register_or_primary_cta": "not-tested",
+        "protected_route_redirect_logic_visible": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "hero",
+          "status": "passed",
+          "notes": "Intro surface reachable."
+        },
+        {
+          "section_key": "feature_sections",
+          "status": "not-tested",
+          "notes": ""
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: landing / 介绍页与登录页可以进入",
+        "phase_2_closeout: 介绍页 登录 CTA 到 /login",
+        "live_browser_2026-05-06: post-fix landing console clean"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "login",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-04",
+      "tester": "operator-led browser walkthrough",
+      "viewport": "desktop",
+      "account_state": "logged-out and authenticated redirect cases",
+      "summary": "Login page was browser-verified as reachable and part of the landing-to-login workflow.",
+      "content_checks": {
+        "field_labels_and_help_copy": "partial",
+        "error_copy_correctness": "not-tested",
+        "placeholder_or_test_copy_absent": "partial"
+      },
+      "ui_checks": {
+        "form_layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "login_success_redirect": "passed",
+        "invalid_credentials_error": "not-tested",
+        "already_authenticated_redirect_to_dashboard": "passed",
+        "return_path_preservation": "not-tested",
+        "forgot_password_link": "not-tested"
+      },
+      "sections": [],
+      "evidence": [
+        "phase_2_closeout: landing / login pass",
+        "live_browser_2026-05-06: clicking landing login in authenticated state redirected to /dashboard"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "register",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "In authenticated state, /register correctly redirected to /dashboard via public-auth guard.",
+      "content_checks": {
+        "field_copy_correctness": "not-tested",
+        "validation_copy_correctness": "not-tested",
+        "placeholder_or_test_copy_absent": "not-tested"
+      },
+      "ui_checks": {
+        "form_layout_integrity": "not-applicable",
+        "font_consistency": "not-applicable"
+      },
+      "interaction_checks": {
+        "register_success_path": "not-tested",
+        "validation_errors": "not-tested",
+        "public_auth_redirect_logic": "passed"
+      },
+      "sections": [],
+      "evidence": [
+        "live_browser_2026-05-06: navigate /register while authenticated -> /dashboard"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "forgot_password",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "In authenticated state, /forgot-password correctly redirected to /dashboard via public-auth guard.",
+      "content_checks": {
+        "instruction_copy_correctness": "not-tested",
+        "feedback_copy_correctness": "not-tested"
+      },
+      "ui_checks": {
+        "form_layout_integrity": "not-applicable",
+        "font_consistency": "not-applicable"
+      },
+      "interaction_checks": {
+        "request_submit": "not-tested",
+        "success_feedback": "not-tested",
+        "invalid_email_feedback": "not-tested"
+      },
+      "sections": [],
+      "evidence": [
+        "live_browser_2026-05-06: navigate /forgot-password while authenticated -> /dashboard"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "reset_password",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "In authenticated state, /reset-password correctly redirected to /dashboard via public-auth guard.",
+      "content_checks": {
+        "instruction_copy_correctness": "not-tested",
+        "error_copy_correctness": "not-tested"
+      },
+      "ui_checks": {
+        "form_layout_integrity": "not-applicable",
+        "font_consistency": "not-applicable"
+      },
+      "interaction_checks": {
+        "token_handling": "not-tested",
+        "reset_success": "not-tested",
+        "invalid_or_expired_token_feedback": "not-tested"
+      },
+      "sections": [],
+      "evidence": [
+        "live_browser_2026-05-06: navigate /reset-password while authenticated -> /dashboard"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "dashboard",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Dashboard loaded correctly as command center with next-step cards, recent conversations, knowledge-base shortcuts and light-entry links.",
+      "content_checks": {
+        "command_center_copy_correctness": "passed",
+        "empty_state_copy_correctness": "not-applicable"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "navigation_active_state": "passed",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "workspace_redirect_to_dashboard": "not-tested",
+        "primary_actions_navigate_correctly": "passed",
+        "recent_items_links_work": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "primary_command_center",
+          "status": "passed",
+          "notes": "Next-step cards and light-entry links rendered."
+        },
+        {
+          "section_key": "recent_activity",
+          "status": "passed",
+          "notes": "Recent conversations and recent knowledge bases rendered."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /dashboard loaded with next-step cards and light-entry links"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "search",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Search page loaded correctly with source filters, query input, empty-state analysis panel and sort controls.",
+      "content_checks": {
+        "search_copy_correctness": "passed",
+        "empty_state_copy_correctness": "passed",
+        "result_metadata_copy_correctness": "not-applicable"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "result_card_readability": "not-applicable",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "search_submission": "not-tested",
+        "result_list_render": "not-applicable",
+        "filters_or_sort_state": "passed",
+        "open_read_from_result": "not-tested",
+        "open_compare_from_result": "not-tested"
+      },
+      "sections": [
+        {
+          "section_key": "query_input_area",
+          "status": "passed",
+          "notes": "Query input and disabled submit state visible."
+        },
+        {
+          "section_key": "result_list",
+          "status": "not-applicable",
+          "notes": "No query issued in this round."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /search loaded with filters, input and empty-state analytics"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "knowledge_bases_list",
+      "overall_status": "partial",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Knowledge base list loaded correctly with search, filters, sort, storage stats and list items. Page-template English masthead copy was fixed, but seeded card content still includes historical test-oriented English names/descriptions.",
+      "content_checks": {
+        "list_copy_correctness": "partial",
+        "empty_state_copy_correctness": "not-applicable",
+        "kb_metadata_copy_correctness": "partial"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "list_item_readability": "passed"
+      },
+      "interaction_checks": {
+        "list_loads": "passed",
+        "create_kb_entry": "not-tested",
+        "open_kb_detail": "not-tested"
+      },
+      "sections": [
+        {
+          "section_key": "kb_list",
+          "status": "passed",
+          "notes": "List items and storage stats rendered."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /knowledge-bases loaded with storage stats and list items",
+        "live_browser_2026-05-06: post-fix knowledge-bases console clean",
+        "live_browser_2026-05-06: page masthead changed to 中文文案 知识资料馆"
+      ],
+      "issues": [
+        {
+          "id": "KBLIST-ROUND1-001",
+          "title": "Knowledge base list still contains historical English/test dataset content inside cards",
+          "status": "partial",
+          "severity": "low",
+          "owner": "data",
+          "symptom": "After page-template copy fix, some visible card names and descriptions still include historical English/test dataset content.",
+          "expected": "Production demo data should avoid obviously test-oriented names and verbose English fixture descriptions.",
+          "actual": "Card content still includes historical verification names such as Phase2-Online-Verify and older English descriptions.",
+          "repro_steps": [
+            "Login",
+            "Open /knowledge-bases",
+            "Inspect existing knowledge-base card titles and descriptions"
+          ],
+          "evidence": [
+            "live_browser_2026-05-06: existing card content still includes test-oriented names and English descriptions"
+          ],
+          "notes": "The page template text is fixed; remaining mismatch is seeded data content, not UI shell copy."
+        }
+      ]
+    },
+    {
+      "route_key": "knowledge_base_detail",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "operator-led browser walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Knowledge-base workspace import-status chain now works end to end: dedupe modal shows correct match metadata, reuse-existing decision succeeds, blocked state clears, and completed job row is added.",
+      "content_checks": {
+        "workspace_copy_correctness": "passed",
+        "status_copy_correctness": "passed",
+        "evidence_and_source_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "partial"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "tab_state_visibility": "passed",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "upload_flow_entry": "passed",
+        "import_status_updates": "passed",
+        "readiness_updates": "passed",
+        "kb_search_submission": "passed",
+        "open_read_from_source": "passed",
+        "open_chat_handoff_from_source": "not-tested",
+        "dedupe_decision_modal": "passed",
+        "dedupe_reuse_existing_submit": "passed",
+        "open_completed_paper": "passed",
+        "single_paper_chat_handoff": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "overview_tab",
+          "status": "passed",
+          "notes": "Readiness cards healthy."
+        },
+        {
+          "section_key": "upload_workspace_tab",
+          "status": "passed",
+          "notes": "Upload/import created import job and reached dedupe decision."
+        },
+        {
+          "section_key": "search_or_evidence_tab",
+          "status": "passed",
+          "notes": "KB search to Read was verified."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: Phase2-Online-Verify-2b7aa183 displayed 2 Papers / 106 Chunks",
+        "phase_2_closeout: KB search -> Read pass",
+        "phase_2_closeout: Upload/import workspace pass",
+        "live_browser_2026-05-06: dedupe modal displayed matchType=pdf_sha256 and allowed decision selection",
+        "live_browser_2026-05-06: POST /api/v1/import-jobs/imp_88cbd0e55d4049cf80d34098/dedupe-decision returned 200 after import-jobs contract fix",
+        "live_browser_2026-05-06: blocked import state cleared to 重复检查 正常 and completed list increased to 3 items"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "read",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-04",
+      "tester": "operator-led browser walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Read page open, evidence highlight, and handoff into single-paper chat were browser-verified.",
+      "content_checks": {
+        "reader_copy_correctness": "passed",
+        "citation_and_source_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "partial"
+      },
+      "ui_checks": {
+        "reader_layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "pdf_or_text_render_quality": "passed",
+        "highlight_visibility": "passed",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "open_paper": "passed",
+        "source_highlight_jump": "passed",
+        "continue_in_chat_handoff": "passed",
+        "open_notes_context": "not-tested",
+        "open_compare_context": "not-tested"
+      },
+      "sections": [
+        {
+          "section_key": "reader_main",
+          "status": "passed",
+          "notes": "Read target paper loaded."
+        },
+        {
+          "section_key": "right_panel_sources",
+          "status": "passed",
+          "notes": "Source highlight chunk rendered."
+        },
+        {
+          "section_key": "right_panel_notes_or_actions",
+          "status": "passed",
+          "notes": "Continue Ask / Continue in Chat verified."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: Read page source side note / sourceChunkId contract pass",
+        "phase_2_closeout: Read highlight pass",
+        "phase_2_closeout: Read -> single-paper Chat handoff pass"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "chat",
+      "overall_status": "partial",
+      "last_tested_at": "2026-05-06",
+      "tester": "operator-led browser walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Single-paper and compare-scoped chat now both render live messages correctly in the main message list instead of only buffering SSE state. Compare handoff no longer loses the assistant message in the visible UI, and citation titles/summary snippets are normalized. Remaining gap is answer quality: compare-scoped chat now prefers a cautious abstain when only summary-level evidence is available.",
+      "content_checks": {
+        "composer_copy_correctness": "passed",
+        "answer_copy_correctness": "partial",
+        "citation_and_reason_copy_correctness": "partial",
+        "placeholder_or_test_copy_absent": "partial"
+      },
+      "ui_checks": {
+        "workspace_layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "streaming_render_stability": "not-tested",
+        "message_sync_integrity": "passed",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "send_message": "passed",
+        "streaming_answer": "not-tested",
+        "rag_answer_quality_visible": "passed",
+        "citation_click_to_source": "not-tested",
+        "handoff_prefill_from_read_compare_review": "passed",
+        "partial_or_insufficient_evidence_honesty": "passed",
+        "single_paper_scope_entry": "passed",
+        "scope_not_overwritten_by_existing_session": "passed",
+        "single_paper_title_display": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "conversation_list",
+          "status": "passed",
+          "notes": "Single-paper handoff opened a clean chat context."
+        },
+        {
+          "section_key": "composer",
+          "status": "passed",
+          "notes": "Prefill retained after handoff."
+        },
+        {
+          "section_key": "answer_and_citations",
+          "status": "partial",
+          "notes": "Streamed assistant answer now renders correctly; compare-scoped evidence display is cleaner, but cross-paper answer quality still lacks strong support."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: single-paper Chat non-abstain answer restored",
+        "phase_2_closeout: Read -> Continue Ask entered /chat with handoff prompt preserved",
+        "phase_2_closeout: current answer may still be partial",
+        "live_browser_2026-05-06: /chat?paperId=142c2950-0a4a-4994-ba9f-28fd422b8caa remained on explicit paperId URL after chat route fix",
+        "live_browser_2026-05-06: scope banner/title rendered 单论文模式 — test_5_pages after paper display metadata fallback fix",
+        "live_browser_2026-05-06: compare-scoped handoff assistant message now renders in main chat stream after syncStreamingMessage contract fix",
+        "live_browser_2026-05-06: compare-scoped citation display no longer surfaced raw UUID titles and no longer showed the earlier chain-of-thought leakage after compare evidence filtering",
+        "live_browser_2026-05-06: compare-scoped evidence blocks now expose summary-level section label instead of raw _paper artifact label"
+      ],
+      "issues": [
+        {
+          "id": "CHAT-ROUND1-001",
+          "title": "Compare-scoped chat still lacks strong cross-paper evidence quality",
+          "status": "partial",
+          "severity": "medium",
+          "owner": "backend",
+          "symptom": "Compare-scoped chat now renders correctly and evidence display is cleaner, but the answer still falls back to cautious abstain or summary-only support when the scoped corpus does not expose stronger per-paper method/result evidence.",
+          "expected": "Stable strong-support cross-paper answer quality with representative evidence from both papers when a compare handoff is triggered.",
+          "actual": "Current compare handoff returned a cautious abstain with two summary-level evidence blocks after filtering low-signal artifacts.",
+          "repro_steps": [
+            "Enter compare-scoped chat from Compare handoff",
+            "Send the default prompt 基于这组论文对比，继续分析核心差异、共同点和下一步研究问题。",
+            "Observe abstain answer and summary-level evidence despite two scoped papers"
+          ],
+          "evidence": [
+            "live_browser_2026-05-06: compare handoff session ac495166-133f-4600-8af2-94246f431348 still returned summary-only evidence",
+            "live_browser_2026-05-06: compare handoff session 13c8cc69-0ad6-4e34-a77b-af6772dad629 abstained with normalized summary evidence blocks"
+          ],
+          "notes": "The message-rendering chain is fixed. Remaining work is retrieval/answer quality, not front-end synchronization."
+        },
+        {
+          "title": "Background session message fetch still occurs under explicit scope",
+          "severity": "medium",
+          "status": "investigating",
+          "notes": "Visible UI no longer rebinds to old session, but network still shows GET /sessions/:id/messages from another mounted session consumer."
+        }
+      ]
+    },
+    {
+      "route_key": "notes",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "operator-led browser walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Notes page loaded correctly with filtered paper context, summary panel and note editor. Paper-scoped header now resolves to display metadata instead of raw paper UUID, summary title copy is normalized, and malformed serialized editor-document JSON no longer leaks into note titles/previews.",
+      "content_checks": {
+        "notes_copy_correctness": "passed",
+        "empty_state_copy_correctness": "not-tested",
+        "paper_scope_copy_correctness": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "partial",
+        "editor_readability": "passed"
+      },
+      "interaction_checks": {
+        "notes_list_loads": "passed",
+        "create_note": "passed",
+        "edit_note": "passed",
+        "autosave_or_save_persistence": "passed",
+        "open_note_from_context": "passed",
+        "paper_scope_header_uses_display_title": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "notes_list",
+          "status": "passed",
+          "notes": "Evidence note visible in workspace."
+        },
+        {
+          "section_key": "note_editor",
+          "status": "passed",
+          "notes": "Linked evidence, open source, continue in chat and editor were normal."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: Notes pass",
+        "live_browser_2026-05-06: /notes?paperId=... header now renders 当前筛选：论文《test_5_pages》 after metadata hydration fix",
+        "live_browser_2026-05-06: summary panel title/copy normalized to 系统摘要 and 打开论文 action",
+        "live_browser_2026-05-06: historical malformed system-summary items such as DOne/LIMA no longer exposed raw editor JSON in notes list titles/previews after notes content normalization fix"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "compare",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Compare page now loads candidate papers from the restored papers list API, supports filename-fallback search, generates evidence-backed matrices, preserves normalized display titles, saves compare output to notes, and hands off to compare-scoped chat with prefilled prompt.",
+      "content_checks": {
+        "compare_copy_correctness": "passed",
+        "result_panel_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "partial",
+        "display_title_consistency": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "partial",
+        "compare_panel_readability": "passed",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "load_compare_inputs": "passed",
+        "run_compare": "passed",
+        "problem_dataset_results_alignment": "partial",
+        "citation_click_to_source": "not-tested",
+        "continue_in_chat_handoff": "passed",
+        "save_whole_compare_to_notes": "passed",
+        "paper_search_by_filename_fallback": "passed",
+        "list_api_backing_selector": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "input_selection",
+          "status": "passed",
+          "notes": "Selected test_5_pages and LIMA: Less Is More for Alignment (v6) from live search."
+        },
+        {
+          "section_key": "comparison_result",
+          "status": "passed",
+          "notes": "Matrix and cross-paper insights rendered after live compare request."
+        },
+        {
+          "section_key": "follow_up_actions",
+          "status": "passed",
+          "notes": "Save to Notes and Continue in Chat both verified."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /api/v1/papers restored to 200 after repository preload fix",
+        "live_browser_2026-05-06: /api/v1/papers/search?q=test_5_pages returned 1 result after filename fallback search fix",
+        "live_browser_2026-05-06: compare matrix generated for test_5_pages + LIMA v6",
+        "live_browser_2026-05-06: compare row title normalized to test_5_pages after compare display-metadata fix",
+        "live_browser_2026-05-06: Save to Notes toast displayed 对比结果已保存到笔记",
+        "live_browser_2026-05-06: Continue in Chat navigated to /chat?paper_ids=...&handoff=1 with compare scope prefill"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "analytics",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Analytics page loaded and rendered evaluation metrics, run list and dashboard sections. Console warnings were cleared after the typography-prop fix.",
+      "content_checks": {
+        "analytics_copy_correctness": "passed",
+        "metric_label_correctness": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "chart_or_metric_readability": "passed"
+      },
+      "interaction_checks": {
+        "page_loads": "passed",
+        "filters_or_range_controls": "not-tested"
+      },
+      "sections": [
+        {
+          "section_key": "metric_overview",
+          "status": "passed",
+          "notes": "Metrics, run list and detail section rendered."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /analytics rendered evaluation dashboard",
+        "live_browser_2026-05-06: analytics console clean after fix"
+      ],
+      "issues": [
+        {
+          "id": "ANALYTICS-ROUND1-001",
+          "title": "Resolved: analytics non-boolean attribute warnings",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "Console previously showed React warnings for non-boolean attributes like font-serif and tracking-tight.",
+          "expected": "No React DOM attribute warnings in analytics render path.",
+          "actual": "Post-fix console is clean.",
+          "repro_steps": [
+            "Login",
+            "Open /analytics",
+            "Inspect browser console"
+          ],
+          "evidence": [
+            "live_browser_2026-05-06: analytics console clean after fix"
+          ],
+          "notes": "Resolved in current working tree."
+        }
+      ]
+    },
+    {
+      "route_key": "settings",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Settings page loaded correctly with profile, language, display, security, API integration and diagnostics sections. Console warnings were cleared after the typography-prop fix.",
+      "content_checks": {
+        "settings_copy_correctness": "passed",
+        "provider_or_runtime_copy_correctness": "partial"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "section_navigation_readability": "passed"
+      },
+      "interaction_checks": {
+        "page_loads": "passed",
+        "settings_persistence": "not-tested",
+        "logout_flow": "not-tested"
+      },
+      "sections": [
+        {
+          "section_key": "account_section",
+          "status": "passed",
+          "notes": "Profile section visible."
+        },
+        {
+          "section_key": "application_section",
+          "status": "passed",
+          "notes": "System diagnostics and settings navigation visible."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /settings loaded with profile and diagnostics sections",
+        "live_browser_2026-05-06: settings console clean after fix"
+      ],
+      "issues": [
+        {
+          "id": "SETTINGS-ROUND1-001",
+          "title": "Resolved: settings non-boolean attribute warnings",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "Console previously showed React warnings for non-boolean attributes like font-serif and tracking-tight.",
+          "expected": "No React DOM attribute warnings in settings render path.",
+          "actual": "Post-fix console is clean.",
+          "repro_steps": [
+            "Login",
+            "Open /settings",
+            "Inspect browser console"
+          ],
+          "evidence": [
+            "live_browser_2026-05-06: settings console clean after fix"
+          ],
+          "notes": "Resolved in current working tree."
+        }
+      ]
+    },
+    {
+      "route_key": "global_layout",
+      "overall_status": "partial",
+      "last_tested_at": "2026-05-06",
+      "tester": "live browser",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Shell navigation stayed stable across notes, compare, and compare-scoped chat, but recent knowledge-base cards still expose verification-oriented seeded names in the sidebar.",
+      "content_checks": {
+        "global_nav_copy_correctness": "partial",
+        "recent_item_labels_correctness": "partial"
+      },
+      "ui_checks": {
+        "shell_layout_integrity": "passed",
+        "font_consistency": "partial",
+        "active_nav_visibility": "passed",
+        "mobile_menu_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "nav_switching": "passed",
+        "recent_conversation_entry": "not-tested",
+        "recent_kb_entry": "partial",
+        "user_menu_actions": "not-tested"
+      },
+      "sections": [
+        {
+          "section_key": "left_nav",
+          "status": "partial",
+          "notes": "Used across verified protected pages."
+        },
+        {
+          "section_key": "recent_conversations",
+          "status": "not-tested",
+          "notes": ""
+        },
+        {
+          "section_key": "recent_knowledge_bases",
+          "status": "not-tested",
+          "notes": ""
+        },
+        {
+          "section_key": "user_area",
+          "status": "not-tested",
+          "notes": ""
+        },
+        {
+          "section_key": "mobile_menu",
+          "status": "not-tested",
+          "notes": ""
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: nav switching across notes / compare / chat remained stable",
+        "live_browser_2026-05-06: sidebar still exposes test-oriented recent KB names"
+      ],
+      "issues": [
+        {
+          "id": "LAYOUT-ROUND1-001",
+          "title": "Sidebar recent knowledge-base entries still expose test-oriented names",
+          "status": "open",
+          "severity": "low",
+          "owner": "data",
+          "symptom": "Recent KB section in sidebar still shows seeded names like Phase2-Online-Verify-2b7aa183.",
+          "expected": "Demo-visible recent entries should use production-like names or be hidden when they are explicitly test fixtures.",
+          "actual": "Sidebar continues to surface historical verification KB names.",
+          "repro_steps": [
+            "Login",
+            "Inspect left sidebar recent knowledge bases"
+          ],
+          "evidence": [
+            "live_browser_2026-05-06: sidebar recent KB entries include Phase2-Online-Verify-*"
+          ],
+          "notes": "This is not a shell rendering failure; it is product-visible seeded data leakage."
+        }
+      ]
+    }
+  ]
+}

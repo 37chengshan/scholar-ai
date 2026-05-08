@@ -1,11 +1,11 @@
-import { ArrowRight, Fingerprint, ShieldCheck, CheckCircle } from "lucide-react";
+import { ArrowRight, Fingerprint, ShieldCheck, CheckCircle, BookOpen, Bot, Network, GitCompareArrows } from "lucide-react";
 import { motion } from "motion/react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useState } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
-import { Badge } from "../components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import * as authApi from "@/services/authApi";
+import { resolveApiErrorMessage } from "@/utils/resolveApiErrorMessage";
 
 export function Register() {
   const navigate = useNavigate();
@@ -21,20 +21,20 @@ export function Register() {
   const isZh = language === "zh";
 
   const t = {
-    os: isZh ? "研究操作系统" : "Research Operating System",
-    vol: isZh ? "第四卷" : "Vol. 4",
+    os: isZh ? "研究协作空间" : "Research Operating System",
+    vol: isZh ? "注册入口" : "Vol. 4",
     title: isZh ? "创建账户" : "Create Account",
-    titleDesc: isZh ? "加入去中心化知识图谱网络" : "Join the Decentralized Knowledge Graph Network",
+    titleDesc: isZh ? "加入您的研究协作空间" : "Join the Decentralized Knowledge Graph Network",
     auth: isZh ? "身份验证" : "Authentication",
-    authDesc: isZh ? "访问权限严格限制为经授权的学术人员" : "Access restricted to authorized academic personnel",
+    authDesc: isZh ? "当前仅向受邀研究成员开放注册" : "Access restricted to authorized academic personnel",
     name: isZh ? "研究员姓名" : "Researcher Name",
     enterName: isZh ? "输入您的姓名" : "Enter your name",
     email: isZh ? "机构邮箱" : "Institutional Email",
     enterEmail: isZh ? "输入您的邮箱" : "Enter your email",
-    passkey: isZh ? "访问密钥" : "Access Passkey",
-    enterPasskey: isZh ? "创建访问密钥" : "Create your passkey",
-    confirmPasskey: isZh ? "确认密钥" : "Confirm Passkey",
-    enterConfirm: isZh ? "再次输入密钥" : "Enter passkey again",
+    passkey: isZh ? "登录密码" : "Access Passkey",
+    enterPasskey: isZh ? "创建登录密码" : "Create your passkey",
+    confirmPasskey: isZh ? "确认密码" : "Confirm Passkey",
+    enterConfirm: isZh ? "再次输入密码" : "Enter passkey again",
     createAccount: isZh ? "创建账户" : "Create Account",
     hasAccount: isZh ? "已有账户？" : "Already have an account?",
     login: isZh ? "登录" : "Login",
@@ -43,13 +43,13 @@ export function Register() {
     reqUpper: isZh ? "至少一个大写字母" : "At least one uppercase letter",
     reqLower: isZh ? "至少一个小写字母" : "At least one lowercase letter",
     reqNumber: isZh ? "至少一个数字" : "At least one number",
-    statusText: isZh ? "节点：04 • 状态：" : "Node: 04 • Status: ",
+    statusText: isZh ? "系统状态：" : "Node: 04 • Status: ",
     active: isZh ? "活跃" : "Active",
-    ip: isZh ? " • IP: 已加密" : " • IP: Encrypted",
+    ip: isZh ? " • 连接已加密" : " • IP: Encrypted",
     welcome: isZh ? "欢迎加入" : "Welcome aboard",
     benefits: isZh ? "账户权益" : "Account Benefits",
     benefit1: isZh ? "管理个人论文库" : "Manage personal paper library",
-    benefit2: isZh ? "AI 智能问答" : "AI-powered Q&A",
+    benefit2: isZh ? "围绕论文继续追问" : "AI-powered Q&A",
     benefit3: isZh ? "知识图谱可视化" : "Knowledge graph visualization",
     benefit4: isZh ? "多论文对比分析" : "Multi-paper comparison",
   };
@@ -80,8 +80,8 @@ export function Register() {
       // Auto-login after successful registration
       await login(email, password);
       navigate("/dashboard");
-    } catch (err: any) {
-      const errorMessage = err.message || (isZh ? "注册失败" : "Registration failed");
+    } catch (err: unknown) {
+      const errorMessage = resolveApiErrorMessage(err, isZh ? "注册失败" : "Registration failed");
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -93,6 +93,13 @@ export function Register() {
     { label: t.reqUpper, met: /[A-Z]/.test(password) },
     { label: t.reqLower, met: /[a-z]/.test(password) },
     { label: t.reqNumber, met: /[0-9]/.test(password) },
+  ];
+
+  const benefitItems = [
+    { icon: BookOpen, text: t.benefit1 },
+    { icon: Bot, text: t.benefit2 },
+    { icon: Network, text: t.benefit3 },
+    { icon: GitCompareArrows, text: t.benefit4 },
   ];
 
   return (
@@ -145,17 +152,18 @@ export function Register() {
             <span className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground flex items-center gap-1.5">
               <ShieldCheck className="w-3 h-3 text-primary" /> {t.benefits}
             </span>
-            {[
-              { icon: "📚", text: t.benefit1 },
-              { icon: "🤖", text: t.benefit2 },
-              { icon: "🕸️", text: t.benefit3 },
-              { icon: "📊", text: t.benefit4 },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3 text-[11px] font-serif leading-[1.6] text-foreground/80">
-                <span className="text-lg">{item.icon}</span>
-                <span>{item.text}</span>
-              </div>
-            ))}
+            {benefitItems.map((item, i) => {
+              const Icon = item.icon;
+
+              return (
+                <div key={i} className="flex items-center gap-3 rounded-sm border border-border/50 bg-background/70 px-3 py-2.5 text-[11px] font-serif leading-[1.6] text-foreground/80 shadow-sm">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-sm border border-primary/20 bg-primary/10 text-primary">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span>{item.text}</span>
+                </div>
+              );
+            })}
           </div>
         </motion.div>
 
@@ -194,11 +202,14 @@ export function Register() {
               
               {/* Name Field */}
               <div className="flex flex-col gap-2 group/input">
-                <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
+                <label htmlFor="register-page-name" className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                   {t.name}
                 </label>
                 <input
+                  id="register-page-name"
+                  name="name"
                   type="text"
+                  autoComplete="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-serif focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
@@ -209,11 +220,14 @@ export function Register() {
 
               {/* Email Field */}
               <div className="flex flex-col gap-2 group/input">
-                <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
+                <label htmlFor="register-page-email" className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                   {t.email}
                 </label>
                 <input
+                  id="register-page-email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-serif focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
@@ -224,11 +238,14 @@ export function Register() {
 
               {/* Password Field */}
               <div className="flex flex-col gap-2 group/input">
-                <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
+                <label htmlFor="register-page-password" className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                   {t.passkey}
                 </label>
                 <input
+                  id="register-page-password"
+                  name="password"
                   type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-mono tracking-[0.3em] focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
@@ -254,11 +271,14 @@ export function Register() {
 
               {/* Confirm Password Field */}
               <div className="flex flex-col gap-2 group/input">
-                <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
+                <label htmlFor="register-page-confirm-password" className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                   {t.confirmPasskey}
                 </label>
                 <input
+                  id="register-page-confirm-password"
+                  name="confirmPassword"
                   type="password"
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-mono tracking-[0.3em] focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
@@ -285,16 +305,12 @@ export function Register() {
                 </span>
                 {!isLoading && <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />}
               </button>
-              
-              <div className="text-center text-[9px] font-mono text-muted-foreground mt-2">
-                {t.hasAccount}
-                <button
-                  type="button"
-                  onClick={() => navigate("/login")}
-                  className="ml-2 text-primary hover:underline"
-                >
+
+              <div className="text-[11px] text-muted-foreground">
+                {t.hasAccount}{' '}
+                <Link to="/login" className="text-primary hover:underline">
                   {t.login}
-                </button>
+                </Link>
               </div>
             </div>
           </form>

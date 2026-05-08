@@ -259,7 +259,7 @@ export function ChatMessageCard({
           {isAssistant ? t.ai : t.user}
         </span>
         {message.timestamp && (
-          <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground font-sans">
             <Clock className="w-3 h-3" />
             <span>{formatTime(message.timestamp, isZh)}</span>
           </div>
@@ -321,7 +321,7 @@ export function ChatMessageCard({
             className="text-sm leading-relaxed"
           />
         ) : effectiveIsStreaming ? (
-          <div className="text-sm italic text-muted-foreground">
+          <div className="text-sm italic text-muted-foreground font-sans">
             {isZh ? '正在生成回答...' : 'Generating response...'}
             <StreamingCursor />
           </div>

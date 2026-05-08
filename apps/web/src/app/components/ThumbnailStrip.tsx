@@ -13,15 +13,13 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { Document, Page } from 'react-pdf';
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
 import * as papersApi from '@/services/papersApi';
+import { ensurePdfWorker } from '@/app/lib/pdfWorker';
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
+ensurePdfWorker();
 
 interface ThumbnailStripProps {
   paperId: string;

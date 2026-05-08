@@ -139,7 +139,7 @@ describe('Analytics page', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/No eval data yet/i),
+        screen.getByText(/No evaluation data yet/i),
       ).toBeInTheDocument();
     });
   });
@@ -201,8 +201,7 @@ describe('Analytics page', () => {
     });
 
     // find the run row by its truncated ID (last 12 chars)
-    const runIdSlice = 'run_phase6_baseline_001'.slice(-12);
-    const row = screen.getByText(runIdSlice);
+    const row = screen.getAllByText('Baseline Run')[0];
     await user.click(row);
 
     // getRunDetail should have been called (initial load + row click)

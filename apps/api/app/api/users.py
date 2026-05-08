@@ -90,7 +90,7 @@ class PasswordChangeRequest(BaseModel):
 class SettingsResponse(BaseModel):
     """User settings response."""
     language: str = "zh"
-    defaultModel: str = "glm-4-flash"
+    defaultModel: str = "glm-4.6v-flashx"
     theme: str = "light"
 
 
@@ -356,7 +356,7 @@ async def get_settings(
     if not settings_data:
         settings_data = {
             "language": "zh",
-            "defaultModel": "glm-4-flash",
+            "defaultModel": "glm-4.6v-flashx",
             "theme": "light",
         }
 
@@ -391,7 +391,7 @@ async def update_settings(
     # Default settings
     default_settings = {
         "language": "zh",
-        "defaultModel": "glm-4-flash",
+        "defaultModel": "glm-4.6v-flashx",
         "theme": "light",
     }
 

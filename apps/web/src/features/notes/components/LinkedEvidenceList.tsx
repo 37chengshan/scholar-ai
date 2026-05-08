@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router';
 import type { EvidenceBlockDto } from '@scholar-ai/types';
 import { measureEvidenceBlock, tokenizeEvidenceInline } from '@/lib/text-layout';
 import { navigateToChatWithHandoff } from '@/features/chat/chatHandoff';
+import { useLanguage } from '@/app/contexts/LanguageContext';
+import { navigateToSafeTarget } from '@/lib/navigation';
 
 interface LinkedEvidenceListProps {
   evidence: EvidenceBlockDto[];
@@ -12,6 +14,14 @@ interface LinkedEvidenceListProps {
 
 export function LinkedEvidenceList({ evidence, noteTitle, noteId }: LinkedEvidenceListProps) {
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
+
+  const formatSupportStatus = (status?: string | null) => {
+    if (status === 'supported') return isZh ? '证据充分' : 'Supported';
+    if (status === 'weakly_supported' || status === 'partially_supported') return isZh ? '证据偏弱' : 'Weakly Supported';
+    return isZh ? '证据不足' : 'Unsupported';
+  };
 
   const measured = useMemo(
     () =>
@@ -34,7 +44,7 @@ export function LinkedEvidenceList({ evidence, noteTitle, noteId }: LinkedEviden
   return (
     <section className="mb-5 rounded-xl border border-border/60 bg-muted/10 p-4">
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        Linked Evidence
+        {isZh ? '关联证据' : 'Linked Evidence'}
       </div>
       <div className="space-y-3">
         {measured.map(({ item, layout, tokens }) => (
@@ -64,15 +74,17 @@ export function LinkedEvidenceList({ evidence, noteTitle, noteId }: LinkedEviden
             ) : null}
             <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
               <span>
-                {item.support_status || 'supported'}
-                {item.score !== undefined && item.score !== null ? ` · score ${item.score.toFixed(2)}` : ''}
+                {formatSupportStatus(item.support_status)}
+                {item.score !== undefined && item.score !== null ? (isZh ? ` · 评分 ${item.score.toFixed(2)}` : ` · Score ${item.score.toFixed(2)}`) : ''}
               </span>
               <button
                 type="button"
                 className="rounded-md border border-border/70 px-2 py-1 text-foreground hover:border-primary/50 hover:text-primary"
-                onClick={() => navigate(item.citation_jump_url)}
+                onClick={() => {
+                  navigateToSafeTarget(item.citation_jump_url, navigate);
+                }}
               >
-                Open source
+                {isZh ? '打开来源' : 'Open source'}
               </button>
               <button
                 type="button"
@@ -97,7 +109,7 @@ export function LinkedEvidenceList({ evidence, noteTitle, noteId }: LinkedEviden
                   );
                 }}
               >
-                Continue in Chat
+                {isZh ? '继续追问' : 'Continue in Chat'}
               </button>
             </div>
           </article>

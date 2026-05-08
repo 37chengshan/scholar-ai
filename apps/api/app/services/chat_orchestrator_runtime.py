@@ -253,6 +253,7 @@ async def execute_with_streaming_impl(
     )
 
     runner, _, _, _ = orchestrator._initialize_agent_components()
+    runner.execution_scope = scope or {}
 
     event_queue: Queue[Tuple[str, dict]] = Queue()
     event_counter = 0
@@ -731,6 +732,7 @@ async def execute_with_streaming_impl(
                         SSEEventType.DONE,
                         DoneEventData(
                             finish_reason="stop",
+                            answer=final_content,
                             tokens_used=tokens_used,
                             cost=cost,
                             total_time_ms=result.get("total_time_ms"),

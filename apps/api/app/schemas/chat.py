@@ -9,13 +9,14 @@ from pydantic import BaseModel, Field
 
 
 ChatMode = Literal["auto", "rag", "agent"]
-ChatScopeType = Literal["paper", "knowledge_base", "general"]
+ChatScopeType = Literal["paper", "knowledge_base", "compare", "general"]
 
 
 class ChatScope(BaseModel):
     type: ChatScopeType
     paper_id: Optional[str] = None
     knowledge_base_id: Optional[str] = None
+    paper_ids: Optional[list[str]] = None
 
 
 class SessionDto(BaseModel):

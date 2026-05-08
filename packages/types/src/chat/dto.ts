@@ -1,9 +1,10 @@
 export type ChatMode = 'auto' | 'rag' | 'agent';
 
 export interface ChatScope {
-  type: 'paper' | 'knowledge_base' | 'general';
+  type: 'paper' | 'knowledge_base' | 'compare' | 'general';
   paper_id?: string;
   knowledge_base_id?: string;
+  paper_ids?: string[];
 }
 
 export interface SessionDto {
@@ -21,6 +22,18 @@ export interface MessageDto {
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   tool_name?: string;
+  reasoning_content?: string | null;
+  current_phase?: string | null;
+  tool_timeline?: Array<Record<string, unknown>> | null;
+  citations?: Array<Record<string, unknown>> | null;
+  answer_contract?: Record<string, unknown> | null;
+  stream_status?: string | null;
+  tokens_used?: number | null;
+  cost?: number | null;
+  duration_ms?: number | null;
+  response_type?: string | null;
+  trace_id?: string | null;
+  run_id?: string | null;
   created_at: string;
 }
 

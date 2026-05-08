@@ -1,0 +1,750 @@
+{
+  "schema_version": "1.0",
+  "document_type": "frontend_page_test_record_template",
+  "purpose": "Machine-readable per-page test record template for ScholarAI frontend. Structure only. Fill results later.",
+  "scope": {
+    "app": "ScholarAI web",
+    "source_of_truth": [
+      "apps/web/src/app/routes.tsx",
+      "docs/plans/phase-text/2026-05-04_frontend_full_test_plan.md"
+    ],
+    "coverage_goal": "Every top-level page is one block. Each block defines how to record UI, content, copy, interaction, integration, and issue findings."
+  },
+  "fill_rules": {
+    "page_block_rule": "Each top-level page must keep one stable object in pages[]. Do not split a page into multiple top-level records.",
+    "subpage_rule": "Use sections[] for tabs, side panels, drawers, right rails, modal flows, and route-local subviews.",
+    "execution_rule": "Fill only from code-backed or browser-backed verification. Do not mark pass from expectation only.",
+    "status_enum": [
+      "not-tested",
+      "passed",
+      "partial",
+      "failed",
+      "blocked",
+      "not-applicable"
+    ],
+    "severity_enum": [
+      "blocker",
+      "high",
+      "medium",
+      "low"
+    ],
+    "owner_enum": [
+      "frontend",
+      "backend",
+      "data",
+      "tooling",
+      "unknown"
+    ],
+    "evidence_rule": "Every non-not-tested result should include at least one evidence item such as screenshot path, console error, network request, API response summary, or test command.",
+    "copy_review_rule": "If any placeholder, test copy, broken Chinese/English mix, or misleading runtime copy is found, log it under issues[] even if the flow still works.",
+    "ui_review_rule": "Record layout breakage, font mismatch, overflow, spacing inconsistency, occlusion, or visual hierarchy issues under ui_checks and issues[].",
+    "update_rule": "Do not rename route_key once created. Append new issues and update status fields over time."
+  },
+  "shared_fields_template": {
+    "overall_status": "not-tested",
+    "last_tested_at": "",
+    "tester": "",
+    "viewport": "",
+    "account_state": "",
+    "summary": "",
+    "evidence": [],
+    "issues": [
+      {
+        "id": "",
+        "title": "",
+        "status": "not-tested",
+        "severity": "medium",
+        "owner": "unknown",
+        "symptom": "",
+        "expected": "",
+        "actual": "",
+        "repro_steps": [],
+        "evidence": [],
+        "notes": ""
+      }
+    ]
+  },
+  "pages": [
+    {
+      "route_key": "landing",
+      "label": "Landing",
+      "route_patterns": [
+        "/",
+        "/home"
+      ],
+      "auth": "public",
+      "page_goal": "Product introduction, entry routing, and first-visit conversion.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "brand_positioning_copy": "not-tested",
+          "cta_copy_correctness": "not-tested",
+          "placeholder_or_test_copy_absent": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "hero_and_section_hierarchy": "not-tested",
+          "responsive_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "navigate_to_login": "not-tested",
+          "navigate_to_register_or_primary_cta": "not-tested",
+          "protected_route_redirect_logic_visible": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "hero",
+            "label": "Hero",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "feature_sections",
+            "label": "Feature Sections",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "login",
+      "label": "Login",
+      "route_patterns": [
+        "/login"
+      ],
+      "auth": "public-auth",
+      "page_goal": "User sign-in, session recovery entry, and correct redirect behavior.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "field_labels_and_help_copy": "not-tested",
+          "error_copy_correctness": "not-tested",
+          "placeholder_or_test_copy_absent": "not-tested"
+        },
+        "ui_checks": {
+          "form_layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "responsive_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "login_success_redirect": "not-tested",
+          "invalid_credentials_error": "not-tested",
+          "already_authenticated_redirect_to_dashboard": "not-tested",
+          "return_path_preservation": "not-tested",
+          "forgot_password_link": "not-tested"
+        },
+        "sections": [],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "register",
+      "label": "Register",
+      "route_patterns": [
+        "/register"
+      ],
+      "auth": "public-auth",
+      "page_goal": "Account creation flow.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "field_copy_correctness": "not-tested",
+          "validation_copy_correctness": "not-tested",
+          "placeholder_or_test_copy_absent": "not-tested"
+        },
+        "ui_checks": {
+          "form_layout_integrity": "not-tested",
+          "font_consistency": "not-tested"
+        },
+        "interaction_checks": {
+          "register_success_path": "not-tested",
+          "validation_errors": "not-tested",
+          "public_auth_redirect_logic": "not-tested"
+        },
+        "sections": [],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "forgot_password",
+      "label": "Forgot Password",
+      "route_patterns": [
+        "/forgot-password"
+      ],
+      "auth": "public-auth",
+      "page_goal": "Password reset request entry.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "instruction_copy_correctness": "not-tested",
+          "feedback_copy_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "form_layout_integrity": "not-tested",
+          "font_consistency": "not-tested"
+        },
+        "interaction_checks": {
+          "request_submit": "not-tested",
+          "success_feedback": "not-tested",
+          "invalid_email_feedback": "not-tested"
+        },
+        "sections": [],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "reset_password",
+      "label": "Reset Password",
+      "route_patterns": [
+        "/reset-password"
+      ],
+      "auth": "public-auth",
+      "page_goal": "Password reset completion flow.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "instruction_copy_correctness": "not-tested",
+          "error_copy_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "form_layout_integrity": "not-tested",
+          "font_consistency": "not-tested"
+        },
+        "interaction_checks": {
+          "token_handling": "not-tested",
+          "reset_success": "not-tested",
+          "invalid_or_expired_token_feedback": "not-tested"
+        },
+        "sections": [],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "dashboard",
+      "label": "Dashboard",
+      "route_patterns": [
+        "/workspace",
+        "/dashboard"
+      ],
+      "auth": "protected",
+      "page_goal": "Command center and workflow entry.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "command_center_copy_correctness": "not-tested",
+          "empty_state_copy_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "navigation_active_state": "not-tested",
+          "responsive_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "workspace_redirect_to_dashboard": "not-tested",
+          "primary_actions_navigate_correctly": "not-tested",
+          "recent_items_links_work": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "primary_command_center",
+            "label": "Primary Command Center",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "recent_activity",
+            "label": "Recent Activity",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "search",
+      "label": "Search",
+      "route_patterns": [
+        "/search"
+      ],
+      "auth": "protected",
+      "page_goal": "Search, result inspection, and entry into read/chat/compare workflows.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "search_copy_correctness": "not-tested",
+          "empty_state_copy_correctness": "not-tested",
+          "result_metadata_copy_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "result_card_readability": "not-tested",
+          "responsive_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "search_submission": "not-tested",
+          "result_list_render": "not-tested",
+          "filters_or_sort_state": "not-tested",
+          "open_read_from_result": "not-tested",
+          "open_compare_from_result": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "query_input_area",
+            "label": "Query Input Area",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "result_list",
+            "label": "Result List",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "knowledge_bases_list",
+      "label": "Knowledge Bases",
+      "route_patterns": [
+        "/knowledge-bases"
+      ],
+      "auth": "protected",
+      "page_goal": "List, create, inspect, and enter a knowledge workspace.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "list_copy_correctness": "not-tested",
+          "empty_state_copy_correctness": "not-tested",
+          "kb_metadata_copy_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "list_item_readability": "not-tested"
+        },
+        "interaction_checks": {
+          "list_loads": "not-tested",
+          "create_kb_entry": "not-tested",
+          "open_kb_detail": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "kb_list",
+            "label": "Knowledge Base List",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "knowledge_base_detail",
+      "label": "Knowledge Base Detail",
+      "route_patterns": [
+        "/knowledge-bases/:id"
+      ],
+      "auth": "protected",
+      "page_goal": "Upload/import/search/readiness/view sources within a knowledge workspace.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "workspace_copy_correctness": "not-tested",
+          "status_copy_correctness": "not-tested",
+          "evidence_and_source_copy_correctness": "not-tested",
+          "placeholder_or_test_copy_absent": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "tab_state_visibility": "not-tested",
+          "responsive_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "upload_flow_entry": "not-tested",
+          "import_status_updates": "not-tested",
+          "readiness_updates": "not-tested",
+          "kb_search_submission": "not-tested",
+          "open_read_from_source": "not-tested",
+          "open_chat_handoff_from_source": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "overview_tab",
+            "label": "Overview Tab",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "upload_workspace_tab",
+            "label": "Upload Workspace Tab",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "search_or_evidence_tab",
+            "label": "Search or Evidence Tab",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "read",
+      "label": "Read",
+      "route_patterns": [
+        "/read",
+        "/read/:id"
+      ],
+      "auth": "protected",
+      "page_goal": "Paper reading, source highlighting, and handoff into chat/notes/compare.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "reader_copy_correctness": "not-tested",
+          "citation_and_source_copy_correctness": "not-tested",
+          "placeholder_or_test_copy_absent": "not-tested"
+        },
+        "ui_checks": {
+          "reader_layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "pdf_or_text_render_quality": "not-tested",
+          "highlight_visibility": "not-tested",
+          "responsive_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "open_paper": "not-tested",
+          "source_highlight_jump": "not-tested",
+          "continue_in_chat_handoff": "not-tested",
+          "open_notes_context": "not-tested",
+          "open_compare_context": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "reader_main",
+            "label": "Reader Main",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "right_panel_sources",
+            "label": "Right Panel Sources",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "right_panel_notes_or_actions",
+            "label": "Right Panel Notes or Actions",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "chat",
+      "label": "Chat",
+      "route_patterns": [
+        "/chat"
+      ],
+      "auth": "protected",
+      "page_goal": "Primary execution surface for RAG-backed conversation and workflow handoff.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "composer_copy_correctness": "not-tested",
+          "answer_copy_correctness": "not-tested",
+          "citation_and_reason_copy_correctness": "not-tested",
+          "placeholder_or_test_copy_absent": "not-tested"
+        },
+        "ui_checks": {
+          "workspace_layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "streaming_render_stability": "not-tested",
+          "message_sync_integrity": "not-tested",
+          "responsive_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "send_message": "not-tested",
+          "streaming_answer": "not-tested",
+          "rag_answer_quality_visible": "not-tested",
+          "citation_click_to_source": "not-tested",
+          "handoff_prefill_from_read_compare_review": "not-tested",
+          "partial_or_insufficient_evidence_honesty": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "conversation_list",
+            "label": "Conversation List",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "composer",
+            "label": "Composer",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "answer_and_citations",
+            "label": "Answer and Citations",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "notes",
+      "label": "Notes",
+      "route_patterns": [
+        "/notes"
+      ],
+      "auth": "protected",
+      "page_goal": "Note list, note editing, and persistence.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "notes_copy_correctness": "not-tested",
+          "empty_state_copy_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "editor_readability": "not-tested"
+        },
+        "interaction_checks": {
+          "notes_list_loads": "not-tested",
+          "create_note": "not-tested",
+          "edit_note": "not-tested",
+          "autosave_or_save_persistence": "not-tested",
+          "open_note_from_context": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "notes_list",
+            "label": "Notes List",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "note_editor",
+            "label": "Note Editor",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "compare",
+      "label": "Compare",
+      "route_patterns": [
+        "/compare"
+      ],
+      "auth": "protected",
+      "page_goal": "Cross-paper compare workflow and structured evidence-backed comparison.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "compare_copy_correctness": "not-tested",
+          "result_panel_copy_correctness": "not-tested",
+          "placeholder_or_test_copy_absent": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "compare_panel_readability": "not-tested",
+          "responsive_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "load_compare_inputs": "not-tested",
+          "run_compare": "not-tested",
+          "problem_dataset_results_alignment": "not-tested",
+          "citation_click_to_source": "not-tested",
+          "continue_in_chat_handoff": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "input_selection",
+            "label": "Input Selection",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "comparison_result",
+            "label": "Comparison Result",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "analytics",
+      "label": "Analytics",
+      "route_patterns": [
+        "/analytics"
+      ],
+      "auth": "protected",
+      "page_goal": "Analytics and operational visibility surfaces.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "analytics_copy_correctness": "not-tested",
+          "metric_label_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "chart_or_metric_readability": "not-tested"
+        },
+        "interaction_checks": {
+          "page_loads": "not-tested",
+          "filters_or_range_controls": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "metric_overview",
+            "label": "Metric Overview",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "settings",
+      "label": "Settings",
+      "route_patterns": [
+        "/settings"
+      ],
+      "auth": "protected",
+      "page_goal": "User/account/application settings and configuration visibility.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "settings_copy_correctness": "not-tested",
+          "provider_or_runtime_copy_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "section_navigation_readability": "not-tested"
+        },
+        "interaction_checks": {
+          "page_loads": "not-tested",
+          "settings_persistence": "not-tested",
+          "logout_flow": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "account_section",
+            "label": "Account Section",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "application_section",
+            "label": "Application Section",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    },
+    {
+      "route_key": "global_layout",
+      "label": "Global Layout",
+      "route_patterns": [
+        "layout-wrapper"
+      ],
+      "auth": "mixed",
+      "page_goal": "Shared shell, left navigation, recent items, user controls, and mobile menu behavior.",
+      "fill_template": {
+        "overall_status": "not-tested",
+        "content_checks": {
+          "global_nav_copy_correctness": "not-tested",
+          "recent_item_labels_correctness": "not-tested"
+        },
+        "ui_checks": {
+          "shell_layout_integrity": "not-tested",
+          "font_consistency": "not-tested",
+          "active_nav_visibility": "not-tested",
+          "mobile_menu_layout": "not-tested"
+        },
+        "interaction_checks": {
+          "nav_switching": "not-tested",
+          "recent_conversation_entry": "not-tested",
+          "recent_kb_entry": "not-tested",
+          "user_menu_actions": "not-tested"
+        },
+        "sections": [
+          {
+            "section_key": "left_nav",
+            "label": "Left Navigation",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "recent_conversations",
+            "label": "Recent Conversations",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "recent_knowledge_bases",
+            "label": "Recent Knowledge Bases",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "user_area",
+            "label": "User Area",
+            "status": "not-tested",
+            "notes": ""
+          },
+          {
+            "section_key": "mobile_menu",
+            "label": "Mobile Menu",
+            "status": "not-tested",
+            "notes": ""
+          }
+        ],
+        "evidence": [],
+        "issues": []
+      }
+    }
+  ]
+}

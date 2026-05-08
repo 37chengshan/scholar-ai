@@ -21,6 +21,7 @@ from app.database import get_db
 from app.models.knowledge_base import KnowledgeBase
 from app.models.paper import Paper, PaperChunk
 from app.deps import CurrentUserId
+from app.services.paper_display_metadata import sanitize_paper_display_metadata
 from app.utils.problem_detail import Errors
 from app.utils.logger import logger
 
@@ -308,10 +309,16 @@ async def list_kb_papers(
                 "papers": [
                     {
                         "id": p.id,
-                        "title": p.title,
-                        "authors": p.authors,
-                        "year": p.year,
-                        "venue": p.venue,
+                        **sanitize_paper_display_metadata(
+                            paper_id=p.id,
+                            title=p.title,
+                            authors=p.authors,
+                            year=p.year,
+                            venue=p.venue,
+                            fallback_title=getattr(getattr(p, "upload_history", [None])[-1], "filename", None)
+                            if getattr(p, "upload_history", None)
+                            else None,
+                        ),
                         "status": p.status,
                         "chunkCount": chunk_counts.get(p.id, 0),
                         "entityCount": 0,

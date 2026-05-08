@@ -26,7 +26,7 @@ Phase 3-7 仍然是后续阶段，不应被提前写成已完成。
 
 当前在线模型格局：
 
-1. generation: GLM 在线推理
+1. generation: Zhipu `glm-4.6v-flashx`
 2. embedding: DashScope `text-embedding-v4`
 3. rerank: DashScope `qwen3-rerank`
 
@@ -53,8 +53,9 @@ Phase 3-7 仍然是后续阶段，不应被提前写成已完成。
 2. Milvus 与 SQL chunk truth 对齐，不再出现 `0 Chunks / Pending index` 的假状态
 3. Compare / Review / KB Chat / Read / Notes 都有浏览器侧实证
 4. Compare 页面 warm-auth / URL 预选竞态被修复，支持 URL 预选论文直接生成矩阵
-5. Read -> single-paper Chat handoff 与 paper-scoped retrieval 已恢复，单论文问答不再停在假性 abstain
-6. Phase 2 不再停留在资产准备态，而是拿到了真实 walkthrough 证据
+5. Read -> single-paper Chat handoff 与 paper-scoped retrieval 已恢复，`new=1` 不再吞掉 handoff 预填，单论文问答不再停在假性 abstain
+6. Upload/import 浏览器主链已重跑，真实文件上传后会创建 import job，并在重复内容场景下进入 dedupe decision
+7. Phase 2 不再停留在资产准备态，而是拿到了真实 walkthrough 证据
 
 ## 5. Residual Risk
 
@@ -62,9 +63,8 @@ v4.0 现在最大的剩余风险，不在“主链完全不可用”，而在：
 
 1. single-paper Chat 已恢复，但当前仍可能输出 `partial` 而不是稳定 `full`
 2. Review 仍会出现 `partial / insufficient_evidence`
-3. KB deep-link 到特定 tab 的鉴权回落问题还没收口
-4. controlled beta 还没有扩大到独立操作者与 staging/cloud
-5. v4.0 后半段前端质量与 testing/eval gate 还没开始收口
+3. controlled beta 还没有扩大到独立操作者与 staging/cloud
+4. v4.0 后半段前端质量与 testing/eval gate 还没开始收口
 
 所以当前最准确的上层说法是：
 

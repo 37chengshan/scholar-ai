@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { getEvidenceSource } from '@/services/evidenceApi';
 import { saveEvidenceNote } from '@/services/notesApi';
 import type { EvidenceBlock } from '@/features/chat/components/workspaceTypes';
+import { navigateToSafeTarget } from '@/lib/navigation';
 
 export function useEvidenceNavigation(isZh: boolean) {
   const navigate = useNavigate();
@@ -14,12 +15,10 @@ export function useEvidenceNavigation(isZh: boolean) {
     }
     try {
       const source = await getEvidenceSource(sourceChunkId);
-      if (source.citation_jump_url) {
-        navigate(source.citation_jump_url);
+      if (navigateToSafeTarget(source.citation_jump_url, navigate)) {
         return;
       }
-      if (source.read_url) {
-        navigate(source.read_url);
+      if (navigateToSafeTarget(source.read_url, navigate)) {
         return;
       }
       const paperId = source.paper_id || fallbackPaperId;

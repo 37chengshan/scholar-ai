@@ -82,7 +82,7 @@ export function NotesList({
         {/* Paper groups */}
         {Object.entries(notesByPaper).map(([paperId, paperNotes]) => (
           <div key={paperId}>
-            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 font-serif tracking-tight">
               <FileText className="w-5 h-5" />
               <span className="truncate max-w-[300px]">
                 {paperTitles?.get(paperId) || `Paper: ${paperId.slice(0, 8)}...`}
@@ -107,7 +107,7 @@ export function NotesList({
         {/* Ungrouped notes */}
         {ungroupedNotes.length > 0 && (
           <div>
-            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 font-serif tracking-tight">
               <FileText className="w-5 h-5" />
               <span>General Notes</span>
               <span className="text-muted-foreground text-sm">
@@ -153,7 +153,7 @@ export function NotesList({
         {/* Tag groups */}
         {sortedTags.map(tag => (
           <div key={tag}>
-            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 font-serif tracking-tight">
               <Hash className="w-5 h-5" />
               #{tag}
               <span className="text-muted-foreground text-sm">
@@ -176,7 +176,7 @@ export function NotesList({
         {/* Untagged notes */}
         {untaggedNotes.length > 0 && (
           <div>
-            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 font-serif tracking-tight">
               <Hash className="w-5 h-5" />
               <span>Untagged</span>
               <span className="text-muted-foreground text-sm">

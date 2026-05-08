@@ -33,11 +33,11 @@ describe('workflowAdapters', () => {
     const banner = mapScopeToBannerModel({
       type: 'knowledge-base',
       id: 'kb-1',
-      title: 'Library Workflow',
+      title: '知识库工作区',
       subtitle: 'Scoped to kb-1',
     });
 
-    expect(banner.title).toBe('Library Workflow');
+    expect(banner.title).toBe('知识库工作区');
     expect(banner.subtitle).toContain('kb-1');
   });
 });

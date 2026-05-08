@@ -37,11 +37,11 @@ export function NoteCard({ note, onClick, paperTitles }: NoteCardProps) {
       onClick={onClick}
     >
       {/* Title */}
-      <h3 className="font-semibold text-lg mb-2">{note.title}</h3>
+      <h3 className="font-semibold text-lg mb-2 font-serif tracking-tight">{note.title}</h3>
 
       {/* Content Preview */}
       {preview && (
-        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+        <p className="text-sm text-muted-foreground line-clamp-2 mb-3 font-sans">
           {preview}...
         </p>
       )}
@@ -79,7 +79,7 @@ export function NoteCard({ note, onClick, paperTitles }: NoteCardProps) {
       )}
 
       {/* Timestamps */}
-      <div className="text-xs text-muted-foreground">
+      <div className="text-xs text-muted-foreground font-sans">
         Created: {createdDate}
         {isUpdated && (
           <span> • Updated: {updatedDate}</span>

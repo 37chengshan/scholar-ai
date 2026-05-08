@@ -1,18 +1,26 @@
 import { ArrowRight, Fingerprint, Database, Cpu, Activity, ShieldCheck, TerminalSquare, Command } from "lucide-react";
 import { motion } from "motion/react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { useState, useEffect } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Badge } from "../components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import * as authApi from "@/services/authApi";
+import { navigateToSafeTarget } from "@/lib/navigation";
+import {
+  ACTIVE_EMBEDDING_MODEL,
+  ACTIVE_GENERATION_MODEL,
+  ACTIVE_RERANK_MODEL,
+  formatEmbeddingModelLabel,
+  formatGenerationModelLabel,
+} from "@/config/modelRuntime";
 
 const SYSTEM_LOGS_EN = [
   "[SYS] Initializing system environment...",
   "[SYS] Initializing vector database...",
   "[OK] Graph DB connected. Latency: 12ms",
   "[SYS] Binding online embedding and rerank runtime...",
-  "[OK] DashScope text-embedding-v4 and qwen3-rerank ready",
+  `[OK] ${formatEmbeddingModelLabel(ACTIVE_EMBEDDING_MODEL)} and ${ACTIVE_RERANK_MODEL} ready`,
   "[SYS] Awaiting user authentication...",
 ];
 
@@ -21,12 +29,13 @@ const SYSTEM_LOGS_ZH = [
   "[SYS] 正在初始化向量数据库...",
   "[OK] 图数据库已连接。延迟: 12ms",
   "[SYS] 正在绑定在线 embedding / rerank 运行时...",
-  "[OK] DashScope text-embedding-v4 与 qwen3-rerank 已就绪",
+  `[OK] ${formatEmbeddingModelLabel(ACTIVE_EMBEDDING_MODEL)} 与 ${ACTIVE_RERANK_MODEL} 已就绪`,
   "[SYS] 等待用户身份验证...",
 ];
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { language } = useLanguage();
   const { login, isAuthenticated, loading: authLoading } = useAuth();
   const [logs, setLogs] = useState<string[]>([]);
@@ -39,23 +48,46 @@ export function Login() {
 
   const isZh = language === "zh";
   const SYSTEM_LOGS = isZh ? SYSTEM_LOGS_ZH : SYSTEM_LOGS_EN;
+  const returnTo = typeof location.state?.from === "string" ? location.state.from : null;
+
+  const normalizeAuthError = (rawMessage: string): string => {
+    const trimmed = rawMessage.trim();
+    if (!isZh) {
+      return trimmed;
+    }
+
+    const invalidCredentialMessages = new Set([
+      "Email or password is incorrect",
+      "Invalid credentials",
+      "Incorrect email or password",
+    ]);
+
+    if (invalidCredentialMessages.has(trimmed)) {
+      return "邮箱或密码错误";
+    }
+
+    return trimmed;
+  };
 
   // Redirect to dashboard if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
+      if (navigateToSafeTarget(returnTo, (to) => navigate(to, { replace: true }))) {
+        return;
+      }
       navigate("/dashboard", { replace: true });
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [authLoading, isAuthenticated, navigate, returnTo]);
 
   const t = {
-    os: isZh ? "AI驱动的个人文献数据库" : "AI-Powered Personal Literature Database",
-    vol: isZh ? "v1.0" : "v1.0",
+    os: isZh ? "个人研究工作台" : "AI-Powered Research Workspace",
+    vol: "v4.0",
     title1: isZh ? "知识" : "Knowledge",
     title2: isZh ? "引擎." : "Engine.",
     auth: isZh ? "身份验证" : "Authentication",
-    authDesc: isZh ? "ScholarAI智读系统当前以智谱 GLM 推理栈配合 DashScope 在线 embedding / rerank 主链运行，为研究人员提供可检索、可追溯的论文阅读与分析服务。所有查询将被绝对保密，打造您的私人文献库。" : "ScholarAI Reading System currently runs on a GLM inference stack with DashScope online embedding and rerank on the main path, providing traceable paper reading and analysis for researchers. All queries are kept strictly confidential, creating your private literature library.",
+    authDesc: isZh ? "为研究人员提供可检索、可追溯的论文阅读与分析体验。您的问题、笔记和阅读进度都会保存在个人空间中。" : "ScholarAI Reading System currently runs on Zhipu GLM-4.6V-FlashX with DashScope online embedding and rerank on the main path, providing traceable paper reading and analysis for researchers. All queries are kept strictly confidential, creating your private literature library.",
     index: isZh ? "全局索引" : "Global Index",
-    indexDesc: isZh ? "目前已为 ArXiv、Semantic Scholar 和 PubMed 中的 1420 万篇论文建立索引。系统运行于具备实时向量同步功能的分布式节点架构之上。" : "Currently indexing 14.2M papers across ArXiv, Semantic Scholar, and PubMed. System runs on distributed Node architecture with real-time vector synchronization.",
+    indexDesc: isZh ? "覆盖 ArXiv、Semantic Scholar 和 PubMed 的大规模论文索引，支持检索、导入、阅读和后续问答在同一工作流里衔接。" : "Currently indexing 14.2M papers across ArXiv, Semantic Scholar, and PubMed. System runs on distributed Node architecture with real-time vector synchronization.",
     activeNodes: isZh ? "向量维度" : "Vector Dimensions",
     graphSize: isZh ? "Embedding模型" : "Embedding Model",
     inference: isZh ? "推理引擎" : "Inference",
@@ -63,22 +95,22 @@ export function Login() {
     synced: isZh ? "已同步" : "Synced",
     terminal: isZh ? "终端输出" : "Terminal Output",
     idReq: isZh ? (mode === "login" ? "需要身份识别" : "创建新账户") : (mode === "login" ? "Identification Required" : "Create Account"),
-    plsAuth: isZh ? (mode === "login" ? "请进行身份验证以继续" : "注册以使用ScholarAI智读系统") : (mode === "login" ? "Please authenticate to continue" : "Register to use ScholarAI Reading System"),
-    userId: isZh ? "研究员 ID / 邮箱" : "Researcher ID / Email",
-    passkey: isZh ? "访问密钥" : "Passkey",
+    plsAuth: isZh ? (mode === "login" ? "请登录后继续您的研究工作流" : "注册后即可开始整理、阅读和追问论文") : (mode === "login" ? "Please authenticate to continue" : "Register to use ScholarAI Reading System"),
+    userId: isZh ? "邮箱地址" : "Researcher ID / Email",
+    passkey: isZh ? "登录密码" : "Passkey",
     reset: isZh ? "重置" : "Reset",
     enterCreds: isZh ? "输入您的凭证" : "Enter your credentials",
     enterKey: isZh ? "输入密钥" : "Enter passkey",
-    connect: isZh ? (mode === "login" ? "建立连接" : "创建账户") : (mode === "login" ? "Establish Connection" : "Create Account"),
+    connect: isZh ? (mode === "login" ? "登录并继续" : "创建账户") : (mode === "login" ? "Establish Connection" : "Create Account"),
     sso: isZh ? "单点登录 (SSO)" : "SSO Login",
     requestAccess: isZh ? "申请访问权限" : "Request Access",
-    statusText: isZh ? "节点: 04 • 状态: " : "Node: 04 • Status: ",
+    statusText: isZh ? "系统状态：" : "Node: 04 • Status: ",
     active: isZh ? "活跃" : "Active",
-    ip: isZh ? " • IP: 已加密" : " • IP: Encrypted",
+    ip: isZh ? " • 连接已加密" : " • IP: Encrypted",
     name: isZh ? "姓名" : "Name",
     enterName: isZh ? "输入您的姓名" : "Enter your name",
-    switchToRegister: isZh ? "没有账户？注册" : "Don't have an account? Register",
-    switchToLogin: isZh ? "已有账户？登录" : "Already have an account? Login",
+    switchToRegister: isZh ? "没有账户？立即注册" : "Don't have an account? Register",
+    switchToLogin: isZh ? "已有账户？返回登录" : "Already have an account? Login",
   };
 
   // Simulate streaming logs for high-density tech feel
@@ -103,13 +135,16 @@ export function Login() {
 
     try {
       await login(email, password);
+      if (navigateToSafeTarget(returnTo, (to) => navigate(to, { replace: true }))) {
+        return;
+      }
       navigate("/dashboard");
     } catch (err: any) {
       const errorData = err.response?.data;
-      const errorMessage = errorData?.detail?.detail
+      const errorMessage = normalizeAuthError(errorData?.detail?.detail
         || errorData?.error?.detail
         || err.message
-        || (isZh ? "登录失败" : "Login failed");
+        || (isZh ? "登录失败" : "Login failed"));
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -124,6 +159,9 @@ export function Login() {
     try {
       await authApi.register(email, password, name);
       await login(email, password);
+      if (navigateToSafeTarget(returnTo, (to) => navigate(to, { replace: true }))) {
+        return;
+      }
       navigate("/dashboard");
     } catch (err: any) {
       const errorData = err.response?.data;
@@ -211,8 +249,8 @@ export function Login() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-border/50 pb-6">
             {[
               { label: t.activeNodes, value: "1024", icon: Activity },
-              { label: t.graphSize, value: "DashScope text-embedding-v4", icon: Database },
-              { label: t.inference, value: "智谱 GLM-5", icon: Cpu },
+              { label: t.graphSize, value: formatEmbeddingModelLabel(ACTIVE_EMBEDDING_MODEL), icon: Database },
+              { label: t.inference, value: formatGenerationModelLabel(ACTIVE_GENERATION_MODEL), icon: Cpu },
               { label: t.vectorDB, value: t.synced, icon: Command }
             ].map((stat, i) => (
               <div key={i} className="flex flex-col gap-1.5">
@@ -247,13 +285,6 @@ export function Login() {
 
       {/* Right Column: Login Form */}
       <div className="w-full md:w-[480px] lg:w-[540px] flex flex-col justify-center items-center p-8 lg:p-16 bg-background relative z-10 shadow-2xl">
-        {/* Development Indicator */}
-        <div className="absolute top-2 right-2 z-50">
-          <Badge variant="secondary" className="text-xs">
-            {isZh ? "Beta版本" : "Beta Version"}
-          </Badge>
-        </div>
-
           <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -275,10 +306,12 @@ export function Login() {
               
               {mode === "register" && (
                 <div className="flex flex-col gap-2 group/input">
-                  <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
+                  <label htmlFor="register-name" className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                     {t.name}
                   </label>
                   <input
+                    id="register-name"
+                    name="name"
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -290,11 +323,14 @@ export function Login() {
               )}
 
               <div className="flex flex-col gap-2 group/input">
-                <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
+                <label htmlFor="auth-email" className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                   {t.userId}
                 </label>
                 <input
+                  id="auth-email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-serif focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"
@@ -305,7 +341,7 @@ export function Login() {
 
               <div className="flex flex-col gap-2 group/input">
                 <div className="flex justify-between items-end">
-                  <label className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
+                  <label htmlFor="auth-password" className="text-[9px] font-bold tracking-[0.3em] uppercase text-foreground/70 group-focus-within/input:text-primary transition-colors">
                     {t.passkey}
                   </label>
                   {mode === "login" && (
@@ -319,7 +355,10 @@ export function Login() {
                   )}
                 </div>
                 <input
+                  id="auth-password"
+                  name="password"
                   type="password"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-transparent border-b-2 border-foreground/20 pb-3 pt-1 text-lg font-mono tracking-[0.3em] focus:outline-none focus:border-primary transition-colors placeholder:text-muted-foreground/30 rounded-none"

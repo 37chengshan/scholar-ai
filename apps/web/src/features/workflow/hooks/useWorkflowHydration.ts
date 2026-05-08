@@ -38,8 +38,8 @@ function deriveScope(pathname: string, search: string, chatScope: ReturnType<typ
     return {
       type: 'knowledge-base',
       id: kbId,
-      title: 'Library Workflow',
-      subtitle: kbId ? `Managing import and retrieval for ${kbId}` : 'Library workflow context',
+      title: '知识库工作区',
+      subtitle: kbId ? `围绕知识库 ${kbId} 管理导入、检索与综述` : '围绕知识库管理导入、检索与综述',
     };
   }
 
@@ -48,8 +48,8 @@ function deriveScope(pathname: string, search: string, chatScope: ReturnType<typ
     return {
       type: 'paper',
       id: paperId,
-      title: 'Reading Workflow',
-      subtitle: paperId ? `Evidence-linked reading for ${paperId}` : 'Reading workflow context',
+      title: '阅读工作区',
+      subtitle: paperId ? `围绕论文 ${paperId} 继续阅读、标注与记笔记` : '围绕单篇论文继续阅读、标注与记笔记',
     };
   }
 
@@ -57,16 +57,16 @@ function deriveScope(pathname: string, search: string, chatScope: ReturnType<typ
     return {
       type: 'global',
       id: null,
-      title: 'Discovery Workflow',
-      subtitle: 'Search, import, and continue in one flow',
+      title: '检索工作区',
+      subtitle: '在同一条链路里完成检索、导入与继续研究',
     };
   }
 
   return {
     type: 'global',
     id: null,
-    title: 'Global Workspace',
-    subtitle: 'Track pending work and output artifacts',
+    title: '研究工作区',
+    subtitle: '在同一处追踪当前问题、证据与下一步动作',
   };
 }
 
@@ -130,11 +130,11 @@ function buildHandoffRun(
     id: `handoff:${scope.id || handoff.handoff.origin}`,
     source: 'chat',
     status: 'waiting',
-    stage: 'handoff_ready',
+    stage: 'ready_to_continue',
     error: null,
     nextAction: evidenceCount > 0
-      ? `Review the prefilled prompt and continue with ${evidenceCount} evidence reference${evidenceCount > 1 ? 's' : ''}.`
-      : 'Review the prefilled prompt and continue in Chat.',
+      ? `检查预填问题，并基于 ${evidenceCount} 条证据继续追问。`
+      : '检查预填问题并继续提问。',
     updatedAt: handoff.savedAt,
     scopeType: scope.type,
     scopeId: scope.id,
@@ -145,8 +145,8 @@ function buildHandoffPendingActions(handoff: NonNullable<ReturnType<typeof deriv
   const actions: WorkflowHydratedPayload['pendingActions'] = [
     {
       id: 'handoff-continue',
-      label: 'Continue in Chat',
-      description: 'A prepared follow-up is already waiting in the composer.',
+      label: '继续提问',
+      description: '输入框里已经准备好可继续发送的问题。',
       intent: 'primary' as const,
       kind: 'primary' as const,
       action: 'open' as const,
@@ -156,8 +156,8 @@ function buildHandoffPendingActions(handoff: NonNullable<ReturnType<typeof deriv
   if (handoff.handoff.returnTo) {
     actions.push({
       id: 'handoff-return',
-      label: 'Return to Source',
-      description: `Go back to ${handoff.handoff.origin} after reviewing the prompt.`,
+      label: '返回来源页面',
+      description: `检查完预填问题后，回到 ${handoff.handoff.origin} 继续。`,
       intent: 'primary',
       kind: 'primary',
       action: 'open' as const,
@@ -183,14 +183,14 @@ function buildArtifacts(
       mapArtifactToUiRenderable({
         id: 'artifact-note',
         kind: 'note',
-        title: 'Reading Notes',
-        context: 'Context-linked notes are available in this scope.',
+        title: '阅读笔记',
+        context: '当前范围内已有可继续编辑的阅读笔记。',
       }),
       mapArtifactToUiRenderable({
         id: 'artifact-citation',
         kind: 'citation',
-        title: 'Citation References',
-        context: 'Use references for evidence-backed writing.',
+        title: '引文引用',
+        context: '可直接引用当前范围内的证据来源。',
       })
     );
   }
@@ -200,8 +200,8 @@ function buildArtifacts(
       mapArtifactToUiRenderable({
         id: 'artifact-import-report',
         kind: 'import-report',
-        title: 'Import Reports',
-        context: 'Track import outcomes and unresolved files.',
+        title: '导入记录',
+        context: '查看导入结果与仍待处理的文件。',
       })
     );
   }
@@ -217,7 +217,7 @@ function buildArtifacts(
         mapArtifactToUiRenderable({
           id: 'artifact-handoff',
           kind: 'session',
-          title: 'Prepared Chat Handoff',
+          title: '已准备好的追问',
           context: handoff.handoff.promptDraft,
           payload: {
             origin: handoff.handoff.origin,
@@ -231,8 +231,8 @@ function buildArtifacts(
           mapArtifactToUiRenderable({
             id: 'artifact-handoff-evidence',
             kind: 'citation',
-            title: `Handoff Evidence (${evidenceCount})`,
-            context: 'Evidence references were carried from the previous workspace.',
+            title: `已带入证据（${evidenceCount}）`,
+            context: '这些证据引用已从上一个页面带入当前对话。',
             payload: {
               evidence: handoff.handoff.evidence,
             },
@@ -245,14 +245,14 @@ function buildArtifacts(
       mapArtifactToUiRenderable({
         id: 'artifact-answer',
         kind: 'answer',
-        title: 'Answer Draft',
-        context: 'Latest assistant answer in current workspace scope.',
+        title: '当前回答',
+        context: '当前范围里的最近一次助手回答。',
       }),
       mapArtifactToUiRenderable({
         id: 'artifact-session',
         kind: 'session',
-        title: 'Session Context',
-        context: scope.id ? `Scoped session for ${scope.id}` : 'Global chat session context.',
+        title: '会话上下文',
+        context: scope.id ? `当前会话已绑定到 ${scope.id}` : '当前会话在全局范围内继续。',
       })
     );
   }
@@ -304,8 +304,8 @@ export function useWorkflowHydration(): void {
         ? [
             {
               id: `timeline-handoff-${persistedHandoff.savedAt}`,
-              title: 'Handoff Restored',
-              description: `Context from ${persistedHandoff.handoff.origin} was restored into Chat.`,
+              title: '已恢复追问上下文',
+              description: `已把 ${persistedHandoff.handoff.origin} 的上下文带回当前对话。`,
               at: persistedHandoff.savedAt,
               status: 'info' as const,
             },
@@ -313,8 +313,8 @@ export function useWorkflowHydration(): void {
       : [
           {
             id: `timeline-${location.pathname}`,
-            title: 'Scope Updated',
-            description: `Entered ${location.pathname}`,
+            title: '范围已更新',
+            description: `已进入 ${location.pathname}`,
             at: new Date().toISOString(),
           },
         ];

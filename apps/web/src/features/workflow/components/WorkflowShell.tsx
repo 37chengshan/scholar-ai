@@ -42,8 +42,8 @@ export function WorkflowShell() {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                    {isZh ? '研究状态' : 'Workflow Desk'}
+                  <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground font-serif tracking-tight">
+                    {isZh ? '研究状态' : 'Research Status'}
                   </h2>
                   <span className="inline-flex items-center rounded-full border border-border/70 bg-[#fffdf9] px-2 py-0.5 text-[10px] font-semibold text-foreground/75">
                     {statusLabel}
@@ -51,8 +51,8 @@ export function WorkflowShell() {
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span className="truncate font-medium text-foreground">{scope.title}</span>
-                  <span>{isZh ? `${pendingActions.length} 个待处理` : `${pendingActions.length} pending`}</span>
-                  <span>{isZh ? `${recoverableTasks.length} 个可恢复` : `${recoverableTasks.length} recoverable`}</span>
+                  <span>{isZh ? `${pendingActions.length} 个待处理` : `${pendingActions.length} pending items`}</span>
+                  <span>{isZh ? `${recoverableTasks.length} 个可恢复` : `${recoverableTasks.length} recoverable items`}</span>
                 </div>
               </div>
             </div>
@@ -62,13 +62,13 @@ export function WorkflowShell() {
                 onClick={() => workflowActions.setArtifactsDrawer(true)}
                 className="rounded-full border border-border/70 bg-[#fffdf9] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/75 transition-colors hover:bg-background"
               >
-                {isZh ? '产物' : 'Artifacts'}
+                {isZh ? '产物' : 'Outputs'}
               </button>
               <button
                 onClick={() => workflowActions.setTimelineDrawer(true)}
                 className="rounded-full border border-border/70 bg-[#fffdf9] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/75 transition-colors hover:bg-background"
               >
-                {isZh ? '活动' : 'Activity'}
+                {isZh ? '活动' : 'Recent Activity'}
               </button>
               <button
                 onClick={() => workflowActions.setWorkflowConsole(!ui.showConsole)}
@@ -76,7 +76,7 @@ export function WorkflowShell() {
                 aria-expanded={ui.showConsole}
               >
                 {ui.showConsole ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                {ui.showConsole ? (isZh ? '收起细节' : 'Collapse') : (isZh ? '查看细节' : 'Show Details')}
+                {ui.showConsole ? (isZh ? '收起细节' : 'Hide Details') : (isZh ? '展开细节' : 'Show Details')}
               </button>
             </div>
           </div>

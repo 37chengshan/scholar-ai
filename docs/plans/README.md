@@ -23,6 +23,11 @@
   - 历史或维护态版本化计划主目录
 - `v4_0/`
   - 当前讨论中的版本化草案目录，待用户确认后再升级为正式主线
+- `phase-text/`
+  - 跨版本事实型功能盘点、功能真相报告、测试真相文档与查漏材料
+  - 同时承载 `phase-text` 自身的整体规划与维护契约
+  - 同时承载已验证残余问题报告
+  - 可包含机器可读的逐页面测试记录模板，供后续浏览器验证持续回填
 - `docs/plans/<version>/active/`
   - 当前执行中的 phase、overview、研究拆解
 - `docs/plans/<version>/complete/`
@@ -43,5 +48,6 @@
 - 新的研究文档不要再落到独立 `docs/reports/`；直接放进对应版本的 `search/` 或 `reports/`。
 - `overview` 文档负责讲主线、phase、边界，不负责展开到逐文件改造。
 - `research/report` 文档负责补具体研究与阶段结论，不替代 `PLAN_STATUS.md`。
+- `phase-text/` 只写 implemented/testable/residual-gap 事实文档与该目录自身的治理规划，不写新的版本执行计划或放行结论。
 - 如果版本无法明确归类，先放 `docs/plans/archive/`，后续再决定是否升级为正式版本目录。
 - 当版本主线切换时，必须同步更新本文件与 `docs/README.md`。

@@ -139,7 +139,7 @@ async def generate_reading_notes(
     try:
         client = ZhipuAI(api_key=settings.ZHIPU_API_KEY)
         response = client.chat.completions.create(
-            model="glm-4.5-air",  # Per D-04
+            model=settings.LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=300,  # Limit output for ~500 char notes

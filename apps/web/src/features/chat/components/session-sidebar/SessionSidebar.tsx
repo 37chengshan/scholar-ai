@@ -207,7 +207,7 @@ export function SessionSidebar({
                       onClick={(event) => onDeleteSession(session.id, event)}
                       data-testid={`session-delete-${session.id}`}
                       type="button"
-                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1 hover:bg-destructive/10 focus-visible:bg-destructive/10 transition-all flex-shrink-0 rounded-md mt-0.5"
+                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 p-1 hover:bg-destructive/10 focus-visible:bg-destructive/10 transition-all flex-shrink-0 rounded-md mt-0.5"
                       aria-label={isZh ? '删除会话' : 'Delete session'}
                     >
                       <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />

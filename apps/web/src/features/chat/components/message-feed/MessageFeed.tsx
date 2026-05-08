@@ -16,6 +16,7 @@ import { useAnswerContract } from '@/features/chat/hooks/useAnswerContract';
 import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
 import { EvidencePanel } from '@/features/chat/components/evidence/EvidencePanel';
 import { CompareCard } from '@/features/chat/components/CompareCard';
+import { normalizeAnswerDisplayCopy } from '@/features/chat/lib/answerCopy';
 
 interface MessageFeedCopy {
   noMessages: string;
@@ -63,7 +64,7 @@ function getToolTimelineVisible(
     && (((messageToolTimeline?.length || 0) > 0) || ((streamToolTimeline?.length || 0) > 0));
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, isZh }: { text: string; isZh: boolean }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(text).then(() => {
@@ -75,7 +76,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       onClick={handleCopy}
       className="p-1 rounded transition-colors text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-      title="Copy"
+      title={isZh ? '复制回答' : 'Copy answer'}
     >
       {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
@@ -151,6 +152,13 @@ export function MessageFeed({
               const isStreaming = message.isStreaming;
               const isPlaceholder = message.isPlaceholder || message.id === currentMessageId;
               const isAssistant = message.role === 'assistant';
+              const normalizedDisplayContent = isAssistant
+                ? normalizeAnswerDisplayCopy(
+                    message.displayContent,
+                    message.answerContract?.answer_mode ?? null,
+                    isZh,
+                  )
+                : message.displayContent;
               const isActiveStreamMessage = isAssistant && isStreaming && isPlaceholder;
               const messageReasoning = isActiveStreamMessage
                 ? (message.displayReasoning || streamState.reasoningBuffer)
@@ -215,20 +223,25 @@ export function MessageFeed({
                             </span>
                           )}
                           {toolTimelineVisible && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2.5 py-0.5 bg-muted/30">Tools</span>
+                            <>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2.5 py-0.5 bg-muted/30">
+                                {isZh ? '工具调用' : 'Tools'}
+                              </span>
+                              <span className="sr-only">{isZh ? '工具调用进行中' : 'Tool activity in progress'}</span>
+                            </>
                           )}
                         </div>
                       )}
 
                       {/* Content - no bubble wrapper */}
                       <div className="text-sm leading-relaxed text-foreground/90">
-                        {messageCitations.length > 0 && message.displayContent ? (
-                          renderContentWithCitations(message.displayContent, (citationIndex) => {
+                        {messageCitations.length > 0 && normalizedDisplayContent ? (
+                          renderContentWithCitations(normalizedDisplayContent, (citationIndex) => {
                             onCitationClick(messageCitations[citationIndex]);
                           })
-                        ) : message.displayContent ? (
+                        ) : normalizedDisplayContent ? (
                           <div className="whitespace-pre-wrap">
-                            {message.displayContent}
+                            {normalizedDisplayContent}
                             {isStreaming && (
                               <span className="ml-0.5 inline-block h-4 w-[2px] animate-[pulse_1s_ease-in-out_infinite] bg-primary/60 align-middle" aria-hidden="true" />
                             )}
@@ -265,15 +278,15 @@ export function MessageFeed({
                       )}
 
                       {/* Action bar: copy, token info */}
-                      {!isStreaming && message.displayContent && (
+                      {!isStreaming && normalizedDisplayContent && (
                         <div className="flex items-center gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <CopyButton text={message.displayContent} />
+                          <CopyButton text={normalizedDisplayContent} isZh={isZh} />
                           {tokenCount !== undefined && tokenCount > 0 && (
                             <span
                               className="text-[10px] text-muted-foreground"
                               title={costValue > 0 ? `Token: ${tokenCount.toLocaleString()} · ¥${costValue.toFixed(4)}` : undefined}
                             >
-                              {tokenCount.toLocaleString()} tokens
+                              {isZh ? `${tokenCount.toLocaleString()} tokens` : `${tokenCount.toLocaleString()} tokens`}
                               {costValue > 0 && ` · ¥${costValue.toFixed(4)}`}
                             </span>
                           )}

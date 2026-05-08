@@ -31,7 +31,7 @@ const navCards: NavCard[] = [
   {
     to: '/search',
     icon: FileSearch,
-    labelZh: 'Search',
+    labelZh: '检索',
     labelEn: 'Search',
     descZh: '发现论文、导入知识库、继续研究链',
     descEn: 'Discover papers and move them into the research loop',
@@ -40,16 +40,16 @@ const navCards: NavCard[] = [
   {
     to: '/knowledge-bases',
     icon: LibraryBig,
-    labelZh: 'Knowledge Base',
+    labelZh: '知识库',
     labelEn: 'Knowledge Base',
-    descZh: '查看导入状态、索引状态和 readiness',
+    descZh: '查看导入状态、索引状态和就绪情况',
     descEn: 'Track imports, indexing, and readiness',
     accent: 'from-teal-600/10 to-teal-600/5',
   },
   {
     to: '/chat',
     icon: MessageSquare,
-    labelZh: 'Chat',
+    labelZh: '对话',
     labelEn: 'Chat',
     descZh: '围绕当前证据继续提问和写结论',
     descEn: 'Continue reasoning on top of current evidence',
@@ -58,7 +58,7 @@ const navCards: NavCard[] = [
   {
     to: '/notes',
     icon: NotebookPen,
-    labelZh: 'Notes',
+    labelZh: '笔记',
     labelEn: 'Notes',
     descZh: '沉淀证据、观点与后续行动',
     descEn: 'Capture evidence, conclusions, and next steps',
@@ -78,13 +78,13 @@ const categoryMeta: Record<
   chat: {
     icon: MessageSquare,
     accent: 'from-primary/12 to-primary/5',
-    labelZh: '继续中的 Chat',
+    labelZh: '进行中的对话',
     labelEn: 'Chat in Progress',
   },
   kb: {
     icon: LibraryBig,
     accent: 'from-teal-600/12 to-teal-600/5',
-    labelZh: '处理中 Knowledge Base',
+    labelZh: '进行中的知识库工作',
     labelEn: 'Knowledge Base',
   },
   read: {
@@ -96,13 +96,13 @@ const categoryMeta: Record<
   review: {
     icon: Compass,
     accent: 'from-rose-500/12 to-rose-500/5',
-    labelZh: 'Review / Compare',
+    labelZh: '综述 / 比较',
     labelEn: 'Review / Compare',
   },
   compare: {
     icon: Compass,
     accent: 'from-rose-500/12 to-rose-500/5',
-    labelZh: 'Review / Compare',
+    labelZh: '综述 / 比较',
     labelEn: 'Review / Compare',
   },
 };
@@ -228,25 +228,25 @@ export function Dashboard() {
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {isZh
-                        ? '先搜索论文，再放进 Knowledge Base，最后带着证据进入 Chat。'
+                        ? '先检索论文，再放进知识库，最后带着证据进入对话。'
                         : 'Search first, move papers into a knowledge base, then continue in Chat with evidence.'}
                     </p>
                   </div>
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
                       {
-                        title: isZh ? '1. Search' : '1. Search',
+                        title: isZh ? '1. 检索' : '1. Search',
                         body: isZh ? '从检索页发现论文，并判断哪些值得纳入当前研究流。' : 'Discover papers and decide which ones belong in the current loop.',
                         href: '/search',
                       },
                       {
-                        title: isZh ? '2. Add to KB' : '2. Add to KB',
-                        body: isZh ? '把有价值的结果放进 Knowledge Base，观察导入和索引状态。' : 'Move promising results into a knowledge base and watch readiness.',
+                        title: isZh ? '2. 加入知识库' : '2. Add to KB',
+                        body: isZh ? '把有价值的结果放进知识库，观察导入和索引状态。' : 'Move promising results into a knowledge base and watch readiness.',
                         href: '/knowledge-bases',
                       },
                       {
-                        title: isZh ? '3. Ask in Chat' : '3. Ask in Chat',
-                        body: isZh ? '当证据 ready 后，把问题带进 Chat 继续分析和写作。' : 'Once evidence is ready, continue reasoning and drafting in Chat.',
+                        title: isZh ? '3. 进入对话' : '3. Ask in Chat',
+                        body: isZh ? '当证据就绪后，把问题带进对话继续分析和写作。' : 'Once evidence is ready, continue reasoning and drafting in Chat.',
                         href: '/chat',
                       },
                     ].map((step) => (

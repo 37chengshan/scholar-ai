@@ -108,7 +108,11 @@ async def list_papers(
 
     formatted_papers = []
     for paper in result["papers"]:
-        paper_dict = format_paper_response(paper, result["task_map"].get(paper.id))
+        paper_dict = format_paper_response(
+            paper,
+            result["task_map"].get(paper.id),
+            chunk_count=result["chunk_count_map"].get(paper.id, 0),
+        )
         formatted_papers.append(paper_dict)
 
     return PaperListResponse(
@@ -162,7 +166,12 @@ async def search_papers(
     )
 
     formatted_papers = [
-        format_paper_response(p, result["task_map"].get(p.id)) for p in result["papers"]
+        format_paper_response(
+            p,
+            result["task_map"].get(p.id),
+            chunk_count=result["chunk_count_map"].get(p.id, 0),
+        )
+        for p in result["papers"]
     ]
 
     return PaperListResponse(
@@ -267,7 +276,11 @@ async def get_paper(
             instance=instance,
         )
 
-    paper_dict = format_paper_response(result["paper"], result["task"])
+    paper_dict = format_paper_response(
+        result["paper"],
+        result["task"],
+        chunk_count=int(result.get("chunk_count") or 0),
+    )
 
     if includeChunks:
         paper_dict["chunks"] = [

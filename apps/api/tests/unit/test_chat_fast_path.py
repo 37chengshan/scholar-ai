@@ -203,6 +203,52 @@ async def test_paper_scope_query_does_not_use_fast_path():
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_persists_single_paper_scope_metadata_on_existing_session():
+    chat_api = _load_chat_module()
+
+    async def _mock_orchestrator_stream():
+        yield 'event: session_start\ndata: {"session_id":"session-1","task_type":"general","message_id":"m1"}\n\n'
+        yield 'event: message\ndata: {"delta":"orchestrator","seq":1,"message_id":"m1"}\n\n'
+        yield 'event: done\ndata: {"finish_reason":"stop","message_id":"m1"}\n\n'
+
+    mock_execute_with_streaming = Mock(return_value=_mock_orchestrator_stream())
+    mock_update_session = AsyncMock()
+
+    with patch.object(chat_api.session_manager, "get_session", AsyncMock(return_value=type("S", (), {"id": "session-1", "user_id": "user-1"})())), patch.object(
+        chat_api.session_manager,
+        "update_session",
+        mock_update_session,
+    ), patch.object(
+        chat_api.complexity_router,
+        "route_async",
+        AsyncMock(return_value={"complexity": "simple", "method": "rule", "confidence": 0.95}),
+    ), patch.object(chat_api.message_service, "save_message", AsyncMock(return_value="user-msg-id")), patch.object(
+        chat_api.chat_orchestrator,
+        "execute_with_streaming",
+        mock_execute_with_streaming,
+    ):
+        response = await chat_api.chat_stream(
+            request=ChatStreamRequest(
+                session_id="session-1",
+                message="请总结这篇论文",
+                scope={"type": "paper", "paper_id": "paper-1"},
+            ),
+            http_request=_RequestStub(),
+            user_id="user-1",
+        )
+        events = await _collect_sse_events(response)
+
+    assert any(name == "message" for name, _ in events)
+    mock_update_session.assert_awaited_once()
+    update_args = mock_update_session.await_args.args
+    assert update_args[0] == "session-1"
+    assert update_args[1].metadata == {
+        "scopeType": "single_paper",
+        "paperId": "paper-1",
+    }
+
+
+@pytest.mark.asyncio
 async def test_fast_path_sse_order_is_session_start_then_message_then_done():
     chat_api = _load_chat_module()
 
@@ -264,6 +310,7 @@ async def test_fast_path_done_event_contains_latency_diagnostics():
     diagnostics = done_payload.get("diagnostics")
 
     assert done_payload.get("response_type") == "general"
+    assert done_payload.get("answer") == "你好，我是 ScholarAI。你可以问我论文检索、方法解释、研究对比或知识库问答。"
     assert done_payload.get("answer_mode") is None
     assert done_payload.get("claims") == []
     assert done_payload.get("citations") == []

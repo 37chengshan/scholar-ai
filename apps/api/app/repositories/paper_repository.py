@@ -10,8 +10,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models import Paper, PaperChunk, ReadingProgress
+from app.models import Paper, PaperChunk, ReadingProgress, UploadHistory
 
 
 class PaperRepository:
@@ -29,7 +30,11 @@ class PaperRepository:
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
     ) -> Tuple[List[Paper], int]:
-        query = select(Paper).where(Paper.user_id == user_id)
+        query = (
+            select(Paper)
+            .options(selectinload(Paper.upload_history))
+            .where(Paper.user_id == user_id)
+        )
 
         if starred is not None:
             query = query.where(Paper.starred == starred)
@@ -82,14 +87,22 @@ class PaperRepository:
     ) -> Tuple[List[Paper], int]:
         search_term = f"%{query_text.lower()}%"
         escaped_q = query_text.replace("'", "''")
+        upload_filename_match = (
+            select(UploadHistory.id)
+            .where(UploadHistory.paper_id == Paper.id)
+            .where(func.lower(UploadHistory.filename).like(search_term))
+            .exists()
+        )
 
         base_query = (
             select(Paper)
+            .options(selectinload(Paper.upload_history))
             .where(Paper.user_id == user_id)
             .where(
                 or_(
                     func.lower(Paper.title).ilike(search_term),
                     func.lower(Paper.abstract).ilike(search_term),
+                    upload_filename_match,
                     text(
                         f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{escaped_q}%'))"
                     ),
@@ -109,7 +122,9 @@ class PaperRepository:
     @staticmethod
     async def get_user_paper(db: AsyncSession, user_id: str, paper_id: str) -> Optional[Paper]:
         result = await db.execute(
-            select(Paper).where(Paper.id == paper_id, Paper.user_id == user_id)
+            select(Paper)
+            .options(selectinload(Paper.upload_history))
+            .where(Paper.id == paper_id, Paper.user_id == user_id)
         )
         return result.scalar_one_or_none()
 
@@ -130,6 +145,13 @@ class PaperRepository:
             .order_by(PaperChunk.page_start, PaperChunk.id)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def count_chunks(db: AsyncSession, paper_id: str) -> int:
+        result = await db.execute(
+            select(func.count(PaperChunk.id)).where(PaperChunk.paper_id == paper_id)
+        )
+        return int(result.scalar() or 0)
 
     @staticmethod
     async def list_user_papers_by_ids(

@@ -1,3 +1,5 @@
+import { useLanguage } from '@/app/contexts/LanguageContext';
+
 interface AnswerModeBadgeProps {
   mode: 'full' | 'partial' | 'abstain';
 }
@@ -9,9 +11,18 @@ const modeStyles: Record<AnswerModeBadgeProps['mode'], string> = {
 };
 
 export function AnswerModeBadge({ mode }: AnswerModeBadgeProps) {
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
+  const modeLabel =
+    mode === 'full'
+      ? (isZh ? '完整回答' : 'Full answer')
+      : mode === 'partial'
+        ? (isZh ? '部分回答' : 'Partial answer')
+        : (isZh ? '谨慎拒答' : 'Abstain');
+
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] ${modeStyles[mode]}`}>
-      {mode}
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-[0.02em] ${modeStyles[mode]}`}>
+      {modeLabel}
     </span>
   );
 }

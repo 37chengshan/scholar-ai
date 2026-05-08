@@ -29,6 +29,7 @@ describe('commandCenter', () => {
   it('falls back to a compare command when there is no review run', () => {
     const command = buildReviewOrCompareCommand({
       fallbackPaperIds: ['paper-1', 'paper-2', 'paper-3'],
+      locale: { isZh: false },
     });
 
     expect(command).not.toBeNull();
@@ -92,11 +93,12 @@ describe('commandCenter', () => {
         evidence: [{ paperId: 'paper-1' }, { paperId: 'paper-2' }],
         returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
       },
+      locale: { isZh: false },
     });
 
     expect(command.category).toBe('chat');
     expect(command.priority).toBe('active');
-    expect(command.targetHref).toBe('/chat?kbId=kb-1&handoff=1');
+    expect(command.targetHref).toBe('/chat?kbId=kb-1&handoff=1&new=1');
     expect(command.metadata?.evidenceCount).toBe(2);
   });
 });

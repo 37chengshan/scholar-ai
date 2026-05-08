@@ -33,7 +33,7 @@ describe('useChatHandoff', () => {
       handoff: {
         origin: 'search',
         promptDraft: 'Compare the imported paper with prior work.',
-        evidence: [{ paperId: 'paper-1', claim: 'Main contribution' }],
+        evidence: [{ handoffId: 'paper-1::problem::chunk-1::main contribution', paperId: 'paper-1', claim: 'Main contribution' }],
         returnTo: '/search?q=agent',
       },
     };
@@ -46,6 +46,7 @@ describe('useChatHandoff', () => {
       originLabel: 'Search',
       promptDraft: 'Compare the imported paper with prior work.',
       evidenceCount: 1,
+      evidence: [{ handoffId: 'paper-1::problem::chunk-1::main contribution', paperId: 'paper-1', claim: 'Main contribution' }],
       returnTo: '/search?q=agent',
     });
 
@@ -70,7 +71,7 @@ describe('useChatHandoff', () => {
       {
         origin: 'review',
         promptDraft: 'Re-check the review paragraph against the cited evidence.',
-        evidence: [{ paperId: 'paper-1' }],
+        evidence: [{ handoffId: 'paper-1::review::chunk-1::', paperId: 'paper-1' }],
         returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
       },
     );
@@ -82,6 +83,7 @@ describe('useChatHandoff', () => {
       originLabel: 'Review',
       promptDraft: 'Re-check the review paragraph against the cited evidence.',
       evidenceCount: 1,
+      evidence: [{ handoffId: 'paper-1::review::chunk-1::', paperId: 'paper-1' }],
       returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
     });
   });

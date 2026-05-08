@@ -48,7 +48,8 @@ class SessionManager:
     async def create_session(
         self,
         user_id: str,
-        title: Optional[str] = None
+        title: Optional[str] = None,
+        metadata: Optional[Dict[str, object]] = None,
     ) -> SessionResponse:
         """
         Create a new session with 30-day expiration.
@@ -65,6 +66,8 @@ class SessionManager:
             now = datetime.utcnow()
             expires_at = now + timedelta(days=SESSION_EXPIRATION_DAYS)
 
+            session_metadata = metadata or {}
+
             async with AsyncSessionLocal() as db:
                 # Create Session ORM object
                 session_obj = Session(
@@ -72,7 +75,7 @@ class SessionManager:
                     user_id=user_id,
                     title=title,
                     status="active",
-                    session_metadata={},
+                    session_metadata=session_metadata,
                     message_count=0,
                     tool_call_count=0,
                     created_at=now,

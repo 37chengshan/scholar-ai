@@ -36,6 +36,7 @@ from .external import search_arxiv, search_semantic_scholar
 from app.core.multimodal_search_service import get_multimodal_search_service
 from app.deps import CurrentUserId, get_db
 from app.middleware.auth import get_optional_user
+from app.services.paper_service import PaperService
 from app.services.search_library_status_service import (
     search_library_status_service,
 )
@@ -58,6 +59,52 @@ def _serialize_search_results(results: List[Any]) -> List[Dict[str, Any]]:
         else:
             serialized.append(dict(result))
     return serialized
+
+
+def _build_internal_search_results(
+    papers_payload: Dict[str, Any],
+) -> List[SearchResult]:
+    task_map = papers_payload.get("task_map", {})
+    chunk_count_map = papers_payload.get("chunk_count_map", {})
+    internal_results: List[SearchResult] = []
+
+    for paper in papers_payload.get("papers", []):
+        chunk_count = int(chunk_count_map.get(paper.id, 0) or 0)
+        task = task_map.get(paper.id)
+        is_ready = chunk_count > 0 and (
+            getattr(task, "status", None) == "completed"
+            or getattr(paper, "status", None) == "completed"
+        )
+        internal_results.append(
+            SearchResult(
+                id=str(paper.id),
+                title=str(paper.title or "Untitled"),
+                authors=list(getattr(paper, "authors", []) or []),
+                year=getattr(paper, "year", None) or 0,
+                abstract=getattr(paper, "abstract", None) or "",
+                source="internal",
+                url=f"/read/{paper.id}",
+                pdfUrl=getattr(paper, "pdf_url", None),
+                citationCount=getattr(paper, "citations", None),
+                arxivId=getattr(paper, "arxiv_id", None),
+                s2PaperId=getattr(paper, "s2_paper_id", None),
+                doi=getattr(paper, "doi", None),
+                venue=getattr(paper, "venue", None),
+                openAccess=bool(getattr(paper, "pdf_url", None)),
+                fieldsOfStudy=[],
+                availability="pdf_available"
+                if getattr(paper, "pdf_url", None)
+                else "metadata_only",
+                libraryStatus=(
+                    "imported_fulltext_ready"
+                    if is_ready
+                    else "imported_metadata_only"
+                ),
+                in_library=True,
+            )
+        )
+
+    return internal_results
 
 
 @router.get("/library", response_model=LibrarySearchResponse)
@@ -248,7 +295,8 @@ async def search_unified(
         year_to=year_to,
     )
 
-    cache_key = f"search:unified:{query}:{limit}:{offset}:{year_from}:{year_to}"
+    user_scope = getattr(optional_user, "id", "anon")
+    cache_key = f"search:unified:{user_scope}:{query}:{limit}:{offset}:{year_from}:{year_to}"
 
     cached = await get_search_cache(cache_key)
     if cached:
@@ -278,6 +326,19 @@ async def search_unified(
         year_to=year_to,
     )
 
+    internal_results: List[SearchResult] = []
+    internal_total = 0
+    if optional_user is not None:
+        internal_payload = await PaperService.search_papers_for_api(
+            db,
+            optional_user.id,
+            query_text=query,
+            page=1,
+            limit=limit,
+        )
+        internal_results = _build_internal_search_results(internal_payload)
+        internal_total = int(internal_payload.get("total", len(internal_results)) or 0)
+
     arxiv_task = search_arxiv(query, limit=limit, offset=offset)
     s2_task = search_semantic_scholar(query, limit=limit, offset=offset)
 
@@ -302,7 +363,7 @@ async def search_unified(
         s2_list = s2_data.get("results", [])
         s2_total = s2_data.get("total", 0)
 
-    all_results = arxiv_list + s2_list
+    all_results = internal_results + arxiv_list + s2_list
     unique_results = deduplicate_results(all_results)
 
     if year_from is not None:
@@ -319,7 +380,7 @@ async def search_unified(
     )
 
     final_results = scored_results[:limit]
-    total = arxiv_total + s2_total
+    total = internal_total + arxiv_total + s2_total
     cached_result_data = {
         "results": _serialize_search_results(final_results),
         "total": total,

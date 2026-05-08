@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { toast } from 'sonner';
 import { API_BASE_URL } from '@/config/api';
 import { SSEService, type SSEEventEnvelope } from '@/services/sseService';
+import type { CitationItem, ToolTimelineItem } from '@/features/chat/components/workspaceTypes';
 import type { AgentRun, PendingAction, RunStatus } from '@/features/chat/types/run';
 import type { UseRuntimeReturn } from '@/features/chat/runtime/useRuntime';
 import type { ChatStreamState, SSEAction } from '@/app/hooks/useChatStream';
@@ -10,7 +11,7 @@ type RuntimeState = Pick<UseRuntimeReturn, 'run' | 'ingestEvent' | 'dispatchRun'
 
 type StreamStateSnapshot = Pick<
   ChatStreamState,
-  'streamStatus' | 'tokensUsed' | 'cost' | 'startedAt' | 'endedAt'
+  'streamStatus' | 'tokensUsed' | 'cost' | 'startedAt' | 'endedAt' | 'contentBuffer' | 'reasoningBuffer' | 'toolTimeline' | 'citations'
 >;
 
 interface ConfirmationState {
@@ -36,7 +37,13 @@ interface UseChatRuntimeBridgeOptions {
     timestamp: number;
   }) => void;
   dispatch: (action: SSEAction) => void;
-  syncStreamingMessage: (messageId: string) => void;
+  syncStreamingMessage: (messageId: string, payload: {
+    content: string;
+    reasoning: string;
+    status: 'streaming' | 'completed' | 'error' | 'cancelled' | 'idle';
+    toolTimeline: ToolTimelineItem[];
+    citations: CitationItem[];
+  }) => void;
   setActiveRun: (run: AgentRun) => void;
   setSelectedRunId: (runId: string | null) => void;
   setActiveRunStatus: (status: RunStatus) => void;
@@ -146,7 +153,13 @@ export function useChatRuntimeBridge({
             timestamp: Date.now(),
           });
           ingestRuntimeEvent(event);
-          syncStreamingMessage(nextMessageId);
+          syncStreamingMessage(nextMessageId, {
+            content: streamStateRef.current.contentBuffer,
+            reasoning: streamStateRef.current.reasoningBuffer,
+            status: 'streaming',
+            toolTimeline: streamStateRef.current.toolTimeline,
+            citations: streamStateRef.current.citations,
+          });
         },
         onError: (error) => {
           dispatch({

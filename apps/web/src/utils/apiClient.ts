@@ -13,6 +13,41 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import { toast } from 'sonner';
 import { API_BASE_URL, API_CONFIG } from '@/config/api';
 
+const DEV_PROXY_UNAVAILABLE_HEADER = 'x-scholarai-dev-proxy-error';
+
+function isDevAuthBootstrapRequest(config?: InternalAxiosRequestConfig): boolean {
+  return import.meta.env.DEV && Boolean(config?.url?.includes('/api/v1/auth/me'));
+}
+
+function isDevProxyUnavailable(error: AxiosError): boolean {
+  if (!import.meta.env.DEV) {
+    return false;
+  }
+
+  const status = error.response?.status;
+  const marker = error.response?.headers?.[DEV_PROXY_UNAVAILABLE_HEADER];
+
+  if (marker === 'upstream-unavailable') {
+    return true;
+  }
+
+  if (!status || ![500, 502, 503, 504].includes(status)) {
+    return false;
+  }
+
+  const payload = error.response?.data;
+  if (typeof payload === 'string') {
+    return payload.includes('ECONNREFUSED') || payload.includes('upstream-unavailable');
+  }
+
+  if (payload && typeof payload === 'object') {
+    const detail = JSON.stringify(payload);
+    return detail.includes('ECONNREFUSED') || detail.includes('upstream-unavailable');
+  }
+
+  return false;
+}
+
 /**
  * Custom AuthError class for authentication failures
  *
@@ -234,8 +269,12 @@ apiClient.interceptors.response.use(
     }
 
     // Case 1: Network error (no response) - Retry with exponential backoff
-    if (!error.response) {
+    if (!error.response || isDevProxyUnavailable(error)) {
       const retryCount = originalRequest?._retry || 0;
+
+      if (isDevAuthBootstrapRequest(originalRequest)) {
+        return Promise.reject(new AuthError('Auth bootstrap unavailable'));
+      }
 
       if (retryCount < API_CONFIG.maxRetries) {
         originalRequest._retry = retryCount + 1;
@@ -253,7 +292,9 @@ apiClient.interceptors.response.use(
       }
 
       // Max retries exhausted
-      toast.error('网络连接失败，请检查您的网络连接');
+      if (!isDevAuthBootstrapRequest(originalRequest)) {
+        toast.error('网络连接失败，请检查您的网络连接');
+      }
       return Promise.reject(new NetworkError(error.message || 'Network connection failed'));
     }
 

@@ -142,7 +142,7 @@ function CollapsibleSection({
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="p-3 text-sm text-muted-foreground">
+            <div className="p-3 text-sm text-muted-foreground font-sans">
               {children}
             </div>
           </motion.div>
@@ -204,7 +204,7 @@ export function PaperCard({
         </button>
 
         {/* Meta: Authors • Year • Venue */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground font-sans">
           {authors.length > 0 && (
             <div className="flex items-center gap-1">
               <User className="w-3 h-3" />
@@ -245,7 +245,7 @@ export function PaperCard({
         {/* IMRaD Sections */}
         {imradSections.length > 0 && (
           <div className="space-y-2">
-            <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground font-sans">
               {t.sections}
             </div>
             {imradSections.map((section, idx) => (
@@ -256,7 +256,7 @@ export function PaperCard({
               >
                 <div className="whitespace-pre-wrap">{section.content}</div>
                 {section.page && (
-                  <div className="text-xs text-muted-foreground mt-2">
+                  <div className="text-xs text-muted-foreground mt-2 font-sans">
                     {t.page} {section.page}
                   </div>
                 )}
@@ -268,7 +268,7 @@ export function PaperCard({
         {/* Figures */}
         {figures.length > 0 && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground font-sans">
               <Image className="w-3.5 h-3.5" />
               {t.figures}
             </div>
@@ -289,7 +289,7 @@ export function PaperCard({
                       <Image className="w-8 h-8 text-muted-foreground/30" />
                     )}
                   </div>
-                  <div className="text-xs text-muted-foreground line-clamp-2">
+                  <div className="text-xs text-muted-foreground line-clamp-2 font-sans">
                     {fig.caption}
                   </div>
                 </div>
@@ -301,7 +301,7 @@ export function PaperCard({
         {/* Tables */}
         {tables.length > 0 && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground font-sans">
               <Table className="w-3.5 h-3.5" />
               {t.tables}
             </div>

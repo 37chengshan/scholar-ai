@@ -29,7 +29,7 @@ export function ImportPreviewCard({
       <div className="mt-4 rounded-lg border border-border/50 p-4 bg-card">
         <div className="flex items-center gap-3">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          <span className="text-sm text-muted-foreground">解析来源信息...</span>
+          <span className="text-sm text-muted-foreground font-sans">解析来源信息...</span>
         </div>
       </div>
     );
@@ -42,7 +42,7 @@ export function ImportPreviewCard({
           <AlertTriangle className="h-5 w-5 text-destructive" />
           <div>
             <p className="text-sm font-medium text-destructive">解析失败</p>
-            <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>
+            <p className="text-xs text-muted-foreground mt-1 font-sans">{errorMessage}</p>
           </div>
         </div>
       </div>

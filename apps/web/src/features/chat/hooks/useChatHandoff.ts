@@ -7,19 +7,19 @@ function describeOrigin(origin: ChatHandoffState['origin'], isZh: boolean): stri
   if (isZh) {
     switch (origin) {
       case 'search':
-        return 'Search';
+        return '检索';
       case 'kb':
-        return 'Knowledge Base';
+        return '知识库';
       case 'read':
-        return 'Read';
+        return '阅读';
       case 'notes':
-        return 'Notes';
+        return '笔记';
       case 'compare':
-        return 'Compare';
+        return '比较';
       case 'review':
-        return 'Review';
+        return '综述';
       default:
-        return 'Dashboard';
+        return '指挥台';
     }
   }
 
@@ -81,6 +81,7 @@ export function useChatHandoff(params: {
     originLabel: describeOrigin(handoff.origin, isZh),
     promptDraft: handoff.promptDraft,
     evidenceCount: handoff.evidence?.length || 0,
+    evidence: handoff.evidence || [],
     returnTo: handoff.returnTo || null,
   };
 }

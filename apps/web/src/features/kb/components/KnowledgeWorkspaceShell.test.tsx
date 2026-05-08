@@ -5,6 +5,7 @@ import { KnowledgeWorkspaceShell } from './KnowledgeWorkspaceShell';
 
 const mockNavigate = vi.fn();
 const mockSetSearchParams = vi.fn();
+let mockSearchParams = new URLSearchParams();
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<any>('react-router');
@@ -13,7 +14,7 @@ vi.mock('react-router', async () => {
     useNavigate: () => mockNavigate,
     useLocation: () => ({ pathname: '/knowledge-bases/kb-1', search: '', state: null }),
     useParams: () => ({ id: 'kb-1' }),
-    useSearchParams: () => [new URLSearchParams(), mockSetSearchParams],
+    useSearchParams: () => [mockSearchParams, mockSetSearchParams],
     Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   };
 });
@@ -76,6 +77,7 @@ import { kbReviewApi } from '@/services/kbReviewApi';
 describe('KnowledgeWorkspaceShell', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSearchParams = new URLSearchParams();
     vi.mocked(kbApi.get).mockResolvedValue({
       id: 'kb-1',
       userId: 'u-1',
@@ -149,9 +151,40 @@ describe('KnowledgeWorkspaceShell', () => {
       expect(screen.getByText('Paper One')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Readiness')).toBeInTheDocument();
-    expect(screen.getByText('Evidence is ready to inspect')).toBeInTheDocument();
-    expect(screen.getByText('Review and chat are ready to continue')).toBeInTheDocument();
+    expect(screen.getByText('工作区状态')).toBeInTheDocument();
+    expect(screen.getByText('解析与索引已完成')).toBeInTheDocument();
+    expect(screen.getByText('综述与问答已就绪')).toBeInTheDocument();
+  });
+
+  it('normalizes seeded knowledge-base names in the workspace heading', async () => {
+    vi.mocked(kbApi.get).mockResolvedValueOnce({
+      id: 'cf84038c-6cdf-434f-8ec8-c97fe3de396e',
+      userId: 'u-1',
+      name: 'Phase2-Online-Verify-2b7aa183',
+      description: 'Phase2 online provider verification',
+      category: '测试',
+      paperCount: 2,
+      chunkCount: 106,
+      entityCount: 0,
+      embeddingModel: 'text-embedding-v4',
+      parseEngine: 'docling',
+      chunkStrategy: 'by-paragraph',
+      enableGraph: false,
+      enableImrad: true,
+      enableChartUnderstanding: false,
+      enableMultimodalSearch: false,
+      enableComparison: false,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    } as any);
+
+    render(<KnowledgeWorkspaceShell />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '研究资料馆 A183' })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('heading', { name: /Phase2-Online-Verify/i })).not.toBeInTheDocument();
   });
 
   it('switches to runs panel and shows run history', async () => {
@@ -162,7 +195,7 @@ describe('KnowledgeWorkspaceShell', () => {
       expect(screen.getByText('Paper One')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: /Run 历史/i }));
+    await user.click(screen.getByRole('tab', { name: /运行记录/i }));
     expect(screen.getAllByText(/run-1/i).length).toBeGreaterThan(0);
   });
 
@@ -174,10 +207,29 @@ describe('KnowledgeWorkspaceShell', () => {
       expect(screen.getByText('Paper One')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: /Run 历史/i }));
-    await user.click(screen.getByRole('button', { name: /Run run-1/i }));
+    await user.click(screen.getByRole('tab', { name: /运行记录/i }));
+    await user.click(screen.getByRole('button', { name: /run_id: run-1/i }));
 
     expect(mockNavigate).toHaveBeenCalledWith('/knowledge-bases/kb-1?tab=review&runId=run-1');
+  });
+
+  it('preserves existing query params when switching tabs', async () => {
+    const user = userEvent.setup();
+    mockSearchParams = new URLSearchParams('tab=review&runId=run-1');
+
+    render(<KnowledgeWorkspaceShell />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Paper One')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('tab', { name: /论文列表/i }));
+
+    expect(mockSetSearchParams).toHaveBeenCalled();
+    const nextParams = mockSetSearchParams.mock.calls.at(-1)?.[0];
+    expect(nextParams).toBeInstanceOf(URLSearchParams);
+    expect((nextParams as URLSearchParams).get('tab')).toBe('papers');
+    expect((nextParams as URLSearchParams).get('runId')).toBe('run-1');
   });
 
   it('opens read page with evidence source highlight when a KB search result is clicked', async () => {
@@ -190,13 +242,13 @@ describe('KnowledgeWorkspaceShell', () => {
 
     await user.click(screen.getByRole('tab', { name: /知识库检索/i }));
     await user.type(screen.getByPlaceholderText('输入您的问题...'), 'transformer');
-    await user.click(screen.getByRole('button', { name: /检索/i }));
+    await user.click(screen.getByRole('button', { name: /^检索$/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/检索到 1 个相关片段/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/Snippet/i));
+    await user.click(screen.getByRole('button', { name: /打开阅读页/i }));
 
     expect(mockNavigate).toHaveBeenCalledWith('/read/paper-1?page=2&source=evidence&source_id=chunk-1');
   });

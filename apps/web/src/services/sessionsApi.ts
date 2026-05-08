@@ -13,6 +13,7 @@ export interface SessionRecord {
   messageCount: number;
   createdAt: string;
   updatedAt?: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface SessionMessageRecord {
@@ -21,7 +22,30 @@ export interface SessionMessageRecord {
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   tool_name?: string;
+  reasoning_content?: string | null;
+  current_phase?: string | null;
+  tool_timeline?: Record<string, unknown>[] | null;
+  citations?: Record<string, unknown>[] | null;
+  answer_contract?: Record<string, unknown> | null;
+  stream_status?: string | null;
+  tokens_used?: number | null;
+  cost?: number | null;
+  duration_ms?: number | null;
+  response_type?: string | null;
+  trace_id?: string | null;
+  run_id?: string | null;
   created_at: string;
+}
+
+export interface SessionScopeMetadata {
+  scopeType?: 'single_paper' | 'full_kb' | 'compare';
+  paperId?: string;
+  kbId?: string;
+  paperIds?: string[];
+  title?: string;
+  kbUpdatedAt?: string;
+  kbPaperCount?: number;
+  kbChunkCount?: number;
 }
 
 const chatApiClient = createChatApi(sdkHttpClient);
@@ -43,14 +67,26 @@ export async function getSessionMessages(sessionId: string, limit = 100): Promis
     limit,
     order: 'desc',
   });
-  return extractSessionMessages<SessionMessageRecord>(response as any) as SessionMessageRecord[];
+  const messages = extractSessionMessages<SessionMessageRecord>(response as any) as SessionMessageRecord[];
+  return messages.map((message) => ({
+    ...message,
+    reasoningBuffer: message.reasoning_content ?? undefined,
+    toolTimeline: Array.isArray(message.tool_timeline) ? message.tool_timeline : undefined,
+    answerContract: message.answer_contract ?? null,
+    streamStatus: message.stream_status ?? null,
+    tokensUsed: message.tokens_used ?? null,
+    responseType: message.response_type ?? undefined,
+  }));
 }
 
-export async function createSession(title = '新对话'): Promise<SessionRecord> {
+export async function createSession(
+  title = '新对话',
+  metadata: Record<string, unknown> = {},
+): Promise<SessionRecord> {
   const response = await apiClient.post<{ success?: boolean; data?: SessionRecord } | SessionRecord>('/api/v1/sessions', {
     title,
     status: 'active',
-    metadata: {},
+    metadata,
   });
   const payload = response.data;
   if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
@@ -65,7 +101,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
 export async function updateSession(
   sessionId: string,
-  updates: Partial<Pick<SessionRecord, 'title' | 'status'>>,
+  updates: Partial<Pick<SessionRecord, 'title' | 'status' | 'metadata'>>,
 ): Promise<SessionRecord> {
   if (updates.title && updates.status === undefined) {
     const session = await chatApiClient.updateSession(sessionId, updates.title);

@@ -1,5 +1,9 @@
 import { APIKeyManager } from '@/app/components/APIKeyManager';
 
-export function ApiSection() {
-  return <APIKeyManager />;
+interface ApiSectionProps {
+  isZh: boolean;
+}
+
+export function ApiSection({ isZh }: ApiSectionProps) {
+  return <APIKeyManager isZh={isZh} />;
 }

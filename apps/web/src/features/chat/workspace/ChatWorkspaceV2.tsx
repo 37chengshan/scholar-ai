@@ -55,10 +55,15 @@ import { useChatSessionController } from '@/features/chat/hooks/useChatSessionCo
 import { useChatRuntimeBridge } from '@/features/chat/hooks/useChatRuntimeBridge';
 import { useRuntime } from '@/features/chat/runtime/useRuntime';
 import { useChatHandoff } from '@/features/chat/hooks/useChatHandoff';
+import { applyScopeMetadataToSearchParams } from '@/features/chat/hooks/chatScopeQuery';
+import { shouldPreserveComposerDraftForHandoff } from '@/features/chat/chatHandoff';
+import { kbApi } from '@/services/kbApi';
+import { navigateToSafeTarget } from '@/lib/navigation';
 import type {
   CitationItem,
   ToolTimelineItem,
 } from '@/features/chat/components/workspaceTypes';
+import type { SessionScopeMetadata } from '@/services/sessionsApi';
 
 export function ChatWorkspaceV2() {
   const navigate = useNavigate();
@@ -132,12 +137,6 @@ export function ChatWorkspaceV2() {
     [searchParams],
   );
   const runtime = useRuntime();
-  const { scope, scopeLoading, handleExitScope } = useChatScopeController({
-    mode,
-    isZh,
-    setMode,
-    setWorkspaceScope,
-  });
 
   // Feature-level streaming entry (state machine + buffer + throttle)
   const streamApi = useChatStreaming({
@@ -166,6 +165,19 @@ export function ChatWorkspaceV2() {
   } = streamApi;
   const streamStateRef = useRef(streamState); // ref for stale closure fix in onDone
 
+  const desiredSessionId = searchParams.get('session');
+  const wantsNewSession = searchParams.get('new') === '1';
+  const hasExplicitScopeInUrl = Boolean(
+    searchParams.get('paperId') || searchParams.get('kbId') || searchParams.get('paper_ids'),
+  );
+  const hasHandoffScopeWithoutSession = searchParams.get('handoff') === '1'
+    && !desiredSessionId
+    && hasExplicitScopeInUrl;
+  const shouldSuppressSessionAutoSelect =
+    wantsNewSession || hasHandoffScopeWithoutSession || (hasExplicitScopeInUrl && !desiredSessionId);
+  const messageSessionId = hasExplicitScopeInUrl && !desiredSessionId
+    ? null
+    : desiredSessionId ?? undefined;
   const {
     sessions,
     currentSession,
@@ -175,9 +187,17 @@ export function ChatWorkspaceV2() {
     switchSession,
     deleteSession,
     clearCurrentSession,
-  } = useSessions();
-  const desiredSessionId = searchParams.get('session');
-  const wantsNewSession = searchParams.get('new') === '1';
+  } = useSessions({
+    autoSelectLatest: !shouldSuppressSessionAutoSelect,
+    messageSessionId,
+  });
+  const { scope, scopeLoading, handleExitScope } = useChatScopeController({
+    mode,
+    isZh,
+    setMode,
+    setWorkspaceScope,
+    sessionScopeMetadata: currentSession?.metadata as Record<string, unknown> | null,
+  });
 
   const {
     renderMessages,
@@ -295,7 +315,9 @@ export function ChatWorkspaceV2() {
     resetRun();
     setSessionTokens(0);
     setSessionCost(0);
-    setInput('');
+    if (!shouldPreserveComposerDraftForHandoff(searchParams.toString())) {
+      setInput('');
+    }
 
     const next = new URLSearchParams(searchParams);
     next.delete('new');
@@ -308,6 +330,25 @@ export function ChatWorkspaceV2() {
       setForceNewSessionForNextSend(false);
     }
   }, [desiredSessionId]);
+
+  useEffect(() => {
+    if (!desiredSessionId || !currentSession || currentSession.id !== desiredSessionId) {
+      return;
+    }
+
+    const next = applyScopeMetadataToSearchParams(
+      searchParams,
+      (currentSession.metadata as Record<string, unknown> | null) ?? undefined,
+    );
+    next.set('session', desiredSessionId);
+    next.delete('new');
+
+    if (next.toString() === searchParams.toString()) {
+      return;
+    }
+
+    setSearchParams(next, { replace: true });
+  }, [currentSession, desiredSessionId, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!desiredSessionId || loading) {
@@ -326,7 +367,82 @@ export function ChatWorkspaceV2() {
   }, [currentSession?.id, desiredSessionId, handleSwitchSession, loading, safeSessions]);
 
   useEffect(() => {
-    if (wantsNewSession || desiredSessionId || !currentSession?.id) {
+    if (!desiredSessionId || loading) {
+      return;
+    }
+
+    const targetSession = safeSessions.find((session) => session.id === desiredSessionId);
+    const metadata = targetSession?.metadata as SessionScopeMetadata | null | undefined;
+    if (!targetSession || metadata?.scopeType !== 'full_kb' || !metadata.kbId) {
+      return;
+    }
+    const kbId = metadata.kbId;
+    const sessionUpdatedAt = targetSession.updatedAt || targetSession.createdAt;
+
+    let cancelled = false;
+
+    const validateKnowledgeBaseSession = async () => {
+      try {
+        const knowledgeBase = await kbApi.get(kbId);
+        if (cancelled) {
+          return;
+        }
+
+        const staleByUpdatedAt =
+          Boolean(metadata.kbUpdatedAt)
+          && Boolean(knowledgeBase.updatedAt)
+          && metadata.kbUpdatedAt !== knowledgeBase.updatedAt;
+        const staleByPaperCount =
+          typeof metadata.kbPaperCount === 'number'
+          && metadata.kbPaperCount !== knowledgeBase.paperCount;
+        const staleByChunkCount =
+          typeof metadata.kbChunkCount === 'number'
+          && metadata.kbChunkCount !== knowledgeBase.chunkCount;
+        const hasKnowledgeBaseSnapshot =
+          Boolean(metadata.kbUpdatedAt)
+          || typeof metadata.kbPaperCount === 'number'
+          || typeof metadata.kbChunkCount === 'number';
+        const staleLegacySession =
+          !hasKnowledgeBaseSnapshot
+          && Boolean(sessionUpdatedAt)
+          && Boolean(knowledgeBase.updatedAt)
+          && new Date(knowledgeBase.updatedAt).getTime() > new Date(sessionUpdatedAt).getTime();
+
+        if (!(staleByUpdatedAt || staleByPaperCount || staleByChunkCount || staleLegacySession)) {
+          return;
+        }
+
+        toast.info(
+          isZh
+            ? '知识库内容已变化，已切换为新的知识库对话以避免沿用旧证据上下文'
+            : 'Knowledge base changed. Starting a fresh KB chat to avoid stale evidence context.',
+        );
+
+        const next = new URLSearchParams(searchParams);
+        next.delete('session');
+        next.set('kbId', kbId);
+        next.set('new', '1');
+        setSearchParams(next, { replace: true });
+      } catch {
+        // Leave the existing session reachable if KB validation fails.
+      }
+    };
+
+    void validateKnowledgeBaseSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [desiredSessionId, isZh, loading, safeSessions, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (
+      wantsNewSession
+      || desiredSessionId
+      || hasHandoffScopeWithoutSession
+      || (hasExplicitScopeInUrl && !desiredSessionId)
+      || !currentSession?.id
+    ) {
       return;
     }
 
@@ -344,7 +460,7 @@ export function ChatWorkspaceV2() {
     }
 
     setSearchParams(next, { replace: true });
-  }, [currentSession?.id, desiredSessionId, renderMessages.length, searchParams, sending, setSearchParams, streamState.streamStatus, wantsNewSession]);
+  }, [currentSession?.id, desiredSessionId, hasExplicitScopeInUrl, hasHandoffScopeWithoutSession, renderMessages.length, searchParams, sending, setSearchParams, streamState.streamStatus, wantsNewSession]);
 
   // ============================================================================
   // Placeholder Message Mechanism (HARD RULE 0.2)
@@ -416,6 +532,7 @@ export function ChatWorkspaceV2() {
     mode,
     scope: uiScope,
     comparePaperIds,
+    handoffEvidence: handoffBanner?.evidence,
     scopeLoading,
     currentSession,
     forceNewSessionForNextSend,
@@ -442,10 +559,13 @@ export function ChatWorkspaceV2() {
     completeStreamingMessage,
     removePlaceholderMessage,
     clearPlaceholder,
-    onSessionCreated: (sessionId) => {
+    onSessionCreated: (session) => {
       setForceNewSessionForNextSend(false);
-      const next = new URLSearchParams(searchParams);
-      next.set('session', sessionId);
+      const next = applyScopeMetadataToSearchParams(
+        searchParams,
+        (session.metadata as Record<string, unknown> | null) ?? undefined,
+      );
+      next.set('session', session.id);
       next.delete('new');
       setSearchParams(next, { replace: true });
     },
@@ -550,11 +670,12 @@ export function ChatWorkspaceV2() {
       if (!citation.page_num && !citation.page) {
         toast.warning(isZh ? '引用缺少页码，已跳转到第一页' : 'Citation has no page; opening first page');
       }
-      if (citation.citation_jump_url) {
-        navigate(citation.citation_jump_url);
+      if (navigateToSafeTarget(citation.citation_jump_url, navigate)) {
         return;
       }
-      navigate(`/read/${citation.paper_id}?page=${page}&source=chat&source_id=${citation.source_id || citation.source_chunk_id || ''}`);
+      const canonicalSourceId = citation.source_chunk_id || citation.source_id || citation.chunk_id || '';
+      const sourceQuery = canonicalSourceId ? `&source=chat&source_id=${encodeURIComponent(canonicalSourceId)}` : '';
+      navigate(`/read/${citation.paper_id}?page=${page}${sourceQuery}`);
     },
     [navigate, isZh],
   );
@@ -564,6 +685,8 @@ export function ChatWorkspaceV2() {
       ? (isZh ? '当前论文' : 'Current paper')
       : uiScope.type === 'full_kb'
         ? (isZh ? '当前知识库' : 'Current KB')
+        : uiScope.type === 'compare'
+          ? (isZh ? '当前对比集' : 'Current comparison set')
         : (isZh ? '全局' : 'Global');
     const modeLabel = mode === 'auto'
       ? (isZh ? '自动' : 'Auto')
@@ -597,7 +720,7 @@ export function ChatWorkspaceV2() {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
+    <div className="editorial-app-shell relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <div className="shrink-0 border-b border-border/30 bg-background/60 backdrop-blur-sm">
           <WorkflowShell />
@@ -646,31 +769,33 @@ export function ChatWorkspaceV2() {
           <div className="border-b border-border/30 bg-background/40 px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-6">
             {isZh ? '对话' : 'Conversation'}
           </div>
-          <MessageFeed
-            renderMessages={renderMessages}
-            streamState={streamState}
-            currentMessageId={streamingMessageId || ''}
-            thinkingSteps={thinkingSteps}
-            labels={{
-              noMessages: t.noMessages,
-              sendFirst: t.sendFirst,
-              thinking: t.thinking,
-              stop: t.stop,
-            }}
-            isZh={isZh}
-            messagesEndRef={messagesEndRef}
-            scrollContainerRef={messageListRef}
-            onCitationClick={handleCitationClick}
-            onStop={handleStop}
-            onRetry={handleSend}
-            formatTime={formatTime}
-            onSuggest={(text) => {
-              setInput(text);
-            }}
-            errorStage={errorStage}
-            recoverable={runtime.run?.recoverable}
-            partialAnswerAvailable={Boolean(streamState.contentBuffer)}
-          />
+          <div className="editorial-reading-surface min-h-0 flex-1">
+            <MessageFeed
+              renderMessages={renderMessages}
+              streamState={streamState}
+              currentMessageId={streamingMessageId || ''}
+              thinkingSteps={thinkingSteps}
+              labels={{
+                noMessages: t.noMessages,
+                sendFirst: t.sendFirst,
+                thinking: t.thinking,
+                stop: t.stop,
+              }}
+              isZh={isZh}
+              messagesEndRef={messagesEndRef}
+              scrollContainerRef={messageListRef}
+              onCitationClick={handleCitationClick}
+              onStop={handleStop}
+              onRetry={handleSend}
+              formatTime={formatTime}
+              onSuggest={(text) => {
+                setInput(text);
+              }}
+              errorStage={errorStage}
+              recoverable={runtime.run?.recoverable}
+              partialAnswerAvailable={Boolean(streamState.contentBuffer)}
+            />
+          </div>
         </div>
 
         <div className="shrink-0 bg-background/75 backdrop-blur-md">

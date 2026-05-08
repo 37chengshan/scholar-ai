@@ -21,6 +21,7 @@ import {
 import { ImportJobRow } from './ImportJobRow';
 import { DedupeDecisionDialog } from './DedupeDecisionDialog';
 import { useNavigate } from 'react-router';
+import { buildFreshChatHref } from '@/features/chat/chatHandoff';
 
 // Export stage labels for ImportJobRow
 export const STAGE_LABELS: Record<string, string> = {
@@ -143,7 +144,7 @@ export function ImportQueueList({
         className="flex items-center justify-between cursor-pointer select-none"
         onClick={() => setExpanded(!expanded)}
       >
-        <h3 className="text-lg font-medium flex items-center gap-2">
+        <h3 className="text-lg font-medium flex items-center gap-2 font-serif tracking-tight">
           论文导入与处理记录
           {activeCount > 0 && (
             <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-bold">
@@ -228,7 +229,7 @@ export function ImportQueueList({
                     }
                     onSinglePaperQuery={
                       job.paper?.paperId
-                        ? (paperId) => navigate(`/chat?paperId=${paperId}`)
+                        ? (paperId) => navigate(buildFreshChatHref({ paperId }))
                         : undefined
                     }
                   />

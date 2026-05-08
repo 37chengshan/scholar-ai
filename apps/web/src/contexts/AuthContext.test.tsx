@@ -13,6 +13,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ReactNode } from 'react';
 import * as authApi from '@/services/authApi';
+import { AuthError } from '@/utils/apiClient';
 
 // Mock user data
 const mockUser = {
@@ -35,6 +36,7 @@ vi.mock('@/services/authApi', () => ({
   me: vi.fn(),
   login: vi.fn(),
   logout: vi.fn(),
+  refresh: vi.fn(),
 }));
 
 // Mock stores with mutable state
@@ -87,6 +89,7 @@ function TestComponent() {
 describe('AuthContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     // Reset mock state
     mockAuthState = {
       user: null,
@@ -199,5 +202,24 @@ describe('AuthContext', () => {
 
     // Verify me API was called
     expect(authApi.me).toHaveBeenCalled();
+  });
+
+  it('should refresh and recover auth when warm session exists', async () => {
+    window.sessionStorage.setItem('scholarai-auth-warm', '1');
+    vi.mocked(authApi.me)
+      .mockRejectedValueOnce(new AuthError('Session expired'))
+      .mockResolvedValueOnce(mockUser);
+    vi.mocked(authApi.refresh).mockResolvedValueOnce(undefined);
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(authApi.refresh).toHaveBeenCalled();
+      expect(authApi.me).toHaveBeenCalledTimes(2);
+    });
   });
 });

@@ -24,6 +24,13 @@ class SearchLibraryStatusService:
 
         try:
             for result in results:
+                if result.get("source") == "internal":
+                    result["in_library"] = True
+                    result["libraryStatus"] = result.get(
+                        "libraryStatus",
+                        "imported_fulltext_ready",
+                    )
+                    continue
                 result["libraryStatus"] = "not_imported"
                 result["in_library"] = False
 

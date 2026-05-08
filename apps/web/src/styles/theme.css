@@ -31,8 +31,10 @@
 
   /* Font families */
   --font-serif: 'Playfair Display', 'Noto Serif SC', serif;
-  --font-sans: 'Outfit', sans-serif;
+  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-editorial: 'Playfair Display', 'Noto Serif SC', serif;
 
   /* Border radius */
   --radius: 0.625rem;
@@ -46,7 +48,7 @@
 @layer base {
   :root {
     background-color: var(--color-background);
-    font-weight: 700;
+    font-weight: 400;
     font-family: var(--font-sans);
     --font-xs: clamp(0.75rem, 0.72rem + 0.1vw, 0.8125rem);
     --font-sm: clamp(0.8125rem, 0.78rem + 0.12vw, 0.875rem);
@@ -68,10 +70,22 @@
   body {
     font-size: var(--font-md);
     line-height: 1.55;
+    font-family: var(--font-ui);
   }
 }
 
 @layer components {
+  .editorial-display,
+  .editorial-heading {
+    font-family: var(--font-editorial);
+    letter-spacing: 0;
+  }
+
+  .ui-copy {
+    font-family: var(--font-ui);
+    letter-spacing: 0;
+  }
+
   .chat-message-list {
     width: min(calc(100% - 2rem), var(--chat-max-width));
     max-width: 100%;

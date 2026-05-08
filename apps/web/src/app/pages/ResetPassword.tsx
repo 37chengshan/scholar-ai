@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { motion } from 'motion/react';
 import { ArrowLeft, Lock, CheckCircle } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { useLanguage } from '../contexts/LanguageContext';
 import * as authApi from '@/services/authApi';
 import { toast } from 'sonner';
+import { isTransportLevelApiFailure, resolveApiErrorMessage } from '@/utils/resolveApiErrorMessage';
 
 export function ResetPassword() {
   const { language } = useLanguage();
@@ -28,7 +29,7 @@ export function ResetPassword() {
     title: isZh ? "重置密码" : "Reset Password",
     description: isZh ? "输入新密码" : "Enter your new password",
     newPassword: isZh ? "新密码" : "New Password",
-    passwordPlaceholder: isZh ? "至少8个字符" : "At least 8 characters",
+    passwordPlaceholder: isZh ? "至少 8 个字符" : "At least 8 characters",
     confirmPassword: isZh ? "确认密码" : "Confirm Password",
     confirmPasswordPlaceholder: isZh ? "再次输入密码" : "Enter password again",
     resetButton: isZh ? "重置密码" : "Reset Password",
@@ -40,6 +41,8 @@ export function ResetPassword() {
     passwordMismatch: isZh ? "两次密码输入不一致" : "Passwords do not match",
     passwordTooShort: isZh ? "密码至少需要8个字符" : "Password must be at least 8 characters",
   };
+
+  const authCardClassName = "rounded-sm border border-[#f4ece1] shadow-none hover:shadow-none hover:translate-y-0";
   
   useEffect(() => {
     if (!token) {
@@ -66,8 +69,10 @@ export function ResetPassword() {
       await authApi.resetPassword(token!, password);
       setSuccess(true);
       toast.success(isZh ? "密码重置成功" : "Password reset successful");
-    } catch (error: any) {
-      toast.error(error.response?.data?.error?.detail || (isZh ? "重置失败" : "Failed to reset password"));
+    } catch (error: unknown) {
+      if (!isTransportLevelApiFailure(error)) {
+        toast.error(resolveApiErrorMessage(error, isZh ? "重置失败" : "Failed to reset password"));
+      }
     } finally {
       setLoading(false);
     }
@@ -81,7 +86,7 @@ export function ResetPassword() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Card className="w-full max-w-md bg-white border border-[#f4ece1]">
+          <Card className={`w-full max-w-md bg-white ${authCardClassName}`}>
             <CardHeader className="text-center">
               <CheckCircle className="w-16 h-16 text-[#d35400] mx-auto mb-4" />
               <CardTitle className="text-xl font-semibold text-[#d35400]">
@@ -93,10 +98,10 @@ export function ResetPassword() {
             </CardHeader>
             <CardContent>
               <Button
-                onClick={() => navigate('/login')}
+                asChild
                 className="w-full bg-[#d35400] hover:bg-[#e67e22] text-white"
               >
-                {t.goToLogin}
+                <Link to="/login">{t.goToLogin}</Link>
               </Button>
             </CardContent>
           </Card>
@@ -114,17 +119,19 @@ export function ResetPassword() {
         className="w-full max-w-md"
       >
         <Button
-          onClick={() => navigate('/login')}
+          asChild
           variant="ghost"
           className="mb-4"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          {t.backToLogin}
+          <Link to="/login">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            {t.backToLogin}
+          </Link>
         </Button>
         
-        <Card className="bg-white border border-[#f4ece1]">
+        <Card className={`bg-white ${authCardClassName}`}>
           <CardHeader>
-            <CardTitle className="text-2xl font-semibold">
+            <CardTitle className="text-2xl font-semibold font-serif tracking-tight">
               {t.title}
             </CardTitle>
             <CardDescription className="text-base">
@@ -142,6 +149,7 @@ export function ResetPassword() {
                   <Input
                     id="password"
                     type="password"
+                    autoComplete="new-password"
                     placeholder={t.passwordPlaceholder}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -160,6 +168,7 @@ export function ResetPassword() {
                   <Input
                     id="confirmPassword"
                     type="password"
+                    autoComplete="new-password"
                     placeholder={t.confirmPasswordPlaceholder}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}

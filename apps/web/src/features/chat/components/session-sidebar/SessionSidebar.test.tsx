@@ -79,4 +79,38 @@ describe('SessionSidebar', () => {
 
     expect(screen.getByTestId('session-empty-state')).toHaveTextContent('No matching sessions');
   });
+
+  it('keeps delete action visible for touch layouts', () => {
+    render(
+      <SessionSidebar
+        sessions={[
+          {
+            id: 'session-1',
+            title: 'Alpha',
+            status: 'active',
+            messageCount: 2,
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+        ]}
+        currentSessionId={'session-1'}
+        loading={false}
+        labels={{
+          terminal: 'Terminal',
+          sessions: 'Sessions',
+          search: 'Search...',
+          history: 'History',
+          newChat: 'New Chat',
+          noSearchResults: 'No matching sessions',
+          messageSuffix: 'messages',
+        }}
+        searchValue=""
+        onSearchChange={vi.fn()}
+        onCreateSession={vi.fn()}
+        onSwitchSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('session-delete-session-1').className).toContain('opacity-100');
+  });
 });

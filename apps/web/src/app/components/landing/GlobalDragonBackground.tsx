@@ -9,6 +9,29 @@ export function GlobalDragonBackground() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const requiredContextMethods = [
+      'quadraticCurveTo',
+      'ellipse',
+      'arc',
+      'fillRect',
+      'drawImage',
+      'fill',
+      'stroke',
+      'save',
+      'restore',
+      'translate',
+      'rotate',
+    ] as const;
+
+    const hasFullCanvasSupport = requiredContextMethods.every((methodName) => {
+      const candidate = (ctx as unknown as Record<string, unknown>)[methodName];
+      return typeof candidate === 'function';
+    });
+
+    if (!hasFullCanvasSupport) {
+      canvas.style.display = 'none';
+      return;
+    }
 
     let width = window.innerWidth;
     let height = window.innerHeight;

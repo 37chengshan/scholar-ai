@@ -5,19 +5,9 @@ Contains:
 
 Table name matches Prisma schema (chat_messages).
 
-Phase 5.2 (2026-04-14): Added thinking-related fields for future persistence.
-These fields are RESERVED but NOT IMPLEMENTED in this phase:
-- reasoning_content: Agent reasoning/thinking content
-- current_phase: Current processing phase
-- tool_timeline: Tool call execution timeline
-- citations: Source citations for responses
-- stream_status: Streaming status indicator
-- tokens_used: Token consumption
-- cost: API cost in USD
-- duration_ms: Response duration
-
-NOTE: This phase does NOT implement persistence. Fields are nullable placeholders
-for Phase 2 implementation (thinking history across sessions).
+Answer-contract persistence is now first-class for assistant messages so
+session reloads can restore citations, evidence blocks, compare matrices,
+quality metadata, and jump targets without relying on live stream state.
 """
 
 import uuid
@@ -89,6 +79,13 @@ class ChatMessage(Base):
         comment="Phase 5.2 reserved: Response citations (not implemented)"
     )
 
+    # Canonical structured assistant payload used by frontend evidence UI.
+    answer_contract: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Structured answer contract payload for session history rehydration",
+    )
+
     # Streaming status indicator
     stream_status: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True,
@@ -111,6 +108,24 @@ class ChatMessage(Base):
     duration_ms: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True,
         comment="Phase 5.2 reserved: Response duration (not implemented)"
+    )
+
+    response_type: Mapped[Optional[str]] = mapped_column(
+        String(32),
+        nullable=True,
+        comment="Structured response type for session history rehydration",
+    )
+
+    trace_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="Trace identifier for the message payload",
+    )
+
+    run_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="Run identifier for the message payload",
     )
 
     # Relationships

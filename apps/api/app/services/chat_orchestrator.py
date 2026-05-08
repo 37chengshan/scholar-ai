@@ -218,6 +218,18 @@ class ChatOrchestrator:
         self,
         message_id: str,
         content: str,
+        reasoning_content: Optional[str] = None,
+        current_phase: Optional[str] = None,
+        tool_timeline: Optional[list[dict[str, Any]]] = None,
+        citations: Optional[list[dict[str, Any]]] = None,
+        answer_contract: Optional[dict[str, Any]] = None,
+        stream_status: Optional[str] = None,
+        tokens_used: Optional[int] = None,
+        cost: Optional[float] = None,
+        duration_ms: Optional[int] = None,
+        response_type: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> None:
         """Update assistant message content after streaming completes.
 
@@ -236,6 +248,18 @@ class ChatOrchestrator:
         updated = await message_service.update_message(
             message_id=message_id,
             content=content,
+            reasoning_content=reasoning_content,
+            current_phase=current_phase,
+            tool_timeline=tool_timeline,
+            citations=citations,
+            answer_contract=answer_contract,
+            stream_status=stream_status,
+            tokens_used=tokens_used,
+            cost=cost,
+            duration_ms=duration_ms,
+            response_type=response_type,
+            trace_id=trace_id,
+            run_id=run_id,
         )
         if not updated:
             logger.warning(
@@ -247,10 +271,15 @@ class ChatOrchestrator:
         self,
         message_id: str,
         content: str,
+        **kwargs: Any,
     ) -> None:
         """Best-effort assistant message update that never breaks streaming."""
         try:
-            await self._update_assistant_message(message_id=message_id, content=content)
+            await self._update_assistant_message(
+                message_id=message_id,
+                content=content,
+                **kwargs,
+            )
         except Exception as e:
             logger.warning(
                 "Assistant message update failed (non-blocking)",

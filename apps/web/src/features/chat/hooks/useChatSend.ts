@@ -16,6 +16,9 @@ import type {
 import type { AgentUIState } from '@/app/components/AgentStateSidebar';
 import type { ScopeType } from '@/app/components/ScopeBanner';
 import type { useChatStreaming } from '@/features/chat/hooks/useChatStreaming';
+import { buildSessionScopeMetadata } from '@/features/chat/hooks/chatScopeQuery';
+import { enrichKnowledgeBaseScopeMetadata } from '@/features/chat/hooks/chatScopeQuery';
+import { kbApi } from '@/services/kbApi';
 
 interface ChatScope {
   type: ScopeType;
@@ -30,6 +33,19 @@ interface UseChatSendOptions {
   mode: 'auto' | 'rag' | 'agent';
   scope: ChatScope;
   comparePaperIds?: string[];
+  handoffEvidence?: Array<{
+    handoffId?: string;
+    paperId: string;
+    sourceChunkId?: string;
+    pageNum?: number;
+    claim?: string;
+    dimensionId?: string;
+    sectionPath?: string;
+    contentType?: string;
+    text?: string;
+    citationJumpUrl?: string;
+    title?: string;
+  }>;
   scopeLoading: boolean;
   currentSession: ChatSession | null;
   forceNewSessionForNextSend?: boolean;
@@ -39,7 +55,10 @@ interface UseChatSendOptions {
   setAgentUIState: (state: AgentUIState) => void;
   setSessionTokens: Dispatch<SetStateAction<number>>;
   setSessionCost: Dispatch<SetStateAction<number>>;
-  createSession: (title?: string) => Promise<ChatSession | null>;
+  createSession: (
+    title?: string,
+    metadata?: Record<string, unknown>,
+  ) => Promise<ChatSession | null>;
   sendLockRef: MutableRefObject<boolean>;
   sseServiceRef: MutableRefObject<SSEService | null>;
   currentMessageIdRef: MutableRefObject<string>;
@@ -49,7 +68,13 @@ interface UseChatSendOptions {
   addPlaceholderMessage: (message: ExtendedChatMessage) => void;
   rebindSessionId: (fromSessionId: string, toSessionId: string) => void;
   bindPlaceholderToMessageId: (nextMessageId: string, previousPlaceholderId: string) => void;
-  syncStreamingMessage: (messageId: string) => void;
+  syncStreamingMessage: (messageId: string, payload: {
+    content: string;
+    reasoning: string;
+    status: ExtendedChatMessage['streamStatus'];
+    toolTimeline: ToolTimelineItem[];
+    citations: CitationItem[];
+  }) => void;
   ingestRuntimeEvent?: (event: SSEEventEnvelope) => void;
   markStreamError: (messageId: string) => void;
   markStreamCancelled: (messageId: string) => void;
@@ -68,7 +93,7 @@ interface UseChatSendOptions {
   }) => void;
   removePlaceholderMessage: () => void;
   clearPlaceholder: () => void;
-  onSessionCreated?: (sessionId: string) => void;
+  onSessionCreated?: (session: ChatSession) => void;
 }
 
 export function useChatSend({
@@ -77,6 +102,7 @@ export function useChatSend({
   mode,
   scope,
   comparePaperIds,
+  handoffEvidence,
   scopeLoading,
   currentSession,
   forceNewSessionForNextSend = false,
@@ -249,12 +275,31 @@ export function useChatSend({
       return currentSession.id;
     }
 
-    const newSession = await createSession(title.substring(0, 50));
+    let sessionScopeMetadata = comparePaperIds && comparePaperIds.length > 0
+      ? {
+          scopeType: 'compare' as const,
+          paperIds: comparePaperIds,
+        }
+      : buildSessionScopeMetadata(scope);
+
+    if (sessionScopeMetadata.scopeType === 'full_kb' && sessionScopeMetadata.kbId) {
+      try {
+        const knowledgeBase = await kbApi.get(sessionScopeMetadata.kbId);
+        sessionScopeMetadata = enrichKnowledgeBaseScopeMetadata(sessionScopeMetadata, knowledgeBase);
+      } catch {
+        // Keep scope metadata even if KB snapshot lookup fails.
+      }
+    }
+
+    const newSession = await createSession(
+      title.substring(0, 50),
+      { ...sessionScopeMetadata } as Record<string, unknown>,
+    );
     if (!newSession?.id) {
       return null;
     }
 
-    onSessionCreated?.(newSession.id);
+    onSessionCreated?.(newSession);
     return newSession.id;
   }, [createSession, currentSession?.id, forceNewSessionForNextSend, onSessionCreated]);
 
@@ -282,7 +327,8 @@ export function useChatSend({
 
     try {
       const pendingSessionId = `pending-session-${Date.now()}`;
-      let sessionId = currentSession?.id || pendingSessionId;
+      const shouldReuseCurrentSession = !forceNewSessionForNextSend && Boolean(currentSession?.id);
+      let sessionId = shouldReuseCurrentSession ? (currentSession?.id || pendingSessionId) : pendingSessionId;
 
       const userMessage: ExtendedChatMessage = {
         id: `user-${Date.now()}`,
@@ -340,6 +386,11 @@ export function useChatSend({
                 type: 'knowledge_base' as const,
                 knowledge_base_id: scope.id,
               }
+            : comparePaperIds && comparePaperIds.length > 0
+              ? {
+                  type: 'compare' as const,
+                  paper_ids: comparePaperIds,
+                }
             : {
                 type: 'general' as const,
               };
@@ -353,6 +404,23 @@ export function useChatSend({
           auto_confirm: false,
           ...(comparePaperIds && comparePaperIds.length > 0
             ? { paper_ids: comparePaperIds }
+            : {}),
+          ...(comparePaperIds && comparePaperIds.length > 0 && handoffEvidence && handoffEvidence.length > 0
+            ? {
+                handoff_evidence: handoffEvidence.map((item) => ({
+                  handoff_id: item.handoffId,
+                  paper_id: item.paperId,
+                  source_chunk_id: item.sourceChunkId,
+                  page_num: item.pageNum,
+                  claim: item.claim,
+                  dimension_id: item.dimensionId,
+                  section_path: item.sectionPath,
+                  content_type: item.contentType,
+                  text: item.text,
+                  citation_jump_url: item.citationJumpUrl,
+                  title: item.title,
+                })),
+              }
             : {}),
         },
         streamService: sseServiceRef.current,
@@ -393,7 +461,15 @@ export function useChatSend({
               data: eventData,
               timestamp: Date.now(),
             });
-            syncStreamingMessage(currentMessageIdRef.current || eventMessageId);
+            const buffered = streamApi.getBufferedContent();
+            const latestState = streamStateRef.current;
+            syncStreamingMessage(currentMessageIdRef.current || eventMessageId, {
+              content: buffered.content,
+              reasoning: buffered.reasoning,
+              status: 'streaming',
+              toolTimeline: latestState.toolTimeline,
+              citations: latestState.citations,
+            });
           },
           onError: (error: Error) => {
             streamApi.forceFlush();
@@ -429,14 +505,18 @@ export function useChatSend({
               tokensUsed,
               cost,
               durationMs,
-            });
+	            });
 
-            const doneMsgId = currentMessageIdRef.current || streamApi.currentMessageId || '';
-            const finalContent = finalBuffered.content || latestState.contentBuffer;
-            const finalReasoning = finalBuffered.reasoning || latestState.reasoningBuffer;
-            const answerContract = normalizeAnswerContract(
-              data as unknown as Record<string, unknown>,
-              finalContent,
+	            const doneMsgId = currentMessageIdRef.current || streamApi.currentMessageId || '';
+	            const donePayload = data ? ((data as unknown) as Record<string, unknown>) : undefined;
+	            const doneAnswer = typeof donePayload?.answer === 'string'
+	              ? String(donePayload.answer || '')
+	              : '';
+	            const finalContent = doneAnswer || finalBuffered.content || latestState.contentBuffer;
+	            const finalReasoning = finalBuffered.reasoning || latestState.reasoningBuffer;
+	            const answerContract = normalizeAnswerContract(
+	              donePayload,
+	              finalContent,
               latestState.citations,
             );
             const responseType = ((data?.response_type as ChatResponseType | undefined)
@@ -475,6 +555,7 @@ export function useChatSend({
     sendLockRef,
     scope,
     comparePaperIds,
+    handoffEvidence,
     scopeLoading,
     setSending,
     addUserMessage,
@@ -497,6 +578,7 @@ export function useChatSend({
     removePlaceholderMessage,
     normalizeAnswerContract,
     ensureSessionForSend,
+    forceNewSessionForNextSend,
     releaseSendState,
   ]);
 

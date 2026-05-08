@@ -1,7 +1,7 @@
 import { FileText, Database, AlertTriangle, X } from 'lucide-react';
 import { cn } from './ui/utils';
 
-export type ScopeType = 'single_paper' | 'full_kb' | 'error' | null;
+export type ScopeType = 'single_paper' | 'full_kb' | 'compare' | 'error' | null;
 
 interface ScopeBannerProps {
   type: ScopeType;
@@ -23,6 +23,7 @@ export function ScopeBanner({
   const bgColor: Record<string, string> = {
     single_paper: 'bg-[#22c55e]',
     full_kb: 'bg-[#3b82f6]',
+    compare: 'bg-[#8b5cf6]',
     error: 'bg-[#ef4444]',
   };
   const bgColorValue = bgColor[type] || 'bg-gray-500';
@@ -31,6 +32,7 @@ export function ScopeBanner({
   const iconMap: Record<string, typeof FileText> = {
     single_paper: FileText,
     full_kb: Database,
+    compare: Database,
     error: AlertTriangle,
   };
   const Icon = iconMap[type] || FileText;
@@ -39,6 +41,7 @@ export function ScopeBanner({
   const messageMap: Record<string, string> = {
     single_paper: `📄 单论文模式 — ${title || '加载中...'}`,
     full_kb: `📚 全库模式 — ${title || '加载中...'}`,
+    compare: `🧩 对比模式 — ${title || '加载中...'}`,
     error: `⚠️ 作用域无效 — ${errorMessage || '参数无效'}`,
   };
   const message = messageMap[type] || null;

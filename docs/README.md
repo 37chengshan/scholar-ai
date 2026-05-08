@@ -19,6 +19,10 @@
   - agent 读取的规范、架构、设计、治理与参考资料真源
 - `plans/`
   - 按版本组织的计划、研究、报告、归档与状态真源
+  - `phase-text/` 目录用于跨版本事实型功能盘点，不替代版本计划和状态真源
+  - `phase-text/` 也可承载基于真实代码入口整理的跨版本测试设计文档，以及这条文档线自身的维护契约
+  - `phase-text/` 允许补充机器可读模板，用于后续逐页测试结果回填
+  - `phase-text/` 也可承载已验证残余问题报告
 
 ## Top-level Contract
 
@@ -73,6 +77,7 @@
 - 当前进行中的产品主线必须同时能在 `docs/README.md` 和 `docs/plans/README.md` 被定位到。
 - 新执行计划先登记到 `docs/plans/PLAN_STATUS.md`，再补详细计划文档。
 - 版本化执行材料统一落到 `docs/plans/<version>/{active,complete,search,reports}`。
+- 跨版本“已实现功能盘点/事实报告”统一放到 `docs/plans/phase-text/`。
 - `active/` 下按 phase 或主题继续细分，例如 `active/phase_a/`、`active/phase1/`。
 - 已完成或被替代的旧计划放到 `docs/plans/archive/complete/`，历史杂项报告放到 `docs/plans/archive/reports/`。
 - 第三方资料、导入材料放到 `docs/specs/reference/`。

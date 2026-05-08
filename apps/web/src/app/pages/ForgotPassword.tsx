@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { ArrowLeft, Mail } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { useLanguage } from '../contexts/LanguageContext';
 import * as authApi from '@/services/authApi';
 import { toast } from 'sonner';
+import { isTransportLevelApiFailure, resolveApiErrorMessage } from '@/utils/resolveApiErrorMessage';
 
 export function ForgotPassword() {
   const { language } = useLanguage();
@@ -30,6 +31,8 @@ export function ForgotPassword() {
     successTitle: isZh ? "重置链接已发送" : "Reset Link Sent",
     successDesc: isZh ? "请检查您的邮箱，点击链接重置密码" : "Check your email and click the link to reset your password",
   };
+
+  const authCardClassName = "rounded-sm border border-[#f4ece1] shadow-none hover:shadow-none hover:translate-y-0";
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,8 +54,10 @@ export function ForgotPassword() {
       await authApi.forgotPassword(email);
       setSubmitted(true);
       toast.success(isZh ? "重置链接已发送" : "Reset link sent");
-    } catch (error: any) {
-      toast.error(error.response?.data?.error?.detail || (isZh ? "发送失败" : "Failed to send reset link"));
+    } catch (error: unknown) {
+      if (!isTransportLevelApiFailure(error)) {
+        toast.error(resolveApiErrorMessage(error, isZh ? "发送失败" : "Failed to send reset link"));
+      }
     } finally {
       setLoading(false);
     }
@@ -66,7 +71,7 @@ export function ForgotPassword() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Card className="w-full max-w-md bg-white border border-[#f4ece1]">
+          <Card className={`w-full max-w-md bg-white ${authCardClassName}`}>
             <CardHeader>
               <CardTitle className="text-xl font-semibold text-[#d35400]">
                 {t.successTitle}
@@ -77,11 +82,11 @@ export function ForgotPassword() {
             </CardHeader>
             <CardContent>
               <Button
-                onClick={() => navigate('/login')}
+                asChild
                 variant="ghost"
                 className="w-full"
               >
-                {t.backToLogin}
+                <Link to="/login">{t.backToLogin}</Link>
               </Button>
             </CardContent>
           </Card>
@@ -99,17 +104,19 @@ export function ForgotPassword() {
         className="w-full max-w-md"
       >
         <Button
-          onClick={() => navigate('/login')}
+          asChild
           variant="ghost"
           className="mb-4"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          {t.backToLogin}
+          <Link to="/login">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            {t.backToLogin}
+          </Link>
         </Button>
         
-        <Card className="bg-white border border-[#f4ece1]">
+        <Card className={`bg-white ${authCardClassName}`}>
           <CardHeader>
-            <CardTitle className="text-2xl font-semibold">
+            <CardTitle className="text-2xl font-semibold font-serif tracking-tight">
               {t.title}
             </CardTitle>
             <CardDescription className="text-base">
@@ -117,7 +124,7 @@ export function ForgotPassword() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form noValidate onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm font-semibold">
                   {t.email}
@@ -127,6 +134,8 @@ export function ForgotPassword() {
                   <Input
                     id="email"
                     type="email"
+                    autoComplete="email"
+                    inputMode="email"
                     placeholder={t.emailPlaceholder}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useLanguage } from '@/app/contexts/LanguageContext';
 import * as sessionsApi from '@/services/sessionsApi';
 import { getRecentPapers } from '@/services/dashboardApi';
 import { kbApi } from '@/services/kbApi';
@@ -18,6 +19,8 @@ import {
 import { readPersistedChatHandoff } from '@/features/chat/chatHandoff';
 
 export function useResearchCommandCenter() {
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
   const sessionsQuery = useQuery({
     queryKey: ['dashboard', 'sessions'],
     queryFn: () => sessionsApi.listSessions(8, 'active'),
@@ -84,11 +87,12 @@ export function useResearchCommandCenter() {
         buildHandoffCommand({
           scope: persistedHandoff.scope,
           handoff: persistedHandoff.handoff,
+          locale: { isZh },
         }),
       );
     }
 
-    const chatCommand = sessionsQuery.data?.[0] ? buildChatCommand(sessionsQuery.data[0]) : null;
+    const chatCommand = sessionsQuery.data?.[0] ? buildChatCommand(sessionsQuery.data[0], { isZh }) : null;
     if (chatCommand) {
       items.push(chatCommand);
     }
@@ -100,7 +104,7 @@ export function useResearchCommandCenter() {
       items.push(primaryKnowledgeCommand);
     }
 
-    const recentReadCommand = recentPapersQuery.data?.[0] ? buildRecentReadCommand(recentPapersQuery.data[0]) : null;
+    const recentReadCommand = recentPapersQuery.data?.[0] ? buildRecentReadCommand(recentPapersQuery.data[0], { isZh }) : null;
     if (recentReadCommand) {
       items.push(recentReadCommand);
     }
@@ -111,10 +115,12 @@ export function useResearchCommandCenter() {
           kbId: kb.id,
           kbName: kb.name,
           run: runs[0] || null,
+          locale: { isZh },
         }),
       )
       .find(Boolean) || buildReviewOrCompareCommand({
         fallbackPaperIds: (recentPapersQuery.data || []).slice(0, 3).map((paper) => paper.id),
+        locale: { isZh },
       });
 
     if (reviewCommand) {
@@ -122,7 +128,7 @@ export function useResearchCommandCenter() {
     }
 
     return sortResearchCommands(items);
-  }, [importsAndRunsQuery.data, recentPapersQuery.data, sessionsQuery.data]);
+  }, [importsAndRunsQuery.data, isZh, recentPapersQuery.data, sessionsQuery.data]);
 
   const knowledgeReadinessByKb = useMemo(() => {
     return (importsAndRunsQuery.data || []).map(({ kb, importJobs, runs }) => ({

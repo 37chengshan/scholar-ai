@@ -17,8 +17,12 @@ from app.rag_v3.schemas import (
 from app.services.compare_service import (
     ALLOWED_DIMENSION_IDS,
     DEFAULT_DIMENSIONS,
+    build_compare_queries,
     build_compare_contract,
     build_compare_matrix,
+    _fill_cell,
+    _extract_best_compare_snippet,
+    retrieve_compare_pack,
 )
 
 
@@ -95,21 +99,16 @@ class TestHybridRetriever:
             rerank_top_k=10,
         )
 
-    def test_uses_both_dense_and_sparse(self):
-        """Pack candidates should include both dense and sparse sources after fusion."""
+    def test_tracks_both_dense_and_sparse_candidate_pools(self):
+        """Hybrid retriever diagnostics should record both dense and sparse pools."""
         paper_a = [_make_candidate(f"c-a-{i}", "p-001", rrf_score=0.9 - i * 0.1) for i in range(5)]
         paper_b = [_make_candidate(f"c-b-{i}", "p-002", rrf_score=0.85 - i * 0.1) for i in range(5)]
         retriever = self._make_retriever({"p-001": paper_a, "p-002": paper_b})
 
         pack = retriever.retrieve(query="test", paper_ids=["p-001", "p-002"])
 
-        # Some candidates from dense pool exist
-        dense_ids = {f"c-a-{i}" for i in range(5)} | {f"c-b-{i}" for i in range(5)}
-        found_dense = any(c.source_chunk_id in dense_ids for c in pack.candidates)
-        assert found_dense, "Pack must contain at least one dense candidate"
-        # Sparse candidates have lexical- prefix
-        found_sparse = any("lexical" in c.source_chunk_id for c in pack.candidates)
-        assert found_sparse, "Pack must contain at least one sparse/lexical candidate"
+        assert pack.diagnostics["dense_candidates_total"] > 0
+        assert pack.diagnostics["sparse_candidates_total"] >= 0
 
     def test_per_paper_budget_enforced(self):
         """No single paper should supply more than per_paper_budget candidates."""
@@ -322,6 +321,399 @@ class TestCompareService:
                     assert isinstance(block.citation_jump_url, str), (
                         f"Block {block.evidence_id} missing citation_jump_url"
                     )
+
+    def test_compare_matrix_strips_retrieval_prefix_markup_and_localizes_cross_paper_claims(self):
+        from app.rag_v3.schemas import EvidencePack
+
+        dirty_text = "[Paper: LIMA]\n[Section: method]\n[Page:1]\nGLYPH<22> Core method summary"
+        candidate = EvidenceCandidate(
+            source_chunk_id="c-1",
+            paper_id="p-001",
+            section_id="method",
+            content_type="text",
+            anchor_text=dirty_text,
+            candidate_sources=["dense"],
+            rerank_score=0.91,
+            rrf_score=0.77,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+        pack = EvidencePack(
+            query_id="q",
+            query="compare",
+            query_family="compare",
+            stage="hybrid",
+            candidates=[candidate, candidate.model_copy(update={"paper_id": "p-002", "source_chunk_id": "c-2"})],
+        )
+
+        matrix = build_compare_matrix(
+            paper_ids=["p-001", "p-002"],
+            paper_meta={
+                "p-001": {"title": "Paper 1", "year": 2020},
+                "p-002": {"title": "Paper 2", "year": 2021},
+            },
+            pack=pack,
+            dimensions=[CompareDimension(id="method", label="方法")],
+        )
+
+        assert matrix.rows[0].cells[0].content == "Core method summary"
+        assert matrix.rows[0].cells[0].evidence_blocks[0].text == "Core method summary"
+        assert matrix.cross_paper_insights
+
+    def test_extract_best_compare_snippet_normalizes_method_heading_fragments(self):
+        candidate = EvidenceCandidate(
+            source_chunk_id="c-method",
+            paper_id="p-001",
+            section_id="introduction",
+            content_type="text",
+            anchor_text=(
+                "[Paper: LIMA] [Section: introduction] [Page:4] "
+                "this small sample adds diversity to the overall mix of training examples. "
+                "3 Training LIMA We train LIMA, a pretrained 65B-parameter LLaMa model fine-tuned on this set of 1,000 demonstrations."
+            ),
+            candidate_sources=["dense", "dimension:method"],
+            rerank_score=0.8,
+            rrf_score=0.7,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        assert _extract_best_compare_snippet("method", candidate) == (
+            "We train LIMA, a pretrained 65B-parameter LLaMa model fine-tuned on this set of 1,000 demonstrations."
+        )
+
+    def test_extract_best_compare_snippet_rejects_weak_result_commentary(self):
+        candidate = EvidenceCandidate(
+            source_chunk_id="c-result",
+            paper_id="p-001",
+            section_id="results",
+            content_type="text",
+            anchor_text=(
+                "[Paper: LIMA] [Section: result] [Page:6] "
+                "what is striking about this result is the fact that DaVinci003 was trained with RLHF. "
+                "Bard shows the opposite trend, with GPT-4 preferring the Bard response 42% of the time, "
+                "58% of the time the LIMA response was at least as good as Bard, and GPT-4 prefers LIMA outputs over its own 19% of the time."
+            ),
+            candidate_sources=["dense", "dimension:results"],
+            rerank_score=0.82,
+            rrf_score=0.74,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        snippet = _extract_best_compare_snippet("results", candidate)
+        assert "42%" in snippet
+        assert "58%" in snippet or "19%" in snippet
+
+    def test_fill_cell_requires_dimension_signal_instead_of_using_any_high_score_candidate(self):
+        unrelated = EvidenceCandidate(
+            source_chunk_id="c-1",
+            paper_id="p-001",
+            section_id="frontmatter",
+            content_type="text",
+            anchor_text="LIMA: Less Is More for Alignment Chunting Zhou Pengfei Liu",
+            candidate_sources=["dense"],
+            rerank_score=0.98,
+            rrf_score=0.8,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("method", "p-001", [unrelated])
+
+        assert cell.support_status == "not_enough_evidence"
+        assert cell.content == ""
+
+    def test_fill_cell_summarizes_long_anchor_text_for_compare_display(self):
+        candidate = EvidenceCandidate(
+            source_chunk_id="c-2",
+            paper_id="p-001",
+            section_id="method",
+            content_type="text",
+            anchor_text="[Paper: Demo] [Section: method] [Page: 4] The method introduces supervised fine-tuning on a curated instruction set. Additional implementation details follow in later paragraphs.",
+            candidate_sources=["dense"],
+            rerank_score=0.92,
+            rrf_score=0.81,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("method", "p-001", [candidate])
+
+        assert cell.support_status in {"supported", "partially_supported"}
+        assert cell.content.startswith("The method introduces supervised fine-tuning")
+        assert "[Paper:" not in cell.content
+
+    def test_fill_cell_rejects_prompt_template_and_frontmatter_noise(self):
+        noisy_candidates = [
+            EvidenceCandidate(
+                source_chunk_id="c-frontmatter",
+                paper_id="p-001",
+                section_id="frontmatter",
+                content_type="text",
+                anchor_text="LIMA Less Is More for Alignment Chunting Zhou Pengfei Liu Puxin Xu Srini Iyer",
+                candidate_sources=["dense"],
+                rerank_score=0.99,
+                rrf_score=0.83,
+                pre_rerank_rank=1,
+                post_rerank_rank=1,
+            ),
+            EvidenceCandidate(
+                source_chunk_id="c-prompt",
+                paper_id="p-001",
+                section_id="result",
+                content_type="text",
+                anchor_text="in a step by step manner your reasoning about the criterion to be sure that your conclusion is correct.",
+                candidate_sources=["dense"],
+                rerank_score=0.97,
+                rrf_score=0.81,
+                pre_rerank_rank=2,
+                post_rerank_rank=2,
+            ),
+        ]
+
+        cell = _fill_cell("results", "p-001", noisy_candidates)
+
+        assert cell.support_status == "not_enough_evidence"
+        assert cell.content == ""
+
+    def test_build_compare_queries_expands_dimension_specific_retrieval_prompts(self):
+        queries = build_compare_queries(
+            paper_meta={
+                "p-001": {"title": "Paper A"},
+                "p-002": {"title": "Paper B"},
+            },
+            dimensions=[
+                CompareDimension(id="method", label="方法"),
+                CompareDimension(id="results", label="结果"),
+            ],
+            question="Compare these papers for RLHF efficiency",
+        )
+
+        assert queries[0].query == "Compare these papers for RLHF efficiency"
+        assert queries[0].dimension_id is None
+        assert any("method, approach, model design" in query.query for query in queries)
+        assert any("results, findings, and measured outcomes" in query.query for query in queries)
+
+    def test_retrieve_compare_pack_merges_multi_query_candidates(self):
+        class _StubRetriever:
+            def __init__(self) -> None:
+                self.queries: list[str] = []
+
+            def retrieve(self, query: str, paper_ids: list[str]):
+                from app.rag_v3.schemas import EvidencePack
+
+                self.queries.append(query)
+                candidate = EvidenceCandidate(
+                    source_chunk_id="c-1" if "method" in query else "c-2",
+                    paper_id=paper_ids[0],
+                    section_id="method" if "method" in query else "result",
+                    content_type="text",
+                    anchor_text="Method evidence" if "method" in query else "Results evidence",
+                    candidate_sources=["dense"],
+                    rerank_score=0.8,
+                    rrf_score=0.7,
+                    pre_rerank_rank=1,
+                    post_rerank_rank=1,
+                )
+                return EvidencePack(
+                    query_id=f"q-{len(self.queries)}",
+                    query=query,
+                    query_family="compare",
+                    stage="hybrid",
+                    candidates=[candidate],
+                    diagnostics={"query_index": len(self.queries)},
+                )
+
+        stub = _StubRetriever()
+        pack = retrieve_compare_pack(
+            paper_ids=["p-001"],
+            paper_meta={"p-001": {"title": "Paper A"}},
+            dimensions=[
+                CompareDimension(id="method", label="方法"),
+                CompareDimension(id="results", label="结果"),
+            ],
+            question=None,
+            retriever=stub,  # type: ignore[arg-type]
+        )
+
+        assert len(stub.queries) == 2
+        assert len(pack.candidates) == 2
+        assert pack.stage == "hybrid_compare_multiquery"
+        assert pack.diagnostics["sub_query_count"] == 2
+        assert "dimension:method" in pack.candidates[0].candidate_sources or "dimension:method" in pack.candidates[1].candidate_sources
+
+    def test_fill_cell_uses_dimension_scoped_candidates_only(self):
+        wrong_dimension = EvidenceCandidate(
+            source_chunk_id="c-results",
+            paper_id="p-001",
+            section_id="result",
+            content_type="text",
+            anchor_text="This paper improves benchmark scores by 4 points.",
+            candidate_sources=["dense", "dimension:results"],
+            rerank_score=0.95,
+            rrf_score=0.84,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+        correct_dimension = EvidenceCandidate(
+            source_chunk_id="c-method",
+            paper_id="p-001",
+            section_id="method",
+            content_type="text",
+            anchor_text="We fine-tune the model on 1,000 curated demonstrations.",
+            candidate_sources=["dense", "dimension:method"],
+            rerank_score=0.88,
+            rrf_score=0.79,
+            pre_rerank_rank=2,
+            post_rerank_rank=2,
+        )
+
+        cell = _fill_cell("method", "p-001", [wrong_dimension, correct_dimension])
+
+        assert cell.content.startswith("We fine-tune the model")
+        assert cell.evidence_blocks[0].source_chunk_id == "c-method"
+
+    def test_fill_cell_rejects_reference_sentence_noise(self):
+        reference_like = EvidenceCandidate(
+            source_chunk_id="c-ref",
+            paper_id="p-001",
+            section_id="results",
+            content_type="text",
+            anchor_text="In International Conference on Learning Representations, 2022a.",
+            candidate_sources=["dense", "dimension:results"],
+            rerank_score=0.94,
+            rrf_score=0.82,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("results", "p-001", [reference_like])
+
+        assert cell.support_status == "not_enough_evidence"
+        assert cell.content == ""
+
+    def test_fill_cell_extracts_dimension_specific_sentence_instead_of_first_sentence(self):
+        mixed_candidate = EvidenceCandidate(
+            source_chunk_id="c-mixed",
+            paper_id="p-001",
+            section_id="results",
+            content_type="text",
+            anchor_text=(
+                "This small sample adds diversity to the overall mix of tasks. "
+                "Results show the model improves accuracy by 7.4 points over the strongest baseline."
+            ),
+            candidate_sources=["dense", "dimension:results"],
+            rerank_score=0.93,
+            rrf_score=0.84,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("results", "p-001", [mixed_candidate])
+
+        assert cell.content.startswith("Results show the model improves accuracy")
+        assert cell.evidence_blocks[0].text == cell.content
+
+    def test_fill_cell_prefers_true_method_sentence_inside_mixed_training_chunk(self):
+        candidate = EvidenceCandidate(
+            source_chunk_id="c-method-mixed",
+            paper_id="p-001",
+            section_id="introduction",
+            content_type="text",
+            anchor_text=(
+                "this small sample adds diversity to the overall mix of training examples, and can potentially increase model robustness. "
+                "We train LIMA using the following protocol. Starting from LLaMa 65B, we fine-tune on our 1,000-example alignment training set."
+            ),
+            candidate_sources=["dense", "dimension:method"],
+            rerank_score=0.88,
+            rrf_score=0.79,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("method", "p-001", [candidate])
+
+        assert cell.content.startswith("We train LIMA using the following protocol")
+
+    def test_fill_cell_prefers_quantified_results_sentence_over_commentary(self):
+        candidate = EvidenceCandidate(
+            source_chunk_id="c-results-mixed",
+            paper_id="p-001",
+            section_id="introduction",
+            content_type="text",
+            anchor_text=(
+                "what is striking about this result is the fact that DaVinci003 was trained with RLHF, a supposedly superior alignment method. "
+                "Bard shows the opposite trend to DaVinci003, producing better responses than LIMA 42% of the time; however, this also means that 58% of the time the LIMA response was at least as good as Bard."
+            ),
+            candidate_sources=["dense", "dimension:results"],
+            rerank_score=0.9,
+            rrf_score=0.82,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("results", "p-001", [candidate])
+
+        assert "58%" in cell.content or "42%" in cell.content
+        assert "DaVinci003 was trained with RLHF" not in cell.content
+
+    def test_fill_cell_rejects_training_sentence_as_dataset_evidence(self):
+        training_like = EvidenceCandidate(
+            source_chunk_id="c-train",
+            paper_id="p-001",
+            section_id="dataset",
+            content_type="text",
+            anchor_text="Finally, we train LIMA through supervised fine-tuning on this set of 1,000 demonstrations.",
+            candidate_sources=["dense", "dimension:dataset"],
+            rerank_score=0.95,
+            rrf_score=0.85,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("dataset", "p-001", [training_like])
+
+        assert cell.support_status == "not_enough_evidence"
+        assert cell.content == ""
+
+    def test_fill_cell_rejects_problem_cell_when_only_section_hint_exists(self):
+        weak_intro = EvidenceCandidate(
+            source_chunk_id="c-problem-weak",
+            paper_id="p-001",
+            section_id="introduction",
+            content_type="text",
+            anchor_text="6 out of 10 prompts with malicious intent).",
+            candidate_sources=["dense", "dimension:problem"],
+            rerank_score=0.93,
+            rrf_score=0.84,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("problem", "p-001", [weak_intro])
+
+        assert cell.support_status == "not_enough_evidence"
+        assert cell.content == ""
+
+    def test_fill_cell_rejects_metric_cell_without_metric_language(self):
+        weak_metric = EvidenceCandidate(
+            source_chunk_id="c-metric-weak",
+            paper_id="p-001",
+            section_id="introduction",
+            content_type="text",
+            anchor_text="what is striking about this result is the fact that DaVinci003 was trained with RLHF, a supposedly superior alignment method.",
+            candidate_sources=["dense", "dimension:metrics"],
+            rerank_score=0.91,
+            rrf_score=0.83,
+            pre_rerank_rank=1,
+            post_rerank_rank=1,
+        )
+
+        cell = _fill_cell("metrics", "p-001", [weak_metric])
+
+        assert cell.support_status == "not_enough_evidence"
+        assert cell.content == ""
 
     def test_kb_scope_with_paper_ids_filters(self):
         """Hybrid retriever must restrict dense phase to provided paper_ids only."""

@@ -10,7 +10,7 @@ Responsibilities:
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 
 from sqlalchemy import select, delete, update, func
@@ -31,6 +31,18 @@ class MessageService:
         content: str,
         tool_name: Optional[str] = None,
         tool_params: Optional[Dict] = None,
+        reasoning_content: Optional[str] = None,
+        current_phase: Optional[str] = None,
+        tool_timeline: Optional[List[Dict[str, Any]]] = None,
+        citations: Optional[List[Dict[str, Any]]] = None,
+        answer_contract: Optional[Dict[str, Any]] = None,
+        stream_status: Optional[str] = None,
+        tokens_used: Optional[int] = None,
+        cost: Optional[float] = None,
+        duration_ms: Optional[int] = None,
+        response_type: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        run_id: Optional[str] = None,
         count_towards_stats: bool = True,
     ) -> str:
         """Save chat message to PostgreSQL and update session stats.
@@ -61,6 +73,18 @@ class MessageService:
                     content=content,
                     tool_name=tool_name,
                     tool_params=tool_params,
+                    reasoning_content=reasoning_content,
+                    current_phase=current_phase,
+                    tool_timeline=tool_timeline,
+                    citations=citations,
+                    answer_contract=answer_contract,
+                    stream_status=stream_status,
+                    tokens_used=tokens_used,
+                    cost=cost,
+                    duration_ms=duration_ms,
+                    response_type=response_type,
+                    trace_id=trace_id,
+                    run_id=run_id,
                 )
                 db.add(message)
 
@@ -136,6 +160,18 @@ class MessageService:
                     "role": msg.role,
                     "content": msg.content,
                     "tool_name": msg.tool_name,
+                    "reasoning_content": msg.reasoning_content,
+                    "current_phase": msg.current_phase,
+                    "tool_timeline": msg.tool_timeline,
+                    "citations": msg.citations,
+                    "answer_contract": msg.answer_contract,
+                    "stream_status": msg.stream_status,
+                    "tokens_used": msg.tokens_used,
+                    "cost": msg.cost,
+                    "duration_ms": msg.duration_ms,
+                    "response_type": msg.response_type,
+                    "trace_id": msg.trace_id,
+                    "run_id": msg.run_id,
                     "created_at": msg.created_at.isoformat()
                     if msg.created_at
                     else None,
@@ -173,7 +209,19 @@ class MessageService:
     async def update_message(
         self,
         message_id: str,
-        content: str,
+        content: Optional[str] = None,
+        reasoning_content: Optional[str] = None,
+        current_phase: Optional[str] = None,
+        tool_timeline: Optional[List[Dict[str, Any]]] = None,
+        citations: Optional[List[Dict[str, Any]]] = None,
+        answer_contract: Optional[Dict[str, Any]] = None,
+        stream_status: Optional[str] = None,
+        tokens_used: Optional[int] = None,
+        cost: Optional[float] = None,
+        duration_ms: Optional[int] = None,
+        response_type: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        run_id: Optional[str] = None,
         db: Optional[AsyncSession] = None,
     ) -> bool:
         """Update an existing message content.
@@ -188,10 +236,11 @@ class MessageService:
             old_role: str,
             old_content: Optional[str],
         ) -> None:
+            next_content = content if content is not None else (old_content or "")
             is_placeholder_finalized = (
                 old_role == "assistant"
                 and (old_content or "") == ""
-                and content != ""
+                and next_content != ""
             )
 
             values = {"last_activity_at": now}
@@ -203,6 +252,27 @@ class MessageService:
                 .where(Session.id == session_id)
                 .values(**values)
             )
+
+        update_values = {
+            "content": content,
+            "reasoning_content": reasoning_content,
+            "current_phase": current_phase,
+            "tool_timeline": tool_timeline,
+            "citations": citations,
+            "answer_contract": answer_contract,
+            "stream_status": stream_status,
+            "tokens_used": tokens_used,
+            "cost": cost,
+            "duration_ms": duration_ms,
+            "response_type": response_type,
+            "trace_id": trace_id,
+            "run_id": run_id,
+        }
+        filtered_values = {
+            key: value for key, value in update_values.items() if value is not None
+        }
+        if not filtered_values:
+            return False
 
         if db:
             row = await db.execute(
@@ -216,7 +286,7 @@ class MessageService:
             result = await db.execute(
                 update(ChatMessage)
                 .where(ChatMessage.id == message_id)
-                .values(content=content)
+                .values(**filtered_values)
             )
             if (result.rowcount or 0) > 0 and message_meta:
                 await _update_session_activity(
@@ -241,7 +311,7 @@ class MessageService:
                 result = await session.execute(
                     update(ChatMessage)
                     .where(ChatMessage.id == message_id)
-                    .values(content=content)
+                    .values(**filtered_values)
                 )
 
                 if (result.rowcount or 0) > 0 and message_meta:

@@ -30,7 +30,7 @@ export function ChatEmptyState({ isZh = true, onSuggest }: ChatEmptyStateProps) 
       <div className="mx-auto w-full max-w-5xl">
         <div className="rounded-2xl border border-border/60 bg-background/75 p-6 backdrop-blur-sm lg:p-8">
           <div className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground">
-            {isZh ? '对话工作台' : 'Conversation Workspace'}
+            {isZh ? '对话' : 'Conversation'}
           </div>
           <h2 className="mt-3 font-serif text-3xl leading-tight text-foreground lg:text-4xl">
             {isZh ? '从一个清晰问题开始' : 'Start with a clear research question'}

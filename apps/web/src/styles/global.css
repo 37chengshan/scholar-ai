@@ -173,3 +173,49 @@ html {
     scroll-behavior: auto !important;
   }
 }
+@layer components {
+.editorial-app-shell {
+    font-family: var(--font-sans);
+    color: var(--color-foreground);
+  }
+
+  .editorial-reading-surface {
+    font-family: var(--font-serif) !important;
+    line-height: 1.72;
+    letter-spacing: 0;
+  }
+
+  .editorial-reading-surface h1,
+  .editorial-reading-surface h2,
+  .editorial-reading-surface h3,
+  .editorial-reading-surface h4,
+  .editorial-reading-surface h5,
+  .editorial-reading-surface h6 {
+    font-family: var(--font-serif) !important;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  
+  .editorial-reading-surface p,
+  .editorial-reading-surface li,
+  .editorial-reading-surface blockquote,
+  .editorial-reading-surface .markdown-body {
+    font-family: var(--font-serif) !important;
+    color: var(--color-foreground);
+    line-height: 1.8;
+  }
+
+  .editorial-display {
+    font-family: var(--font-serif) !important;
+  }
+
+  .editorial-ui {
+    font-family: var(--font-sans) !important;
+    letter-spacing: 0;
+  }
+}
+@layer base {
+  body {
+    @apply font-sans;
+  }
+}

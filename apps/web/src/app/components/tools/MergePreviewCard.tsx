@@ -34,7 +34,7 @@ export function MergePreviewCard({ result }: MergePreviewCardProps) {
         </span>
       </div>
       <div className="p-3">
-        <div className="text-sm prose prose-sm max-w-none">
+        <div className="text-sm prose prose-sm max-w-none editorial-reading-surface font-serif">
           <MarkdownRenderer content={preview} />
         </div>
       </div>

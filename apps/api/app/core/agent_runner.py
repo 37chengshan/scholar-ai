@@ -188,6 +188,7 @@ class AgentRunner:
         self.total_cost = 0.0
         self.intent_classifier = IntentClassifier()  # Per D-22, D-23
         self.event_callback = event_callback  # Real-time event push
+        self.execution_scope: Dict[str, Any] = {}
 
     def get_ui_state(self) -> UIStateResult:
         """Get current UI state based on internal state.
@@ -270,6 +271,9 @@ class AgentRunner:
         context = await self.context_manager.build_context(session_id, user_id)
         context.objective = user_input
         context.environment["user_id"] = user_id
+        context.environment["session_id"] = session_id
+        if self.execution_scope:
+            context.environment["scope"] = dict(self.execution_scope)
 
         # Classify intent - Per D-22, D-23
         try:
@@ -1058,6 +1062,9 @@ class AgentRunner:
 
         # Build context
         context = await self.context_manager.build_context(session_id)
+        context.environment["session_id"] = session_id
+        if self.execution_scope:
+            context.environment["scope"] = dict(self.execution_scope)
 
         # Execute confirmed tool
         self.current_state = AgentState.TOOL_EXECUTION

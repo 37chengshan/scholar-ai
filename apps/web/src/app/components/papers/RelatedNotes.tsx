@@ -59,7 +59,7 @@ export function RelatedNotes({ paperId, maxNotes = 5 }: RelatedNotesProps) {
   return (
     <div className="space-y-3">
       {/* Header */}
-      <h3 className="font-semibold text-lg flex items-center gap-2">
+      <h3 className="font-semibold text-lg flex items-center gap-2 font-serif tracking-tight">
         <span>Related Notes</span>
         <span className="text-muted-foreground text-sm">
           ({notes.length})

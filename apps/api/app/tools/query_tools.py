@@ -15,7 +15,7 @@ import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select, and_, any_
+from sqlalchemy import select, and_
 
 from app.api.search.external import search_arxiv, search_semantic_scholar
 from app.core.multimodal_search_service import get_multimodal_search_service
@@ -23,6 +23,51 @@ from app.database import AsyncSessionLocal
 from app.models.paper import Paper
 from app.models.orm_note import Note
 from app.utils.logger import logger
+
+
+async def _resolve_scope_paper_ids(
+    *,
+    user_id: str,
+    explicit_paper_ids: Optional[List[str]],
+    scope: Optional[Dict[str, Any]],
+) -> List[str]:
+    normalized_explicit = [str(paper_id).strip() for paper_id in (explicit_paper_ids or []) if str(paper_id).strip()]
+    scope_type = str((scope or {}).get("type") or "").strip().lower()
+
+    if scope_type == "paper":
+        paper_id = str((scope or {}).get("paper_id") or "").strip()
+        return [paper_id] if paper_id else normalized_explicit
+
+    if scope_type == "compare":
+        scope_paper_ids = [
+            str(paper_id).strip()
+            for paper_id in (scope or {}).get("paper_ids", [])
+            if str(paper_id).strip()
+        ]
+        if scope_paper_ids:
+            return scope_paper_ids
+        return normalized_explicit
+
+    if scope_type != "knowledge_base":
+        return normalized_explicit
+
+    kb_id = str((scope or {}).get("knowledge_base_id") or "").strip()
+    if not kb_id:
+        return normalized_explicit
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Paper.id).where(
+                Paper.user_id == user_id,
+                Paper.knowledge_base_id == kb_id,
+            )
+        )
+        kb_paper_ids = [str(row[0]) for row in result.fetchall() if row[0]]
+
+    if normalized_explicit:
+        allowed = set(kb_paper_ids)
+        return [paper_id for paper_id in normalized_explicit if paper_id in allowed]
+    return kb_paper_ids
 
 
 def _serialize_datetime(value: Any) -> str:
@@ -153,7 +198,12 @@ async def execute_rag_search(params: Dict[str, Any], **kwargs) -> Dict[str, Any]
     user_id = kwargs.get("user_id", "")
     try:
         question = params.get("question", "")
-        paper_ids = params.get("paper_ids", [])
+        scope = kwargs.get("scope")
+        paper_ids = await _resolve_scope_paper_ids(
+            user_id=user_id,
+            explicit_paper_ids=params.get("paper_ids", []),
+            scope=scope if isinstance(scope, dict) else None,
+        )
         top_k = params.get("top_k", 5)
 
         if not question:
@@ -214,6 +264,7 @@ async def execute_list_papers(params: Dict[str, Any], **kwargs) -> Dict[str, Any
         filter_dict = params.get("filter", {})
         sort = params.get("sort", "created_at")
         limit = params.get("limit", 20)
+        scope = kwargs.get("scope")
 
         logger.info("List papers initiated", user_id=user_id, filters=filter_dict)
 
@@ -221,6 +272,25 @@ async def execute_list_papers(params: Dict[str, Any], **kwargs) -> Dict[str, Any
             # Build query with SQLAlchemy ORM
             # Select specific fields to optimize response
             stmt = select(Paper).where(Paper.user_id == user_id)
+
+            if isinstance(scope, dict):
+                scope_type = str(scope.get("type") or "").strip().lower()
+                if scope_type == "paper":
+                    paper_id = str(scope.get("paper_id") or "").strip()
+                    if paper_id:
+                        stmt = stmt.where(Paper.id == paper_id)
+                elif scope_type == "compare":
+                    scoped_paper_ids = [
+                        str(paper_id).strip()
+                        for paper_id in scope.get("paper_ids", [])
+                        if str(paper_id).strip()
+                    ]
+                    if scoped_paper_ids:
+                        stmt = stmt.where(Paper.id.in_(scoped_paper_ids))
+                elif scope_type == "knowledge_base":
+                    kb_id = str(scope.get("knowledge_base_id") or "").strip()
+                    if kb_id:
+                        stmt = stmt.where(Paper.knowledge_base_id == kb_id)
 
             # Apply filters
             if "status" in filter_dict:

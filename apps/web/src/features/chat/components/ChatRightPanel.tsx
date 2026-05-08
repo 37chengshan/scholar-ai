@@ -112,7 +112,7 @@ function VerificationCard({ activeRun, isZh }: { activeRun: AgentRun; isZh: bool
 
   return (
     <div className="border-t border-border/50 px-5 py-4">
-      <h3 className="text-xs font-semibold text-foreground/85">{isZh ? '验证结果' : 'Verification'}</h3>
+      <h3 className="text-xs font-semibold text-foreground/85 font-serif tracking-tight">{isZh ? '验证结果' : 'Verification'}</h3>
       <div className="mt-2 space-y-1 text-xs">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">{isZh ? '状态' : 'Status'}</span>
@@ -163,7 +163,7 @@ function ChatRightPanelBase({
       <div className="sticky top-0 z-10 border-b border-border/40 bg-background/78 px-5 py-4 backdrop-blur-md">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold tracking-tight">{isZh ? '研究过程' : 'Research Trace'}</h2>
+            <h2 className="text-sm font-semibold tracking-tight font-serif">{isZh ? '研究过程' : 'Research Trace'}</h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">{isZh ? '证据与推理' : 'Evidence and reasoning'}</p>
           </div>
           {streamState.streamStatus === 'streaming' ? (
@@ -196,7 +196,7 @@ function ChatRightPanelBase({
 
         {showRunMeta ? (
           <div className="border-b border-border/50 px-5 py-4">
-            <h3 className="text-xs font-semibold text-foreground/85">{isZh ? '运行摘要' : 'Run Summary'}</h3>
+            <h3 className="text-xs font-semibold text-foreground/85 font-serif tracking-tight">{isZh ? '运行摘要' : 'Run Summary'}</h3>
             <dl className="mt-2 space-y-1.5 text-xs">
               {summaryRows.map((row) => (
                 <div key={row.label} className="grid grid-cols-[1fr_auto] gap-2">
@@ -218,7 +218,7 @@ function ChatRightPanelBase({
 
         {timelineItems.length > 0 ? (
           <div className="border-t border-border/50 px-5 py-4">
-            <h3 className="mb-3 text-xs font-semibold text-foreground/85">{isZh ? '过程时间线' : 'Process'}</h3>
+            <h3 className="mb-3 text-xs font-semibold text-foreground/85 font-serif tracking-tight">{isZh ? '过程时间线' : 'Process'}</h3>
             <ExecutionTimeline items={timelineItems} collapsed />
           </div>
         ) : null}

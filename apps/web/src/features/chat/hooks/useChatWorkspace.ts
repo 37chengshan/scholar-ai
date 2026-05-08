@@ -80,6 +80,9 @@ export function useChatWorkspace() {
   const scopeState = useMemo(() => ({
     paperId: scope.type === 'single_paper' ? scope.id : null,
     kbId: scope.type === 'full_kb' ? scope.id : null,
+    comparePaperIds: scope.type === 'compare' && scope.id
+      ? scope.id.split(',').map((id) => id.trim()).filter(Boolean)
+      : [],
     scopeType: scope.type === 'error' ? null : scope.type,
     hasScopeError: scope.type === 'error',
   }), [scope.id, scope.type]);

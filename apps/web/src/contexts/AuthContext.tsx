@@ -17,6 +17,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useUserStore } from '@/stores/userStore';
 import * as authApi from '@/services/authApi';
 import type { User } from '@/types';
+import { AuthError } from '@/utils/apiClient';
 
 const AUTH_WARM_HINT_KEY = 'scholarai-auth-warm';
 const AUTH_WARM_COOKIE = 'authHint=1';
@@ -108,7 +109,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       setLoading(true);
-      const userData = await authApi.me();
+      let userData: User;
+      try {
+        userData = await authApi.me();
+      } catch (error) {
+        const shouldTryRefresh = error instanceof AuthError && hasWarmAuthHint();
+        if (!shouldTryRefresh) {
+          throw error;
+        }
+
+        await authApi.refresh();
+        userData = await authApi.me();
+      }
       if (requestVersion !== authRequestVersionRef.current) {
         return;
       }

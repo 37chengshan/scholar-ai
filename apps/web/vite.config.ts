@@ -3,6 +3,8 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
+const DEV_PROXY_UNAVAILABLE_HEADER = 'x-scholarai-dev-proxy-error'
+
 export default defineConfig({
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
@@ -29,6 +31,28 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/(?!v1)/, '/api/v1/'),
         cookiePathRewrite: {
           '*': '/',
+        },
+        configure: (proxy) => {
+          proxy.on('error', (_error, req, res) => {
+            if (!res || res.headersSent) {
+              return
+            }
+
+            const body = JSON.stringify({
+              error: {
+                title: 'Upstream Unavailable',
+                detail: `Development API proxy could not reach backend for ${req.url || 'unknown request'}`,
+                status: 503,
+                type: 'dev-proxy-upstream-unavailable',
+              },
+            })
+
+            res.writeHead(503, {
+              'Content-Type': 'application/json',
+              [DEV_PROXY_UNAVAILABLE_HEADER]: 'upstream-unavailable',
+            })
+            res.end(body)
+          })
         },
       },
     },

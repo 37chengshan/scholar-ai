@@ -33,7 +33,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
   return (
     <div className={clsx(
       'text-sm leading-relaxed',
-      'font-[var(--font-sans)]',
+      'font-[var(--font-serif)] editorial-reading-surface',
       className
     )}>
       <ReactMarkdown
@@ -100,7 +100,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
         th({ children, ...props }) {
           return (
             <th
-              className="bg-muted px-3 py-2 text-left font-semibold border-b border-border/50"
+              className="bg-muted px-3 py-2 text-left font-semibold border-b border-border/50 font-[var(--font-sans)]"
               {...props}
             >
               {children}
@@ -121,7 +121,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
         h1({ children, ...props }) {
           return (
             <h1
-              className="text-lg font-semibold font-[var(--font-serif)] mt-4 mb-2"
+              className="text-lg font-semibold font-[var(--font-serif)] mt-4 mb-2 font-serif tracking-tight"
               {...props}
             >
               {children}
@@ -131,7 +131,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
         h2({ children, ...props }) {
           return (
             <h2
-              className="text-base font-semibold font-[var(--font-serif)] mt-3 mb-2"
+              className="text-base font-semibold font-[var(--font-serif)] mt-3 mb-2 font-serif tracking-tight"
               {...props}
             >
               {children}
@@ -141,7 +141,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
         h3({ children, ...props }) {
           return (
             <h3
-              className="text-sm font-semibold mt-3 mb-1.5"
+              className="text-sm font-semibold mt-3 mb-1.5 font-serif tracking-tight"
               {...props}
             >
               {children}

@@ -42,17 +42,17 @@ export function NoteDetailCard({ result }: NoteDetailCardProps) {
           <Notebook className="w-4 h-4 text-primary" />
           <h4 className="text-sm font-semibold">{title}</h4>
         </div>
-        <div className="text-xs text-muted-foreground mt-1">
+        <div className="text-xs text-muted-foreground mt-1 font-sans">
           {isZh ? '创建于' : 'Created'} {formatDate(result.created_at)}
         </div>
       </div>
       <div className="p-3">
         {content ? (
-          <div className="text-sm prose prose-sm max-w-none">
+          <div className="text-sm prose prose-sm max-w-none editorial-reading-surface font-serif">
             <MarkdownRenderer content={content} />
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground italic">
+          <p className="text-xs text-muted-foreground italic font-sans">
             {isZh ? '笔记内容为空' : 'Note content is empty'}
           </p>
         )}

@@ -1,4 +1,4 @@
-import { MoreHorizontal, Download, Pencil, Trash2, FileText, Eye, TrendingUp, BookOpen, Layers, Brain } from "lucide-react";
+import { MoreHorizontal, Download, Pencil, Trash2, FileText, Layers, BookOpen } from "lucide-react";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import {
@@ -17,20 +17,11 @@ interface KnowledgeBaseCardProps {
   chunkCount: number;
   entityCount: number;
   updatedAt: string;
-  category?: string;
   onEnter: () => void;
   onImport: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
-
-const categoryConfig: Record<string, { icon: typeof Brain; label: string }> = {
-  "人工智能": { icon: Brain, label: "AI" },
-  "自然语言处理": { icon: FileText, label: "NLP" },
-  "计算机视觉": { icon: Eye, label: "CV" },
-  "机器学习": { icon: TrendingUp, label: "ML" },
-  "其他": { icon: BookOpen, label: "Other" },
-};
 
 function formatCount(count: number): string {
   if (count >= 1000) {
@@ -54,15 +45,11 @@ export function KnowledgeBaseCard({
   chunkCount,
   entityCount,
   updatedAt,
-  category,
   onEnter,
   onImport,
   onEdit,
   onDelete,
 }: KnowledgeBaseCardProps) {
-  const config = category ? (categoryConfig[category] || categoryConfig["其他"]) : categoryConfig["其他"];
-  const Icon = config.icon;
-
   return (
     <Card
       data-kb-id={id}
@@ -81,17 +68,12 @@ export function KnowledgeBaseCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
             <div className="flex-shrink-0 w-9 h-9 border border-border/70 bg-paper-2 flex items-center justify-center group-hover:border-primary/40 transition-colors">
-              <Icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+              <BookOpen className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
             </div>
             <div className="min-w-0">
               <h3 className="font-serif text-base font-semibold leading-tight text-foreground group-hover:text-primary transition-colors truncate">
                 {name}
               </h3>
-              {category && (
-                <span className="mt-1.5 inline-flex border border-border/70 bg-paper-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  {config.label} · {category}
-                </span>
-              )}
             </div>
           </div>
 
@@ -129,7 +111,7 @@ export function KnowledgeBaseCard({
       </CardHeader>
 
       <CardContent className="pb-3 pt-0 pl-5 pr-4">
-        <p className="text-sm text-muted-foreground font-medium line-clamp-2 leading-relaxed">
+        <p className="text-sm text-muted-foreground font-medium line-clamp-2 leading-relaxed font-sans">
           {description}
         </p>
       </CardContent>

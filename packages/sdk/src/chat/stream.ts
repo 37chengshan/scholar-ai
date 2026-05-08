@@ -20,6 +20,15 @@ export function buildChatStreamBody(params: ChatStreamParams): Record<string, un
       ...params.scope,
       // Keep canonical payload shape for backend contract.
       ...(params.scope.type === 'general'
+        ? { paper_id: undefined, knowledge_base_id: undefined, paper_ids: undefined }
+        : {}),
+      ...(params.scope.type === 'paper'
+        ? { knowledge_base_id: undefined, paper_ids: undefined }
+        : {}),
+      ...(params.scope.type === 'knowledge_base'
+        ? { paper_id: undefined, paper_ids: undefined }
+        : {}),
+      ...(params.scope.type === 'compare'
         ? { paper_id: undefined, knowledge_base_id: undefined }
         : {}),
     };

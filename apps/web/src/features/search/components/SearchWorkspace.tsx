@@ -31,6 +31,7 @@ export function SearchWorkspace() {
   const {
     query,
     setQuery,
+    debouncedQuery,
     submitSearch,
     results,
     loading,
@@ -115,13 +116,16 @@ export function SearchWorkspace() {
   }, [authorSearch.searchAuthors, query, workspace.activeSource]);
 
   useEffect(() => {
-    if (!query.trim() || workspace.activeSource === 'authors') {
+    const effectiveQuery = debouncedQuery.trim();
+    if (!effectiveQuery || workspace.activeSource === 'authors') {
       setLayeredEvidence(null);
       return;
     }
 
     let cancelled = false;
-    void searchEvidenceV3(query.trim(), 'fact', 10)
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void searchEvidenceV3(effectiveQuery, 'fact', 10, controller.signal)
       .then((data) => {
         if (!cancelled) {
           setLayeredEvidence(data);
@@ -132,11 +136,14 @@ export function SearchWorkspace() {
           setLayeredEvidence(null);
         }
       });
+    }, 250);
 
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearTimeout(timer);
     };
-  }, [query, workspace.activeSource]);
+  }, [debouncedQuery, workspace.activeSource]);
 
   const sources = useMemo(() => [
     {
@@ -285,7 +292,7 @@ export function SearchWorkspace() {
   }, [visibleResults]);
 
   return (
-    <section className="h-full flex font-sans bg-background text-foreground relative selection:bg-primary selection:text-primary-foreground" data-testid="search-workspace-root">
+    <section className="editorial-app-shell h-full flex bg-background text-foreground relative selection:bg-primary selection:text-primary-foreground" data-testid="search-workspace-root">
       <SearchSidebar
         activeSource={workspace.activeSource}
         setActiveSource={workspace.updateActiveSource}
@@ -395,7 +402,7 @@ export function SearchWorkspace() {
 
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
           <section className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5 font-serif tracking-tight">
               {labels.currentQuery}
             </h3>
             <div className="mt-1 font-serif text-xl leading-tight text-foreground line-clamp-3">
@@ -414,7 +421,7 @@ export function SearchWorkspace() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5 font-serif tracking-tight">
               <Database className="w-3 h-3" /> {labels.resultMix}
             </h3>
             {sourceSummaryRows.length > 0 ? (
@@ -447,7 +454,7 @@ export function SearchWorkspace() {
 
           {layeredEvidence ? (
             <section className="flex flex-col gap-3">
-              <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">
+              <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 font-serif tracking-tight">
                 {isZh ? '证据分层结果' : 'Layered Evidence'}
               </h3>
               <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -506,7 +513,7 @@ export function SearchWorkspace() {
           ) : null}
 
           <section className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5 font-serif tracking-tight">
               <Calendar className="w-3 h-3" /> {labels.yearCoverage}
             </h3>
             {yearSummaryRows.length > 0 ? (
@@ -526,7 +533,7 @@ export function SearchWorkspace() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5 font-serif tracking-tight">
               <Users className="w-3 h-3" /> {labels.topAuthors}
             </h3>
             {authorSummaryRows.length > 0 ? (

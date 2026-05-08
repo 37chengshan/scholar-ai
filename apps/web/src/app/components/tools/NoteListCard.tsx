@@ -51,7 +51,7 @@ export function NoteListCard({ result }: NoteListCardProps) {
               {note.title ?? (isZh ? '无标题' : 'Untitled')}
             </div>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-muted-foreground">{formatDate(note.created_at)}</span>
+              <span className="text-xs text-muted-foreground font-sans">{formatDate(note.created_at)}</span>
               {note.paper_ids && note.paper_ids.length > 0 && (
                 <Badge variant="outline" className="text-xs">
                   {note.paper_ids.length} {isZh ? '篇论文' : 'papers'}
@@ -62,7 +62,7 @@ export function NoteListCard({ result }: NoteListCardProps) {
         ))}
       </div>
       {notes.length === 0 && (
-        <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+        <div className="px-3 py-4 text-center text-xs text-muted-foreground font-sans">
           {isZh ? '没有找到笔记' : 'No notes found'}
         </div>
       )}

@@ -51,10 +51,12 @@ export function Settings() {
     { id: 'diagnostics' as const, label: labels.sections.diagnostics, icon: Activity },
   ]), [labels.sections]);
 
-  const handleLogout = async () => {
+  const handleLogout = async (options?: { silentSuccess?: boolean }) => {
     try {
       await logout();
-      toast.success(isZh ? '已登出' : 'Logged out successfully');
+      if (!options?.silentSuccess) {
+        toast.success(isZh ? '已登出' : 'Logged out successfully');
+      }
       navigate('/login');
     } catch {
       toast.error(isZh ? '登出失败' : 'Logout failed');
@@ -83,9 +85,13 @@ export function Settings() {
           />
         ) : null}
         {activeSection === 'display' ? (
-          <DisplaySection fontSize={fontSize} setFontSize={setFontSize} />
+          <DisplaySection
+            fontSize={fontSize}
+            setFontSize={setFontSize}
+            isZh={isZh}
+          />
         ) : null}
-        {activeSection === 'api' ? <ApiSection /> : null}
+        {activeSection === 'api' ? <ApiSection isZh={isZh} /> : null}
         {activeSection === 'diagnostics' ? <DiagnosticsSection /> : null}
         {activeSection === 'security' ? <SecuritySection isZh={isZh} onLogout={handleLogout} /> : null}
       </SettingsSectionLayout>

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildChatHref, navigateToChatWithHandoff, readPersistedChatHandoff } from './chatHandoff';
+import {
+  buildChatHref,
+  navigateToChatWithHandoff,
+  readPersistedChatHandoff,
+  shouldPreserveComposerDraftForHandoff,
+} from './chatHandoff';
 
 describe('chatHandoff', () => {
   beforeEach(() => {
@@ -20,7 +25,7 @@ describe('chatHandoff', () => {
       {
         origin: 'review',
         promptDraft: 'Check the weakly supported claim.',
-        evidence: [{ paperId: 'paper-1', claim: 'Weak claim' }],
+        evidence: [{ handoffId: 'paper-1::review::chunk-1::weak claim', paperId: 'paper-1', claim: 'Weak claim' }],
         returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
       },
     );
@@ -30,7 +35,7 @@ describe('chatHandoff', () => {
         handoff: {
           origin: 'review',
           promptDraft: 'Check the weakly supported claim.',
-          evidence: [{ paperId: 'paper-1', claim: 'Weak claim' }],
+          evidence: [{ handoffId: 'paper-1::review::chunk-1::weak claim', paperId: 'paper-1', claim: 'Weak claim' }],
           returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
         },
       },
@@ -43,5 +48,10 @@ describe('chatHandoff', () => {
         promptDraft: 'Check the weakly supported claim.',
       },
     });
+  });
+
+  it('preserves the composer draft when a fresh chat is opened from a handoff flow', () => {
+    expect(shouldPreserveComposerDraftForHandoff('?paperId=paper-1&handoff=1&new=1')).toBe(true);
+    expect(shouldPreserveComposerDraftForHandoff('?kbId=kb-1&new=1')).toBe(false);
   });
 });

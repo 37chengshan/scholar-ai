@@ -4,6 +4,7 @@ import { FixedSizeList, type ListChildComponentProps } from 'react-window';
 import { PaperListItem } from '@/app/components/PaperListItem';
 import { UnifiedEmptyState, UnifiedLoadingState } from '@/app/components/UnifiedFeedbackState';
 import type { KBPaperListItem } from '@/services/kbApi';
+import { buildFreshChatHref } from '@/features/chat/chatHandoff';
 
 const VIRTUALIZATION_THRESHOLD = 40;
 const PAPER_ROW_HEIGHT = 196;
@@ -17,6 +18,7 @@ interface PaperRowData {
 function PaperRow({ index, style, data }: ListChildComponentProps<PaperRowData>) {
   const paper = data.papers[index];
   const isHighlighted = paper.id === data.highlightedPaperId;
+  const subtitleParts = [paper.authors?.join('、'), paper.venue, paper.year ? String(paper.year) : null].filter(Boolean);
 
   return (
     <div style={style} className="box-border h-full px-1 py-2">
@@ -26,9 +28,9 @@ function PaperRow({ index, style, data }: ListChildComponentProps<PaperRowData>)
         <PaperListItem
           id={paper.id}
           title={paper.title}
-          authors={paper.authors?.join('、') || '未知作者'}
-          year={paper.year ? String(paper.year) : '未知年份'}
-          venue={paper.venue || '未标注来源'}
+          authors={subtitleParts[0] || '作者信息待补充'}
+          year={subtitleParts[2] || ''}
+          venue={subtitleParts[1] || ''}
           chunkCount={paper.chunkCount || 0}
           parseStatus={
             ['pending', 'processing', 'completed', 'failed'].includes(paper.status)
@@ -38,7 +40,7 @@ function PaperRow({ index, style, data }: ListChildComponentProps<PaperRowData>)
           entityCount={paper.entityCount || 0}
           onRead={() => data.navigate(`/read/${paper.id}`)}
           onNotes={() => data.navigate(`/notes?paperId=${paper.id}`)}
-          onQuery={(paperId) => data.navigate(`/chat?paperId=${paperId}`)}
+          onQuery={(paperId) => data.navigate(buildFreshChatHref({ paperId }))}
         />
       </div>
     </div>
@@ -114,6 +116,9 @@ export function KnowledgePapersPanel({ highlightedPaperId, papers, loading, onIm
   return (
     <div className="space-y-4">
       {papers.map((paper) => (
+        (() => {
+          const subtitleParts = [paper.authors?.join('、'), paper.venue, paper.year ? String(paper.year) : null].filter(Boolean);
+          return (
         <div
           key={paper.id}
           ref={paper.id === highlightedPaperId ? highlightedPaperRef : null}
@@ -122,9 +127,9 @@ export function KnowledgePapersPanel({ highlightedPaperId, papers, loading, onIm
           <PaperListItem
             id={paper.id}
             title={paper.title}
-            authors={paper.authors?.join('、') || '未知作者'}
-            year={paper.year ? String(paper.year) : '未知年份'}
-            venue={paper.venue || '未标注来源'}
+            authors={subtitleParts[0] || '作者信息待补充'}
+            year={subtitleParts[2] || ''}
+            venue={subtitleParts[1] || ''}
             chunkCount={paper.chunkCount || 0}
             parseStatus={
               ['pending', 'processing', 'completed', 'failed'].includes(paper.status)
@@ -134,9 +139,11 @@ export function KnowledgePapersPanel({ highlightedPaperId, papers, loading, onIm
             entityCount={paper.entityCount || 0}
             onRead={() => navigate(`/read/${paper.id}`)}
             onNotes={() => navigate(`/notes?paperId=${paper.id}`)}
-            onQuery={(paperId) => navigate(`/chat?paperId=${paperId}`)}
+            onQuery={(paperId) => navigate(buildFreshChatHref({ paperId }))}
           />
         </div>
+          );
+        })()
       ))}
     </div>
   );

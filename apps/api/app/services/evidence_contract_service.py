@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -92,3 +93,131 @@ def load_chunk_index() -> dict[str, dict[str, Any]]:
 
 def get_evidence_source_payload(source_chunk_id: str) -> dict[str, Any] | None:
     return load_chunk_index().get(source_chunk_id)
+
+
+_PAGE_LINE_RE = re.compile(r"^\[Page:(?P<page>\d+)\]\s*$", re.IGNORECASE)
+
+
+def _extract_page_num_from_snapshot_text(text: str) -> int | None:
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        match = _PAGE_LINE_RE.match(line)
+        if match:
+            try:
+                return int(match.group("page"))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _normalize_snapshot_text(text: str) -> str:
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            continue
+        if line.startswith("Claim: "):
+            continue
+        if line.startswith("Paper: "):
+            continue
+        if line.startswith("Page: "):
+            continue
+        if line.startswith("Section: "):
+            continue
+        if line.startswith("Comment: "):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def find_best_evidence_source_payload(
+    *,
+    source_chunk_id: str | None = None,
+    paper_id: str | None = None,
+    section_path: str | None = None,
+    page_num: int | None = None,
+    text: str | None = None,
+) -> dict[str, Any] | None:
+    """Best-effort canonical source resolver for legacy note/review payloads.
+
+    Older persisted evidence blocks may carry Milvus/internal numeric ids instead
+    of stable `chunk_*` ids. When that happens, recover a canonical payload by
+    matching the surrounding paper/section/page/text context against the chunk
+    index built from artifacts.
+    """
+    if source_chunk_id:
+        direct = get_evidence_source_payload(str(source_chunk_id))
+        if direct:
+            return direct
+
+    normalized_paper = str(paper_id or "").strip()
+    normalized_section = str(section_path or "").strip().lower()
+    raw_text = str(text or "").strip()
+    normalized_text = _normalize_snapshot_text(raw_text)
+    normalized_page = page_num if isinstance(page_num, int) and page_num > 0 else None
+    if normalized_page is None and raw_text:
+        normalized_page = _extract_page_num_from_snapshot_text(raw_text)
+
+    if not (normalized_paper or normalized_section or normalized_text or normalized_page):
+        return None
+
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    for payload in load_chunk_index().values():
+        score = 0
+
+        payload_paper = str(payload.get("paper_id") or "").strip()
+        payload_section = str(payload.get("section_path") or "").strip().lower()
+        payload_page = payload.get("page_num")
+        payload_content = str(
+            payload.get("content")
+            or payload.get("quote_text")
+            or payload.get("anchor_text")
+            or ""
+        ).strip()
+
+        if normalized_paper:
+            if payload_paper != normalized_paper:
+                continue
+            score += 8
+
+        if normalized_section:
+            if payload_section == normalized_section:
+                score += 4
+            elif payload_section and (
+                normalized_section in payload_section or payload_section in normalized_section
+            ):
+                score += 2
+
+        if normalized_page and isinstance(payload_page, int):
+            if payload_page == normalized_page:
+                score += 3
+            elif abs(payload_page - normalized_page) == 1:
+                score += 1
+
+        if normalized_text and payload_content:
+            if normalized_text == payload_content:
+                score += 8
+            elif normalized_text in payload_content or payload_content in normalized_text:
+                score += 6
+            else:
+                left = normalized_text[:160]
+                right = payload_content[:160]
+                if left and right and (left in right or right in left):
+                    score += 4
+
+        if score > 0:
+            candidates.append((score, payload))
+
+    if not candidates:
+        return None
+
+    candidates.sort(
+        key=lambda item: (
+            item[0],
+            len(str(item[1].get("content") or item[1].get("quote_text") or "")),
+        ),
+        reverse=True,
+    )
+    return candidates[0][1]

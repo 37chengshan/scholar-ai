@@ -20,10 +20,12 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { Logo } from "./landing/Logo";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
-import { Sheet, SheetContent } from "./ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./ui/sheet";
 import { useSessions } from "@/app/hooks/useSessions";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
+import { getKnowledgeBaseDisplayMetadata } from "@/app/lib/knowledgeBaseDisplay";
 import type { ChatSession } from "@/app/hooks/useSessions";
+import { applyScopeMetadataToSearchParams } from "@/features/chat/hooks/chatScopeQuery";
 
 type WorkspaceItem = {
   to: string;
@@ -130,7 +132,7 @@ const LEFT_SIDEBAR_STORAGE_KEY = "scholarai-left-sidebar-collapsed";
 
 export function Layout() {
   const { language } = useLanguage();
-  const { logout, user } = useAuth();
+  const { logout, user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -140,8 +142,11 @@ export function Layout() {
   const currentQuery = new URLSearchParams(location.search);
   const activeSessionId = currentQuery.get("session");
 
-  const { sessions, currentSession, loading: sessionsLoading } = useSessions();
-  const { knowledgeBases } = useKnowledgeBases({ limit: 5, sortBy: "updated" });
+  const { sessions, currentSession, loading: sessionsLoading } = useSessions({
+    enabled: isAuthenticated,
+    loadMessages: false,
+  });
+  const { knowledgeBases } = useKnowledgeBases({ limit: 5, sortBy: "updated", enabled: isAuthenticated });
 
   const sortedSessions = useMemo(
     () =>
@@ -186,7 +191,13 @@ export function Layout() {
   };
 
   const handleOpenSession = (sessionId: string) => {
-    navigate(`/chat?session=${sessionId}`);
+    const session = sessions.find((item) => item.id === sessionId);
+    const params = applyScopeMetadataToSearchParams(
+      new URLSearchParams(),
+      (session?.metadata as Record<string, unknown> | null) ?? undefined,
+    );
+    params.set('session', sessionId);
+    navigate(`/chat?${params.toString()}`);
     setMobileMenuOpen(false);
   };
 
@@ -413,36 +424,39 @@ export function Layout() {
               </div>
             ) : null}
             <div className="space-y-0.5">
-              {knowledgeBases.slice(0, 3).map((kb) => (
-                <button
-                  key={kb.id}
-                  type="button"
-                  onClick={() => {
-                    navigate(`/knowledge-bases/${kb.id}`);
-                    setMobileMenuOpen(false);
-                  }}
-                  title={kb.name}
-                  className={clsx(
-                    "group flex w-full text-left transition-colors",
-                    leftCollapsed
-                      ? "h-10 items-center justify-center rounded-2xl border border-transparent px-0 py-0"
-                      : "items-start gap-2 border-l border-transparent px-0 py-2 pl-3 hover:border-border/80",
-                    leftCollapsed && "hover:border-border/80 hover:bg-background",
-                  )}
-                >
-                  <BookOpen className={clsx("h-3.5 w-3.5 shrink-0 text-foreground/55 group-hover:text-foreground/70 transition-colors", !leftCollapsed && "mt-0.5")} />
-                  {!leftCollapsed ? (
-                    <div className="min-w-0">
-                      <div className="truncate text-[11.5px] font-medium text-foreground">
-                        {kb.name}
+              {knowledgeBases.slice(0, 3).map((kb) => {
+                const display = getKnowledgeBaseDisplayMetadata(kb);
+                return (
+                  <button
+                    key={kb.id}
+                    type="button"
+                    onClick={() => {
+                      navigate(`/knowledge-bases/${kb.id}`);
+                      setMobileMenuOpen(false);
+                    }}
+                    title={display.displayName}
+                    className={clsx(
+                      "group flex w-full text-left transition-colors",
+                      leftCollapsed
+                        ? "h-10 items-center justify-center rounded-2xl border border-transparent px-0 py-0"
+                        : "items-start gap-2 border-l border-transparent px-0 py-2 pl-3 hover:border-border/80",
+                      leftCollapsed && "hover:border-border/80 hover:bg-background",
+                    )}
+                  >
+                    <BookOpen className={clsx("h-3.5 w-3.5 shrink-0 text-foreground/55 group-hover:text-foreground/70 transition-colors", !leftCollapsed && "mt-0.5")} />
+                    {!leftCollapsed ? (
+                      <div className="min-w-0">
+                        <div className="truncate text-[11.5px] font-medium text-foreground">
+                          {display.displayName}
+                        </div>
+                        <div className="mt-1 text-[10px] text-muted-foreground">
+                          {kb.paperCount}{isZh ? " 篇论文" : " papers"}
+                        </div>
                       </div>
-                      <div className="mt-1 text-[10px] text-muted-foreground">
-                        {kb.paperCount}{isZh ? " 篇论文" : " papers"}
-                      </div>
-                    </div>
-                  ) : null}
-                </button>
-              ))}
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           </section>
         )}
@@ -528,6 +542,10 @@ export function Layout() {
 
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <SheetContent side="left" className="w-[292px] border-r border-border/60 bg-paper-2 p-0">
+          <SheetTitle className="sr-only">{isZh ? "移动导航菜单" : "Mobile navigation menu"}</SheetTitle>
+          <SheetDescription className="sr-only">
+            {isZh ? "打开工作区导航、最近会话、知识库和账号操作。" : "Open workspace navigation, recent threads, knowledge bases, and account actions."}
+          </SheetDescription>
           {SidebarContent}
         </SheetContent>
       </Sheet>
