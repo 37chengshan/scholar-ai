@@ -8,7 +8,7 @@
  * - Real API integration via kbApi
  * - Create/delete operations
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { kbApi, KnowledgeBase, KBListParams, KBCreateData } from '@/services/kbApi';
 
 interface UseKnowledgeBasesParams extends KBListParams {
@@ -41,6 +41,7 @@ export function useKnowledgeBases(params?: UseKnowledgeBasesParams): UseKnowledg
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const fetchRequestIdRef = useRef(0);
 
   const fetchKBs = useCallback(async (): Promise<void> => {
     if (!enabled) {
@@ -53,17 +54,26 @@ export function useKnowledgeBases(params?: UseKnowledgeBasesParams): UseKnowledg
 
     setLoading(true);
     setError(null);
+    const requestId = ++fetchRequestIdRef.current;
 
     try {
       const response = await kbApi.list({ search, category, sortBy, limit, offset });
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
       setKnowledgeBases(response.knowledgeBases || []);
       setTotal(response.total || 0);
     } catch (err: any) {
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
       setError(err.message || '网络错误');
       setKnowledgeBases([]);
       setTotal(0);
     } finally {
-      setLoading(false);
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [enabled, search, category, sortBy, limit, offset]);
 
@@ -86,6 +96,8 @@ export function useKnowledgeBases(params?: UseKnowledgeBasesParams): UseKnowledg
       const created = await kbApi.create(data);
       setKnowledgeBases(prev => [...prev, created]);
       setTotal(prev => prev + 1);
+      setLoading(false);
+      fetchRequestIdRef.current += 1;
       return created;
     } catch (err: any) {
       console.error('Create KB failed:', err);
@@ -102,6 +114,8 @@ export function useKnowledgeBases(params?: UseKnowledgeBasesParams): UseKnowledg
 
       setKnowledgeBases(prev => prev.filter(kb => kb.id !== id));
       setTotal(prev => Math.max(0, prev - 1));
+      setLoading(false);
+      fetchRequestIdRef.current += 1;
       return true;
     } catch (err: any) {
       console.error('Delete KB failed:', err);

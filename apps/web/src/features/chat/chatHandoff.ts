@@ -47,7 +47,7 @@ export function shouldPreserveComposerDraftForHandoff(search: string): boolean {
   return params.get('handoff') === '1';
 }
 
-function buildHandoffChatHref(scope: ChatScopeParams): string {
+export function buildHandoffChatHref(scope: ChatScopeParams): string {
   const href = buildChatHref(scope);
   const [pathname, search = ''] = href.split('?');
   const params = new URLSearchParams(search);

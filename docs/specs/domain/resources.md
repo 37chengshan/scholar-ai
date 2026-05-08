@@ -49,6 +49,8 @@
 - EvidenceBundle 由 Chunk 聚合而成，可关联 table/figure/caption 与指标证据槽位。
 - Note 资源允许通过 `content` 兼容旧数据，但结构化真源固定为 `contentDoc`；`linkedEvidence[]` 是沉淀后的 canonical evidence 数组。
 - EvidenceSourceView 由 Chunk/索引产物投影生成，必须提供 `citation_jump_url` 作为统一跳转字段，并兼容回跳到 Read 页面定位参数（`paper_id`、`page_num`、`source_chunk_id`）。
+- EvidenceSourceView 的解析优先级固定为：先读当前用户可访问的 `Chunk` / `PaperChunk` SQL 真源，再回退到 artifact payload；不得把 artifact fallback 反向覆盖已存在的 SQL chunk truth。
+- EvidenceSourceView 使用的 artifact fallback 根路径必须同时兼容仓库工作区与容器镜像布局；允许通过 `SCHOLAR_AI_ROOT` 覆盖，但默认实现不得硬编码固定父目录层级。
 - EvidenceNote 是 Note 的受控创建路径之一，必须绑定 `paper_id` 与 `source_chunk_id`，并把 EvidenceBlock 2.0 写入 `linkedEvidence[]`，不得创建并行笔记模型。
 - ClaimVerificationReport 绑定单次 RAG 响应，引用 EvidenceBundle/Chunk 作为 claim 证据来源。
 - TruthfulnessReport 可绑定单次 RAG/Compare/Review 段落响应，最小字段为 `totalClaims`、四档 support count、`unsupportedClaimRate`、`answerMode` 与 `results[]`。

@@ -83,17 +83,70 @@ jobs:
 
       - name: Run DB migrations
         working-directory: apps/api
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5432
+          TEST_DB_USER: test_user
+          TEST_DB_PASSWORD: test_password
+          TEST_DB_NAME: scholar_ai_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test-secret-key-for-ci
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: scholarai123
+          OPENAI_API_KEY: sk-test
+          ANTHROPIC_API_KEY: sk-ant-test
+          ZHIPU_API_KEY: sk-zhipu-test
         run: |
-          python -m alembic upgrade head || echo "Migration failed (non-fatal in CI)"
+          set -euo pipefail
+          PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test -c "SELECT 1;"
+          PGPASSWORD=test_password psql -h localhost -U test_user -d scholar_ai_test <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN
+              CREATE ROLE root LOGIN PASSWORD 'test_password';
+            END IF;
+          END
+          $$;
+          SQL
+          if ! alembic upgrade heads; then
+            echo "Alembic bootstrap failed on clean CI DB; falling back to SQLAlchemy metadata bootstrap"
+            python -c "import asyncio; from app.database import ensure_non_production_tables; asyncio.run(ensure_non_production_tables((\"roles\", \"users\", \"user_roles\", \"refresh_tokens\", \"knowledge_bases\", \"papers\", \"paper_chunks\", \"reading_progress\", \"sessions\", \"chat_messages\", \"knowledge_base_papers\", \"import_batches\", \"import_jobs\", \"review_drafts\", \"review_runs\")))"
+          fi
 
       - name: Ensure E2E test user
         working-directory: apps/api
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test-secret-key-for-ci
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: scholarai123
+          OPENAI_API_KEY: sk-test
+          ANTHROPIC_API_KEY: sk-ant-test
+          ZHIPU_API_KEY: sk-zhipu-test
         run: |
-          python scripts/ensure_e2e_test_user.py || echo "User already exists"
+          python scripts/ensure_e2e_test_user.py
 
       - name: Start backend
         working-directory: apps/api
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test-secret-key-for-ci
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: scholarai123
+          ZHIPU_API_KEY: sk-zhipu-test
+          OPENAI_API_KEY: sk-test
+          ANTHROPIC_API_KEY: sk-ant-test
         run: |
+          set -euo pipefail
           uvicorn app.main:app --host 0.0.0.0 --port 8000 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:8000/health/live && break
@@ -105,17 +158,6 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-
-      - name: Start frontend dev server
-        working-directory: apps/web
-        run: npm run dev &
-
-      - name: Wait for frontend
-        run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:5173 && break
-            sleep 2
-          done
 
       - name: Run E2E critical suite
         working-directory: apps/web

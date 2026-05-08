@@ -1,12 +1,34 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[4]
+
+def _resolve_project_root(file_path: Path) -> Path:
+    override = os.getenv("SCHOLAR_AI_ROOT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+
+    resolved = file_path.resolve()
+    for candidate in resolved.parents:
+        if candidate.name == "app" and candidate.parent.name == "api" and candidate.parent.parent.name == "apps":
+            return candidate.parent.parent.parent
+        if candidate.name == "api" and candidate.parent.name == "apps":
+            return candidate.parent.parent
+        if candidate.name == "app" and (candidate / "main.py").exists():
+            return candidate.parent
+        if (candidate / "artifacts").exists():
+            return candidate
+
+    return resolved.parents[min(2, len(resolved.parents) - 1)]
+
+
+ROOT = _resolve_project_root(Path(__file__))
+ARTIFACTS_ROOT = ROOT / "artifacts"
 
 
 def build_citation_jump_url(
@@ -22,7 +44,7 @@ def build_citation_jump_url(
 @lru_cache(maxsize=1)
 def load_chunk_index() -> dict[str, dict[str, Any]]:
     idx: dict[str, dict[str, Any]] = {}
-    papers_root = ROOT / "artifacts" / "papers"
+    papers_root = ARTIFACTS_ROOT / "papers"
     if not papers_root.exists():
         return idx
 

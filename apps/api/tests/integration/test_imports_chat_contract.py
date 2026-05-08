@@ -20,6 +20,7 @@ from app.api.imports.batches import upload_batch_local_files
 from app.api.imports.sources import ResolveBatchRequest, resolve_batch_sources
 from app.api.session import get_session_messages
 from app.services.source_resolver_service import BatchResolveItem
+from app.services.evidence_contract_service import _resolve_project_root
 
 
 @pytest.mark.asyncio
@@ -173,7 +174,7 @@ class _MessageStore:
         self._messages = []
         self._next_id = 1
 
-    async def save_message(self, session_id, role, content, tool_name=None, tool_params=None):
+    async def save_message(self, session_id, role, content, tool_name=None, tool_params=None, **_kwargs):
         mid = f"m-{self._next_id}"
         self._next_id += 1
         self._messages.append(
@@ -189,7 +190,7 @@ class _MessageStore:
         )
         return mid
 
-    async def update_message(self, message_id, content):
+    async def update_message(self, message_id, content, **_kwargs):
         for item in self._messages:
             if item["id"] == message_id:
                 item["content"] = content
@@ -216,22 +217,23 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
     final_answer = "final answer"
     assistant_id_holder: dict[str, str] = {}
     tool_payload = '{"id":"tool-1","tool":"rag_search","success":true}'
+    session_id = "11111111-1111-1111-1111-111111111111"
 
     async def _mock_stream():
-        assistant_id = await store.save_message("session-1", "assistant", "")
+        assistant_id = await store.save_message(session_id, "assistant", "")
         assistant_id_holder["id"] = assistant_id
         await store.save_message(
-            "session-1",
+            session_id,
             "tool",
             tool_payload,
             tool_name="rag_search",
-            tool_params={"query": "hello"},
+            tool_params={"query": "Explain the paper"},
         )
         await store.update_message(assistant_id, final_answer)
 
         yield (
             "event: session_start\n"
-            f'data: {{"message_id":"{assistant_id}","session_id":"session-1","task_type":"general"}}\n\n'
+            f'data: {{"message_id":"{assistant_id}","session_id":"{session_id}","task_type":"general"}}\n\n'
         )
         yield (
             "event: message\n"
@@ -243,12 +245,13 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
         )
 
     with patch("app.api.chat.message_service", store), \
-         patch("app.api.chat.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id="session-1", user_id="user-1"))), \
+         patch("app.api.chat.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id=session_id, user_id="user-1"))), \
          patch("app.api.chat.complexity_router.route_async", AsyncMock(return_value={"complexity": "simple", "method": "rules", "confidence": 1.0})), \
-         patch("app.api.chat.chat_orchestrator.execute_with_streaming", return_value=_mock_stream()):
+         patch("app.api.chat.chat_orchestrator.execute_with_streaming", return_value=_mock_stream()), \
+         patch("app.api.chat.chat_orchestrator._safe_update_assistant_message", AsyncMock()):
 
         response = await chat_stream(
-            request=SimpleNamespace(session_id="session-1", message="hello", context=None, mode="auto", scope=None),
+            request=SimpleNamespace(session_id=session_id, message="Explain the paper", context=None, mode="auto", scope=None),
             http_request=_RequestStub(),
             user_id="user-1",
         )
@@ -262,10 +265,10 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
     assert "event: done" in stream_text
     assert f'"message_id": "{assistant_id}"' in stream_text
 
-    with patch("app.api.session.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id="session-1", user_id="user-1"))), \
+    with patch("app.api.session.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id=session_id, user_id="user-1"))), \
          patch("app.services.message_service.message_service", store):
         msg_response = await get_session_messages(
-            session_id="session-1",
+            session_id=session_id,
             user_id="user-1",
             limit=50,
             offset=0,
@@ -274,7 +277,7 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
 
     assert msg_response.success is True
     assert msg_response.data["total"] == 3
-    assert msg_response.data["session_id"] == "session-1"
+    assert msg_response.data["session_id"] == session_id
     assert msg_response.data["limit"] == 50
     assert msg_response.data["offset"] == 0
     assert msg_response.data["order"] == "desc"
@@ -304,3 +307,21 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
         message["role"] == "assistant" and not message["content"]
         for message in msg_response.data["messages"]
     )
+
+
+def test_resolve_project_root_handles_repo_and_container_layouts(tmp_path):
+    repo_root = tmp_path / "repo"
+    local_service = repo_root / "apps" / "api" / "app" / "services" / "evidence_contract_service.py"
+    local_service.parent.mkdir(parents=True)
+    local_service.write_text("", encoding="utf-8")
+    (repo_root / "artifacts").mkdir()
+
+    container_root = tmp_path / "container"
+    container_service = container_root / "app" / "services" / "evidence_contract_service.py"
+    container_service.parent.mkdir(parents=True)
+    container_service.write_text("", encoding="utf-8")
+    (container_root / "app" / "main.py").write_text("", encoding="utf-8")
+    (container_root / "artifacts").mkdir()
+
+    assert _resolve_project_root(local_service) == repo_root
+    assert _resolve_project_root(container_service) == container_root

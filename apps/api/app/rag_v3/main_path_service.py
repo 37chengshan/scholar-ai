@@ -30,6 +30,7 @@ from app.rag_v3.schemas import EvidenceBlock, EvidenceCandidate, EvidencePack
 from app.services.paper_display_metadata import sanitize_paper_display_metadata
 from app.utils.zhipu_client import ZhipuLLMClient
 from app.services.evidence_contract_service import (
+    ARTIFACTS_ROOT,
     build_citation_jump_url,
     get_evidence_source_payload,
 )
@@ -38,7 +39,7 @@ from app.services.truthfulness_service import get_truthfulness_service
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-ARTIFACT_ROOT = Path(__file__).resolve().parents[4] / "artifacts" / "papers"
+ARTIFACT_ROOT = ARTIFACTS_ROOT / "papers"
 RUNTIME_PROFILE = get_active_rag_runtime_profile()
 _QUERY_PREFIX_PATTERN = re.compile(r"^\s*(再次回答|继续分析|继续回答|继续|重新回答|重新分析|再回答一遍|重新来过)\s*[:：,，-]?\s*", re.IGNORECASE)
 _CONTRIBUTION_QUERY_PATTERN = re.compile(

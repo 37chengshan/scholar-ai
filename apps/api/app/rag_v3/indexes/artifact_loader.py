@@ -14,8 +14,9 @@ from typing import Any
 from app.rag_v3.indexes.paper_index import PaperSummaryIndex
 from app.rag_v3.indexes.section_index import SectionSummaryIndex
 from app.rag_v3.schemas import PaperSummaryArtifact, SectionSummaryArtifact
+from app.services.evidence_contract_service import ARTIFACTS_ROOT
 
-_ARTIFACT_ROOT_DEFAULT = Path(__file__).resolve().parents[6] / "artifacts" / "papers"
+_ARTIFACT_ROOT_DEFAULT = ARTIFACTS_ROOT / "papers"
 
 
 def _read_json(path: Path) -> Any:

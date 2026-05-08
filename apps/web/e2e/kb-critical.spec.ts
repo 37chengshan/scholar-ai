@@ -17,9 +17,21 @@ test.describe('Critical E2E - Knowledge Base', () => {
     await page.fill('#kb-name', kbName);
     await page.fill('#kb-desc', 'Critical E2E knowledge base creation');
 
+    const createResponsePromise = page.waitForResponse((res) => (
+      res.url().includes('/api/v1/knowledge-bases')
+      && res.request().method() === 'POST'
+    ));
     await page.locator('div[role="dialog"] button:has-text("创建知识库")').click();
 
-    const kbCard = page.locator('[data-kb-id]').filter({ hasText: kbName }).first();
-    await expect(kbCard).toBeVisible({ timeout: 30000 });
+    const createResponse = await createResponsePromise;
+    expect(createResponse.status()).toBe(201);
+    const payload = await createResponse.json();
+    const createdKbId = payload?.data?.id;
+    expect(createdKbId).toBeTruthy();
+
+    const createdCard = page.locator(`[data-kb-id="${createdKbId}"]`).first();
+    await expect(createdCard).toBeVisible({ timeout: 30000 });
+    await createdCard.click();
+    await expect(page).toHaveURL(new RegExp(`/knowledge-bases/${createdKbId}`), { timeout: 15000 });
   });
 });

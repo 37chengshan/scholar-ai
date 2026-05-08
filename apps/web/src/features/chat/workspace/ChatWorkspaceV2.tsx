@@ -44,6 +44,7 @@ import { MessageFeed } from '@/features/chat/components/message-feed/MessageFeed
 import { ComposerInput } from '@/features/chat/components/composer-input/ComposerInput';
 import { ChatRightPanel } from '@/features/chat/components/ChatRightPanel';
 import { RunHeader } from '@/features/chat/components/workbench/RunHeader';
+import { SessionSidebar } from '@/features/chat/components/session-sidebar/SessionSidebar';
 import { WorkflowShell } from '@/features/workflow/components/WorkflowShell';
 import { usePinnedBottom } from '@/features/chat/hooks/usePinnedBottom';
 import { useChatWorkspace } from '@/features/chat/hooks/useChatWorkspace';
@@ -721,6 +722,33 @@ export function ChatWorkspaceV2() {
 
   return (
     <div className="editorial-app-shell relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
+      <div className="shrink-0">
+        <SessionSidebar
+          sessions={filteredSessions}
+          currentSessionId={currentSession?.id ?? null}
+          loading={loading}
+          labels={{
+            terminal: t.terminal,
+            sessions: t.sessions,
+            search: t.search,
+            history: t.history,
+            newChat: t.newChat,
+            noSearchResults: isZh ? '未找到匹配会话' : 'No matching sessions',
+            messageSuffix: isZh ? '条消息' : 'messages',
+          }}
+          searchValue={sessionSearchQuery}
+          isZh={isZh}
+          onSearchChange={setSessionSearchQuery}
+          onCreateSession={() => {
+            void handleNewSession();
+          }}
+          onSwitchSession={(sessionId) => {
+            void handleSwitchSession(sessionId);
+          }}
+          onDeleteSession={handleDeleteSession}
+        />
+      </div>
+
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <div className="shrink-0 border-b border-border/30 bg-background/60 backdrop-blur-sm">
           <WorkflowShell />

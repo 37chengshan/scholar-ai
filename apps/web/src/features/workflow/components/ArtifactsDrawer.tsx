@@ -15,7 +15,7 @@ export function ArtifactsDrawer() {
   return (
     <aside className="fixed right-[320px] top-14 z-40 h-[calc(100vh-3.5rem)] w-[320px] border-l border-zinc-200 bg-white p-4 shadow-lg">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold font-serif tracking-tight">{isZh ? '输出与证据' : 'Outputs & Evidence'}</h3>
+        <h3 className="text-sm font-semibold font-serif tracking-tight">{isZh ? '产物与证据' : 'Artifacts & Evidence'}</h3>
         <button
           className="text-xs text-zinc-500 hover:text-zinc-800"
           onClick={() => workflowActions.setArtifactsDrawer(false)}

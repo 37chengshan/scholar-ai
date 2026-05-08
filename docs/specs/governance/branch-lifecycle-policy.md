@@ -40,6 +40,7 @@
 | feat/plan-b-backend-rag-rebuild-20260418 | merged | ai-runtime | 2026-04-18 | Plan B merged into PR23 | - |
 | feat/pr8-rag-qa-contract-upgrade | superseded | ai-runtime | 2026-04-18 | split into PlanB waves | feat/plan-b-backend-rag-rebuild-20260418 |
 | feat/pr6-contracts-kb-chat | superseded | app-foundation | 2026-04-18 | superseded by PR5 shared contract plan | PR5_共享契约收口_与_前端工作台可用性方案 |
+| docs/phase2-controlled-beta-ready | review-ready | product-engineering | 2026-05-08 | PR72 open: Phase 2 controlled-beta-ready gate backfill and governance cleanup ready for review | - |
 
 ## Required Updates
 
