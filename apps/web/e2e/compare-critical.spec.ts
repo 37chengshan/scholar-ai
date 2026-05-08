@@ -10,6 +10,8 @@ test.describe('Critical E2E - Compare', () => {
       title,
       authors: ['Tester'],
       year,
+      chunkCount: 2,
+      evidenceReady: true,
       status: 'completed',
       created_at: '2026-04-28T00:00:00Z',
       updated_at: '2026-04-28T00:00:00Z',
@@ -111,13 +113,13 @@ test.describe('Critical E2E - Compare', () => {
     await page.waitForURL(/\/(dashboard|chat|knowledge-bases)/, { timeout: 20000 });
     await page.goto('/compare?paper_ids=paper-1,paper-2');
 
-    await expect(page.getByText('Paper One')).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('Paper Two')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Paper One').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Paper Two').first()).toBeVisible({ timeout: 15000 });
 
     await page.getByRole('button', { name: /生成对比表|Generate Compare Table/i }).click();
 
     await expect(page.getByText('Retriever-augmented transformer')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Hybrid dense + sparse retrieval')).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('button', { name: /带入 Chat 继续问|Continue in Chat/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /继续追问|Continue in Chat/i })).toBeVisible();
   });
 });
