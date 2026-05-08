@@ -119,6 +119,19 @@ jobs:
             python -c "import asyncio; from app.database import ensure_non_production_tables; asyncio.run(ensure_non_production_tables((\"roles\", \"users\", \"user_roles\", \"refresh_tokens\", \"knowledge_base_papers\", \"import_batches\", \"import_jobs\")))"
           fi
 
+      - name: Ensure E2E test user
+        working-directory: apps/api
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/scholar_ai_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test-secret-key-for-ci
+          OPENAI_API_KEY: sk-test
+          ANTHROPIC_API_KEY: sk-ant-test
+          ZHIPU_API_KEY: sk-zhipu-test
+        run: |
+          python scripts/ensure_e2e_test_user.py
+
       - name: Start backend
         working-directory: apps/api
         env:

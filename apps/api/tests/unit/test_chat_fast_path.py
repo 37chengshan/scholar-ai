@@ -206,13 +206,25 @@ async def test_paper_scope_query_does_not_use_fast_path():
 async def test_chat_stream_persists_single_paper_scope_metadata_on_existing_session():
     chat_api = _load_chat_module()
 
-    async def _mock_orchestrator_stream():
-        yield 'event: session_start\ndata: {"session_id":"session-1","task_type":"general","message_id":"m1"}\n\n'
-        yield 'event: message\ndata: {"delta":"orchestrator","seq":1,"message_id":"m1"}\n\n'
-        yield 'event: done\ndata: {"finish_reason":"stop","message_id":"m1"}\n\n'
-
-    mock_execute_with_streaming = Mock(return_value=_mock_orchestrator_stream())
     mock_update_session = AsyncMock()
+    mock_create_assistant_message = AsyncMock(return_value="assistant-msg-id")
+    mock_safe_update_assistant_message = AsyncMock()
+    mock_build_answer_contract_payload = AsyncMock(
+        return_value={
+            "answer": "orchestrator",
+            "response_type": "rag",
+            "answer_mode": "citation_backed",
+            "claims": [],
+            "citations": [],
+            "evidence_blocks": [],
+            "quality": None,
+            "task_family": "single_paper_fact",
+            "execution_mode": "local_evidence",
+            "truthfulness_required": True,
+            "trace_id": "trace-1",
+            "run_id": "run-1",
+        }
+    )
 
     with patch.object(chat_api.session_manager, "get_session", AsyncMock(return_value=type("S", (), {"id": "session-1", "user_id": "user-1"})())), patch.object(
         chat_api.session_manager,
@@ -224,8 +236,16 @@ async def test_chat_stream_persists_single_paper_scope_metadata_on_existing_sess
         AsyncMock(return_value={"complexity": "simple", "method": "rule", "confidence": 0.95}),
     ), patch.object(chat_api.message_service, "save_message", AsyncMock(return_value="user-msg-id")), patch.object(
         chat_api.chat_orchestrator,
-        "execute_with_streaming",
-        mock_execute_with_streaming,
+        "_create_assistant_message",
+        mock_create_assistant_message,
+    ), patch.object(
+        chat_api,
+        "build_answer_contract_payload",
+        mock_build_answer_contract_payload,
+    ), patch.object(
+        chat_api.chat_orchestrator,
+        "_safe_update_assistant_message",
+        mock_safe_update_assistant_message,
     ):
         response = await chat_api.chat_stream(
             request=ChatStreamRequest(
@@ -240,6 +260,9 @@ async def test_chat_stream_persists_single_paper_scope_metadata_on_existing_sess
 
     assert any(name == "message" for name, _ in events)
     mock_update_session.assert_awaited_once()
+    mock_create_assistant_message.assert_awaited_once()
+    mock_build_answer_contract_payload.assert_awaited_once()
+    mock_safe_update_assistant_message.assert_awaited_once()
     update_args = mock_update_session.await_args.args
     assert update_args[0] == "session-1"
     assert update_args[1].metadata == {
