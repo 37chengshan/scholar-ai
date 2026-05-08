@@ -20,10 +20,11 @@ test('chat layout works across core breakpoints without overflow', async ({ page
 
   const messageList = page.getByTestId('chat-message-list');
   await expect(messageList).toBeVisible({ timeout: 30000 });
+  const sessionUrl = page.url();
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
-    await page.goto('/chat');
+    await page.goto(sessionUrl);
 
     const composer = page.getByTestId('chat-composer');
     await expect(page.getByTestId('chat-composer').locator('textarea')).toBeVisible({ timeout: 10000 });

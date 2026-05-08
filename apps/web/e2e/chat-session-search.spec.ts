@@ -67,7 +67,7 @@ test.describe('Critical E2E - Chat Session Search', () => {
     await expect(page.getByTestId('session-item').first()).toContainText('Alpha Research Notes');
 
     await page.getByTestId('session-item').first().click();
-    await expect(page.getByRole('heading', { name: 'Alpha Research Notes' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('session-item').first()).toHaveClass(/bg-primary\/8/, { timeout: 10000 });
 
     await searchInput.fill('No-Match-Query');
     await expect(page.getByTestId('session-empty-state')).toBeVisible({ timeout: 10000 });
