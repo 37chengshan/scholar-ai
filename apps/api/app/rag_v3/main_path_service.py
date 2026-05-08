@@ -35,10 +35,11 @@ from app.services.evidence_contract_service import (
 )
 from app.services.phase_i_routing_service import get_phase_i_routing_service
 from app.services.truthfulness_service import get_truthfulness_service
+from app.utils.artifact_paths import resolve_artifact_papers_root
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-ARTIFACT_ROOT = Path(__file__).resolve().parents[4] / "artifacts" / "papers"
+ARTIFACT_ROOT = resolve_artifact_papers_root(__file__)
 RUNTIME_PROFILE = get_active_rag_runtime_profile()
 _QUERY_PREFIX_PATTERN = re.compile(r"^\s*(再次回答|继续分析|继续回答|继续|重新回答|重新分析|再回答一遍|重新来过)\s*[:：,，-]?\s*", re.IGNORECASE)
 _CONTRIBUTION_QUERY_PATTERN = re.compile(
