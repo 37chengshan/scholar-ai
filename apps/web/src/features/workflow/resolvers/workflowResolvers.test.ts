@@ -28,6 +28,6 @@ describe('workflowResolvers', () => {
 
   it('resolves status badge and copy keys', () => {
     expect(resolveStatusBadge('waiting').tone).toBe('warning');
-    expect(resolveWorkflowCopy('artifacts')).toContain('Artifacts');
+    expect(resolveWorkflowCopy('artifacts')).toBe('Outputs & Evidence');
   });
 });
