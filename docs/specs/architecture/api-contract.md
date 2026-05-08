@@ -411,6 +411,8 @@ Evidence/Notes 扩展契约补充（v3.4-v3.5）：
   - 用途：按 `source_chunk_id` 回查证据原文与落地位置信息
   - 响应至少包含：`evidence_id`、`source_type`、`source_chunk_id`、`paper_id`、`page_num`、`section_path`、`content_type`、`content`、`citation_jump_url`
   - `read_url` 仅作为兼容别名保留；新客户端统一消费 `citation_jump_url`
+  - 解析顺序固定为：优先读取受当前用户可见的 `PaperChunk` SQL 真源；只有在 SQL chunk 不存在时才允许回退到 artifact payload
+  - artifact fallback 的根路径必须能同时兼容仓库工作区与容器镜像布局；允许通过 `SCHOLAR_AI_ROOT` 覆盖项目根，但默认解析不得依赖固定 `parents[N]` 深度
 - `POST /api/v1/notes/evidence`
   - 用途：将 claim+citation 证据保存为用户 Note（可编辑资源）
   - 请求体至少包含：`claim`、`surface`、`evidence_block`

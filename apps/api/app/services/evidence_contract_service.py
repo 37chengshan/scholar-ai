@@ -6,20 +6,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-
-def _resolve_repo_root() -> Path:
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "artifacts" / "papers").exists():
-            return parent
-        if (parent / "apps").exists() and (parent / "docs").exists():
-            return parent
-        if (parent / "app").exists():
-            return parent
-    return current.parents[min(2, len(current.parents) - 1)]
+from app.utils.artifact_paths import resolve_repo_root
 
 
-ROOT = _resolve_repo_root()
+def _resolve_project_root(file_path: Path) -> Path:
+    return resolve_repo_root(file_path)
+
+
+ROOT = _resolve_project_root(Path(__file__))
+ARTIFACTS_ROOT = ROOT / "artifacts"
 
 
 def build_citation_jump_url(
@@ -35,7 +30,7 @@ def build_citation_jump_url(
 @lru_cache(maxsize=1)
 def load_chunk_index() -> dict[str, dict[str, Any]]:
     idx: dict[str, dict[str, Any]] = {}
-    papers_root = ROOT / "artifacts" / "papers"
+    papers_root = ARTIFACTS_ROOT / "papers"
     if not papers_root.exists():
         return idx
 

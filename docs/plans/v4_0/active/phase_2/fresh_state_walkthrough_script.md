@@ -97,7 +97,7 @@ evidence_commits:
 规则：
 
 1. 若任一步为 `fail` 或 reset proof 缺失，推荐结论只能是 `blocked`。
-2. 若主链可跑但 Review/Compare 出现 `partial`，结论最多是 `demo-ready`，且必须显式附 feedback item。
+2. 若主链可跑但 Review/Compare 出现 `partial`，walkthrough 结论最多是 `demo-ready`，且必须显式附 feedback item；phase closeout 是否可升级到 `controlled-beta-ready`，仍需单独读取 controlled release gate。
 3. 只有 controlled release gate 也满足时，才允许写 `controlled-beta-ready`。
 4. Chat handoff 的 `prefill-only` 手动确认属于已知限制，不能单独按故障计入，除非预填内容本身缺失或错乱。
 
@@ -154,7 +154,10 @@ evidence_commits:
 1. `asset-ready`: 已满足。
 2. `fresh-state run`: 已完成并回填。
 3. `walkthrough verdict`: `walkthrough-complete / demo-ready`。
-4. `controlled-beta-ready`: 仍未声明。原因不是主链阻断，而是：
-   - Review 仍会诚实暴露 `partial / insufficient_evidence`
-   - 当前证据仍以 operator-led local controlled beta 为主
-   - staging/cloud 扩展 gate 尚未开启
+4. `phase closeout verdict`: 仍需单独读取 controlled release gate。
+5. Run B 暴露的 `Review partial / insufficient_evidence` 不会自动阻断 local controlled beta，但必须进入 feedback triage，并在 phase closeout 中保留 known limitation 口径。
+6. 是否可升级为 `controlled-beta-ready`，取决于 closeout 是否补齐：
+   - 受控访问边界
+   - feedback triage 实例
+   - rollback / pause 规则
+   - 不把 local controlled beta 误写成 public beta

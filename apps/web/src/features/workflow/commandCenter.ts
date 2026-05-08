@@ -3,7 +3,7 @@ import type { ImportJob } from '@/services/importApi';
 import type { KnowledgeBase } from '@/services/kbApi';
 import type { RecentPaperProgress } from '@/services/dashboardApi';
 import type { KnowledgeRunSummary } from '@/features/kb/types/workspace';
-import { buildFreshChatHref } from '@/features/chat/chatHandoff';
+import { buildHandoffChatHref } from '@/features/chat/chatHandoff';
 
 export type ResearchCommandItem = {
   id: string;
@@ -105,12 +105,7 @@ function buildChatTargetHref(scope: {
   kbId?: string;
   paperIds?: string[];
 }): string {
-  const href = buildFreshChatHref(scope);
-  const [pathname, search = ''] = href.split('?');
-  const params = new URLSearchParams(search);
-  params.set('handoff', '1');
-  const query = params.toString();
-  return query ? `${pathname}?${query}` : pathname;
+  return buildHandoffChatHref(scope);
 }
 
 export function sortResearchCommands<T extends ResearchCommandItem>(items: T[]): T[] {

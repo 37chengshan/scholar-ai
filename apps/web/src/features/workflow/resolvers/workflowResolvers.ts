@@ -103,7 +103,7 @@ export function resolveWorkflowCopy(type: 'scope' | 'pending' | 'recoverable' | 
     case 'recoverable':
       return 'Recovery Options';
     case 'artifacts':
-      return 'Outputs & Evidence';
+      return 'Artifacts & Evidence';
     default:
       return 'Workspace';
   }
