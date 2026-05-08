@@ -21,18 +21,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
       - name: Install web deps
         working-directory: apps/web
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Type-check
         working-directory: apps/web
-        run: pnpm type-check
+        run: npm run type-check
 
   # ─── Job 2: Core E2E ─────────────────────────────────────────────────────
   web-e2e-critical:
@@ -78,11 +73,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -113,12 +103,12 @@ jobs:
       - name: Install web deps + Playwright
         working-directory: apps/web
         run: |
-          pnpm install --frozen-lockfile
-          pnpm exec playwright install --with-deps chromium
+          npm ci
+          npx playwright install --with-deps chromium
 
       - name: Start frontend dev server
         working-directory: apps/web
-        run: pnpm dev &
+        run: npm run dev &
 
       - name: Wait for frontend
         run: |
@@ -130,7 +120,7 @@ jobs:
       - name: Run E2E critical suite
         working-directory: apps/web
         run: |
-          pnpm playwright test \
+          npx playwright test \
             e2e/chat-critical.spec.ts \
             e2e/chat-evidence.spec.ts \
             e2e/retrieval-critical.spec.ts \
@@ -164,6 +154,9 @@ jobs:
         working-directory: apps/api
         run: pip install -r requirements.txt --quiet
 
+      - name: Bootstrap Phase 6 seed artifacts
+        run: python3 scripts/evals/ensure_phase6_seed_artifacts.py
+
       - name: Run fast path unit tests
         working-directory: apps/api
         run: |
@@ -189,6 +182,9 @@ jobs:
       - name: Install backend deps
         working-directory: apps/api
         run: pip install -r requirements.txt --quiet
+
+      - name: Bootstrap Phase 6 seed artifacts
+        run: python3 scripts/evals/ensure_phase6_seed_artifacts.py
 
       - name: Run offline gate
         run: python3 scripts/evals/phase6_gate.py

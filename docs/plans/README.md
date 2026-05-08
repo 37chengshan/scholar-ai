@@ -6,21 +6,23 @@
 
 ## Current Mainline
 
-当前进行中主线是 `v3.0`，统一从以下文件进入：
+当前讨论中的新主线草案是 `v4.0`，统一从以下文件进入：
 
-1. `docs/plans/v3_0/active/overview/06_v3_0_overview_plan.md`
+1. `docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md`
 2. `docs/plans/PLAN_STATUS.md`
-3. `docs/plans/v3_0/active/phase_a/07_v3_0A_execution_plan.md`
-4. `docs/plans/v3_0/reports/official_rag_evaluation/`
+3. `docs/plans/v4_0/active/phase_0/19_v4_0_phase_0_execution_plan.md`
+4. `docs/plans/v4_0/search/2026-05-02_v4_0_research_decision_note.md`
 
-如果旧计划仍标记为 `in-progress`，但内容与 `v3.0` 主线冲突，优先按 `06_v3_0_overview_plan.md` 的 phase 拆分重新解释。
+如果旧计划仍标记为 `in-progress`，但内容与 `v4.0` 草案冲突，先进入人工讨论，不直接按草案覆盖。v3.0 strict close-out 中未验证项先作为 Phase 4.0-0 候选输入，不直接丢弃。
 
 ## Directory Rules
 
 - `PLAN_STATUS.md`
   - `docs/plans/` 下计划状态唯一真源
 - `v1_0/` `v2_0/` `v3_0/`
-  - 版本化计划主目录
+  - 历史或维护态版本化计划主目录
+- `v4_0/`
+  - 当前讨论中的版本化草案目录，待用户确认后再升级为正式主线
 - `docs/plans/<version>/active/`
   - 当前执行中的 phase、overview、研究拆解
 - `docs/plans/<version>/complete/`

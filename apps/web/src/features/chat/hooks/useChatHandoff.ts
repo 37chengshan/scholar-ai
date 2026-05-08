@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router';
 import type { ChatHandoffNavigationState, ChatHandoffState } from '@/features/workflow/commandCenter';
+import { matchesPersistedChatHandoff, readPersistedChatHandoff } from '@/features/chat/chatHandoff';
 
 function describeOrigin(origin: ChatHandoffState['origin'], isZh: boolean): string {
   if (isZh) {
@@ -47,7 +48,12 @@ export function useChatHandoff(params: {
   const { isZh, setComposerDraft } = params;
   const location = useLocation();
   const consumedSignatureRef = useRef<string | null>(null);
-  const handoff = ((location.state as ChatHandoffNavigationState | null)?.handoff ?? null);
+  const navigationHandoff = ((location.state as ChatHandoffNavigationState | null)?.handoff ?? null);
+  const persistedHandoff = useMemo(() => {
+    const stored = readPersistedChatHandoff();
+    return matchesPersistedChatHandoff(location.search, stored) ? stored : null;
+  }, [location.search]);
+  const handoff = navigationHandoff ?? persistedHandoff?.handoff ?? null;
 
   const handoffSignature = useMemo(() => {
     if (!handoff) {

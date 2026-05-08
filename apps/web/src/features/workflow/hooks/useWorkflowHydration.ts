@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router';
 import { trackWorkflowEvent } from '@/lib/observability/telemetry';
 import { useChatWorkspaceStore } from '@/features/chat/state/chatWorkspaceStore';
+import { matchesPersistedChatHandoff, readPersistedChatHandoff } from '@/features/chat/chatHandoff';
 import {
   mapAgentRunArtifacts,
   mapAgentRunTimeline,
@@ -110,10 +111,70 @@ function deriveRun(pathname: string, state: unknown, activeRun: ReturnType<typeo
   return null;
 }
 
+function derivePersistedHandoff(pathname: string, search: string) {
+  if (!pathname.startsWith('/chat')) {
+    return null;
+  }
+
+  const persisted = readPersistedChatHandoff();
+  return matchesPersistedChatHandoff(search, persisted) ? persisted : null;
+}
+
+function buildHandoffRun(
+  handoff: NonNullable<ReturnType<typeof derivePersistedHandoff>>,
+  scope: WorkflowScope,
+): WorkflowRun {
+  const evidenceCount = handoff.handoff.evidence?.length || 0;
+
+  return {
+    id: `handoff:${scope.id || handoff.handoff.origin}`,
+    source: 'chat',
+    status: 'waiting',
+    stage: 'handoff_ready',
+    error: null,
+    nextAction: evidenceCount > 0
+      ? `Review the prefilled prompt and continue with ${evidenceCount} evidence reference${evidenceCount > 1 ? 's' : ''}.`
+      : 'Review the prefilled prompt and continue in Chat.',
+    updatedAt: handoff.savedAt,
+    scopeType: scope.type,
+    scopeId: scope.id,
+  };
+}
+
+function buildHandoffPendingActions(handoff: NonNullable<ReturnType<typeof derivePersistedHandoff>>) {
+  const actions: WorkflowHydratedPayload['pendingActions'] = [
+    {
+      id: 'handoff-continue',
+      label: 'Continue in Chat',
+      description: 'A prepared follow-up is already waiting in the composer.',
+      intent: 'primary' as const,
+      kind: 'primary' as const,
+      action: 'open' as const,
+    },
+  ];
+
+  if (handoff.handoff.returnTo) {
+    actions.push({
+      id: 'handoff-return',
+      label: 'Return to Source',
+      description: `Go back to ${handoff.handoff.origin} after reviewing the prompt.`,
+      intent: 'primary',
+      kind: 'primary',
+      action: 'open' as const,
+      payload: {
+        href: handoff.handoff.returnTo,
+      },
+    });
+  }
+
+  return actions;
+}
+
 function buildArtifacts(
   pathname: string,
   scope: WorkflowScope,
-  activeRun: ReturnType<typeof useChatWorkspaceStore.getState>['activeRun']
+  activeRun: ReturnType<typeof useChatWorkspaceStore.getState>['activeRun'],
+  handoff: ReturnType<typeof derivePersistedHandoff>,
 ): WorkflowHydratedPayload['artifacts'] {
   const artifacts: WorkflowArtifact[] = [];
 
@@ -148,6 +209,36 @@ function buildArtifacts(
   if (pathname.startsWith('/chat')) {
     if (activeRun.runId) {
       return mapAgentRunArtifacts(activeRun);
+    }
+
+    if (handoff) {
+      const evidenceCount = handoff.handoff.evidence?.length || 0;
+      artifacts.push(
+        mapArtifactToUiRenderable({
+          id: 'artifact-handoff',
+          kind: 'session',
+          title: 'Prepared Chat Handoff',
+          context: handoff.handoff.promptDraft,
+          payload: {
+            origin: handoff.handoff.origin,
+            returnTo: handoff.handoff.returnTo || null,
+          },
+        }),
+      );
+
+      if (evidenceCount > 0) {
+        artifacts.push(
+          mapArtifactToUiRenderable({
+            id: 'artifact-handoff-evidence',
+            kind: 'citation',
+            title: `Handoff Evidence (${evidenceCount})`,
+            context: 'Evidence references were carried from the previous workspace.',
+            payload: {
+              evidence: handoff.handoff.evidence,
+            },
+          }),
+        );
+      }
     }
 
     artifacts.push(
@@ -193,16 +284,32 @@ export function useWorkflowHydration(): void {
 
   const payload = useMemo<WorkflowHydratedPayload>(() => {
     const scope = deriveScope(location.pathname, location.search, chatScope);
-    const currentRun = deriveRun(location.pathname, location.state, activeRun);
+    const persistedHandoff = derivePersistedHandoff(location.pathname, location.search);
+    const baseRun = deriveRun(location.pathname, location.state, activeRun);
+    const currentRun = baseRun || (persistedHandoff ? buildHandoffRun(persistedHandoff, scope) : null);
     const pendingActions = location.pathname.startsWith('/chat')
-      ? mapPendingActionsToWorkflowActions(activeRun.pendingActions)
+      ? activeRun.runId
+        ? mapPendingActionsToWorkflowActions(activeRun.pendingActions)
+        : persistedHandoff
+          ? buildHandoffPendingActions(persistedHandoff)
+          : resolveNextActions(currentRun)
       : resolveNextActions(currentRun);
     const recoverableTasks = location.pathname.startsWith('/chat') && activeRun.recoverable
       ? mapPendingActionsToWorkflowActions(activeRun.pendingActions.filter((action) => action.type === 'retry' || action.type === 'cancel' || action.type === 'resume'))
       : resolveRecoverableActions(currentRun);
-    const artifacts = buildArtifacts(location.pathname, scope, activeRun);
+    const artifacts = buildArtifacts(location.pathname, scope, activeRun, persistedHandoff);
     const timeline = location.pathname.startsWith('/chat') && activeRun.runId
       ? mapAgentRunTimeline(activeRun)
+      : persistedHandoff
+        ? [
+            {
+              id: `timeline-handoff-${persistedHandoff.savedAt}`,
+              title: 'Handoff Restored',
+              description: `Context from ${persistedHandoff.handoff.origin} was restored into Chat.`,
+              at: persistedHandoff.savedAt,
+              status: 'info' as const,
+            },
+          ]
       : [
           {
             id: `timeline-${location.pathname}`,

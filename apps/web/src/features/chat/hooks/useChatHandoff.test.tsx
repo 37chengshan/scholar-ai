@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatHandoff } from './useChatHandoff';
+import { persistChatHandoff } from '@/features/chat/chatHandoff';
 
 let mockedLocation = {
   pathname: '/chat',
@@ -18,6 +19,7 @@ vi.mock('react-router', async () => {
 
 describe('useChatHandoff', () => {
   beforeEach(() => {
+    window.sessionStorage.clear();
     mockedLocation = {
       pathname: '/chat',
       search: '',
@@ -58,5 +60,29 @@ describe('useChatHandoff', () => {
 
     expect(result.current).toBeNull();
     expect(setComposerDraft).not.toHaveBeenCalled();
+  });
+
+  it('hydrates from persisted handoff when router state is absent but the chat URL is durable', () => {
+    const setComposerDraft = vi.fn();
+    mockedLocation.search = '?kbId=kb-1&handoff=1';
+    persistChatHandoff(
+      { kbId: 'kb-1' },
+      {
+        origin: 'review',
+        promptDraft: 'Re-check the review paragraph against the cited evidence.',
+        evidence: [{ paperId: 'paper-1' }],
+        returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
+      },
+    );
+
+    const { result } = renderHook(() => useChatHandoff({ isZh: false, setComposerDraft }));
+
+    expect(setComposerDraft).toHaveBeenCalledWith('Re-check the review paragraph against the cited evidence.');
+    expect(result.current).toEqual({
+      originLabel: 'Review',
+      promptDraft: 'Re-check the review paragraph against the cited evidence.',
+      evidenceCount: 1,
+      returnTo: '/knowledge-bases/kb-1?tab=review&runId=run-1',
+    });
   });
 });

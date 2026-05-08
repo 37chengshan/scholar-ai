@@ -13,12 +13,13 @@
 - CO-BLK-002: `/api/v1/search/evidence` 增加后端降级返回，避免 sidecar 直接 500
 - CO-BLK-003: Search external result 的 `libraryStatus` 注解搬到服务层，清理 API 层直接 DB 访问
 - CO-BLK-004: `check-legacy-freeze.sh` 接受 strict close-out doc trail 作为补救路径，仍保持严格校验
+- CO-BLK-005: v4.0 Phase 0 启动时已复测 `TaskService` smoke，确认当前 `retry_task` 契约与测试已重新对齐
 
 ## 待回填验证
 
 - Wave 0 测试结果：已回读
 - 治理门禁：passed
-- Full-chain Beta walkthrough：pending
+- Full-chain Beta walkthrough：v4.0 Phase 0 已完成边界回读并转交后续 gate；当前仍非 full-chain release-pass
 
 ## 已执行验证
 
@@ -30,9 +31,10 @@
 - `bash scripts/check-governance.sh`: passed
 - `python3.12 -m pytest -q apps/api/tests/unit/test_search_evidence_api.py apps/api/tests/unit/test_real_world_validation_service.py`: passed
 - `cd apps/api && python3.12 -m pytest -q tests/unit/test_services.py --maxfail=1`: failed at `TestTaskService.test_retry_task_resets_status`
+- `cd apps/api && python3 -m pytest -q tests/unit/test_services.py --maxfail=1`: passed on 2026-05-02, 16 passed
 
 ## 当前结论
 
-- closeout_status: in-progress
-- beta_readiness: pending-rerun
-- rationale: 阻断代码与治理门禁已初步收口，但 Phase D/G 未回填，且后端目标单测仍有失败，不能宣称 Beta 放行
+- closeout_status: carried-forward-to-v4-0-phase-0
+- beta_readiness: not-ready
+- rationale: 阻断代码与治理门禁已收口，后端 `TaskService` 目标单测已复测通过；v4.0 Phase 0 已补 closeout 报告和 Beta asset inventory，但仍诚实保留“缺单次 fresh-state 全链 walkthrough、不得宣称 Beta-ready”的结论

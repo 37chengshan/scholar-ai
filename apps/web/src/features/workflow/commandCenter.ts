@@ -19,6 +19,9 @@ export type ResearchCommandItem = {
     runId?: string;
     noteId?: string;
     paperIds?: string[];
+    returnTo?: string;
+    origin?: ChatHandoffState['origin'];
+    evidenceCount?: number;
   };
 };
 
@@ -83,6 +86,27 @@ function getLatestUpdatedAt(...values: Array<string | undefined | null>): string
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => new Date(right).getTime() - new Date(left).getTime());
   return sorted[0] || new Date(0).toISOString();
+}
+
+function buildChatTargetHref(scope: {
+  paperId?: string;
+  kbId?: string;
+  paperIds?: string[];
+}): string {
+  const params = new URLSearchParams();
+
+  if (scope.paperId) {
+    params.set('paperId', scope.paperId);
+  }
+  if (scope.kbId) {
+    params.set('kbId', scope.kbId);
+  }
+  if (scope.paperIds && scope.paperIds.length > 0) {
+    params.set('paper_ids', scope.paperIds.join(','));
+  }
+  params.set('handoff', '1');
+
+  return `/chat?${params.toString()}`;
 }
 
 export function sortResearchCommands<T extends ResearchCommandItem>(items: T[]): T[] {
@@ -229,6 +253,40 @@ export function buildChatCommand(session: ChatSession): ResearchCommandItem {
     targetHref: `/chat?session=${session.id}`,
     targetSurface: 'chat',
     metadata: { },
+  };
+}
+
+export function buildHandoffCommand(params: {
+  scope: {
+    paperId?: string;
+    kbId?: string;
+    paperIds?: string[];
+  };
+  handoff: ChatHandoffState;
+}): ResearchCommandItem {
+  const { scope, handoff } = params;
+  const targetHref = buildChatTargetHref(scope);
+  const evidenceCount = handoff.evidence?.length || 0;
+
+  return {
+    id: `handoff:${handoff.origin}:${scope.paperId || scope.kbId || (scope.paperIds || []).join(',') || 'global'}`,
+    category: 'chat',
+    priority: 'active',
+    title: 'Continue prepared Chat handoff',
+    statusLabel: 'Ready in Chat',
+    reason: evidenceCount > 0
+      ? `A ${handoff.origin} follow-up is prefilled and carries ${evidenceCount} evidence reference${evidenceCount > 1 ? 's' : ''}.`
+      : `A ${handoff.origin} follow-up is prefilled and waiting for review before sending.`,
+    targetHref,
+    targetSurface: 'chat',
+    metadata: {
+      kbId: scope.kbId,
+      paperId: scope.paperId,
+      paperIds: scope.paperIds,
+      returnTo: handoff.returnTo,
+      origin: handoff.origin,
+      evidenceCount,
+    },
   };
 }
 

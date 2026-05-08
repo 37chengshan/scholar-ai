@@ -77,6 +77,7 @@ SSE/异步链路：
 - Compare 页面主入口固定为 `apps/web/src/app/pages/Compare.tsx`，通过 `apps/api/app/api/compare.py -> compare_service.py -> HybridRetriever(real dense wiring)` 输出 evidence-backed `compare_matrix`。
 - Compare 页面带入 Chat 的后续追问统一走 `POST /api/v1/chat/stream`，以 `context.paper_ids[]` 作为 canonical 多论文 scoped RAG 输入，不新增第二套 compare-chat runtime。
 - KB review 生成为独立入口，仅服务综述草稿资源，不进入 Read/单篇问答主链路。
+- v4.0 草案中的 Research Workflow OS 默认复用上述主执行链路。该方向确认前，不新增第二套 agentic workflow runtime；若后续确认 workflow 方向，状态表达应优先围绕 Search -> KB -> Read/Chat -> Notes/Compare/Review 主链设计。
 
 Notes/Read ownership：
 

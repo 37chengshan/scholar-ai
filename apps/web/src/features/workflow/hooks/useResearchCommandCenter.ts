@@ -7,6 +7,7 @@ import { importApi } from '@/services/importApi';
 import { kbReviewApi } from '@/services/kbReviewApi';
 import {
   buildChatCommand,
+  buildHandoffCommand,
   buildKnowledgeBaseReadinessItems,
   buildRecentReadCommand,
   buildReviewOrCompareCommand,
@@ -14,6 +15,7 @@ import {
   sortResearchCommands,
   type ResearchCommandItem,
 } from '@/features/workflow/commandCenter';
+import { readPersistedChatHandoff } from '@/features/chat/chatHandoff';
 
 export function useResearchCommandCenter() {
   const sessionsQuery = useQuery({
@@ -75,6 +77,16 @@ export function useResearchCommandCenter() {
 
   const commands = useMemo(() => {
     const items: ResearchCommandItem[] = [];
+    const persistedHandoff = readPersistedChatHandoff();
+
+    if (persistedHandoff) {
+      items.push(
+        buildHandoffCommand({
+          scope: persistedHandoff.scope,
+          handoff: persistedHandoff.handoff,
+        }),
+      );
+    }
 
     const chatCommand = sessionsQuery.data?.[0] ? buildChatCommand(sessionsQuery.data[0]) : null;
     if (chatCommand) {
