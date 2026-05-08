@@ -212,16 +212,18 @@ class _RequestStub:
 
 @pytest.mark.asyncio
 async def test_chat_stream_to_session_messages_history_readback_contract():
+    session_id = "11111111-1111-1111-1111-111111111111"
+    query = "Explain retrieval grounding"
     store = _MessageStore()
     final_answer = "final answer"
     assistant_id_holder: dict[str, str] = {}
     tool_payload = '{"id":"tool-1","tool":"rag_search","success":true}'
 
     async def _mock_stream():
-        assistant_id = await store.save_message("session-1", "assistant", "")
+        assistant_id = await store.save_message(session_id, "assistant", "")
         assistant_id_holder["id"] = assistant_id
         await store.save_message(
-            "session-1",
+            session_id,
             "tool",
             tool_payload,
             tool_name="rag_search",
@@ -231,7 +233,7 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
 
         yield (
             "event: session_start\n"
-            f'data: {{"message_id":"{assistant_id}","session_id":"session-1","task_type":"general"}}\n\n'
+            f'data: {{"message_id":"{assistant_id}","session_id":"{session_id}","task_type":"general"}}\n\n'
         )
         yield (
             "event: message\n"
@@ -243,12 +245,12 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
         )
 
     with patch("app.api.chat.message_service", store), \
-         patch("app.api.chat.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id="session-1", user_id="user-1"))), \
+         patch("app.api.chat.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id=session_id, user_id="user-1"))), \
          patch("app.api.chat.complexity_router.route_async", AsyncMock(return_value={"complexity": "simple", "method": "rules", "confidence": 1.0})), \
-         patch("app.api.chat.chat_orchestrator.execute_with_streaming", return_value=_mock_stream()):
+        patch("app.api.chat.chat_orchestrator.execute_with_streaming", return_value=_mock_stream()):
 
         response = await chat_stream(
-            request=SimpleNamespace(session_id="session-1", message="hello", context=None, mode="auto", scope=None),
+            request=SimpleNamespace(session_id=session_id, message=query, context=None, mode="auto", scope=None),
             http_request=_RequestStub(),
             user_id="user-1",
         )
@@ -262,10 +264,10 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
     assert "event: done" in stream_text
     assert f'"message_id": "{assistant_id}"' in stream_text
 
-    with patch("app.api.session.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id="session-1", user_id="user-1"))), \
+    with patch("app.api.session.session_manager.get_session", AsyncMock(return_value=SimpleNamespace(id=session_id, user_id="user-1"))), \
          patch("app.services.message_service.message_service", store):
         msg_response = await get_session_messages(
-            session_id="session-1",
+            session_id=session_id,
             user_id="user-1",
             limit=50,
             offset=0,
@@ -274,7 +276,7 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
 
     assert msg_response.success is True
     assert msg_response.data["total"] == 3
-    assert msg_response.data["session_id"] == "session-1"
+    assert msg_response.data["session_id"] == session_id
     assert msg_response.data["limit"] == 50
     assert msg_response.data["offset"] == 0
     assert msg_response.data["order"] == "desc"
