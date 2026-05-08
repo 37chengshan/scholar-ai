@@ -31,8 +31,8 @@ export function CurrentRunBar() {
         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-[0.12em] ${badgeClassByTone[badge.tone]}`}>
           {badge.label}
         </span>
-        <span className="text-xs font-semibold text-foreground">{isZh ? `运行 #${run.id}` : `Run #${run.id}`}</span>
-        <span className="text-xs text-muted-foreground">{run.stage}</span>
+        <span className="text-xs font-semibold text-foreground">{isZh ? '当前任务' : 'Current Task'}</span>
+        <span className="text-xs text-muted-foreground">{run.stage.split('_').join(' ')}</span>
       </div>
       {run.nextAction ? <div className="mt-2 text-xs text-muted-foreground">{isZh ? `下一步：${run.nextAction}` : `Next: ${run.nextAction}`}</div> : null}
       {run.error ? <div className="mt-2 text-xs text-rose-600">{isZh ? `错误：${run.error}` : `Error: ${run.error}`}</div> : null}

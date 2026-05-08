@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { Grid, List, Search, Plus, CheckSquare, ArrowUpDown, HardDrive, Loader2, MoreHorizontal, ArrowRight, Download, Pencil, Trash2, PanelRightClose, PanelRightOpen } from "lucide-react";
@@ -11,6 +11,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
 import { kbApi, KnowledgeBase, KBCreateData, KBStorageStats } from "@/services/kbApi";
+import { getKnowledgeBaseDisplayMetadata } from "@/app/lib/knowledgeBaseDisplay";
 import { useUrlState } from "../../hooks/useUrlState";
 import { useKnowledgeBases } from "../../hooks/useKnowledgeBases";
 import {
@@ -43,11 +44,25 @@ import { toast } from "sonner";
  */
 function KnowledgeBaseListContent() {
   const navigate = useNavigate();
+  type KnowledgeBaseStatusFilter = 'all' | 'ready' | 'indexing' | 'empty';
+
+  const statusFilterLabels: Record<KnowledgeBaseStatusFilter, string> = {
+    all: '全部',
+    ready: '已就绪',
+    indexing: '待索引',
+    empty: '待导入',
+  };
+
+  const sortLabels: Record<'updated' | 'papers' | 'name', string> = {
+    updated: '最近更新',
+    papers: '论文最多',
+    name: '名称 A-Z',
+  };
   
   // URL-synchronized state (persisted across refresh/navigation)
   const [viewMode, setViewMode] = useUrlState<'card' | 'list'>('view', 'card' as 'card' | 'list');
   const [searchQuery, setSearchQuery] = useUrlState<string>('search', '');
-  const [activeTag, setActiveTag] = useUrlState<string>('tag', '全部');
+  const [statusFilter, setStatusFilter] = useUrlState<KnowledgeBaseStatusFilter>('status', 'all' as KnowledgeBaseStatusFilter);
   const [sortBy, setSortBy] = useUrlState<'updated' | 'papers' | 'name'>('sort', 'updated' as 'updated' | 'papers' | 'name');
   
   // Ephemeral state (not URL-synced)
@@ -88,20 +103,26 @@ function KnowledgeBaseListContent() {
     deleteKB,
   } = useKnowledgeBases({
     search: searchQuery,
-    category: activeTag === "全部" ? undefined : activeTag,
     sortBy,
   });
 
-  // Extract unique categories from API data (computed from knowledgeBases)
-  const apiCategories = knowledgeBases && knowledgeBases.length > 0 
-    ? Array.from(new Set(knowledgeBases.map((kb: KnowledgeBase) => kb.category).filter(Boolean)))
-    : [];
-  const tags = ["全部", ...apiCategories];
+  const statusFilters: KnowledgeBaseStatusFilter[] = ['all', 'ready', 'indexing', 'empty'];
 
   // TODO: FE-04 — When real API data exceeds ~50 items, wrap this grid with react-window's VariableSizeGrid
 
-  // Use API data directly (backend handles search/category/sort filtering)
-  const sorted = knowledgeBases;
+  const sorted = useMemo(() => {
+    switch (statusFilter) {
+      case 'ready':
+        return knowledgeBases.filter((kb) => kb.chunkCount > 0);
+      case 'indexing':
+        return knowledgeBases.filter((kb) => kb.paperCount > 0 && kb.chunkCount === 0);
+      case 'empty':
+        return knowledgeBases.filter((kb) => kb.paperCount === 0);
+      case 'all':
+      default:
+        return knowledgeBases;
+    }
+  }, [knowledgeBases, statusFilter]);
 
   // Batch operations - call real API using kbApi
   const handleBatchDelete = async () => {
@@ -205,16 +226,16 @@ function KnowledgeBaseListContent() {
             />
           </div>
           
-          {/* Category chip filters */}
+          {/* Status filters */}
           <div className="flex items-center gap-2 flex-wrap">
-            {tags.map((tag: string) => (
+            {statusFilters.map((filterKey) => (
               <button
-                key={tag}
-                className={`category-chip ${activeTag === tag ? 'active' : ''}`}
-                onClick={() => setActiveTag(tag)}
-                aria-current={activeTag === tag ? "page" : undefined}
+                key={filterKey}
+                className={`category-chip ${statusFilter === filterKey ? 'active' : ''}`}
+                onClick={() => setStatusFilter(filterKey)}
+                aria-current={statusFilter === filterKey ? "page" : undefined}
               >
-                {tag}
+                {statusFilterLabels[filterKey]}
               </button>
             ))}
           </div>
@@ -347,8 +368,12 @@ function KnowledgeBaseListContent() {
         )}
         {!loading && !error && sorted.length === 0 ? (
           <EmptyState
-            title="暂无知识库"
-            description="创建您的第一个知识库，开始组织研究方向"
+            title={searchQuery.trim() || statusFilter !== 'all' ? "当前筛选下没有知识库" : "暂无知识库"}
+            description={
+              searchQuery.trim() || statusFilter !== 'all'
+                ? "调整搜索词或状态筛选，查看其他知识库。"
+                : "创建第一个知识库，开始整理论文、导入进度和检索上下文。"
+            }
             action={{
               label: "创建知识库",
               onClick: handleCreate,
@@ -362,6 +387,9 @@ function KnowledgeBaseListContent() {
             variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } }}
           >
             {sorted.map((kb) => (
+              (() => {
+                const display = getKnowledgeBaseDisplayMetadata(kb);
+                return (
               <motion.div 
                 key={kb.id} 
                 variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } }} 
@@ -383,19 +411,20 @@ function KnowledgeBaseListContent() {
                 )}
                 <KnowledgeBaseCard
                   id={kb.id}
-                  name={kb.name}
-                  description={kb.description}
+                  name={display.displayName}
+                  description={display.displayDescription}
                   paperCount={kb.paperCount}
                   chunkCount={kb.chunkCount}
                   entityCount={kb.entityCount}
                   updatedAt={kb.updatedAt}
-                  category={kb.category}
                   onEnter={() => handleEnter(kb.id)}
                   onImport={() => handleImport(kb.id, kb.name)}
                   onEdit={() => handleEdit(kb.id, kb.name)}
                   onDelete={() => handleDelete(kb.id, kb.name)}
                 />
               </motion.div>
+                );
+              })()
             ))}
           </motion.div>
         ) : (
@@ -426,7 +455,9 @@ function KnowledgeBaseListContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-{sorted.map((kb: KnowledgeBase) => (
+{sorted.map((kb: KnowledgeBase) => {
+                const display = getKnowledgeBaseDisplayMetadata(kb);
+                return (
                 <TableRow
                   key={kb.id}
                   className="group/row cursor-pointer transition-colors hover:bg-primary/[0.04]"
@@ -456,10 +487,10 @@ function KnowledgeBaseListContent() {
                   <TableCell>
                     <div>
                       <div className="font-medium font-serif group-hover/row:text-primary transition-colors">
-                        {kb.name}
+                        {display.displayName}
                       </div>
                       <div className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
-                        {kb.description}
+                        {display.displayDescription}
                       </div>
                     </div>
                   </TableCell>
@@ -520,7 +551,8 @@ function KnowledgeBaseListContent() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
           </div>
@@ -557,14 +589,14 @@ function KnowledgeBaseListContent() {
             </div>
             
             {/* Magazine masthead title */}
-            <h1 className="text-5xl md:text-7xl font-black font-serif uppercase tracking-tighter text-foreground leading-none">
-              Knowledge<br/>
-              <span className="text-primary">Repositories</span>
+            <h1 className="text-5xl md:text-7xl font-black font-serif tracking-tighter text-foreground leading-none">
+              知识<br/>
+              <span className="text-primary">资料馆</span>
             </h1>
             
             {/* Description */}
             <p className="text-muted-foreground font-medium max-w-xl text-lg font-sans">
-              管理您的向量化文档集合。上传、处理和使用高级嵌入模型查询企业知识。
+              管理论文馆藏、导入处理进度与检索就绪状态，把文献整理成可持续复用的研究资料库。
             </p>
           </div>
         </div>
@@ -577,21 +609,21 @@ function KnowledgeBaseListContent() {
           <div className="flex items-center gap-2">
             <h2 className="font-serif text-lg font-bold tracking-tight">知识库</h2>
           </div>
-          <p className="text-[8px] font-bold tracking-[0.2em] uppercase text-primary">Vol. 4</p>
+          <p className="text-[8px] font-bold tracking-[0.2em] uppercase text-primary">知识库视图</p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-8">
           <section className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
-              Overview
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5 font-serif tracking-tight">
+              概览
             </h3>
             <div className="mt-1 grid grid-cols-2 gap-2">
               <div className="rounded-sm bg-muted/30 px-3 py-3 flex flex-col gap-1 items-center justify-center border border-border/50">
-                <div className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">Collections</div>
+                <div className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">库数量</div>
                 <div className="font-serif text-2xl font-black text-foreground">{storageStats?.kbCount ?? total}</div>
               </div>
               <div className="rounded-sm bg-muted/30 px-3 py-3 flex flex-col gap-1 items-center justify-center border border-border/50">
-                <div className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">Papers</div>
+                <div className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">论文数</div>
                 <div className="font-serif text-2xl font-black text-foreground">{storageStats?.paperCount ?? "—"}</div>
               </div>
             </div>
@@ -603,18 +635,18 @@ function KnowledgeBaseListContent() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5">
-              Current Filters
+            <h3 className="text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5 flex items-center gap-1.5 font-serif tracking-tight">
+              当前筛选
             </h3>
             <div className="mt-1 flex flex-wrap gap-1.5">
               <span className="rounded-sm border border-border/50 bg-background px-2 py-0.5 text-[10px] text-foreground/75 font-medium tracking-wide">
                 视图 · {viewMode === "card" ? "卡片" : "列表"}
               </span>
               <span className="rounded-sm border border-border/50 bg-background px-2 py-0.5 text-[10px] text-foreground/75 font-medium tracking-wide">
-                分类 · {activeTag}
+                状态 · {statusFilterLabels[statusFilter]}
               </span>
               <span className="rounded-sm border border-border/50 bg-background px-2 py-0.5 text-[10px] text-foreground/75 font-medium tracking-wide">
-                排序 · {sortBy}
+                排序 · {sortLabels[sortBy]}
               </span>
               {searchQuery ? (
                 <span className="rounded-sm border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] text-primary font-medium tracking-wide shadow-sm shadow-primary/10">
@@ -626,7 +658,7 @@ function KnowledgeBaseListContent() {
 
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between text-[9px] font-bold tracking-[0.3em] uppercase text-muted-foreground border-b border-border/50 pb-1.5">
-              <h3>Recent Updates</h3>
+              <h3>最近更新</h3>
               <button
                 type="button"
                 onClick={handleCreate}
@@ -636,19 +668,22 @@ function KnowledgeBaseListContent() {
               </button>
             </div>
             <div className="mt-1 flex flex-col gap-1">
-              {latestKnowledgeBases.length > 0 ? latestKnowledgeBases.map((kb) => (
-                <button
-                  key={kb.id}
-                  type="button"
-                  onClick={() => handleEnter(kb.id)}
-                  className="w-full rounded-sm bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted/50 border border-transparent hover:border-border/50 group"
-                >
-                  <div className="line-clamp-1 text-[11px] font-bold text-foreground/80 group-hover:text-primary transition-colors">{kb.name}</div>
-                  <div className="mt-0.5 text-[9px] font-mono text-muted-foreground">
-                    {kb.paperCount} papers · {kb.chunkCount.toLocaleString()} chunks
-                  </div>
-                </button>
-              )) : (
+              {latestKnowledgeBases.length > 0 ? latestKnowledgeBases.map((kb) => {
+                const display = getKnowledgeBaseDisplayMetadata(kb);
+                return (
+                  <button
+                    key={kb.id}
+                    type="button"
+                    onClick={() => handleEnter(kb.id)}
+                    className="w-full rounded-sm bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted/50 border border-transparent hover:border-border/50 group"
+                  >
+                    <div className="line-clamp-1 text-[11px] font-bold text-foreground/80 group-hover:text-primary transition-colors">{display.displayName}</div>
+                    <div className="mt-0.5 text-[9px] font-mono text-muted-foreground">
+                      {kb.paperCount} 篇论文 · {kb.chunkCount.toLocaleString()} 个分块
+                    </div>
+                  </button>
+                );
+              }) : (
                 <div className="rounded-sm border border-dashed border-border/50 px-3 py-4 text-[10px] text-center text-muted-foreground">
                   暂无内容
                 </div>

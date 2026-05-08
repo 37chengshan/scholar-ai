@@ -172,16 +172,15 @@ describe('ProtectedRoute', () => {
       checkAuth: vi.fn(),
     });
 
-    // Note: Navigate component with "replace" doesn't preserve state by default
-    // in the current implementation. The redirect uses simple <Navigate to="/login" replace />
-    // This test verifies the current behavior - redirect happens correctly
     const testRouter = createTestRouter('/dashboard');
     render(<RouterProvider router={testRouter} />);
 
-    // Should be redirected to login
     await waitFor(() => {
       expect(screen.getByText('Login Page')).toBeInTheDocument();
     });
+
+    expect(testRouter.state.location.pathname).toBe('/login');
+    expect(testRouter.state.location.state).toEqual({ from: '/dashboard' });
   });
 
   it('should not expose standalone upload route', () => {
@@ -204,7 +203,7 @@ describe('ProtectedRoute', () => {
     render(<RouterProvider router={testRouter} />);
 
     await waitFor(() => {
-      expect(screen.getByText('AI-Powered Personal Literature Database')).toBeInTheDocument();
+      expect(screen.getByText('开始探索')).toBeInTheDocument();
     });
   });
 
@@ -222,7 +221,7 @@ describe('ProtectedRoute', () => {
     render(<RouterProvider router={testRouter} />);
 
     await waitFor(() => {
-      expect(screen.getByText('AI-Powered Personal Literature Database')).toBeInTheDocument();
+      expect(screen.getByText('开始探索')).toBeInTheDocument();
     });
   });
 });

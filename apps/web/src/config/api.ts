@@ -20,6 +20,22 @@ export const getApiBaseUrl = (): string => {
   // Check for environment variable (Vite convention)
   const envUrl = import.meta.env.VITE_API_BASE_URL;
 
+  if (import.meta.env.DEV && envUrl) {
+    try {
+      const parsed = new URL(envUrl, window.location.origin);
+      const currentHost = window.location.hostname;
+      const localHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
+      const isLocalApiHost = localHosts.has(parsed.hostname);
+      const isCurrentLocalHost = localHosts.has(currentHost);
+
+      if (isLocalApiHost && isCurrentLocalHost) {
+        return '';
+      }
+    } catch {
+      // Fall through to existing env handling.
+    }
+  }
+
   if (envUrl) {
     return envUrl;
   }

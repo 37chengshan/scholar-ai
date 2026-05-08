@@ -32,6 +32,21 @@ export function buildChatHref(scope: ChatScopeParams): string {
   return query ? `/chat?${query}` : '/chat';
 }
 
+export function buildFreshChatHref(scope: ChatScopeParams): string {
+  const href = buildChatHref(scope);
+  const [pathname, search = ''] = href.split('?');
+  const params = new URLSearchParams(search);
+  params.set('new', '1');
+  params.delete('session');
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+export function shouldPreserveComposerDraftForHandoff(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return params.get('handoff') === '1';
+}
+
 function buildHandoffChatHref(scope: ChatScopeParams): string {
   const href = buildChatHref(scope);
   const [pathname, search = ''] = href.split('?');

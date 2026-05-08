@@ -63,7 +63,7 @@ class KnowledgeBase(Base):
 
     # KB configuration fields (per D-08, D-09)
     # These are set at KB creation and inherited by papers imported to this KB
-    embedding_model: Mapped[str] = mapped_column(String, default="bge-m3")
+    embedding_model: Mapped[str] = mapped_column(String, default="text-embedding-v4")
     parse_engine: Mapped[str] = mapped_column(String, default="docling")
     chunk_strategy: Mapped[str] = mapped_column(String, default="by-paragraph")
     enable_graph: Mapped[bool] = mapped_column(Boolean, default=False)

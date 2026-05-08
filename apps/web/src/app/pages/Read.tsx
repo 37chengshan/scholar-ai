@@ -26,6 +26,7 @@ import {
   TabsContent,
 } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "../components/ui/sheet";
 import {
   Tooltip,
   TooltipContent,
@@ -39,7 +40,8 @@ import type { Annotation } from "@/services/annotationsApi";
 import {
   buildReadingNoteTitle,
   createEmptyEditorDocument,
-  getPrimaryUserNoteForPaper,
+  getPrimaryReadingNoteForPaper,
+  READ_WORKSPACE_NOTE_TAG,
 } from '@/features/notes/ownership';
 import { normalizeEditorDocument } from '@/features/notes/content';
 import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
@@ -64,6 +66,9 @@ import { SourceChunkHighlight } from '@/features/read/components/SourceChunkHigh
 import { EvidenceSideNote } from '@/features/read/components/EvidenceSideNote';
 import { navigateToChatWithHandoff } from '@/features/chat/chatHandoff';
 import { useReadPreferencesStore } from '@/features/read/state/readPreferencesStore';
+import { getEvidenceSource } from '@/services/evidenceApi';
+import type { EvidenceBlockDto } from '@scholar-ai/types';
+import { navigateToSafeTarget } from '@/lib/navigation';
 
 /**
  * Internal Read component that uses Router hooks
@@ -98,12 +103,20 @@ function ReadContent() {
     height: number;
   } | null>(null);
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+  const [activeEvidence, setActiveEvidence] = useState<EvidenceBlockDto | null>(null);
+  const [activeEvidencePreview, setActiveEvidencePreview] = useState('');
   const [linkedNoteId, setLinkedNoteId] = useState<string | null>(null);
   const [linkedNoteTitle, setLinkedNoteTitle] = useState<string>("");
   const [linkedNoteContent, setLinkedNoteContent] = useState<any>(createEmptyEditorDocument());
   const [noteSaveStatus, setNoteSaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
   const [noteLastSaved, setNoteLastSaved] = useState<Date | null>(null);
   const [pageInputValue, setPageInputValue] = useState('1');
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+    return window.matchMedia('(min-width: 1024px)').matches;
+  });
   const {
     rightTab,
     isPanelOpen,
@@ -127,7 +140,7 @@ function ReadContent() {
     async (paperId: string, paperTitle: string) => {
       const noteTitle = buildReadingNoteTitle(paperTitle, isZh);
       const existingNotes = await notesApi.getNotesByPaper(paperId);
-      const userNote = getPrimaryUserNoteForPaper(existingNotes, paperId);
+      const userNote = getPrimaryReadingNoteForPaper(existingNotes, paperId);
 
       if (!userNote) {
         setLinkedNoteId(null);
@@ -142,6 +155,19 @@ function ReadContent() {
     },
     [isZh],
   );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    const syncViewport = () => setIsDesktopViewport(mediaQuery.matches);
+    syncViewport();
+
+    mediaQuery.addEventListener('change', syncViewport);
+    return () => mediaQuery.removeEventListener('change', syncViewport);
+  }, []);
 
   useEffect(() => {
     const clampedWidth = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, panelWidth));
@@ -179,6 +205,46 @@ function ReadContent() {
       setRightTab('summary');
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!sourceNav.sourceId) {
+      setActiveEvidence(null);
+      setActiveEvidencePreview('');
+      return;
+    }
+
+    void getEvidenceSource(sourceNav.sourceId)
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setActiveEvidence({
+          evidence_id: payload.evidence_id,
+          source_type: payload.source_type,
+          paper_id: payload.paper_id || id || '',
+          source_chunk_id: payload.source_chunk_id,
+          page_num: payload.page_num || sourceNav.page || currentPage,
+          section_path: payload.section_path || null,
+          content_type: payload.content_type || 'text',
+          text: payload.content || payload.anchor_text || '',
+          quote_text: payload.content || payload.anchor_text || '',
+          citation_jump_url: payload.citation_jump_url,
+        });
+        setActiveEvidencePreview(payload.anchor_text || payload.content || '');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActiveEvidence(null);
+          setActiveEvidencePreview('');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, id, sourceNav.page, sourceNav.sourceId]);
 
   // Load paper data
   useEffect(() => {
@@ -300,7 +366,7 @@ function ReadContent() {
             title: linkedNoteTitle || buildReadingNoteTitle(paper?.title, isZh),
             contentDoc: normalizeEditorDocument(content),
             sourceType: 'read',
-            tags: ['read-note'],
+            tags: [READ_WORKSPACE_NOTE_TAG],
             paperIds: [id],
           });
           setLinkedNoteId(created.id);
@@ -312,6 +378,7 @@ function ReadContent() {
               buildReadingNoteTitle(paper?.title, isZh),
             contentDoc: normalizeEditorDocument(content),
             sourceType: 'read',
+            tags: [READ_WORKSPACE_NOTE_TAG],
             paperIds: [id],
           });
         }
@@ -415,13 +482,194 @@ function ReadContent() {
     );
   }
 
+  const assistantPanelContent = (
+    <Tabs
+      value={rightTab}
+      onValueChange={(value) => setRightTab(value as 'notes' | 'annotations' | 'summary')}
+      className="h-full flex flex-col"
+    >
+      <div className="border-b border-border/50 bg-background/80 backdrop-blur-md px-5 py-4">
+        <div className="text-[10px] font-semibold text-muted-foreground">
+          {isZh ? "阅读辅助" : "Reading Assistant"}
+        </div>
+        <div className="mt-1 text-sm font-semibold text-foreground">
+          {isZh ? "笔记 / 批注 / 摘要" : "Notes / Annotations / Summary"}
+        </div>
+        {chunkHighlight.hasHighlight ? (
+          <div className="mt-3 space-y-2">
+            <SourceChunkHighlight sourceChunkId={chunkHighlight.highlightedSourceChunkId} />
+            <EvidenceSideNote
+              source={sourceNav.source}
+              sourceId={sourceNav.sourceId}
+              page={sourceNav.page}
+              paperId={id || ''}
+              targetNoteId={linkedNoteId}
+              evidence={activeEvidence}
+              previewText={activeEvidencePreview}
+              onSaveEvidence={(claim, block) => void saveEvidence(claim, block, {
+                surface: 'read',
+                targetNoteId: linkedNoteId || undefined,
+              })}
+            />
+          </div>
+        ) : null}
+      </div>
+      <TabsList className="px-3 pt-3 justify-start shrink-0 bg-transparent">
+        <TabsTrigger value="notes" className="text-xs">
+          {isZh ? "笔记" : "Notes"}
+        </TabsTrigger>
+        <TabsTrigger value="annotations" className="text-xs">
+          {isZh ? "批注" : "Annotations"}
+        </TabsTrigger>
+        <TabsTrigger value="summary" className="text-xs">
+          {isZh ? "AI总结" : "AI Summary"}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent
+        value="annotations"
+        className="flex-1 overflow-hidden mt-0"
+      >
+        <div className="h-full flex flex-col">
+          <AnnotationToolbar
+            paperId={id!}
+            pageNumber={currentPage}
+            onAnnotationCreated={handleAnnotationCreated}
+            selectedText={selectedText}
+            selectionPosition={selectionPosition}
+          />
+          <div className="flex-1 overflow-auto p-3">
+            {annotations.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-8">
+                {isZh ? "暂无批注" : "No annotations yet"}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {annotations.map((ann) => (
+                  <div
+                    key={ann.id}
+                    className="cursor-pointer rounded-2xl border border-border/60 bg-background p-3 text-xs transition-colors hover:bg-primary/[0.04]"
+                    onClick={() => {
+                      void goToPage(clampPage(ann.pageNumber), 'annotation');
+                      setActiveAnnotationId(ann.id);
+                      setRightTab("annotations");
+                    }}
+                    style={{
+                      borderLeftColor: ann.color,
+                      borderLeftWidth: 3,
+                    }}
+                  >
+                    <p className="text-muted-foreground">
+                      {isZh ? "第" : "Page"} {ann.pageNumber}
+                    </p>
+                    {ann.content && (
+                      <p className="mt-1 text-foreground">
+                        {ann.content}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent
+        value="summary"
+        className="flex-1 overflow-hidden mt-0"
+      >
+        <AISummaryPanel
+          paperId={id!}
+          summary={paper.readingNotes}
+          readingCardDoc={paper.readingCardDoc}
+          onJumpCitation={(block) => {
+            navigateToSafeTarget(block.citation_jump_url, navigate);
+          }}
+          onSaveEvidence={(claim, block) => {
+            void saveEvidence(claim, block, {
+              surface: 'read',
+              targetNoteId: linkedNoteId || undefined,
+            });
+          }}
+        />
+      </TabsContent>
+
+      <TabsContent
+        value="notes"
+        className="flex-1 overflow-hidden mt-0"
+      >
+        <div className="h-full flex flex-col">
+          <div className="flex items-center justify-between border-b border-border/60 px-3 py-3">
+            <span className="text-xs font-medium text-muted-foreground">
+              {isZh ? "阅读笔记" : "Reading Notes"}
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground">
+                {noteSaveStatus === 'saving' && (isZh ? '保存中' : 'Saving...')}
+                {noteSaveStatus === 'pending' && (isZh ? '有未保存修改' : 'Unsaved changes')}
+                {noteSaveStatus === 'saved' && noteLastSaved && `${isZh ? '已保存' : 'Saved'} ${noteLastSaved.toLocaleTimeString(isZh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`}
+                {noteSaveStatus === 'error' && (isZh ? '保存失败，稍后重试' : 'Save failed, retry later')}
+                {noteSaveStatus === 'idle' && ''}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-full border-border/70 bg-background px-3 text-[10px]"
+                onClick={() => navigate(`/notes?paperId=${id}${linkedNoteId ? `&noteId=${linkedNoteId}` : ""}`)}
+              >
+                <FileText className="w-3 h-3 mr-1" />
+                {isZh ? "在笔记页编辑" : "Open full notes"}
+              </Button>
+            </div>
+          </div>
+          <div className="px-3 py-2 border-b border-border/50 bg-background/80">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[10px]"
+              onClick={() => {
+                const refText = `[[pdf:${id}:page:${currentPage}]]`;
+                const current = linkedNoteContent || createEmptyEditorDocument();
+                const next = {
+                  ...current,
+                  content: [
+                    ...((current.content as any[]) || []),
+                    { type: 'paragraph', content: [{ type: 'text', text: refText }] },
+                  ],
+                };
+                setLinkedNoteContent(next);
+                toast.success(isZh ? '已插入当前页引用' : 'Inserted current page reference');
+              }}
+            >
+              {isZh ? '插入当前页引用' : 'Insert current page reference'}
+            </Button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <NotesEditor
+              content={linkedNoteContent}
+              onChange={(json) => {
+                setLinkedNoteContent(json);
+              }}
+              placeholder={
+                isZh
+                  ? "添加阅读笔记... 使用 [[pdf:paperId:page:5]] 引用论文"
+                  : "Add reading notes... Use [[pdf:paperId:page:5]] to reference"
+              }
+            />
+          </div>
+        </div>
+      </TabsContent>
+    </Tabs>
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="editorial-app-shell flex h-full min-h-0 flex-col bg-background">
       {/* Top Toolbar */}
       <div className="magazine-toolbar flex items-center gap-3 border-b border-border/50 bg-background/95 px-4 py-3 backdrop-blur-sm shrink-0">
         <div className="min-w-0">
           <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
-            {isZh ? "Focused Reading" : "Focused Reading"}
+            {isZh ? "专注阅读" : "Focused Reading"}
           </div>
           <h1
           className="mt-2 max-w-xs truncate font-serif text-lg font-semibold text-foreground"
@@ -608,7 +856,7 @@ function ReadContent() {
         {/* Left Sidebar: Section Navigation */}
         <div className="hidden w-[220px] shrink-0 border-r border-border/50 bg-muted/20 lg:flex lg:flex-col">
           <div className="border-b border-border/50 px-5 py-4">
-            <h2 className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+            <h2 className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.2em] font-serif tracking-tight">
               {isZh ? "论文章节" : "Sections"}
             </h2>
           </div>
@@ -630,6 +878,7 @@ function ReadContent() {
             <PDFViewer
               paperId={id!}
               currentPage={currentPage}
+              highlightSnippet={activeEvidence?.text || ''}
               onPageChange={(page) => {
                 void goToPage(page, 'url');
               }}
@@ -662,7 +911,7 @@ function ReadContent() {
         </div>
 
         {/* Right Panel: Collapsible Tabbed Panel */}
-        {isPanelOpen && (
+        {isPanelOpen && isDesktopViewport && (
           <>
             <div
               role="separator"
@@ -676,188 +925,25 @@ function ReadContent() {
               className="hidden border-l border-border/50 bg-muted/10 lg:flex lg:flex-col shrink-0"
               style={{ width: `${panelWidth}px` }}
             >
-            <Tabs
-              value={rightTab}
-              onValueChange={(value) => setRightTab(value as 'notes' | 'annotations' | 'summary')}
-              className="h-full flex flex-col"
-            >
-              <div className="border-b border-border/50 bg-background/80 backdrop-blur-md px-5 py-4">
-                <div className="text-[10px] font-semibold text-muted-foreground">
-                  {isZh ? "阅读辅助" : "Reading Assistant"}
-                </div>
-                <div className="mt-1 text-sm font-semibold text-foreground">
-                  {isZh ? "笔记 / 批注 / 摘要" : "Notes / Annotations / Summary"}
-                </div>
-                {chunkHighlight.hasHighlight ? (
-                  <div className="mt-3 space-y-2">
-                    <SourceChunkHighlight sourceChunkId={chunkHighlight.highlightedSourceChunkId} />
-                    <EvidenceSideNote
-                      source={sourceNav.source}
-                      sourceId={sourceNav.sourceId}
-                      page={sourceNav.page}
-                      paperId={id || ''}
-                      targetNoteId={linkedNoteId}
-                      onSaveEvidence={(claim, block) => void saveEvidence(claim, block, {
-                        surface: 'read',
-                        targetNoteId: linkedNoteId || undefined,
-                      })}
-                    />
-                  </div>
-                ) : null}
-              </div>
-              <TabsList className="px-3 pt-3 justify-start shrink-0 bg-transparent">
-                <TabsTrigger value="notes" className="text-xs">
-                  {isZh ? "笔记" : "Notes"}
-                </TabsTrigger>
-                <TabsTrigger value="annotations" className="text-xs">
-                  {isZh ? "批注" : "Annotations"}
-                </TabsTrigger>
-                <TabsTrigger value="summary" className="text-xs">
-                  {isZh ? "AI总结" : "AI Summary"}
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent
-                value="annotations"
-                className="flex-1 overflow-hidden mt-0"
-              >
-                <div className="h-full flex flex-col">
-                  <AnnotationToolbar
-                    paperId={id!}
-                    pageNumber={currentPage}
-                    onAnnotationCreated={handleAnnotationCreated}
-                    selectedText={selectedText}
-                    selectionPosition={selectionPosition}
-                  />
-                  <div className="flex-1 overflow-auto p-3">
-                    {annotations.length === 0 ? (
-                      <p className="text-xs text-muted-foreground text-center py-8">
-                        {isZh ? "暂无批注" : "No annotations yet"}
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {annotations.map((ann) => (
-                          <div
-                            key={ann.id}
-                            className="cursor-pointer rounded-2xl border border-border/60 bg-background p-3 text-xs transition-colors hover:bg-primary/[0.04]"
-                            onClick={() => {
-                              void goToPage(clampPage(ann.pageNumber), 'annotation');
-                              setActiveAnnotationId(ann.id);
-                              setRightTab("annotations");
-                            }}
-                            style={{
-                              borderLeftColor: ann.color,
-                              borderLeftWidth: 3,
-                            }}
-                          >
-                            <p className="text-muted-foreground">
-                              {isZh ? "第" : "Page"} {ann.pageNumber}
-                            </p>
-                            {ann.content && (
-                              <p className="mt-1 text-foreground">
-                                {ann.content}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent
-                value="summary"
-                className="flex-1 overflow-hidden mt-0"
-              >
-                <AISummaryPanel
-                  paperId={id!}
-                  summary={paper.readingNotes}
-                  readingCardDoc={paper.readingCardDoc}
-                  onJumpCitation={(block) => {
-                    if (block.citation_jump_url) {
-                      navigate(block.citation_jump_url);
-                    }
-                  }}
-                  onSaveEvidence={(claim, block) => {
-                    void saveEvidence(claim, block, {
-                      surface: 'read',
-                      targetNoteId: linkedNoteId || undefined,
-                    });
-                  }}
-                />
-              </TabsContent>
-
-              <TabsContent
-                value="notes"
-                className="flex-1 overflow-hidden mt-0"
-              >
-                <div className="h-full flex flex-col">
-                  <div className="flex items-center justify-between border-b border-border/60 px-3 py-3">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {isZh ? "阅读笔记" : "Reading Notes"}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-muted-foreground">
-                        {noteSaveStatus === 'saving' && (isZh ? '保存中' : 'Saving...')}
-                        {noteSaveStatus === 'pending' && (isZh ? '有未保存修改' : 'Unsaved changes')}
-                        {noteSaveStatus === 'saved' && noteLastSaved && `${isZh ? '已保存' : 'Saved'} ${noteLastSaved.toLocaleTimeString(isZh ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`}
-                        {noteSaveStatus === 'error' && (isZh ? '保存失败，稍后重试' : 'Save failed, retry later')}
-                        {noteSaveStatus === 'idle' && ''}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 rounded-full border-border/70 bg-background px-3 text-[10px]"
-                        onClick={() => navigate(`/notes?paperId=${id}${linkedNoteId ? `&noteId=${linkedNoteId}` : ""}`)}
-                      >
-                        <FileText className="w-3 h-3 mr-1" />
-                        {isZh ? "在笔记页编辑" : "Open full notes"}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="px-3 py-2 border-b border-border/50 bg-background/80">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-[10px]"
-                      onClick={() => {
-                        const refText = `[[pdf:${id}:page:${currentPage}]]`;
-                        const current = linkedNoteContent || createEmptyEditorDocument();
-                        const next = {
-                          ...current,
-                          content: [
-                            ...((current.content as any[]) || []),
-                            { type: 'paragraph', content: [{ type: 'text', text: refText }] },
-                          ],
-                        };
-                        setLinkedNoteContent(next);
-                        toast.success(isZh ? '已插入当前页引用' : 'Inserted current page reference');
-                      }}
-                    >
-                      {isZh ? '插入当前页引用' : 'Insert current page reference'}
-                    </Button>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <NotesEditor
-                      content={linkedNoteContent}
-                      onChange={(json) => {
-                        setLinkedNoteContent(json);
-                      }}
-                      placeholder={
-                        isZh
-                          ? "添加阅读笔记... 使用 [[pdf:paperId:page:5]] 引用论文"
-                          : "Add reading notes... Use [[pdf:paperId:page:5]] to reference"
-                      }
-                    />
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
+              {assistantPanelContent}
+            </div>
           </>
         )}
       </div>
+
+      {!isDesktopViewport ? (
+        <Sheet open={isPanelOpen} onOpenChange={setIsPanelOpen}>
+          <SheetContent side="right" className="w-[92vw] max-w-none border-l border-border/60 bg-background p-0 sm:max-w-md">
+            <SheetTitle className="sr-only">{isZh ? "阅读辅助面板" : "Reading assistant panel"}</SheetTitle>
+            <SheetDescription className="sr-only">
+              {isZh ? "查看阅读笔记、批注和 AI 总结。" : "Review reading notes, annotations, and AI summary."}
+            </SheetDescription>
+            <div className="h-full min-h-0 overflow-hidden">
+              {assistantPanelContent}
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : null}
     </div>
   );
 }

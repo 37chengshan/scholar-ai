@@ -47,7 +47,15 @@ describe('useChatRuntimeBridge', () => {
       currentMessageIdRef: { current: 'message-1' },
       sseServiceRef: { current: null },
       runtime,
-      streamState: { streamStatus: 'streaming', tokensUsed: 10, cost: 0.2 },
+      streamState: {
+        streamStatus: 'streaming',
+        tokensUsed: 10,
+        cost: 0.2,
+        contentBuffer: '',
+        reasoningBuffer: '',
+        toolTimeline: [],
+        citations: [],
+      },
       confirmation: null,
       resetConfirmation: vi.fn(),
       handleSSEEvent: vi.fn(),
@@ -95,7 +103,17 @@ describe('useChatRuntimeBridge', () => {
       currentMessageIdRef: { current: 'message-2' },
       sseServiceRef: { current: { connect } as any },
       runtime,
-      streamState: { streamStatus: 'streaming', tokensUsed: 6, cost: 0.1, startedAt: 10, endedAt: 20 },
+      streamState: {
+        streamStatus: 'streaming',
+        tokensUsed: 6,
+        cost: 0.1,
+        startedAt: 10,
+        endedAt: 20,
+        contentBuffer: '',
+        reasoningBuffer: '',
+        toolTimeline: [],
+        citations: [],
+      },
       confirmation: { confirmation_id: 'confirm-1', tool: 'write_file', params: { path: 'tmp' } },
       resetConfirmation: vi.fn(),
       handleSSEEvent,
@@ -140,6 +158,15 @@ describe('useChatRuntimeBridge', () => {
       event: 'message',
       data: { delta: 'hello' },
     }));
-    expect(syncStreamingMessage).toHaveBeenCalledWith('message-2');
+    expect(syncStreamingMessage).toHaveBeenCalledWith(
+      'message-2',
+      expect.objectContaining({
+        content: '',
+        reasoning: '',
+        status: 'streaming',
+        toolTimeline: [],
+        citations: [],
+      }),
+    );
   });
 });

@@ -61,7 +61,9 @@ export interface ToolTimelineItem {
  */
 export interface CitationItem {
   paper_id: string;
+  source_chunk_id?: string;
   source_id?: string;
+  citation_jump_url?: string;
   page_num?: number;
   section_path?: string;
   anchor_text?: string;
@@ -656,9 +658,18 @@ export function useChatStream(
 
         case 'citation':
           const rawCitation = data as Record<string, unknown>;
+          const canonicalSourceChunkId = rawCitation.source_chunk_id
+            ? String(rawCitation.source_chunk_id)
+            : rawCitation.source_id
+              ? String(rawCitation.source_id)
+              : rawCitation.chunk_id
+                ? String(rawCitation.chunk_id)
+                : undefined;
           const citationData: CitationItem = {
             paper_id: String(rawCitation.paper_id || ''),
-            source_id: rawCitation.source_id ? String(rawCitation.source_id) : undefined,
+            source_chunk_id: canonicalSourceChunkId,
+            source_id: canonicalSourceChunkId,
+            citation_jump_url: rawCitation.citation_jump_url ? String(rawCitation.citation_jump_url) : undefined,
             page_num: typeof rawCitation.page_num === 'number'
               ? rawCitation.page_num
               : (typeof rawCitation.page === 'number' ? rawCitation.page : undefined),
@@ -678,7 +689,7 @@ export function useChatStream(
               : (typeof rawCitation.page_num === 'number' ? rawCitation.page_num : undefined),
             score: typeof rawCitation.score === 'number' ? rawCitation.score : 0,
             content_type: (rawCitation.content_type as CitationItem['content_type']) || 'text',
-            chunk_id: rawCitation.chunk_id ? String(rawCitation.chunk_id) : undefined,
+            chunk_id: rawCitation.chunk_id ? String(rawCitation.chunk_id) : canonicalSourceChunkId,
           };
 
           if (citationData.paper_id) {
@@ -875,4 +886,3 @@ export function useChatStream(
     resetConfirmation,
   };
 }
-

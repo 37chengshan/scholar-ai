@@ -224,8 +224,8 @@ export function mapChatScopeToWorkflowScope(scope: { type?: string | null; id?: 
     return {
       type: 'paper',
       id: scope.id ?? null,
-      title: 'Paper Workflow',
-      subtitle: scope.id ? `Focused workflow for ${scope.id}` : 'Focused workflow for a single paper',
+      title: '单篇论文',
+      subtitle: scope.id ? `围绕论文 ${scope.id} 继续阅读、提问与整理证据` : '围绕单篇论文继续阅读、提问与整理证据',
     };
   }
 
@@ -233,24 +233,24 @@ export function mapChatScopeToWorkflowScope(scope: { type?: string | null; id?: 
     return {
       type: 'knowledge-base',
       id: scope.id ?? null,
-      title: 'Knowledge Workflow',
-      subtitle: scope.id ? `Knowledge-base workflow for ${scope.id}` : 'Knowledge-base workflow context',
+      title: '知识库工作区',
+      subtitle: scope.id ? `围绕知识库 ${scope.id} 继续检索证据、问答与综述` : '围绕一个知识库继续检索证据、问答与综述',
     };
   }
 
   return {
     type: 'global',
     id: scope.id ?? null,
-    title: 'Global Workspace',
-    subtitle: 'Track pending work and output artifacts',
+    title: '研究工作区',
+    subtitle: '在同一处继续当前问题、证据和输出整理',
   };
 }
 
 export function mapScopeToBannerModel(scope: WorkflowScope | null | undefined): Pick<WorkflowScope, 'title' | 'subtitle'> {
   if (!scope) {
     return {
-      title: 'Global Workspace',
-      subtitle: 'Track pending work and output artifacts',
+      title: '研究工作区',
+      subtitle: '在同一处继续当前问题、证据和输出整理',
     };
   }
 

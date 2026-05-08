@@ -13,8 +13,12 @@ export const useNotesPreferencesStore = create<NotesPreferencesState>()(
     (set) => ({
       selectedFolderId: null,
       tagFilter: 'all',
-      setSelectedFolderId: (selectedFolderId) => set({ selectedFolderId }),
-      setTagFilter: (tagFilter) => set({ tagFilter }),
+      setSelectedFolderId: (selectedFolderId) =>
+        set((state) =>
+          state.selectedFolderId === selectedFolderId ? state : { selectedFolderId }
+        ),
+      setTagFilter: (tagFilter) =>
+        set((state) => (state.tagFilter === tagFilter ? state : { tagFilter })),
     }),
     {
       name: 'scholar-ai-notes-preferences',

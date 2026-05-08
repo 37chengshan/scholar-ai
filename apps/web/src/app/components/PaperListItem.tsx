@@ -56,6 +56,7 @@ export function PaperListItem({
   onQuery,
 }: PaperListItemProps) {
   const status = statusConfig[parseStatus];
+  const metaLine = [authors, venue, year].filter((item) => item && item.trim().length > 0).join(' · ');
 
   return (
     <Card className="group border border-border/50 bg-card hover:border-primary/30 transition-all duration-200">
@@ -68,9 +69,7 @@ export function PaperListItem({
                 <h4 className="font-semibold text-foreground leading-tight group-hover:text-primary transition-colors truncate">
                   {title}
                 </h4>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {authors} · {venue} {year}
-                </p>
+                {metaLine ? <p className="text-sm text-muted-foreground mt-1">{metaLine}</p> : null}
               </div>
             </div>
 

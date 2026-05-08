@@ -60,6 +60,74 @@ class CreateImportRequest(BaseModel):
     )
 
 
+def _serialize_import_job(job: Any) -> Dict[str, Any]:
+    """Serialize ImportJob for both detail and list endpoints.
+
+    The frontend KB workspace consumes list and detail payloads interchangeably
+    for import state, so dedupe/task/source fields must stay aligned.
+    """
+
+    return {
+        "importJobId": job.id,
+        "knowledgeBaseId": job.knowledge_base_id,
+        "sourceType": job.source_type,
+        "status": job.status,
+        "stage": job.stage,
+        "progress": job.progress,
+        "nextAction": job.next_action,
+        "retryCount": getattr(job, "retry_count", 0),
+        "version": getattr(job, "version", None),
+        "source": {
+            "rawInput": job.source_ref_raw,
+            "normalizedRef": getattr(job, "source_ref_normalized", None),
+            "externalIds": getattr(job, "external_ids", None) or {},
+        },
+        "preview": {
+            "title": getattr(job, "resolved_title", None),
+            "authors": getattr(job, "resolved_authors", None) or [],
+            "year": getattr(job, "resolved_year", None),
+            "venue": getattr(job, "resolved_venue", None),
+        },
+        "dedupe": {
+            "status": getattr(job, "dedupe_status", None),
+            "matchedPaperId": getattr(job, "dedupe_match_paper_id", None),
+            "matchType": getattr(job, "dedupe_match_type", None),
+            "decision": getattr(job, "dedupe_decision", None),
+        },
+        "file": {
+            "storageKey": getattr(job, "storage_key", None),
+            "sha256": getattr(job, "file_sha256", None),
+            "sizeBytes": getattr(job, "size_bytes", None),
+        }
+        if getattr(job, "storage_key", None)
+        else None,
+        "paper": {
+            "paperId": getattr(job, "paper_id", None),
+            "title": getattr(job, "resolved_title", None),
+        }
+        if getattr(job, "paper_id", None)
+        else None,
+        "task": {
+            "processingTaskId": getattr(job, "processing_task_id", None),
+            "status": getattr(job, "processing_task_status", None),
+            "checkpointStage": getattr(job, "processing_task_checkpoint_stage", None),
+        }
+        if getattr(job, "processing_task_id", None)
+        else None,
+        "error": {
+            "code": getattr(job, "error_code", None),
+            "message": getattr(job, "error_message", None),
+        }
+        if getattr(job, "error_code", None) or getattr(job, "error_message", None)
+        else None,
+        "createdAt": job.created_at.isoformat() if getattr(job, "created_at", None) else None,
+        "updatedAt": job.updated_at.isoformat() if getattr(job, "updated_at", None) else None,
+        "startedAt": job.started_at.isoformat() if getattr(job, "started_at", None) else None,
+        "completedAt": job.completed_at.isoformat() if getattr(job, "completed_at", None) else None,
+        "cancelledAt": job.cancelled_at.isoformat() if getattr(job, "cancelled_at", None) else None,
+    }
+
+
 # =============================================================================
 # Create ImportJob Endpoint
 # =============================================================================
@@ -317,50 +385,7 @@ async def get_import_job(
 
         return KBResponse(
             success=True,
-            data={
-                "importJobId": job.id,
-                "knowledgeBaseId": job.knowledge_base_id,
-                "sourceType": job.source_type,
-                "status": job.status,
-                "stage": job.stage,
-                "progress": job.progress,
-                "nextAction": job.next_action,
-                "source": {
-                    "rawInput": job.source_ref_raw,
-                    "normalizedRef": job.source_ref_normalized,
-                    "externalIds": job.external_ids or {},
-                },
-                "preview": {
-                    "title": job.resolved_title,
-                    "authors": job.resolved_authors or [],
-                    "year": job.resolved_year,
-                    "venue": job.resolved_venue,
-                },
-                "file": {
-                    "storageKey": job.storage_key,
-                    "sha256": job.file_sha256,
-                    "sizeBytes": job.size_bytes,
-                }
-                if job.storage_key
-                else None,
-                "dedupe": {
-                    "status": job.dedupe_status,
-                    "matchedPaperId": job.dedupe_match_paper_id,
-                    "decision": job.dedupe_decision,
-                },
-                "paper": {"paperId": job.paper_id} if job.paper_id else None,
-                "task": {"processingTaskId": job.processing_task_id}
-                if job.processing_task_id
-                else None,
-                "error": {
-                    "code": job.error_code,
-                    "message": job.error_message,
-                }
-                if job.error_code
-                else None,
-                "createdAt": job.created_at.isoformat() if job.created_at else None,
-                "updatedAt": job.updated_at.isoformat() if job.updated_at else None,
-            },
+            data=_serialize_import_job(job),
         )
     except HTTPException:
         raise
@@ -401,28 +426,7 @@ async def list_import_jobs(
         return KBResponse(
             success=True,
             data={
-                "jobs": [
-                    {
-                        "importJobId": j.id,
-                        "knowledgeBaseId": j.knowledge_base_id,
-                        "sourceType": j.source_type,
-                        "status": j.status,
-                        "stage": j.stage,
-                        "progress": j.progress,
-                        "nextAction": j.next_action,
-                        "source": {
-                            "rawInput": j.source_ref_raw,
-                        },
-                        "preview": {
-                            "title": j.resolved_title,
-                            "year": j.resolved_year,
-                        },
-                        "paper": {"paperId": j.paper_id} if j.paper_id else None,
-                        "error": {"message": getattr(j, 'error_message', None)} if getattr(j, 'error_message', None) else None,
-                        "createdAt": j.created_at.isoformat() if j.created_at else None,
-                    }
-                    for j in jobs
-                ],
+                "jobs": [_serialize_import_job(j) for j in jobs],
                 "total": len(jobs),
                 "limit": limit,
                 "offset": offset,

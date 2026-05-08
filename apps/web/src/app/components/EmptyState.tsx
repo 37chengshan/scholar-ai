@@ -97,7 +97,7 @@ export function EmptyState({ icon: _icon, title, description, action, variant = 
         {illustration}
       </div>
 
-      <h3 className="empty-state__title">{title}</h3>
+      <h3 className="empty-state__title font-serif tracking-tight">{title}</h3>
       {description && (
         <p className="empty-state__description">{description}</p>
       )}

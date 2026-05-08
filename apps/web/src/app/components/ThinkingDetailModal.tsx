@@ -107,7 +107,7 @@ export function ThinkingDetailModal({
             >
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                <h2 className="text-lg font-bold flex items-center gap-2">
+                <h2 className="text-lg font-bold flex items-center gap-2 font-serif tracking-tight">
                   <Activity className="w-5 h-5 text-primary" />
                   {t.title}
                 </h2>
@@ -124,7 +124,7 @@ export function ThinkingDetailModal({
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
                 {/* Step Timeline section */}
                 <section>
-                  <h3 className="text-sm font-bold tracking-wide uppercase text-muted-foreground mb-3">
+                  <h3 className="text-sm font-bold tracking-wide uppercase text-muted-foreground mb-3 font-serif tracking-tight">
                     {t.stepTimeline}
                   </h3>
                   {steps.length > 0 ? (
@@ -138,7 +138,7 @@ export function ThinkingDetailModal({
 
                 {/* Tool Calls section */}
                 <section>
-                  <h3 className="text-sm font-bold tracking-wide uppercase text-muted-foreground mb-3">
+                  <h3 className="text-sm font-bold tracking-wide uppercase text-muted-foreground mb-3 font-serif tracking-tight">
                     {t.toolCalls}
                   </h3>
                   {toolCalls.length > 0 ? (

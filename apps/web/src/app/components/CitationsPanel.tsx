@@ -25,6 +25,8 @@ import { FileText, Table, Image, ChevronDown, ChevronUp, ExternalLink } from 'lu
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
 import { PaperCitation } from '@/types/chat';
+import { normalizeEvidenceText, resolveEvidenceDisplayTitle } from '@/features/notes/content';
+import { navigateToSafeTarget } from '@/lib/navigation';
 
 /**
  * CitationsPanel props
@@ -131,8 +133,14 @@ export function CitationsPanel({ citations, className }: CitationsPanelProps) {
   const hasMore = citations.length > 3;
 
   const handleCitationClick = (citation: PaperCitation) => {
+    if (navigateToSafeTarget(citation.citation_jump_url, navigate)) {
+      return;
+    }
+
     const page = citation.page || 1;
-    navigate(`/read/${citation.paper_id}?page=${page}`);
+    const sourceChunkId = citation.source_chunk_id || citation.source_id || citation.chunk_id || '';
+    const sourceQuery = sourceChunkId ? `&source=chat&source_id=${encodeURIComponent(sourceChunkId)}` : '';
+    navigate(`/read/${citation.paper_id}?page=${page}${sourceQuery}`);
   };
 
   const headerLabel = isZh
@@ -182,7 +190,12 @@ export function CitationsPanel({ citations, className }: CitationsPanelProps) {
 
             return (
               <motion.button
-                key={`${citation.paper_id}-${index}`}
+                key={
+                  citation.source_id
+                  || citation.source_chunk_id
+                  || citation.chunk_id
+                  || `${citation.paper_id}-${citation.page || index}-${index}`
+                }
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
@@ -198,7 +211,7 @@ export function CitationsPanel({ citations, className }: CitationsPanelProps) {
                   <Icon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate group-hover:text-primary transition-colors">
-                      {citation.title}
+                      {resolveEvidenceDisplayTitle(citation.title, citation.snippet)}
                     </div>
                     {authors && (
                       <div className="text-xs text-muted-foreground mt-0.5">
@@ -220,7 +233,7 @@ export function CitationsPanel({ citations, className }: CitationsPanelProps) {
                 {/* Snippet */}
                 {citation.snippet && (
                   <div className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
-                    {citation.snippet}
+                    {normalizeEvidenceText(citation.snippet)}
                   </div>
                 )}
               </motion.button>

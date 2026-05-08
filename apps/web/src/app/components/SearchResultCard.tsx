@@ -12,6 +12,7 @@
 import { ArrowRight, Plus, ExternalLink as ExternalLinkIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Link } from 'react-router';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export interface SearchResultCardProps {
   result: {
@@ -37,6 +38,8 @@ export interface SearchResultCardProps {
 }
 
 export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContinueInChat }: SearchResultCardProps) {
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
   const isInternal = result.source === 'internal';
   const libraryStatus = result.libraryStatus ?? 'not_imported';
   const canOpenRead = Boolean(result.paperId) && (isInternal || libraryStatus === 'imported_fulltext_ready');
@@ -44,15 +47,15 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContin
   const canImport = !isInternal && onAddToLibrary && libraryStatus === 'not_imported';
   const canContinueInChat = Boolean(onContinueInChat && result.paperId && (isInternal || libraryStatus === 'imported_fulltext_ready'));
   const resultStateLabel = canOpenRead
-    ? '可立即阅读'
+    ? (isZh ? '可立即阅读' : 'Ready to read')
     : canImport
-      ? '可加入 KB'
-      : '仅外部发现';
+      ? (isZh ? '可导入知识库' : 'Ready to import')
+      : (isZh ? '仅外部发现' : 'External only');
 
   const LIBRARY_STATUS_LABEL: Record<string, string> = {
-    importing: '导入中…',
-    imported_metadata_only: '元数据已入库',
-    imported_fulltext_ready: '已在文库',
+    importing: isZh ? '导入中…' : 'Importing…',
+    imported_metadata_only: isZh ? '已入库元数据' : 'Metadata imported',
+    imported_fulltext_ready: isZh ? '全文已就绪' : 'Ready in library',
   };
   const libraryStatusLabel = LIBRARY_STATUS_LABEL[libraryStatus];
 
@@ -130,9 +133,9 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContin
             type="button"
             onClick={() => onAddToLibrary(result)}
             className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest bg-primary text-primary-foreground px-3 py-1.5 rounded-sm hover:bg-secondary transition-colors shadow-sm"
-            aria-label="Import paper into library"
+            aria-label={isZh ? '导入到知识库' : 'Import paper into library'}
           >
-            <Plus className="w-3 h-3" /> Import
+            <Plus className="w-3 h-3" /> {isZh ? '导入' : 'Import'}
           </button>
         )}
         {onContinueInChat && (
@@ -152,7 +155,9 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContin
             )}
           >
             <ArrowRight className="h-3 w-3" />
-            {canContinueInChat ? 'Continue in Chat' : 'Import to KB first'}
+            {canContinueInChat
+              ? (isZh ? '继续追问' : 'Continue in Chat')
+              : (isZh ? '请先导入知识库' : 'Import to library first')}
           </button>
         )}
         {paperHref && (
@@ -160,7 +165,7 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContin
             to={paperHref}
             className="flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-primary-foreground shadow-sm transition-colors hover:bg-secondary"
           >
-            View
+            {isZh ? '查看' : 'View'}
           </Link>
         )}
         {!paperHref && isInternal && result.paperId && onViewPaper && (
@@ -169,7 +174,7 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContin
             onClick={() => onViewPaper(result.paperId!)}
             className="flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-primary-foreground shadow-sm transition-colors hover:bg-secondary"
           >
-            View
+            {isZh ? '查看' : 'View'}
           </button>
         )}
         <div className="flex items-center gap-2">
@@ -180,7 +185,7 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContin
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-foreground/60 hover:text-primary transition-colors px-2 py-1"
             >
-              <ExternalLinkIcon className="w-3 h-3" /> PDF
+              <ExternalLinkIcon className="w-3 h-3" /> {isZh ? '查看 PDF' : 'PDF'}
             </a>
           )}
         </div>

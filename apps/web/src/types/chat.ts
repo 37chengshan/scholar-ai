@@ -90,6 +90,9 @@ export interface PaperCitation {
   snippet: string;
   score: number; // 0-1 relevance score
   content_type: 'text' | 'table' | 'figure';
+  source_chunk_id?: string;
+  source_id?: string;
+  citation_jump_url?: string;
   chunk_id?: string;
 }
 

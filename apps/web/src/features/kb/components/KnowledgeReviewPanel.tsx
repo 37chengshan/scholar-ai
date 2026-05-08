@@ -8,11 +8,53 @@ import { useElementWidth, useTextMeasure } from '@/lib/text-layout/react';
 import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigation';
 import { navigateToChatWithHandoff } from '@/features/chat/chatHandoff';
 import { useLanguage } from '@/app/contexts/LanguageContext';
+import { isSafeNavigationTarget, openSafeExternalLink } from '@/lib/navigation';
 
 interface KnowledgeReviewPanelProps {
   kbId: string;
   papers: KBPaperListItem[];
   onRunChanged?: () => void;
+}
+
+function formatReviewStatus(status: string, isZh: boolean) {
+  if (!isZh) return status;
+  switch (status) {
+    case 'failed':
+      return '失败';
+    case 'partial':
+      return '部分完成';
+    case 'running':
+      return '进行中';
+    case 'idle':
+      return '等待中';
+    case 'completed':
+      return '已完成';
+    default:
+      return status;
+  }
+}
+
+function formatSupportStatus(status: string, isZh: boolean) {
+  if (!isZh) {
+    if (status === 'supported') return 'Supported';
+    if (status === 'weakly_supported' || status === 'partially_supported') return 'Weakly Supported';
+    return 'Unsupported';
+  }
+  if (status === 'supported') return '证据充分';
+  if (status === 'weakly_supported' || status === 'partially_supported') return '证据偏弱';
+  return '证据不足';
+}
+
+function formatReviewStepName(stepName: string, isZh: boolean) {
+  if (!isZh) return stepName;
+  const normalized = stepName.toLowerCase();
+  if (normalized.includes('outline')) return '提纲生成';
+  if (normalized.includes('draft')) return '草稿生成';
+  if (normalized.includes('claim')) return '论断核验';
+  if (normalized.includes('evidence')) return '证据组装';
+  if (normalized.includes('citation')) return '引文校验';
+  if (normalized.includes('repair')) return '修复补强';
+  return stepName;
 }
 
 function ReviewParagraphCard({
@@ -48,17 +90,16 @@ function ReviewParagraphCard({
   const [repairingClaimId, setRepairingClaimId] = useState<string | null>(null);
   const { jumpToSource, saveEvidence } = useEvidenceNavigation(isZh);
 
-  const isSafeJump = (url: string) =>
-    url.startsWith('/') || url.startsWith('http://') || url.startsWith('https://');
-
   return (
     <div ref={setElement} className="rounded-xl border border-border/60 bg-paper-1 p-3">
       <p className="text-sm leading-6 text-foreground">{text}</p>
-      <div className="mt-2 text-[11px] text-muted-foreground">{`Pretext lines: ${measure.lineCount}`}</div>
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        {isZh ? `排版测量行数：${measure.lineCount}` : `Pretext lines: ${measure.lineCount}`}
+      </div>
       <div className="mt-2 flex flex-wrap gap-2">
         {citations.map((citation, index) => {
           const jump = (citation.citation_jump_url as string) || '';
-          const label = `Citation ${index + 1}`;
+          const label = isZh ? `引文 ${index + 1}` : `Citation ${index + 1}`;
           return (
             <button
               key={`${label}-${index}`}
@@ -68,13 +109,13 @@ function ReviewParagraphCard({
                 if (!jump) {
                   return;
                 }
-                if (!isSafeJump(jump)) {
+                if (!isSafeNavigationTarget(jump)) {
                   return;
                 }
                 if (jump.startsWith('/')) {
                   navigate(jump);
                 } else {
-                  window.location.href = jump;
+                  openSafeExternalLink(jump);
                 }
               }}
             >
@@ -167,11 +208,7 @@ function ReviewParagraphCard({
                           : 'rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-700'
                     }
                   >
-                    {supportStatus === 'supported'
-                      ? 'Supported'
-                      : supportStatus === 'weakly_supported' || supportStatus === 'partially_supported'
-                        ? 'Weakly Supported'
-                        : 'Unsupported'}
+                    {formatSupportStatus(supportStatus, isZh)}
                   </span>
 
                   {supportStatus !== 'supported' ? (
@@ -218,7 +255,9 @@ function ReviewParagraphCard({
                           }
                         }}
                       >
-                        {repairingClaimId === claimId ? 'Repairing...' : 'Repair Claim'}
+                        {repairingClaimId === claimId
+                          ? (isZh ? '修复中...' : 'Repairing...')
+                          : (isZh ? '修复论断' : 'Repair Claim')}
                       </button>
                     </div>
                   ) : null}
@@ -264,30 +303,38 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
 
     if (displayDraft.status === 'failed') {
       return {
-        label: 'Needs repair',
-        reason: 'The draft pipeline failed and needs evidence or claim follow-up.',
+        label: isZh ? '需要修复' : 'Needs repair',
+        reason: isZh
+          ? '当前草稿链路失败，需要补证据或修复关键论断后再继续。'
+          : 'The draft pipeline failed and needs evidence or claim follow-up.',
       };
     }
 
     if (displayDraft.status === 'partial') {
       return {
-        label: 'Partial draft',
-        reason: 'The draft exists, but some paragraphs still need stronger support.',
+        label: isZh ? '部分完成' : 'Partial draft',
+        reason: isZh
+          ? '草稿已生成，但部分段落仍需要更强的证据支撑。'
+          : 'The draft exists, but some paragraphs still need stronger support.',
       };
     }
 
     if (displayDraft.status === 'running' || displayDraft.status === 'idle') {
       return {
-        label: 'In progress',
-        reason: 'Open the run trace to inspect how the current draft is being built.',
+        label: isZh ? '生成中' : 'In progress',
+        reason: isZh
+          ? '可结合运行轨迹查看当前草稿是如何逐步生成的。'
+          : 'Open the run trace to inspect how the current draft is being built.',
       };
     }
 
     return {
-      label: 'Ready to continue',
-      reason: 'Use the draft, evidence, and run trace as a launch point for the next question.',
+      label: isZh ? '可继续' : 'Ready to continue',
+      reason: isZh
+        ? '可以直接从草稿、证据和运行轨迹继续提问或完善结论。'
+        : 'Use the draft, evidence, and run trace as a launch point for the next question.',
     };
-  }, [displayDraft]);
+  }, [displayDraft, isZh]);
 
   const loadDrafts = async () => {
     setLoading(true);
@@ -385,14 +432,14 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
     <div className="grid gap-5 lg:grid-cols-[320px,1fr]">
       <aside className="space-y-4 rounded-xl border border-border/70 bg-paper-1 p-4">
         <div>
-          <h3 className="text-sm font-semibold uppercase tracking-wider">Review Draft</h3>
-          <p className="mt-1 text-xs text-muted-foreground">支持整库或论文子集生成</p>
+          <h3 className="text-sm font-semibold uppercase tracking-wider font-serif tracking-tight">{isZh ? '综述草稿' : 'Review Draft'}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">{isZh ? '支持整库或论文子集生成' : 'Generate from the whole KB or a paper subset.'}</p>
         </div>
 
         <textarea
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="可选：指定研究问题"
+          placeholder={isZh ? '可选：指定研究问题' : 'Optional: specify a research question'}
           className="min-h-20 w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
         />
 
@@ -416,17 +463,17 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
           onClick={() => void handleGenerate()}
         >
           {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          生成 Outline + Draft
+          {isZh ? '生成提纲与草稿' : 'Generate Outline + Draft'}
         </button>
 
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">历史 Drafts</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{isZh ? '历史草稿' : 'Draft History'}</div>
           {loading ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> 加载中
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {isZh ? '加载中' : 'Loading'}
             </div>
           ) : drafts.length === 0 ? (
-            <div className="text-xs text-muted-foreground">暂无 Draft</div>
+            <div className="text-xs text-muted-foreground">{isZh ? '还没有草稿' : 'No drafts yet'}</div>
           ) : (
             drafts.map((draft) => (
               <button
@@ -440,7 +487,7 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
                 }`}
               >
                 <div className="font-medium">{draft.title}</div>
-                <div className="mt-1 text-muted-foreground">{draft.status}</div>
+                <div className="mt-1 text-muted-foreground">{formatReviewStatus(draft.status, isZh)}</div>
               </button>
             ))
           )}
@@ -451,16 +498,18 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
         {!displayDraft ? (
           <div className="rounded-xl border border-border/70 bg-paper-1 p-6 text-sm text-muted-foreground">
             {runDetail
-              ? '当前 run trace 已加载，但对应 draft 不在当前列表中。'
-              : '还没有 Review Draft，先发起一次生成。'}
+              ? (isZh ? '当前运行轨迹已加载，但对应草稿不在当前列表中。' : 'Run trace loaded, but its draft is not in the current list.')
+              : (isZh ? '还没有综述草稿，先发起一次生成。' : 'No review draft yet. Generate one first.')}
           </div>
         ) : (
           <>
             <div className="rounded-xl border border-border/70 bg-paper-1 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-lg font-semibold">{displayDraft.title}</h3>
-                  <div className="text-xs text-muted-foreground">status: {displayDraft.status}</div>
+                  <h3 className="text-lg font-semibold font-serif tracking-tight">{displayDraft.title}</h3>
+                  <div className="text-xs text-muted-foreground">
+                    {isZh ? '状态' : 'Status'}: {formatReviewStatus(displayDraft.status, isZh)}
+                  </div>
                 </div>
                 {(displayDraft.status === 'failed' || displayDraft.status === 'partial') ? (
                   <button
@@ -470,7 +519,7 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
                     className="inline-flex items-center gap-2 rounded-md border border-border/70 px-3 py-1.5 text-xs hover:border-primary"
                   >
                     {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                    Retry
+                    {isZh ? '重试生成' : 'Retry'}
                   </button>
                 ) : null}
               </div>
@@ -478,37 +527,43 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
               {draftStatusSummary ? (
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
                   <div className="rounded-lg border border-border/60 bg-background/70 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Next Step</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{isZh ? '下一步' : 'Next Step'}</div>
                     <div className="mt-2 text-sm font-medium text-foreground">{draftStatusSummary.label}</div>
                     <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{draftStatusSummary.reason}</div>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-background/70 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Citation Coverage</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{isZh ? '引文覆盖率' : 'Citation Coverage'}</div>
                     <div className="mt-2 text-sm font-medium text-foreground">{Math.round(displayDraft.quality.citation_coverage * 100)}%</div>
-                    <div className="mt-1 text-xs text-muted-foreground">How much of the draft is backed by citations.</div>
-                  </div>
-                  <div className="rounded-lg border border-border/60 bg-background/70 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Unsupported Rate</div>
-                    <div className="mt-2 text-sm font-medium text-foreground">{Math.round(displayDraft.quality.unsupported_paragraph_rate * 100)}%</div>
-                    <div className="mt-1 text-xs text-muted-foreground">Paragraphs that still need stronger support.</div>
-                  </div>
-                  <div className="rounded-lg border border-border/60 bg-background/70 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Fallback</div>
-                    <div className="mt-2 text-sm font-medium text-foreground">{displayDraft.quality.fallback_used ? 'Used' : 'Clean'}</div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      {displayDraft.errorState ? `error_state: ${displayDraft.errorState}` : 'No fallback warning on the latest draft.'}
+                      {isZh ? '衡量草稿中有多少内容已经被明确引文支撑。' : 'How much of the draft is backed by citations.'}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/70 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{isZh ? '证据不足占比' : 'Unsupported Rate'}</div>
+                    <div className="mt-2 text-sm font-medium text-foreground">{Math.round(displayDraft.quality.unsupported_paragraph_rate * 100)}%</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {isZh ? '这些段落仍需要更强的证据支撑。' : 'Paragraphs that still need stronger support.'}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/70 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{isZh ? '回退状态' : 'Fallback'}</div>
+                    <div className="mt-2 text-sm font-medium text-foreground">{displayDraft.quality.fallback_used ? (isZh ? '已触发' : 'Used') : (isZh ? '未触发' : 'Clean')}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {displayDraft.errorState
+                        ? (isZh ? `最近一次生成触发了回退：${displayDraft.errorState}` : `Fallback triggered on the latest draft: ${displayDraft.errorState}`)
+                        : (isZh ? '最近一次生成没有触发回退警告。' : 'No fallback warning on the latest draft.')}
                     </div>
                   </div>
                 </div>
               ) : null}
 
               <div className="mt-3 text-sm">
-                <div className="font-medium">Research Question</div>
+                <div className="font-medium">{isZh ? '研究问题' : 'Research Question'}</div>
                 <div className="mt-1 text-muted-foreground">{displayDraft.outlineDoc.research_question}</div>
               </div>
 
               <div className="mt-3">
-                <div className="font-medium text-sm">Outline Themes</div>
+                <div className="font-medium text-sm">{isZh ? '提纲主题' : 'Outline Themes'}</div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {displayDraft.outlineDoc.themes.map((theme) => (
                     <span key={theme} className="rounded-full border border-border/70 px-2 py-0.5 text-xs">
@@ -524,7 +579,9 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
                 <div key={section.heading} className="rounded-xl border border-border/70 bg-paper-1 p-4">
                   <h4 className="text-sm font-semibold">{section.heading}</h4>
                   {section.omitted_reason ? (
-                    <div className="mt-2 text-xs text-amber-600">omitted: {section.omitted_reason}</div>
+                    <div className="mt-2 text-xs text-amber-600">
+                      {isZh ? `本节暂未展开：${section.omitted_reason}` : `Omitted: ${section.omitted_reason}`}
+                    </div>
                   ) : null}
                   <div className="mt-3 space-y-3">
                     {section.paragraphs.map((paragraph) => (
@@ -556,25 +613,29 @@ export function KnowledgeReviewPanel({ kbId, papers, onRunChanged }: KnowledgeRe
         )}
 
         <div className="rounded-xl border border-border/70 bg-paper-1 p-4">
-          <div className="mb-2 text-sm font-semibold">Run Trace</div>
+          <div className="mb-2 text-sm font-semibold">{isZh ? '运行轨迹' : 'Run Trace'}</div>
           {!runDetail ? (
             <div className="text-xs text-muted-foreground">
               {runDetailLoading
-                ? '正在加载 run trace...'
+                ? (isZh ? '正在加载运行轨迹...' : 'Loading run trace...')
                 : selectedRunId
-                  ? '指定 run 的 trace 暂不可读。'
-                  : '当前 Draft 尚无可读 run trace。'}
+                  ? (isZh ? '指定运行的轨迹暂不可读。' : 'The selected run trace is not readable right now.')
+                  : (isZh ? '当前草稿还没有可读的运行轨迹。' : 'The current draft has no readable run trace yet.')}
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="text-xs text-muted-foreground">run_id: {runDetail.id}</div>
+              <div className="text-xs text-muted-foreground">{isZh ? '运行 ID' : 'Run ID'}: {runDetail.id}</div>
               <div className="space-y-2">
                 {runDetail.steps.map((step, index) => (
                   <div key={`${String(step.step_name)}-${index}`} className="rounded-md border border-border/50 px-2 py-2 text-xs">
-                    <div className="font-medium">{String(step.step_name || `step-${index + 1}`)}</div>
-                    <div className="mt-1 text-muted-foreground">status: {String(step.status || 'unknown')}</div>
+                    <div className="font-medium">
+                      {formatReviewStepName(String(step.step_name || `step-${index + 1}`), isZh)}
+                    </div>
                     <div className="mt-1 text-muted-foreground">
-                      in/out: {String((step.metadata as any)?.input_schema_name || '-')}
+                      {isZh ? '状态' : 'Status'}: {formatReviewStatus(String(step.status || 'unknown'), isZh)}
+                    </div>
+                    <div className="mt-1 text-muted-foreground">
+                      {isZh ? '输入/输出' : 'Input/Output'}: {String((step.metadata as any)?.input_schema_name || '-')}
                       {' -> '}
                       {String((step.metadata as any)?.output_schema_name || '-')}
                     </div>

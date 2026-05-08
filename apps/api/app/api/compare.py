@@ -8,18 +8,22 @@ Phase 4 additions:
 """
 
 import json
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.database import get_db
 from app.deps import CurrentUserId
 from app.models.paper import Paper, PaperChunk
+from app.services.paper_display_metadata import sanitize_paper_display_metadata
+from app.api.papers.paper_shared import derive_paper_evidence_state
 from app.utils.logger import logger
 from app.utils.problem_detail import Errors
 from app.utils.zhipu_client import get_llm_client
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 router = APIRouter()
 
@@ -647,7 +651,8 @@ from app.services.compare_service import (  # noqa: E402
     ALLOWED_DIMENSION_IDS,
     DEFAULT_DIMENSIONS,
     build_compare_contract,
-    get_compare_retriever,
+    hydrate_compare_candidate_texts,
+    retrieve_compare_pack,
 )
 
 
@@ -701,7 +706,9 @@ async def compare_papers_v4(
     """
     # Validate paper ownership
     result = await db.execute(
-        select(Paper).where(
+        select(Paper)
+        .options(selectinload(Paper.upload_history))
+        .where(
             Paper.id.in_(request.paper_ids),
             Paper.user_id == user_id,
         )
@@ -717,10 +724,56 @@ async def compare_papers_v4(
             ),
         )
 
-    paper_meta: Dict[str, Dict[str, Any]] = {
-        p.id: {"title": p.title or p.id, "year": p.year}
-        for p in papers_db
+    chunk_counts_result = await db.execute(
+        select(PaperChunk.paper_id, func.count(PaperChunk.id))
+        .where(PaperChunk.paper_id.in_(request.paper_ids))
+        .group_by(PaperChunk.paper_id)
+    )
+    chunk_count_map = {
+        str(paper_id): int(count or 0)
+        for paper_id, count in chunk_counts_result.all()
     }
+
+    paper_meta: Dict[str, Dict[str, Any]] = {}
+    invalid_papers: list[str] = []
+    for paper in papers_db:
+        latest_upload_filename = None
+        if getattr(paper, "upload_history", None):
+            latest_row = max(
+                paper.upload_history,
+                key=lambda row: row.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            )
+            latest_upload_filename = latest_row.filename
+
+        display = sanitize_paper_display_metadata(
+            paper_id=paper.id,
+            title=paper.title,
+            authors=paper.authors,
+            year=paper.year,
+            venue=paper.venue,
+            fallback_title=latest_upload_filename,
+        )
+        paper_meta[paper.id] = {
+            "title": display["title"] or paper.id,
+            "year": display["year"],
+        }
+        evidence_ready, _, evidence_message = derive_paper_evidence_state(
+            chunk_count=chunk_count_map.get(paper.id, 0),
+            processing_status=paper.status or "pending",
+        )
+        if not evidence_ready:
+            invalid_papers.append(
+                f'{paper_meta[paper.id]["title"]}: {evidence_message or "not evidence-ready"}'
+            )
+
+    if invalid_papers:
+        raise HTTPException(
+            status_code=409,
+            detail=Errors.conflict(
+                "Comparison requires papers with indexed retrieval evidence. "
+                + "; ".join(invalid_papers)
+            ),
+        )
 
     # Resolve dimensions
     if request.dimensions:
@@ -733,14 +786,16 @@ async def compare_papers_v4(
     else:
         dimensions = [CompareDimension(id=d["id"], label=d["label"]) for d in DEFAULT_DIMENSIONS]
 
-    # Build retrieval query
-    query = request.question or f"Compare papers: {', '.join(p.title or p.id for p in papers_db)}"
-
-    # Hybrid retrieval
-    retriever = get_compare_retriever()
-    pack = retriever.retrieve(
-        query=query,
+    pack = retrieve_compare_pack(
         paper_ids=request.paper_ids,
+        paper_meta=paper_meta,
+        dimensions=dimensions,
+        question=request.question,
+    )
+    pack = pack.model_copy(
+        update={
+            "candidates": await hydrate_compare_candidate_texts(db, pack.candidates),
+        }
     )
 
     contract = build_compare_contract(

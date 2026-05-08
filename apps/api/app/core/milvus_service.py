@@ -894,6 +894,47 @@ class MilvusService:
         expr = " && ".join(exprs)
 
         search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+        output_fields = [
+            "paper_id",
+            "user_id",
+            "summary_type",
+            "section_name",
+            "source_chunk_id",
+            "content_data",
+        ]
+
+        def _query_fallback() -> List[Dict[str, Any]]:
+            rows = collection.query(
+                expr=expr,
+                output_fields=["id", *output_fields, "embedding"],
+                limit=max(top_k * 20, 200),
+            )
+            scored_rows: list[Dict[str, Any]] = []
+            for row in rows:
+                row_embedding = row.get("embedding") or []
+                score = _cosine_similarity(embedding, row_embedding)
+                scored_rows.append(
+                    {
+                        "id": row.get("id"),
+                        "score": max(0.0, min(float(score), 1.0)),
+                        "paper_id": row.get("paper_id", ""),
+                        "user_id": row.get("user_id", ""),
+                        "summary_type": row.get("summary_type", ""),
+                        "section_name": row.get("section_name", ""),
+                        "source_chunk_id": row.get("source_chunk_id", ""),
+                        "content_type": "text",
+                        "content_data": row.get("content_data", ""),
+                        "section": row.get("section_name", ""),
+                        "index_type": "summary",
+                        "backend": "milvus",
+                    }
+                )
+            scored_rows.sort(key=lambda item: item.get("score", 0.0), reverse=True)
+            return scored_rows[:top_k]
+
+        if _should_force_query_fallback():
+            return _query_fallback()
+
         try:
             results = collection.search(
                 data=[embedding],
@@ -901,18 +942,17 @@ class MilvusService:
                 param=search_params,
                 limit=top_k,
                 expr=expr,
-                output_fields=[
-                    "paper_id",
-                    "user_id",
-                    "summary_type",
-                    "section_name",
-                    "source_chunk_id",
-                    "content_data",
-                ],
+                output_fields=output_fields,
             )
         except Exception as exc:
-            logger.warning("Summary index search failed", error=str(exc))
-            return []
+            if not _is_unsupported_field_type_error(exc):
+                logger.warning("Summary index search failed", error=str(exc))
+                return []
+            logger.warning(
+                "Summary index search failed with unsupported field type, falling back to python cosine search",
+                error=str(exc),
+            )
+            return _query_fallback()
 
         hits: List[Dict[str, Any]] = []
         for batch in results:

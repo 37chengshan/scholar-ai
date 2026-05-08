@@ -28,7 +28,7 @@ describe('useWorkflowHydration', () => {
       scope: {
         type: 'global',
         id: null,
-        title: 'Global Workspace',
+        title: '研究工作区',
         subtitle: 'No scoped run selected',
       },
       currentRun: null,
@@ -82,8 +82,8 @@ describe('useWorkflowHydration', () => {
 
     const state = useWorkflowStore.getState();
     expect(state.currentRun).toBeNull();
-    expect(state.scope.title).toBe('Discovery Workflow');
-    expect(state.timeline[0]?.title).toBe('Scope Updated');
+    expect(state.scope.title).toBe('检索工作区');
+    expect(state.timeline[0]?.title).toBe('范围已更新');
   });
 
   it('hydrates a durable handoff as a waiting workflow when there is no active run', () => {
@@ -102,9 +102,9 @@ describe('useWorkflowHydration', () => {
 
     const state = useWorkflowStore.getState();
     expect(state.currentRun?.status).toBe('waiting');
-    expect(state.currentRun?.stage).toBe('handoff_ready');
-    expect(state.pendingActions.map((action) => action.label)).toEqual(['Continue in Chat', 'Return to Source']);
-    expect(state.artifacts[0]?.title).toBe('Prepared Chat Handoff');
-    expect(state.timeline[0]?.title).toBe('Handoff Restored');
+    expect(state.currentRun?.stage).toBe('ready_to_continue');
+    expect(state.pendingActions.map((action) => action.label)).toEqual(['继续提问', '返回来源页面']);
+    expect(state.artifacts[0]?.title).toBe('已准备好的追问');
+    expect(state.timeline[0]?.title).toBe('已恢复追问上下文');
   });
 });

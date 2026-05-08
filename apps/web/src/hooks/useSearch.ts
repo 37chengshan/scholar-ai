@@ -295,6 +295,7 @@ export function useSearch(options: UseSearchOptions = {}) {
   return {
     query,
     setQuery,
+    debouncedQuery,
     submitSearch,
     results,
     loading,

@@ -3,7 +3,7 @@ import { createInitialRun } from '@/features/chat/runtime/chatRuntime';
 import type { PendingAction, RunStatus } from '@/features/chat/types/run';
 import type { AgentRun } from '@/features/chat/types/run';
 
-export type WorkspaceScopeType = 'single_paper' | 'full_kb' | 'general' | 'error' | null;
+export type WorkspaceScopeType = 'single_paper' | 'full_kb' | 'compare' | 'general' | 'error' | null;
 
 export interface WorkspaceScope {
   type: WorkspaceScopeType;

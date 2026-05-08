@@ -1,5 +1,6 @@
 import { Loader2, Search } from 'lucide-react';
 import type { KBSearchResult } from '@/services/kbApi';
+import { sanitizeSearchSnippet } from '@/features/notes/content';
 
 interface KnowledgeEvidencePanelProps {
   searchQuery: string;
@@ -70,16 +71,26 @@ export function KnowledgeEvidencePanel({
           {results.map((result, index) => (
             <div
               key={buildResultKey(result, index)}
-              className="group relative cursor-pointer border border-border/80 bg-paper-1 p-6 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
-              onClick={() => onOpenPaper(result.paperId, result.page, result.sourceChunkId)}
+              className="group relative border border-border/80 bg-paper-1 p-6 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
             >
               <div className="absolute -left-2 -top-2 border border-primary/20 bg-primary/[0.08] px-2 py-1 font-mono text-xs font-bold text-primary">
                 相关度: {(result.score * 100).toFixed(1)}%
               </div>
-              <p className="mt-4 text-lg leading-relaxed font-serif text-foreground">"...{result.content}..."</p>
-              <div className="mt-6 flex items-center gap-2 border border-border/70 bg-paper-2 p-3 text-sm font-medium text-muted-foreground">
-                <span className="truncate">{result.paperTitle || result.paperId}</span>
-                {result.page ? <span className="text-primary">第{result.page}页</span> : null}
+              <p className="mt-4 text-lg leading-relaxed font-serif text-foreground">
+                "...{sanitizeSearchSnippet(result.content)}..."
+              </p>
+              <div className="mt-6 flex items-center justify-between gap-3 border border-border/70 bg-paper-2 p-3 text-sm font-medium text-muted-foreground">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate">{result.paperTitle || result.paperId}</span>
+                  {result.page ? <span className="shrink-0 text-primary">第{result.page}页</span> : null}
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 border border-primary/30 bg-primary/[0.08] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-primary transition-colors hover:border-primary/50 hover:bg-primary/[0.12]"
+                  onClick={() => onOpenPaper(result.paperId, result.page, result.sourceChunkId)}
+                >
+                  打开阅读页
+                </button>
               </div>
             </div>
           ))}

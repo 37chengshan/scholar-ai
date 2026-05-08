@@ -25,8 +25,8 @@ interface WorkflowStoreState {
 const defaultScope: WorkflowScope = {
   type: 'global',
   id: null,
-  title: 'Global Workspace',
-  subtitle: 'No scoped run selected',
+  title: 'Research Workspace',
+  subtitle: 'No scoped activity yet',
 };
 
 export const useWorkflowStore = create<WorkflowStoreState>((set) => ({

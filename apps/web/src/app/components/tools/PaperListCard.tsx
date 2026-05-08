@@ -59,7 +59,7 @@ export function PaperListCard({ result }: PaperListCardProps) {
                   {paper.year}
                 </Badge>
               )}
-              <span className="text-xs text-muted-foreground truncate">
+              <span className="text-xs text-muted-foreground truncate font-sans">
                 {formatAuthors(paper.authors)}
               </span>
             </div>
@@ -69,7 +69,7 @@ export function PaperListCard({ result }: PaperListCardProps) {
       {hasMore && (
         <button
           onClick={() => setShowAll(!showAll)}
-          className="w-full flex items-center justify-center gap-1 py-2 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
+          className="w-full flex items-center justify-center gap-1 py-2 text-xs text-muted-foreground hover:bg-muted/50 transition-colors font-sans"
         >
           {showAll ? (
             <>

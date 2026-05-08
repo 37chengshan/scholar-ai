@@ -98,3 +98,6 @@
 1. 只要涉及文字排版、文本绕排、动态重排、多栏流动、基于障碍物的文本布局等前端实现，默认优先使用 `pretext` 技术路径。
 2. 不默认先用纯 CSS 浮动、`shape-outside` 或普通 DOM 覆盖方案做近似效果，除非明确只是静态展示且我特别说明可以简化。
 3. 相关实现优先按“先测量、再排版、最后渲染”的思路组织，而不是先写视觉层再补文字联动。
+4. 只要涉及浏览器精细化测试、逐页 walkthrough、真实前端交互排查、控制台/网络/性能证据采集，默认优先使用 MCP 路径，首选 `Chrome DevTools MCP`。
+5. 需要真实视觉级点击、滚动、菜单、遮挡、响应式验证时，优先使用 `Computer Use` 作为 `Chrome DevTools MCP` 的补充，而不是先启用 `browser-use`。
+6. `browser-use` 默认降级为备用工具，仅在 MCP 路径不可用或明确需要其特定能力时使用；若使用后出现 daemon、session、Chrome 实例或 `browser-use-user-data-dir-*` 残留，必须优先判定为 tooling 问题并停止把它作为主测试链路。

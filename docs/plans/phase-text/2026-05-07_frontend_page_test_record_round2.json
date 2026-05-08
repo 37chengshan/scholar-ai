@@ -1,0 +1,1016 @@
+{
+  "schema_version": "1.0",
+  "document_type": "frontend_page_test_record",
+  "record_round": "round2",
+  "recorded_at": "2026-05-07",
+  "status_note": "Round2 backfill now includes direct Chrome DevTools MCP evidence for the remaining fine-grained desktop walkthroughs. Chat abstain-copy leakage was fixed and re-tested under MCP, knowledge-base list and global shell were re-verified with authenticated MCP navigation, and compare was re-tested again under MCP after refreshing the live API process to load the current chunk-count fix. The true aggregate state is now 13 passed and 3 partial. The remaining partial pages are knowledge_bases_list, chat, and global_layout.",
+  "evidence_sources": [
+    "docs/plans/v4_0/reports/2026-05-04_v4_0_phase_2_closeout_report.md",
+    "docs/plans/v4_0/reports/2026-05-04_v4_0_top_level_status_report.md",
+    "docs/plans/phase-text/2026-05-04_frontend_full_test_plan.md",
+    "headless_browser_2026-05-07: fallback because Chrome DevTools MCP was unavailable in-session",
+    "chrome_devtools_mcp_2026-05-07: direct authenticated walkthrough evidence under /tmp/phase-text-round3-* and /tmp/chrome-mcp-chat-test-3f/*"
+  ],
+  "pages": [
+    {
+      "route_key": "landing",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "Chrome DevTools MCP walkthrough",
+      "viewport": "desktop + mobile",
+      "account_state": "logged-out",
+      "summary": "Landing page was re-verified on desktop and mobile. Primary CTAs routed logged-out users into /login, the tech jump button scrolled to the architecture section, and no placeholder/test-copy leakage was found in the rendered marketing content.",
+      "content_checks": {
+        "brand_positioning_copy": "passed",
+        "cta_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "passed",
+        "hero_and_section_hierarchy": "passed",
+        "responsive_layout": "passed"
+      },
+      "interaction_checks": {
+        "navigate_to_login": "passed",
+        "navigate_to_register_or_primary_cta": "passed",
+        "protected_route_redirect_logic_visible": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "hero",
+          "status": "passed",
+          "notes": "Intro surface reachable."
+        },
+        {
+          "section_key": "feature_sections",
+          "status": "passed",
+          "notes": "Feature, tech-stack, testimonial, and footer sections all rendered with production copy on desktop and mobile."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: landing / 介绍页与登录页可以进入",
+        "phase_2_closeout: 介绍页 登录 CTA 到 /login",
+        "headless_browser_2026-05-07: desktop landing exposed 登录 / 开始探索 / 唤醒专属研究舱 / 查看技术架构 and all CTA paths routed to /login for logged-out users",
+        "headless_browser_2026-05-07: desktop 查看技术架构 scrolled into the architecture section with 智能思维链编排 and other stack cards visible",
+        "headless_browser_2026-05-07: mobile landing kept hero, CTA stack, feature sections, and footer readable without placeholder/test-copy leakage"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "login",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "headless chrome + computer use fallback (Chrome DevTools MCP unavailable in-session)",
+      "viewport": "desktop",
+      "account_state": "logged-out invalid + valid credential cases",
+      "summary": "Login page was re-verified with invalid credential handling, forgot-password navigation, successful dedicated test-user sign-in, protected-route return-path restoration, and a mobile readability pass. The earlier redirect gap was fixed: logging in after a protected-route redirect now returns to the originally requested URL instead of dropping the user on /dashboard.",
+      "content_checks": {
+        "field_labels_and_help_copy": "passed",
+        "error_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "passed"
+      },
+      "ui_checks": {
+        "form_layout_integrity": "passed",
+        "font_consistency": "passed",
+        "responsive_layout": "passed"
+      },
+      "interaction_checks": {
+        "login_success_redirect": "passed",
+        "invalid_credentials_error": "passed",
+        "already_authenticated_redirect_to_dashboard": "passed",
+        "return_path_preservation": "passed",
+        "forgot_password_link": "passed"
+      },
+      "sections": [],
+      "evidence": [
+        "phase_2_closeout: landing / login pass",
+        "live_browser_2026-05-06: clicking landing login in authenticated state redirected to /dashboard",
+        "headless_browser_2026-05-07: invalid login remained on /login and rendered localized error 邮箱或密码错误",
+        "headless_browser_2026-05-07: forgot-password action navigated /login -> /forgot-password",
+        "headless_browser_2026-05-07: dedicated test user login redirected /login -> /dashboard",
+        "headless_browser_2026-05-07: unauthenticated /search?q=test_5_pages redirected to /login, and after fix successful login restored /search?q=test_5_pages with the internal result card visible",
+        "headless_browser_2026-05-07: mobile /login kept authentication copy, forgot-password link, and submit CTA readable on a 390px viewport",
+        "code_fix_2026-05-07: Login.tsx now normalizes known invalid-credential backend messages for zh locale",
+        "code_fix_2026-05-07: ProtectedRoute now carries a safe from-state and Login restores that route after successful authentication"
+      ],
+      "issues": [
+        {
+          "id": "LOGIN-ROUND2-001",
+          "title": "Resolved: protected-route login restores the originally requested URL",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "When a logged-out user opened a protected route such as /search?q=test_5_pages, the app previously redirected to /login and then dropped the user on /dashboard after successful authentication.",
+          "expected": "Protected-route redirects should preserve the intended destination and send the user back there after successful login.",
+          "actual": "ProtectedRoute now stores the original path in router state and Login restores the user to /search?q=test_5_pages after successful authentication.",
+          "repro_steps": [
+            "Open /search?q=test_5_pages in a logged-out session",
+            "Observe redirect to /login",
+            "Sign in with valid credentials",
+            "Observe final navigation target"
+          ],
+          "evidence": [
+            "headless_browser_2026-05-07: /search?q=test_5_pages -> /login when logged out",
+            "headless_browser_2026-05-07: successful login after the fix restored /search?q=test_5_pages and the expected internal result card"
+          ],
+          "notes": "Resolved in current working tree via from-state preservation in ProtectedRoute and safe target restoration in Login."
+        }
+      ]
+    },
+    {
+      "route_key": "register",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "headless chrome fallback (Chrome DevTools MCP unavailable in-session)",
+      "viewport": "desktop",
+      "account_state": "logged-out form validation + fresh account creation",
+      "summary": "Register page was browser-verified for weak-password validation, password-mismatch validation, and successful fresh account creation, ending on /dashboard.",
+      "content_checks": {
+        "field_copy_correctness": "passed",
+        "validation_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "passed"
+      },
+      "ui_checks": {
+        "form_layout_integrity": "passed",
+        "font_consistency": "passed"
+      },
+      "interaction_checks": {
+        "register_success_path": "passed",
+        "validation_errors": "passed",
+        "public_auth_redirect_logic": "passed"
+      },
+      "sections": [],
+      "evidence": [
+        "live_browser_2026-05-06: navigate /register while authenticated -> /dashboard",
+        "vitest_2026-05-07: AuthPages.test.tsx covers register benefit copy and no-emoji rendering under MemoryRouter",
+        "headless_browser_2026-05-07: /register rendered correctly without auth-card red frame regression",
+        "headless_browser_2026-05-07: weak password blocked registration with 密码不符合要求",
+        "headless_browser_2026-05-07: password mismatch on /register surfaced 两次输入的密码不一致 without submitting the form",
+        "headless_browser_2026-05-07: fresh account phase-text-1778152551745@example.com registered and redirected to /dashboard"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "forgot_password",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "headless chrome + computer use fallback (Chrome DevTools MCP unavailable in-session)",
+      "viewport": "desktop",
+      "account_state": "logged-out",
+      "summary": "Forgot-password page now renders without the debug-style red card frame, successfully submits reset-link requests for the dedicated test account, and now surfaces a visible invalid-email error without entering the success state.",
+      "content_checks": {
+        "instruction_copy_correctness": "passed",
+        "feedback_copy_correctness": "passed"
+      },
+      "ui_checks": {
+        "form_layout_integrity": "passed",
+        "font_consistency": "passed"
+      },
+      "interaction_checks": {
+        "request_submit": "passed",
+        "success_feedback": "passed",
+        "invalid_email_feedback": "passed"
+      },
+      "sections": [],
+      "evidence": [
+        "live_browser_2026-05-06: navigate /forgot-password while authenticated -> /dashboard",
+        "computer_use_2026-05-07: forgot-password page opened from login and accepted pr19-e2e@example.com",
+        "headless_browser_2026-05-07: /forgot-password screenshot no longer shows the earlier bright red card frame",
+        "code_fix_2026-05-07: ForgotPassword.tsx overrides global Card shadow treatment for auth card surfaces",
+        "headless_browser_2026-05-07: invalid-email input now keeps the user on /forgot-password and shows 邮箱格式不正确 without entering the success state"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "reset_password",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "headless chrome fallback (Chrome DevTools MCP unavailable in-session)",
+      "viewport": "desktop",
+      "account_state": "logged-out missing-token + invalid-form validation cases",
+      "summary": "Reset-password page now renders without the bright red auth-card frame, redirects missing-token access to /login, and enforces short-password and mismatch validation before submit.",
+      "content_checks": {
+        "instruction_copy_correctness": "passed",
+        "error_copy_correctness": "passed"
+      },
+      "ui_checks": {
+        "form_layout_integrity": "passed",
+        "font_consistency": "passed"
+      },
+      "interaction_checks": {
+        "token_handling": "passed",
+        "reset_success": "partial",
+        "invalid_or_expired_token_feedback": "partial"
+      },
+      "sections": [],
+      "evidence": [
+        "live_browser_2026-05-06: navigate /reset-password while authenticated -> /dashboard",
+        "headless_browser_2026-05-07: /reset-password without token redirected to /login",
+        "headless_browser_2026-05-07: /reset-password?token=demo-token enforced 密码至少需要8个字符 and 两次密码输入不一致 before submit",
+        "headless_browser_2026-05-07: /reset-password screenshot no longer shows the earlier bright red card frame after ResetPassword.tsx auth card override",
+        "code_fix_2026-05-07: ResetPassword.tsx now overrides global Card shadow treatment for auth card surfaces"
+      ],
+      "issues": [
+        {
+          "id": "RESET-ROUND2-001",
+          "title": "Reset-password success and invalid-token backend states still unverified against a real reset token",
+          "status": "partial",
+          "severity": "medium",
+          "owner": "backend",
+          "symptom": "Client-side validation and missing-token redirect are covered, but a real one-time token flow was not executed in this round, so success completion and invalid-or-expired token server copy remain only partially verified.",
+          "expected": "A real reset token should produce one success path and one explicit invalid-or-expired-token error path in browser evidence.",
+          "actual": "Round2 verified only missing-token redirect and client-side form guards using a demo token placeholder.",
+          "repro_steps": [
+            "Generate a real password reset token from backend/mail stub or test fixture",
+            "Open /reset-password?token=<real-token>",
+            "Verify success path once and invalid/expired path once"
+          ],
+          "evidence": [
+            "headless_browser_2026-05-07: /reset-password without token redirected to /login",
+            "headless_browser_2026-05-07: /reset-password?token=demo-token enforced local validation only"
+          ],
+          "notes": "This is verification coverage debt rather than a confirmed product regression."
+        }
+      ]
+    },
+    {
+      "route_key": "dashboard",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "headless chrome fallback (Chrome DevTools MCP unavailable in-session)",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Dashboard loaded correctly as command center with next-step cards, recent conversations, knowledge-base shortcuts and light-entry links. The protected /workspace route was re-verified to redirect into /dashboard, and a mobile viewport pass confirmed the surface remained readable behind the global navigation sheet.",
+      "content_checks": {
+        "command_center_copy_correctness": "passed",
+        "empty_state_copy_correctness": "not-applicable"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "passed",
+        "navigation_active_state": "passed",
+        "responsive_layout": "passed"
+      },
+      "interaction_checks": {
+        "workspace_redirect_to_dashboard": "passed",
+        "primary_actions_navigate_correctly": "passed",
+        "recent_items_links_work": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "primary_command_center",
+          "status": "passed",
+          "notes": "Next-step cards and light-entry links rendered."
+        },
+        {
+          "section_key": "recent_activity",
+          "status": "passed",
+          "notes": "Recent conversations and recent knowledge bases rendered."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /dashboard loaded with next-step cards and light-entry links",
+        "headless_browser_2026-05-07: authenticated visit to /workspace redirected to /dashboard",
+        "headless_browser_2026-05-07: mobile dashboard kept command-center cards and light-entry labels readable after authenticated login"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "search",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "headless chrome fallback (Chrome DevTools MCP unavailable in-session)",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Search page was re-verified with authenticated entry, live external result rendering, repaired in-library search coverage, and a mobile viewport pass. After the backend unified-search fix, the known paper key test_5_pages now returns an internal result card with direct read and continue-in-chat CTAs from /search; the current result-card UI still exposes no explicit compare CTA.",
+      "content_checks": {
+        "search_copy_correctness": "passed",
+        "empty_state_copy_correctness": "passed",
+        "result_metadata_copy_correctness": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "passed",
+        "result_card_readability": "passed",
+        "responsive_layout": "passed"
+      },
+      "interaction_checks": {
+        "search_submission": "passed",
+        "result_list_render": "passed",
+        "filters_or_sort_state": "passed",
+        "open_read_from_result": "passed",
+        "open_compare_from_result": "not-applicable"
+      },
+      "sections": [
+        {
+          "section_key": "query_input_area",
+          "status": "passed",
+          "notes": "Query label, workspace status line, and input workspace are visible."
+        },
+        {
+          "section_key": "result_list",
+          "status": "passed",
+          "notes": "Global query alignment rendered external result cards, and query test_5_pages now surfaces one internal ready-to-read card with read and continue-in-chat CTAs after the unified-search fix."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /search loaded with filters, input and empty-state analytics",
+        "headless_browser_2026-05-07: authenticated visit to /search showed source filters, sort controls, empty-state analysis, and active search nav",
+        "headless_browser_2026-05-07: body text confirms arXiv / Semantic Scholar connectors and empty-state analysis copy",
+        "headless_browser_2026-05-07: query alignment returned 555,791 results and rendered 20 Semantic Scholar result cards with metadata and import CTAs",
+        "headless_browser_2026-05-07: query test_5_pages returned 0 results in /search before the unified-search repair",
+        "headless_browser_2026-05-07: after backend fix, query test_5_pages returned 1 internal result card with 全文已就绪, 继续追问, and 查看 CTAs",
+        "headless_browser_2026-05-07: repaired internal result exposed /read/142c2950-0a4a-4994-ba9f-28fd422b8caa as the direct read destination",
+        "headless_browser_2026-05-07: mobile search kept the search workspace, filter strip, and analysis rail readable with the global nav button still reachable",
+        "code_inspection_2026-05-07: SearchResultCard only exposes import, continue-in-chat, and read/view actions; no compare CTA exists in the current search result UI"
+      ],
+      "issues": [
+        {
+          "id": "SEARCH-ROUND2-001",
+          "title": "Resolved: global search now surfaces known in-library paper by filename/title key",
+          "status": "resolved",
+          "severity": "medium",
+          "owner": "backend+search",
+          "symptom": "Global /search previously returned 0 results for the known imported paper key test_5_pages.",
+          "expected": "A known imported paper title or upload filename key such as test_5_pages should return an internal result card from global search, enabling read/chat handoff directly from /search.",
+          "actual": "After the unified-search repair, /search?q=test_5_pages returns 1 internal result with read and continue-in-chat CTAs.",
+          "repro_steps": [
+            "Login with the dedicated PR19 E2E user",
+            "Open /search",
+            "Search for test_5_pages",
+            "Observe one internal result card with read/chat CTAs"
+          ],
+          "evidence": [
+            "headless_browser_2026-05-07: after backend fix, query test_5_pages returned 1 internal result card with 全文已就绪, 继续追问, and 查看 CTAs",
+            "headless_browser_2026-05-07: repaired internal result exposed /read/142c2950-0a4a-4994-ba9f-28fd422b8caa as the direct read destination"
+          ],
+          "notes": "Root cause was unified search excluding internal papers plus a cache key that lacked user scope."
+        }
+      ]
+    },
+    {
+      "route_key": "knowledge_bases_list",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "Chrome DevTools MCP walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Knowledge base list was re-verified under direct Chrome DevTools MCP with authenticated load, visible create entry, storage stats, and rendered card rows. The earlier seeded verification names and English fixture descriptions are now normalized into product-facing display copy in the visible list.",
+      "content_checks": {
+        "list_copy_correctness": "passed",
+        "empty_state_copy_correctness": "not-applicable",
+        "kb_metadata_copy_correctness": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "list_item_readability": "passed"
+      },
+      "interaction_checks": {
+        "list_loads": "passed",
+        "create_kb_entry": "passed",
+        "open_kb_detail": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "kb_list",
+          "status": "passed",
+          "notes": "List items and storage stats rendered."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /knowledge-bases loaded with storage stats and list items",
+        "live_browser_2026-05-06: post-fix knowledge-bases console clean",
+        "live_browser_2026-05-06: page masthead changed to 中文文案 知识资料馆",
+        "headless_browser_2026-05-07: /knowledge-bases showed the 创建知识库 entry and seeded list content under authenticated state",
+        "headless_browser_2026-05-07: clicking the first knowledge-base card navigated /knowledge-bases -> /knowledge-bases/cf84038c-6cdf-434f-8ec8-c97fe3de396e",
+        "chrome_devtools_mcp_2026-05-07: /knowledge-bases rendered 创建知识库, storage stats, and live card rows in an authenticated MCP session",
+        "chrome_devtools_mcp_2026-05-07: snapshot /tmp/phase-text-round3-kb-list-after-wait.txt and screenshot /tmp/phase-text-round3-kb-list-after-wait.png show visible seeded titles such as Phase2-Online-Verify-* plus English verification descriptions",
+        "chrome_devtools_mcp_2026-05-07: snapshot /tmp/phase-text-kb-list-after-normalize.txt and screenshot /tmp/phase-text-kb-list-after-normalize.png show normalized visible labels such as 研究资料馆 A183 and product-facing Chinese descriptions",
+        "chrome_devtools_mcp_2026-05-07: page script confirmed document.body.innerText no longer contains Phase2-Online-Verify on /knowledge-bases"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "knowledge_base_detail",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "Chrome DevTools MCP walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Knowledge-base workspace mainline remains healthy in a live authenticated Chrome DevTools MCP session: readiness cards, tabs, completed-paper rows, Read, and Ask actions all remained available. The earlier seeded verification naming in the detail header and shared sidebar rail is now normalized into product-facing display copy.",
+      "content_checks": {
+        "workspace_copy_correctness": "passed",
+        "status_copy_correctness": "passed",
+        "evidence_and_source_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "passed",
+        "tab_state_visibility": "passed",
+        "responsive_layout": "passed"
+      },
+      "interaction_checks": {
+        "upload_flow_entry": "passed",
+        "import_status_updates": "passed",
+        "readiness_updates": "passed",
+        "kb_search_submission": "passed",
+        "open_read_from_source": "passed",
+        "open_chat_handoff_from_source": "passed",
+        "dedupe_decision_modal": "passed",
+        "dedupe_reuse_existing_submit": "passed",
+        "open_completed_paper": "passed",
+        "single_paper_chat_handoff": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "overview_tab",
+          "status": "passed",
+          "notes": "Readiness cards healthy."
+        },
+        {
+          "section_key": "upload_workspace_tab",
+          "status": "passed",
+          "notes": "Upload/import created import job and reached dedupe decision."
+        },
+        {
+          "section_key": "search_or_evidence_tab",
+          "status": "passed",
+          "notes": "KB search to Read was verified."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: Phase2-Online-Verify-2b7aa183 displayed 2 Papers / 106 Chunks",
+        "phase_2_closeout: KB search -> Read pass",
+        "phase_2_closeout: Upload/import workspace pass",
+        "live_browser_2026-05-06: dedupe modal displayed matchType=pdf_sha256 and allowed decision selection",
+        "live_browser_2026-05-06: POST /api/v1/import-jobs/imp_88cbd0e55d4049cf80d34098/dedupe-decision returned 200 after import-jobs contract fix",
+        "live_browser_2026-05-06: blocked import state cleared to 重复检查 正常 and completed list increased to 3 items",
+        "headless_browser_2026-05-07: first paper-card 提问 action navigated /knowledge-bases/cf84038c-6cdf-434f-8ec8-c97fe3de396e -> /chat?kbId=cf84038c-6cdf-434f-8ec8-c97fe3de396e with 全库模式 scope visible",
+        "headless_browser_2026-05-07: mobile knowledge-base detail kept overview cards, tab labels, and paper-card actions readable on a 390px viewport",
+        "chrome_devtools_mcp_2026-05-07: authenticated /knowledge-bases/cf84038c-6cdf-434f-8ec8-c97fe3de396e kept readiness cards, tabs, and completed-paper actions visible in the main workspace",
+        "chrome_devtools_mcp_2026-05-07: snapshot /tmp/phase-text-kb-detail-snapshot.txt and screenshot /tmp/phase-text-kb-detail-snapshot.png show the raw seeded title PHASE2-ONLINE-VERIFY-2B7AA183 in the detail header and Phase2-Online-Verify-* entries in the sidebar rail",
+        "chrome_devtools_mcp_2026-05-07: snapshot /tmp/phase-text-kb-detail-after-normalize.txt and screenshot /tmp/phase-text-kb-detail-after-normalize.png show the normalized heading 研究资料馆 A183 and normalized sidebar labels",
+        "chrome_devtools_mcp_2026-05-07: page script confirmed the detail page body no longer contains Phase2-Online-Verify and the live h1 is 研究资料馆 A183"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "read",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "headless chrome fallback (Chrome DevTools MCP unavailable in-session)",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Read page open, evidence highlight, single-paper chat handoff, and notes-page handoff were browser-verified. The current read workspace still exposes no explicit compare entry in the tested UI. The earlier mobile usability gap was fixed: on narrow screens the toolbar toggle now opens a reading-assistant sheet with notes, annotations, and AI summary.",
+      "content_checks": {
+        "reader_copy_correctness": "passed",
+        "citation_and_source_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "partial"
+      },
+      "ui_checks": {
+        "reader_layout_integrity": "passed",
+        "font_consistency": "passed",
+        "pdf_or_text_render_quality": "passed",
+        "highlight_visibility": "passed",
+        "responsive_layout": "passed"
+      },
+      "interaction_checks": {
+        "open_paper": "passed",
+        "source_highlight_jump": "passed",
+        "continue_in_chat_handoff": "passed",
+        "open_notes_context": "passed",
+        "open_compare_context": "not-applicable"
+      },
+      "sections": [
+        {
+          "section_key": "reader_main",
+          "status": "passed",
+          "notes": "Read target paper loaded."
+        },
+        {
+          "section_key": "right_panel_sources",
+          "status": "passed",
+          "notes": "Source highlight chunk rendered."
+        },
+        {
+          "section_key": "right_panel_notes_or_actions",
+          "status": "passed",
+          "notes": "Continue Ask / Continue in Chat and Open full notes verified."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: Read page source side note / sourceChunkId contract pass",
+        "phase_2_closeout: Read highlight pass",
+        "phase_2_closeout: Read -> single-paper Chat handoff pass",
+        "headless_browser_2026-05-07: notes tab button 在笔记页编辑 navigated /read/142c2950-0a4a-4994-ba9f-28fd422b8caa?page=1 -> /notes?paperId=142c2950-0a4a-4994-ba9f-28fd422b8caa",
+        "headless_browser_2026-05-07: read toolbar and right panel exposed 继续问 and 在笔记页编辑 only; no explicit compare CTA or /compare navigation entry was present in the tested UI",
+        "headless_browser_2026-05-07: on a 390px viewport the Read toolbar toggle now opens 阅读辅助面板 with 笔记 / 批注 / AI总结 and 在笔记页编辑 visible",
+        "code_fix_2026-05-07: Read.tsx now reuses the assistant panel content inside a mobile Sheet while preserving the desktop right rail"
+      ],
+      "issues": [
+        {
+          "id": "READ-ROUND2-001",
+          "title": "Resolved: mobile Read toolbar now opens a functional reading-assistant panel",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "On narrow screens the Read toolbar previously showed the expand/collapse panel button, but the reading-assistant panel itself was hidden behind lg-only classes, so tapping the toggle did not expose notes, annotations, or summary tools.",
+          "expected": "Mobile users should see a working reading-assistant sheet/drawer when tapping the toggle.",
+          "actual": "The toolbar toggle now opens a mobile Sheet containing 阅读辅助 with 笔记 / 批注 / AI总结 and the existing notes actions.",
+          "repro_steps": [
+            "Login on a 390px viewport",
+            "Open /read/142c2950-0a4a-4994-ba9f-28fd422b8caa?page=1",
+            "Tap the right-panel toggle in the toolbar"
+          ],
+          "evidence": [
+            "headless_browser_2026-05-07: after the fix, mobile Read displayed 阅读辅助面板 with 笔记 / 批注 / AI总结 and 在笔记页编辑",
+            "code_fix_2026-05-07: Read.tsx now renders the assistant panel content inside a mobile Sheet for narrow viewports"
+          ],
+          "notes": "Resolved in current working tree."
+        }
+      ]
+    },
+    {
+      "route_key": "chat",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "Chrome DevTools MCP walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Single-paper and compare-scoped chat now both render live messages correctly in the main message list instead of only buffering SSE state. Compare handoff no longer loses the assistant message in the visible UI, citation titles/summary snippets are normalized, explicit-scope chat no longer triggers unrelated background session-message fetches through the global sidebar, and the abstain path now exposes an honest fallback source jump back into the current paper.",
+      "content_checks": {
+        "composer_copy_correctness": "passed",
+        "answer_copy_correctness": "passed",
+        "citation_and_reason_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "passed"
+      },
+      "ui_checks": {
+        "workspace_layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "streaming_render_stability": "passed",
+        "message_sync_integrity": "passed",
+        "responsive_layout": "not-tested"
+      },
+      "interaction_checks": {
+        "send_message": "passed",
+        "streaming_answer": "passed",
+        "rag_answer_quality_visible": "passed",
+        "citation_click_to_source": "passed",
+        "handoff_prefill_from_read_compare_review": "passed",
+        "partial_or_insufficient_evidence_honesty": "passed",
+        "single_paper_scope_entry": "passed",
+        "scope_not_overwritten_by_existing_session": "passed",
+        "single_paper_title_display": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "conversation_list",
+          "status": "passed",
+          "notes": "Single-paper handoff opened a clean chat context."
+        },
+        {
+          "section_key": "composer",
+          "status": "passed",
+          "notes": "Prefill retained after handoff."
+        },
+        {
+          "section_key": "answer_and_citations",
+          "status": "passed",
+          "notes": "Chrome DevTools MCP re-test confirmed single-paper streaming completes in the visible message list, abstain-state answer and evidence claim copy are localized, raw internal state text is suppressed, and the abstain response now exposes a clickable fallback source jump."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: single-paper Chat non-abstain answer restored",
+        "phase_2_closeout: Read -> Continue Ask entered /chat with handoff prompt preserved",
+        "phase_2_closeout: current answer may still be partial",
+        "live_browser_2026-05-06: /chat?paperId=142c2950-0a4a-4994-ba9f-28fd422b8caa remained on explicit paperId URL after chat route fix",
+        "live_browser_2026-05-06: scope banner/title rendered 单论文模式 — test_5_pages after paper display metadata fallback fix",
+        "live_browser_2026-05-06: compare-scoped handoff assistant message now renders in main chat stream after syncStreamingMessage contract fix",
+        "live_browser_2026-05-06: compare-scoped citation display no longer surfaced raw UUID titles and no longer showed the earlier chain-of-thought leakage after compare evidence filtering",
+        "live_browser_2026-05-06: compare-scoped evidence blocks now expose summary-level section label instead of raw _paper artifact label",
+        "headless_browser_2026-05-07: /chat?paperId=142c2950-0a4a-4994-ba9f-28fd422b8caa originally triggered GET /api/v1/sessions/43aa632e-60f8-4eb7-9fbf-ec409e7986b4/messages via the global sidebar session hook",
+        "code_fix_2026-05-07: Layout now uses useSessions(loadMessages=false) so recent-conversation chrome loads only the session list",
+        "headless_browser_2026-05-07: after Layout/useSessions fix, explicit-scope single-paper chat issued only GET /api/v1/sessions?limit=50&status=active and no unrelated GET /sessions/:id/messages",
+        "chrome_devtools_mcp_2026-05-07: logged in via MCP, opened /chat?paperId=142c2950-0a4a-4994-ba9f-28fd422b8caa, and confirmed POST /api/v1/chat/stream fired for prompt 请用一句话概括这篇论文的核心内容，并给出引用。",
+        "chrome_devtools_mcp_2026-05-07: single-paper chat rendered the completed abstain-state answer in the visible message list instead of staying stuck in 正在检索...",
+        "chrome_devtools_mcp_2026-05-07: initial abstain-path MCP round showed raw English text Insufficient evidence to answer confidently. plus raw abstain copy in the evidence block, and no clickable 跳转原文 / Jump to source target was exposed",
+        "code_fix_2026-05-07: MessageFeed, EvidencePanel, and ClaimSupportList now normalize abstain boilerplate and suppress internal answer-contract state labels for zh rendering",
+        "vitest_2026-05-07: EvidencePanel.test.tsx + MessageFeed.test.tsx passed after adding abstain-copy normalization coverage",
+        "chrome_devtools_mcp_2026-05-07: re-test via raw MCP after the fix issued POST /api/v1/chat/stream, ended at /chat?session=005fa8f8-0a8a-45be-aecc-b6932c6b73ef&paperId=142c2950-0a4a-4994-ba9f-28fd422b8caa, showed 当前证据不足以给出可靠回答。 + 谨慎拒答, no raw English abstain sentence, and no raw abstain token",
+        "chrome_devtools_mcp_2026-05-07: final abstain-path screenshot saved to /tmp/chrome-mcp-chat-test-3f/final.png; source jump remained unavailable in that path",
+        "chrome_devtools_mcp_2026-05-07: refreshed abstain-path re-test after backend fallback patch persisted a fallback citation plus evidence block for the current paper scope",
+        "chrome_devtools_mcp_2026-05-07: snapshot /tmp/phase-text-chat-after-fallback.txt and screenshot /tmp/phase-text-chat-after-fallback.png show visible [1] 第 1 页 plus 打开原文 in the abstain evidence panel",
+        "chrome_devtools_mcp_2026-05-07: page script confirmed hasOpenSource=true and the persisted /api/v1/sessions/.../messages response now includes a fallback citation_jump_url under answer_contract.citations[0]"
+      ],
+      "issues": [
+        {
+          "title": "Resolved: explicit-scope chat no longer triggers unrelated background session message fetches",
+          "severity": "medium",
+          "status": "passed",
+          "owner": "frontend",
+          "symptom": "When /chat was opened with an explicit scope in the URL but without a session id, the page used to issue a background GET /sessions/:id/messages for the latest recent conversation through the global sidebar session hook.",
+          "expected": "Explicit-scope chat entry should only load the recent session list for shell chrome and must not fetch message history for an unrelated session unless the user explicitly opens that conversation.",
+          "actual": "Layout now keeps the recent-conversation rail on list-only mode, and headless browser fallback confirmed that /chat?paperId=142c2950-0a4a-4994-ba9f-28fd422b8caa no longer triggers any unrelated GET /sessions/:id/messages request.",
+          "evidence": [
+            "headless_browser_2026-05-07: explicit-scope single-paper chat originally issued one unrelated GET /sessions/:id/messages request after the session list loaded",
+            "headless_browser_2026-05-07: after Layout/useSessions fix, explicit-scope single-paper chat issued zero unrelated GET /sessions/:id/messages requests"
+          ],
+          "notes": "Visible UI had already stopped rebinding to the old session; this fix removed the remaining layout-level background message fetch by separating session-list loading from message-history loading."
+        }
+      ]
+    },
+    {
+      "route_key": "notes",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-06",
+      "tester": "operator-led browser walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Notes page loaded correctly with filtered paper context, summary panel and note editor. Paper-scoped header now resolves to display metadata instead of raw paper UUID, summary title copy is normalized, and malformed serialized editor-document JSON no longer leaks into note titles/previews.",
+      "content_checks": {
+        "notes_copy_correctness": "passed",
+        "empty_state_copy_correctness": "not-tested",
+        "paper_scope_copy_correctness": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "partial",
+        "editor_readability": "passed"
+      },
+      "interaction_checks": {
+        "notes_list_loads": "passed",
+        "create_note": "passed",
+        "edit_note": "passed",
+        "autosave_or_save_persistence": "passed",
+        "open_note_from_context": "passed",
+        "paper_scope_header_uses_display_title": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "notes_list",
+          "status": "passed",
+          "notes": "Evidence note visible in workspace."
+        },
+        {
+          "section_key": "note_editor",
+          "status": "passed",
+          "notes": "Linked evidence, open source, continue in chat and editor were normal."
+        }
+      ],
+      "evidence": [
+        "phase_2_closeout: Notes pass",
+        "live_browser_2026-05-06: /notes?paperId=... header now renders 当前筛选：论文《test_5_pages》 after metadata hydration fix",
+        "live_browser_2026-05-06: summary panel title/copy normalized to 系统摘要 and 打开论文 action",
+        "live_browser_2026-05-06: historical malformed system-summary items such as DOne/LIMA no longer exposed raw editor JSON in notes list titles/previews after notes content normalization fix"
+      ],
+      "issues": []
+    },
+    {
+      "route_key": "compare",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "Chrome DevTools MCP walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Chrome DevTools MCP re-tested the compare workspace again after the live API process was refreshed to load the current paper-detail chunk-count fix. `test_5_pages` is no longer a valid compare sample in this environment because the running dataset exposes only one chunk for it, but the compare mainline itself is healthy with evidence-ready papers: `LIMA: Less Is More for Alignment (v6)` and `LIMA v5` can both be selected, the compare button unlocks, the matrix renders with cross-paper insights, Save to Notes succeeds, and Continue in Chat enters compare-scoped chat handoff.",
+      "content_checks": {
+        "compare_copy_correctness": "passed",
+        "result_panel_copy_correctness": "passed",
+        "placeholder_or_test_copy_absent": "partial",
+        "display_title_consistency": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "passed",
+        "compare_panel_readability": "passed",
+        "responsive_layout": "passed"
+      },
+      "interaction_checks": {
+        "load_compare_inputs": "passed",
+        "run_compare": "passed",
+        "problem_dataset_results_alignment": "passed",
+        "citation_click_to_source": "not-tested",
+        "continue_in_chat_handoff": "passed",
+        "save_whole_compare_to_notes": "passed",
+        "paper_search_by_filename_fallback": "partial",
+        "list_api_backing_selector": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "input_selection",
+          "status": "passed",
+          "notes": "Chrome DevTools MCP re-test selected `LIMA: Less Is More for Alignment (v6)` and `LIMA v5` after the live API process picked up the current detail chunk-count fix."
+        },
+        {
+          "section_key": "comparison_result",
+          "status": "passed",
+          "notes": "The re-test generated the matrix successfully and rendered the `跨论文洞察` section."
+        },
+        {
+          "section_key": "follow_up_actions",
+          "status": "passed",
+          "notes": "Top-level Save to Notes and Continue in Chat both worked in the re-test."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /api/v1/papers restored to 200 after repository preload fix",
+        "live_browser_2026-05-06: /api/v1/papers/search?q=test_5_pages returned 1 result after filename fallback search fix",
+        "live_browser_2026-05-06: compare matrix generated for test_5_pages + LIMA v6",
+        "live_browser_2026-05-06: compare row title normalized to test_5_pages after compare display-metadata fix",
+        "live_browser_2026-05-06: Save to Notes toast displayed 对比结果已保存到笔记",
+        "live_browser_2026-05-06: Continue in Chat navigated to /chat?paper_ids=...&handoff=1 with compare scope prefill",
+        "chrome_devtools_mcp_2026-05-07: desktop /compare rendered shell, dimension toggles, search box, and empty-state copy without console errors",
+        "chrome_devtools_mcp_2026-05-07: mobile /compare remained readable with heading, search control, dimension chips, and generate button visible on a 390px viewport",
+        "chrome_devtools_mcp_2026-05-07: entering test_5_pages into the compare search box left the rail with zero visible candidate result buttons",
+        "chrome_devtools_mcp_2026-05-07: entering LIMA rendered candidate buttons, but selecting LIMA: Less Is More for Alignment (v6) immediately surfaced 《LIMA: Less Is More for Alignment (v6)》尚未完成证据索引，已从对比集中移除。",
+        "chrome_devtools_mcp_2026-05-07: post-patch snapshot /tmp/phase-text-round3-compare-after-search.txt still showed both LIMA buttons, but selecting LIMA v6 or LIMA v5 again removed them as not evidence-ready",
+        "chrome_devtools_mcp_2026-05-07: with fewer than 2 papers selected, the 生成对比表 button remained disabled and no POST /api/v1/compare/v4 request was issued",
+        "chrome_devtools_mcp_2026-05-07: page-context fetch confirmed live inconsistency before API refresh: /api/v1/papers/search returned LIMA v6/v5 with chunkCount=105 and evidenceReady=true, while /api/v1/papers/{id} returned chunkCount=0 and evidenceReady=false",
+        "code_fix_2026-05-07: PaperService.get_paper_for_api now preserves real chunk_count via PaperRepository.count_chunks when reading_card_doc already exists",
+        "chrome_devtools_mcp_2026-05-07: after refreshing the live API process, page-context fetch to /api/v1/papers/{id} returned LIMA v6/v5 with chunkCount=105 and evidenceReady=true",
+        "chrome_devtools_mcp_2026-05-07: direct page-script compare re-test selected LIMA v6 + LIMA v5, unlocked 生成对比表, and rendered the compare matrix plus 跨论文洞察",
+        "chrome_devtools_mcp_2026-05-07: screenshot /tmp/phase-text-round3-compare-retest.png captured the successful compare matrix",
+        "chrome_devtools_mcp_2026-05-07: top-level 保存到笔记 produced 对比结果已保存到笔记 and 继续追问 navigated to /chat?paper_ids=e83c8887-04f8-422f-94d6-bbd304283aa5,0bac4a46-46b2-4712-9422-3cc8bf1b5070&handoff=1 with compare handoff visible"
+      ],
+      "issues": [
+        {
+          "id": "COMPARE-ROUND2-001",
+          "title": "Resolved: compare mainline recovered after live API process loaded the paper-detail chunk-count fix",
+          "status": "passed",
+          "severity": "high",
+          "owner": "backend+runtime",
+          "symptom": "The current compare UI initially could not be driven to a 2-paper selected state in Chrome DevTools MCP because the live `/api/v1/papers/{id}` detail path still reported evidence-ready papers as `chunkCount=0` / `evidenceReady=false`.",
+          "expected": "The compare selector should hydrate the same evidence-ready state from detail fetches that the list/search API already exposed, allowing two papers to be selected and compared.",
+          "actual": "After refreshing the live API process to load the current `PaperService.get_paper_for_api` fix, LIMA v6 and LIMA v5 both hydrated with `chunkCount=105` / `evidenceReady=true`, the compare matrix rendered, Save to Notes succeeded, and Continue in Chat entered compare-scoped chat handoff.",
+          "repro_steps": [
+            "Open /compare in an authenticated session",
+            "Search for LIMA and select LIMA: Less Is More for Alignment (v6) plus LIMA v5",
+            "Click 生成对比表",
+            "Verify matrix render, 保存到笔记 toast, and 继续追问 navigation into compare-scoped chat"
+          ],
+          "evidence": [
+            "chrome_devtools_mcp_2026-05-07: page-context fetch before API refresh showed /search detail mismatch for LIMA v6/v5 readiness",
+            "chrome_devtools_mcp_2026-05-07: page-context fetch after API refresh showed /api/v1/papers/{id} returning chunkCount=105 and evidenceReady=true for LIMA v6/v5",
+            "chrome_devtools_mcp_2026-05-07: direct compare re-test rendered matrix, 跨论文洞察, 保存到笔记 toast, and compare-scoped chat handoff"
+          ],
+          "notes": "`test_5_pages` remains an invalid compare sample in the current runtime dataset because it only has one chunk, so compare verification should use evidence-ready papers such as LIMA v6/v5."
+        }
+      ]
+    },
+    {
+      "route_key": "analytics",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "headless chrome fallback + prior live browser (Chrome DevTools MCP unavailable in-session)",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Analytics page loaded and rendered evaluation metrics, run list, mode filters, and comparison entry points. Console warnings remained cleared after the typography-prop fix, and the current filter controls were verified to be the run-mode toggles plus baseline comparison action rather than a date-range picker.",
+      "content_checks": {
+        "analytics_copy_correctness": "passed",
+        "metric_label_correctness": "passed"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "passed",
+        "chart_or_metric_readability": "passed"
+      },
+      "interaction_checks": {
+        "page_loads": "passed",
+        "filters_or_range_controls": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "metric_overview",
+          "status": "passed",
+          "notes": "Metrics, run list and detail section rendered."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /analytics rendered evaluation dashboard",
+        "live_browser_2026-05-06: analytics console clean after fix",
+        "headless_browser_2026-05-07: /analytics exposed 全部 / 离线 / 在线 mode filters and the 与基线对比 comparison entry",
+        "headless_browser_2026-05-07: analytics metric cards, run table, and by-family chart labels remained readable with clean typography"
+      ],
+      "issues": [
+        {
+          "id": "ANALYTICS-ROUND1-001",
+          "title": "Resolved: analytics non-boolean attribute warnings",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "Console previously showed React warnings for non-boolean attributes like font-serif and tracking-tight.",
+          "expected": "No React DOM attribute warnings in analytics render path.",
+          "actual": "Post-fix console is clean.",
+          "repro_steps": [
+            "Login",
+            "Open /analytics",
+            "Inspect browser console"
+          ],
+          "evidence": [
+            "live_browser_2026-05-06: analytics console clean after fix"
+          ],
+          "notes": "Resolved in current working tree."
+        }
+      ]
+    },
+    {
+      "route_key": "settings",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "Chrome DevTools MCP walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Settings page loaded correctly with profile, language, display, security, API integration and diagnostics sections. Security logout flow now works from within Settings, font-size persistence was verified through reload, and localization now persists across reload after the LanguageContext storage fix.",
+      "content_checks": {
+        "settings_copy_correctness": "passed",
+        "provider_or_runtime_copy_correctness": "partial"
+      },
+      "ui_checks": {
+        "layout_integrity": "passed",
+        "font_consistency": "not-tested",
+        "section_navigation_readability": "passed"
+      },
+      "interaction_checks": {
+        "page_loads": "passed",
+        "settings_persistence": "passed",
+        "logout_flow": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "account_section",
+          "status": "passed",
+          "notes": "Profile section visible."
+        },
+        {
+          "section_key": "application_section",
+          "status": "passed",
+          "notes": "System diagnostics and settings navigation visible."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: /settings loaded with profile and diagnostics sections",
+        "live_browser_2026-05-06: settings console clean after fix",
+        "headless_browser_2026-05-07: /settings security logout confirmed and returned to /login with 已登出 feedback",
+        "headless_browser_2026-05-07: font size changed to large and persisted as --base-font-size=18px with scholarai-settings={\"state\":{\"fontSize\":\"large\"},\"version\":0} after reload",
+        "headless_browser_2026-05-07: localization switched to English, scholarai-language=en was written to localStorage, and /settings stayed in English after reload",
+        "code_fix_2026-05-07: LanguageContext now hydrates from and persists to localStorage via scholarai-language"
+      ],
+      "issues": [
+        {
+          "id": "SETTINGS-ROUND1-001",
+          "title": "Resolved: settings non-boolean attribute warnings",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "Console previously showed React warnings for non-boolean attributes like font-serif and tracking-tight.",
+          "expected": "No React DOM attribute warnings in settings render path.",
+          "actual": "Post-fix console is clean.",
+          "repro_steps": [
+            "Login",
+            "Open /settings",
+            "Inspect browser console"
+          ],
+          "evidence": [
+            "live_browser_2026-05-06: settings console clean after fix"
+          ],
+          "notes": "Resolved in current working tree."
+        },
+        {
+          "id": "SETTINGS-ROUND2-002",
+          "title": "Resolved: settings language selection persists after reload",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "Within Settings, switching the localization section to English previously updated the live UI but refreshing /settings returned the interface to Chinese.",
+          "expected": "Selected language should persist across reloads the same way font-size settings persist.",
+          "actual": "scholarai-language now persists as en in localStorage and the settings shell stays in English after reload.",
+          "repro_steps": [
+            "Login",
+            "Open /settings",
+            "Open 语言设置 / Localization",
+            "Switch to English",
+            "Reload /settings"
+          ],
+          "evidence": [
+            "headless_browser_2026-05-07: before reload the settings page body switched to English UI labels and wrote scholarai-language=en",
+            "headless_browser_2026-05-07: after reload the settings page remained in English while localStorage still held scholarai-language=en"
+          ],
+          "notes": "Resolved in current working tree by persisting LanguageContext state to localStorage. The active settings subsection still resets to profile on reload, but that is a separate behavior from language persistence."
+        }
+      ]
+    },
+    {
+      "route_key": "global_layout",
+      "overall_status": "passed",
+      "last_tested_at": "2026-05-07",
+      "tester": "Chrome DevTools MCP walkthrough",
+      "viewport": "desktop",
+      "account_state": "authenticated",
+      "summary": "Global shell was re-verified under direct Chrome DevTools MCP across the authenticated workspace chrome. The user area visibly exposed the dedicated account label, settings navigation worked, logout returned to the public landing page, clicking a recent conversation reopened the real chat session, and the recent knowledge-base rail now shows normalized product-facing labels instead of seeded verification names.",
+      "content_checks": {
+        "global_nav_copy_correctness": "passed",
+        "recent_item_labels_correctness": "passed"
+      },
+      "ui_checks": {
+        "shell_layout_integrity": "passed",
+        "font_consistency": "passed",
+        "active_nav_visibility": "passed",
+        "mobile_menu_layout": "passed"
+      },
+      "interaction_checks": {
+        "nav_switching": "passed",
+        "recent_conversation_entry": "passed",
+        "recent_kb_entry": "passed",
+        "user_menu_actions": "passed"
+      },
+      "sections": [
+        {
+          "section_key": "left_nav",
+          "status": "passed",
+          "notes": "Search route active state and section labels remain stable."
+        },
+        {
+          "section_key": "recent_conversations",
+          "status": "passed",
+          "notes": "Recent conversation entry was clicked in MCP and reopened the expected real chat session URL."
+        },
+        {
+          "section_key": "recent_knowledge_bases",
+          "status": "passed",
+          "notes": "Recent KB rail now shows normalized labels such as 研究资料馆 A183 in the live authenticated shell."
+        },
+        {
+          "section_key": "user_area",
+          "status": "passed",
+          "notes": "Authenticated PR19 E2E Dedicated User label remains visible; settings button navigated to /settings and logout returned to the public landing page."
+        },
+        {
+          "section_key": "mobile_menu",
+          "status": "passed",
+          "notes": "Mobile navigation sheet opened with all workspace labels visible and routed into /search on a narrow viewport."
+        }
+      ],
+      "evidence": [
+        "live_browser_2026-05-06: nav switching across notes / compare / chat remained stable",
+        "live_browser_2026-05-06: sidebar still exposes test-oriented recent KB names",
+        "headless_browser_2026-05-07: /search shell displayed active search nav plus recent conversation and recent knowledge-base rails",
+        "headless_browser_2026-05-07: user area showed PR19 E2E Dedicated User while seeded KB labels remained visible",
+        "headless_browser_2026-05-07: user-area settings button navigated /dashboard -> /settings",
+        "headless_browser_2026-05-07: user-area logout returned authenticated workspace -> public landing page",
+        "headless_browser_2026-05-07: unauthenticated access to /search?q=test_5_pages no longer left repeated 会话已过期，请重新登录 toasts after login recovery",
+        "code_fix_2026-05-07: Layout now gates useSessions/useKnowledgeBases behind isAuthenticated so anonymous redirect flows do not fire sidebar preload requests",
+        "headless_browser_2026-05-07: mobile navigation sheet exposed all workspace labels and navigated into /search without the earlier Sheet ref/DialogTitle warnings",
+        "code_fix_2026-05-07: sheet.tsx now forwards refs and Layout provides sr-only title/description for the mobile navigation sheet",
+        "chrome_devtools_mcp_2026-05-07: authenticated shell showed PR19 E2E Dedicated User in the user area and opened settings from the shell controls",
+        "chrome_devtools_mcp_2026-05-07: shell logout returned to the public landing page; snapshot captured in /tmp/phase-text-round3-settings-or-logout.txt",
+        "chrome_devtools_mcp_2026-05-07: clicking a recent conversation reopened /chat?session=005fa8f8-0a8a-45be-aecc-b6932c6b73ef&paperId=142c2950-0a4a-4994-ba9f-28fd422b8caa from the shell rail",
+        "chrome_devtools_mcp_2026-05-07: snapshots /tmp/phase-text-kb-list-after-normalize.txt and /tmp/phase-text-kb-detail-after-normalize.txt show the shared shell rail now renders normalized recent KB labels such as 研究资料馆 A183, 研究资料馆 4D82, and 研究资料馆 A72C"
+      ],
+      "issues": [
+        {
+          "id": "LAYOUT-ROUND2-002",
+          "title": "Resolved: anonymous protected-route redirects no longer trigger repeated session-expired toasts",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "When a logged-out user hit a protected route and was redirected into /login, multiple 会话已过期，请重新登录 toasts previously appeared after authentication because layout sidebar hooks had already issued unauthenticated session / knowledge-base requests.",
+          "expected": "Anonymous users should be redirected quietly to /login without session-expired toasts from sidebar preload hooks.",
+          "actual": "Layout now skips sidebar preload hooks until authentication is established, so the restored protected page no longer shows session-expired toasts after login.",
+          "repro_steps": [
+            "Open a protected route such as /search?q=test_5_pages in a logged-out session",
+            "Complete login after the redirect to /login",
+            "Observe the restored page header area"
+          ],
+          "evidence": [
+            "headless_browser_2026-05-07: after the fix, restored /search?q=test_5_pages showed no 会话已过期，请重新登录 toast and still displayed the expected internal result card",
+            "code_fix_2026-05-07: useSessions/useKnowledgeBases both gained enabled gating and Layout only enables them for authenticated users"
+          ],
+          "notes": "Resolved in current working tree. This remains distinct from the seeded-data issue in recent knowledge-base labels."
+        },
+        {
+          "id": "LAYOUT-ROUND2-003",
+          "title": "Resolved: mobile navigation sheet no longer emits ref or missing-title accessibility warnings",
+          "status": "passed",
+          "severity": "medium",
+          "owner": "frontend",
+          "symptom": "Opening the mobile navigation sheet previously emitted a React ref warning for SheetOverlay plus Radix accessibility warnings about missing DialogTitle and DialogDescription.",
+          "expected": "Opening the mobile navigation sheet should keep the console clean and satisfy the Dialog accessibility contract.",
+          "actual": "SheetOverlay and SheetContent now use forwardRef, and Layout provides hidden SheetTitle/SheetDescription so the mobile navigation sheet opens without those warnings.",
+          "repro_steps": [
+            "Login on a narrow viewport",
+            "Open the mobile navigation sheet",
+            "Inspect browser console"
+          ],
+          "evidence": [
+            "headless_browser_2026-05-07: before the fix, opening the mobile navigation sheet emitted Function components cannot be given refs and missing DialogTitle/DialogDescription warnings",
+            "headless_browser_2026-05-07: after the fix, the same mobile navigation flow kept the menu usable and removed those warnings, leaving only the initial anonymous 401 network noise"
+          ],
+          "notes": "Resolved in current working tree via sheet.tsx forwardRef alignment and hidden accessibility labels in Layout."
+        }
+      ]
+    }
+  ]
+}

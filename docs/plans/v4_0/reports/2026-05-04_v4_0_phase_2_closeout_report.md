@@ -12,12 +12,12 @@ Phase 4.0-2 已完成本轮 closeout，结论是 `demo-ready`，不是 `controll
 这次 closeout 解决了两个核心问题：
 
 1. phase2 主链现在真实走线上模型：
-   - generation: GLM 在线推理栈
+   - generation: Zhipu `glm-4.6v-flashx`
    - embedding: DashScope `text-embedding-v4`
    - rerank: DashScope `qwen3-rerank`
 2. Phase 2 的 walkthrough 不再停留在 `walkthrough-pending`：
    - fresh-state import/search probe 已重新跑通
-   - browser walkthrough 已覆盖 landing/login、KB、Read、single-paper Chat、Notes、Compare、upload workspace
+   - browser walkthrough 已覆盖 landing/login、KB、Read、single-paper Chat、Notes、Compare、upload/import workspace
 
 因此，本 phase 可以从 `asset-ready / walkthrough-pending` 推进到 `walkthrough-complete / demo-ready`。
 
@@ -37,6 +37,7 @@ Phase 4.0-2 已完成本轮 closeout，结论是 `demo-ready`，不是 `controll
 2. embedding runtime model: `text-embedding-v4`
 3. reranker provider: `DashScopeRerankService`
 4. reranker runtime model: `qwen3-rerank`
+5. generation runtime model: `glm-4.6v-flashx`
 
 ### 2.2 Runtime defects fixed
 
@@ -54,6 +55,7 @@ Phase 4.0-2 已完成本轮 closeout，结论是 `demo-ready`，不是 `controll
 10. summary/query 依赖本地 artifact，导致在线主链下单论文摘要型问题假性 abstain
 11. KB search state 双存储导致页面复用时残留旧结果
 12. evidence panel 的 React key 冲突
+13. `new=1` fresh session bootstrap 会清空 handoff draft，导致 Read/Compare/Review 的 `Continue in Chat` 已进入正确作用域但输入框不再预填
 
 ### 2.3 Browser-verified feature surfaces
 
@@ -63,11 +65,11 @@ Phase 4.0-2 已完成本轮 closeout，结论是 `demo-ready`，不是 `controll
 2. Knowledge Base detail readiness
 3. KB search -> Read -> evidence highlight
 4. Read page source side note / sourceChunkId contract
-5. Read -> single-paper Chat handoff
+5. Read -> single-paper Chat handoff 与 composer prefill
 6. single-paper Chat 非 abstain 回答恢复
-7. Notes panel / evidence save note 持久化
+7. Notes panel / evidence save note 持久化与 note editor linked evidence action
 8. Compare matrix generation
-9. upload workspace 可进入，readiness / import status 正常显示
+9. upload/import workspace 可进入，文件上传后能创建 import job 并进入 dedupe decision
 
 ## 3. Fresh-state Evidence
 
@@ -85,24 +87,26 @@ Phase 4.0-2 已完成本轮 closeout，结论是 `demo-ready`，不是 `controll
 
 ### 3.2 Browser walkthrough evidence
 
-浏览器验证使用的主 KB：
+浏览器 walkthrough 主要围绕以下真实对象完成：
 
-- kb_id: `2c58e5dd-270d-41f7-9b98-5bef5c449475`
-- papers: `2`
-- chunks: `177`
+- kb_id: `cf84038c-6cdf-434f-8ec8-c97fe3de396e`
+- kb_name: `Phase2-Online-Verify-2b7aa183`
+- paper_id (LIMA): `e83c8887-04f8-422f-94d6-bbd304283aa5`
+- compare second paper: `142c2950-0a4a-4994-ba9f-28fd422b8caa`
+- upload probe import_job_id: `imp_88cbd0e55d4049cf80d34098`
 
 验证结果：
 
 | surface | result | evidence |
 |---|---|---|
-| landing / login | pass | 落地页和登录页均可进入；“介绍页无法进入”阻断已消失 |
-| KB readiness | pass | `177 Chunks` + readiness cards healthy |
-| KB search -> read | pass | 点击 LIMA 命中后打开 `/read/...&source_id=chunk_c0ffb7cb74bf1c3adab5b5b1` |
-| Read highlight | pass | 右栏显示 `source highlight: chunk_c0ffb7cb74bf1c3adab5b5b1` |
-| single-paper Chat | pass | Read -> Continue Ask 后，单论文问题返回 `partial`，不再 `abstain` |
-| Notes | pass | Chat evidence `Save note` 后，Notes Workspace 中出现新笔记 |
-| Compare | pass | 2-paper compare matrix rendered；`跨论文洞察` 可见 |
-| Upload workspace | pass | KB 内部切换 `上传工作台` 可进入，文件 input 与上传按钮状态正确 |
+| landing / login | pass | 公开介绍页可进入；退出登录后回介绍页；介绍页 `登录` CTA 到 `/login` |
+| KB readiness | pass | `Phase2-Online-Verify-2b7aa183` 页面显示 `2 Papers / 106 Chunks`，readiness cards healthy |
+| KB search -> read | pass | 点击 LIMA summary 命中后打开 `/read/e83c8887-04f8-422f-94d6-bbd304283aa5?page=1&source=evidence&source_id=chunk_7e9a7e7ef7ac5b33624e5679` |
+| Read highlight | pass | 右栏显示 `source highlight: chunk_7e9a7e7ef7ac5b33624e5679`，并渲染 evidence side note |
+| single-paper Chat | pass | Read -> Continue Ask 后进入 `/chat?paperId=...&handoff=1`，handoff prompt 不再被 `new=1` lifecycle 清空，单论文问题返回 `partial` 而不是 `abstain` |
+| Notes | pass | Notes Workspace 中能看到新增 evidence note，打开后 linked evidence、`Open source`、`Continue in Chat` 与编辑区都正常 |
+| Compare | pass | 以 LIMA + `Test Paper - Page 1` 生成 compare matrix，cell 级 `p. / Save / Chat` 与 `跨论文洞察` 可见 |
+| Upload / import | pass | `test_5_pages.pdf` 上传成功，创建 `imp_88cbd0e55d4049cf80d34098`，worker 将其推进到 `dedupe_check` 并因 `pdf_sha256` 命中进入 dedupe decision |
 
 ## 4. Remaining Limitations
 
@@ -110,10 +114,9 @@ Phase 4.0-2 已完成本轮 closeout，结论是 `demo-ready`，不是 `controll
 
 1. single-paper Chat 已恢复，但当前回答仍可能是 `partial`，并不是所有 claim 都达到 strong support
 2. Review 仍可能返回 `partial / insufficient_evidence`
-3. KB deep-link 带 `?tab=uploads` 时，当前环境里仍可能回落到公开页；从 KB 内部切 tab 的主 workflow 正常
-4. walkthrough 证据仍以 operator-led local controlled beta 为主
-5. staging / cloud controlled beta gate 尚未开启
-6. 不应把当前状态写成 `controlled-beta-ready`、`public-beta-ready` 或 release-pass
+3. walkthrough 证据仍以 operator-led local controlled beta 为主
+4. staging / cloud controlled beta gate 尚未开启
+5. 不应把当前状态写成 `controlled-beta-ready`、`public-beta-ready` 或 release-pass
 
 这些限制不再阻断 `demo-ready`，但仍阻断更高一级的放行结论。
 
@@ -151,6 +154,7 @@ Phase 2 从：
 前端：
 
 - `cd apps/web && npm run type-check`
+- `cd apps/web && npm run test:run -- src/features/chat/chatHandoff.test.ts src/features/chat/hooks/useChatHandoff.test.tsx`
 - browser walkthrough:
   - landing / login
   - KB readiness

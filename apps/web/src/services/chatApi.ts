@@ -137,9 +137,10 @@ export async function updateSession(
  *   message,
  *   mode,
  *   scope: {
- *     type: 'paper' | 'knowledge_base' | 'general',
+ *     type: 'paper' | 'knowledge_base' | 'compare' | 'general',
  *     paper_id?,
- *     knowledge_base_id?
+ *     knowledge_base_id?,
+ *     paper_ids?
  *   },
  *   context?
  * }

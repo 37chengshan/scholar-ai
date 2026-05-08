@@ -465,17 +465,28 @@ class PaperService:
 
         paper_ids = [paper.id for paper in papers]
         task_map: Dict[str, ProcessingTask] = {}
+        chunk_count_map: Dict[str, int] = {}
         if paper_ids:
             task_result = await db.execute(
                 select(ProcessingTask).where(ProcessingTask.paper_id.in_(paper_ids))
             )
             tasks = task_result.scalars().all()
             task_map = {task.paper_id: task for task in tasks}
+            chunk_count_result = await db.execute(
+                select(PaperChunk.paper_id, func.count(PaperChunk.id))
+                .where(PaperChunk.paper_id.in_(paper_ids))
+                .group_by(PaperChunk.paper_id)
+            )
+            chunk_count_map = {
+                str(paper_id): int(count or 0)
+                for paper_id, count in chunk_count_result.all()
+            }
 
         total_pages = (total + limit - 1) // limit if limit > 0 else 0
         return {
             "papers": papers,
             "task_map": task_map,
+            "chunk_count_map": chunk_count_map,
             "total": total,
             "page": page,
             "limit": limit,
@@ -501,17 +512,28 @@ class PaperService:
 
         paper_ids = [paper.id for paper in papers]
         task_map: Dict[str, ProcessingTask] = {}
+        chunk_count_map: Dict[str, int] = {}
         if paper_ids:
             task_result = await db.execute(
                 select(ProcessingTask).where(ProcessingTask.paper_id.in_(paper_ids))
             )
             tasks = task_result.scalars().all()
             task_map = {task.paper_id: task for task in tasks}
+            chunk_count_result = await db.execute(
+                select(PaperChunk.paper_id, func.count(PaperChunk.id))
+                .where(PaperChunk.paper_id.in_(paper_ids))
+                .group_by(PaperChunk.paper_id)
+            )
+            chunk_count_map = {
+                str(paper_id): int(count or 0)
+                for paper_id, count in chunk_count_result.all()
+            }
 
         total_pages = (total + limit - 1) // limit if limit > 0 else 0
         return {
             "papers": papers,
             "task_map": task_map,
+            "chunk_count_map": chunk_count_map,
             "total": total,
             "page": page,
             "limit": limit,
@@ -537,8 +559,12 @@ class PaperService:
         task = task_result.scalar_one_or_none()
 
         chunks: List[PaperChunk] = []
+        chunk_count = 0
         if include_chunks or not paper.reading_card_doc:
             chunks = await PaperRepository.list_chunks(db, paper_id)
+            chunk_count = len(chunks)
+        else:
+            chunk_count = await PaperRepository.count_chunks(db, paper_id)
 
         if not paper.reading_card_doc:
             reading_card_doc = ensure_reading_card_doc(paper, records=chunks)
@@ -548,6 +574,7 @@ class PaperService:
         return {
             "paper": paper,
             "task": task,
+            "chunk_count": chunk_count,
             "chunks": chunks if include_chunks else [],
         }
 

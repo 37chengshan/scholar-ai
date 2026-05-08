@@ -52,7 +52,7 @@ export function PaperDetailCard({ result }: PaperDetailCardProps) {
         {/* Abstract */}
         {abstract && (
           <div className="mt-3">
-            <p className="text-xs text-muted-foreground leading-relaxed">{abstractPreview}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed font-sans">{abstractPreview}</p>
             {showAbstractExpand && (
               <button
                 onClick={() => setExpanded(!expanded)}

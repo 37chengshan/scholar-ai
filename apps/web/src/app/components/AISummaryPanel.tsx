@@ -36,10 +36,12 @@ const SLOT_ORDER: Array<keyof Omit<ReadingCardDoc, 'key_evidence'>> = [
 
 function ReadingCardSlotView({
   slot,
+  isZh,
   onJumpCitation,
   onSaveEvidence,
 }: {
   slot: ReadingCardSlot;
+  isZh: boolean;
   onJumpCitation?: (block: EvidenceBlockDto) => void;
   onSaveEvidence?: (claim: string, block: EvidenceBlockDto) => void;
 }) {
@@ -69,7 +71,7 @@ function ReadingCardSlotView({
                 className="rounded-full border border-border/70 px-2 py-1 text-[11px] text-muted-foreground hover:border-primary/50 hover:text-primary"
                 onClick={() => onSaveEvidence?.(claimText, block)}
               >
-                Save evidence
+                {isZh ? '保存证据' : 'Save evidence'}
               </button>
             </div>
           ))}
@@ -95,7 +97,7 @@ export function AISummaryPanel({
   return (
     <ScrollArea className="h-full" data-testid="ai-summary-panel" data-paper-id={paperId}>
       <div className="space-y-4 p-4">
-        <h3 className="text-lg font-bold">
+        <h3 className="text-lg font-bold font-serif tracking-tight">
           {isZh ? 'AI 总结' : 'AI Summary'}
         </h3>
 
@@ -109,6 +111,7 @@ export function AISummaryPanel({
                 <ReadingCardSlotView
                   key={slotKey}
                   slot={readingCardDoc![slotKey]}
+                  isZh={isZh}
                   onJumpCitation={onJumpCitation}
                   onSaveEvidence={onSaveEvidence}
                 />
@@ -138,7 +141,7 @@ export function AISummaryPanel({
                           className="rounded-full border border-border/70 px-2 py-1 text-[11px] text-muted-foreground hover:border-primary/50 hover:text-primary"
                           onClick={() => onSaveEvidence?.(item.content || item.label, item.evidence_blocks[0])}
                         >
-                          Save evidence
+                          {isZh ? '保存证据' : 'Save evidence'}
                         </button>
                         </div>
                       ) : null}
@@ -151,9 +154,9 @@ export function AISummaryPanel({
         ) : hasLegacySummary ? (
           <div className="space-y-3">
             <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700">
-              {isZh ? '缺少 readingCardDoc，回退展示 legacy reading_notes' : 'Missing readingCardDoc, falling back to legacy reading notes'}
+              {isZh ? '当前摘要卡片暂不可用，已回退为阅读笔记摘要。' : 'Missing readingCardDoc, falling back to legacy reading notes'}
             </div>
-            <div className="prose prose-sm max-w-none text-[15px] leading-relaxed prose-headings:font-serif prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-li:my-1 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em]">
+            <div className="prose prose-sm max-w-none text-[15px] leading-relaxed prose-headings:font-serif prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-li:my-1 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em] editorial-reading-surface font-serif">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {summary!}
               </ReactMarkdown>

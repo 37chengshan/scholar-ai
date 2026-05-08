@@ -59,7 +59,9 @@ export function useKnowledgeBaseWorkspace() {
 
   const syncTab = (tab: string) => {
     setActiveTab(tab);
-    setSearchParams({ tab });
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    setSearchParams(next);
   };
 
   return {

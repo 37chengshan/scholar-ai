@@ -18,13 +18,13 @@ export const ALLOWED_COMPARE_DIMENSIONS = [
 export type CompareDimensionId = (typeof ALLOWED_COMPARE_DIMENSIONS)[number];
 
 export const DIMENSION_LABELS: Record<CompareDimensionId, string> = {
-  problem: 'Research Problem',
-  method: 'Method',
-  dataset: 'Dataset',
-  metrics: 'Metrics',
-  results: 'Results',
-  limitations: 'Limitations',
-  innovation: 'Key Innovation',
+  problem: '研究问题',
+  method: '方法',
+  dataset: '数据集',
+  metrics: '指标',
+  results: '结果',
+  limitations: '局限性',
+  innovation: '关键创新',
 };
 
 export interface CompareV4Request {

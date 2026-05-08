@@ -18,11 +18,10 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import * as papersApi from '@/services/papersApi';
 import type { Annotation } from '@/services/annotationsApi';
 import { toast } from 'sonner';
+import { ensurePdfWorker } from '@/app/lib/pdfWorker';
+import { useLanguage } from '../contexts/LanguageContext';
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
+ensurePdfWorker();
 
 interface PDFViewerProps {
   paperId: string;
@@ -33,6 +32,11 @@ interface PDFViewerProps {
   annotations?: Annotation[];
   onTextSelection?: (selection: { text: string; position: { x: number; y: number; width: number; height: number } } | null) => void;
   activeAnnotationId?: string | null;
+  highlightSnippet?: string;
+}
+
+function normalizeTextForMatch(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 function clampPercent(value: number): number {
@@ -62,7 +66,10 @@ export function PDFViewer({
   annotations = [],
   onTextSelection,
   activeAnnotationId = null,
+  highlightSnippet = '',
 }: PDFViewerProps) {
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState(initialPage);
   const [scale, setScale] = useState(1.0);
@@ -70,8 +77,10 @@ export function PDFViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [draftSelection, setDraftSelection] = useState<{ text: string; position: { x: number; y: number; width: number; height: number } } | null>(null);
+  const [textLayerRenderTick, setTextLayerRenderTick] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageLayerRef = useRef<HTMLDivElement>(null);
+  const normalizedHighlightSnippet = normalizeTextForMatch(highlightSnippet || '');
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -125,6 +134,80 @@ export function PDFViewer({
       }
     }
   }, [pageNumber, numPages]);
+
+  useEffect(() => {
+    const root = pageLayerRef.current;
+    if (!root) {
+      return;
+    }
+
+    const applyHighlight = () => {
+      const spanNodes = Array.from(
+        root.querySelectorAll('.react-pdf__Page__textContent span')
+      ) as HTMLSpanElement[];
+
+      for (const span of spanNodes) {
+        span.style.backgroundColor = '';
+        span.style.boxShadow = '';
+        span.style.borderRadius = '';
+        span.removeAttribute('data-evidence-highlight');
+      }
+
+      if (!normalizedHighlightSnippet) {
+        return true;
+      }
+
+      let firstHighlighted: HTMLSpanElement | null = null;
+      for (const span of spanNodes) {
+        const spanText = normalizeTextForMatch(span.textContent || '');
+        if (!spanText || spanText.length < 6) {
+          continue;
+        }
+
+        const matches =
+          normalizedHighlightSnippet.includes(spanText) ||
+          spanText.includes(normalizedHighlightSnippet);
+        if (!matches) {
+          continue;
+        }
+
+        span.style.backgroundColor = 'rgba(245, 158, 11, 0.28)';
+        span.style.boxShadow = '0 0 0 1px rgba(217, 119, 6, 0.18)';
+        span.style.borderRadius = '3px';
+        span.setAttribute('data-evidence-highlight', 'true');
+        firstHighlighted ??= span;
+      }
+
+      if (firstHighlighted) {
+        firstHighlighted.scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'smooth',
+        });
+        return true;
+      }
+
+      return false;
+    };
+    const observer = new MutationObserver(() => {
+      applyHighlight();
+    });
+
+    const textLayer = root.querySelector('.react-pdf__Page__textContent');
+    if (textLayer) {
+      observer.observe(textLayer, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
+
+    applyHighlight();
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [normalizedHighlightSnippet, pageNumber, scale, pdfBlobUrl, textLayerRenderTick]);
 
   const onDocumentLoadSuccess = ({ numPages: pages }: { numPages: number }) => {
     setNumPages(pages);
@@ -193,6 +276,7 @@ export function PDFViewer({
       <div className="flex flex-col h-full items-center justify-center" data-testid="pdf-viewer-loading">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
         <p className="text-sm text-muted-foreground">加载 PDF...</p>
+        {!isZh ? <p className="text-sm text-muted-foreground">Loading PDF...</p> : null}
       </div>
     );
   }
@@ -208,7 +292,9 @@ export function PDFViewer({
   if (!pdfBlobUrl) {
     return (
       <div className="flex flex-col h-full items-center justify-center" data-testid="pdf-viewer-empty">
-        <p className="text-sm text-muted-foreground">无 PDF 内容</p>
+        <p className="text-sm text-muted-foreground">
+          {isZh ? '无 PDF 内容' : 'No PDF content'}
+        </p>
       </div>
     );
   }
@@ -222,7 +308,7 @@ export function PDFViewer({
           data-testid="prev-page"
           className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded"
         >
-          Previous
+          {isZh ? '上一页' : 'Previous'}
         </button>
         <span className="text-sm" data-testid="page-counter">
           {pageNumber} / {numPages}
@@ -233,7 +319,7 @@ export function PDFViewer({
           data-testid="next-page"
           className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded"
         >
-          Next
+          {isZh ? '下一页' : 'Next'}
         </button>
         <div className="flex-1" />
         <button
@@ -266,7 +352,11 @@ export function PDFViewer({
             data-page={pageNumber}
             onMouseUp={handleTextSelection}
           >
-            <Page pageNumber={pageNumber} scale={scale} />
+            <Page
+              pageNumber={pageNumber}
+              scale={scale}
+              onRenderTextLayerSuccess={() => setTextLayerRenderTick((tick) => tick + 1)}
+            />
 
             <div className="pointer-events-none absolute inset-0">
               {currentPageAnnotations.map((annotation) => {

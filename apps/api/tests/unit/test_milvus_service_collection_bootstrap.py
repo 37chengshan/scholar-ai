@@ -147,3 +147,51 @@ def test_get_collection_recreates_contents_v2_when_embedding_dim_mismatch():
     mock_drop.assert_called_once_with(settings.MILVUS_COLLECTION_CONTENTS_V2)
     mock_create.assert_called_once()
     assert mock_collection.call_count == 2
+
+
+def test_search_summaries_falls_back_to_query_on_unsupported_field_type():
+    """Summary index search should self-heal when Milvus hit parsing fails."""
+    service = MilvusService()
+    service._connected = True
+
+    mock_collection = Mock()
+    mock_collection.search.side_effect = MilvusException(
+        code=1,
+        message="Unsupported field type: 0",
+    )
+    mock_collection.query.return_value = [
+        {
+            "id": 101,
+            "paper_id": "paper-1",
+            "user_id": "user-1",
+            "summary_type": "paper_summary",
+            "section_name": "summary",
+            "source_chunk_id": "chunk-1",
+            "content_data": "summary text",
+            "embedding": [1.0, 0.0],
+        },
+        {
+            "id": 102,
+            "paper_id": "paper-2",
+            "user_id": "user-1",
+            "summary_type": "paper_summary",
+            "section_name": "summary",
+            "source_chunk_id": "chunk-2",
+            "content_data": "other summary",
+            "embedding": [0.0, 1.0],
+        },
+    ]
+
+    with patch.object(service, "has_collection", return_value=True):
+        with patch.object(service, "get_collection", return_value=mock_collection):
+            hits = service.search_summaries(
+                embedding=[1.0, 0.0],
+                user_id="user-1",
+                top_k=1,
+            )
+
+    assert len(hits) == 1
+    assert hits[0]["paper_id"] == "paper-1"
+    assert hits[0]["source_chunk_id"] == "chunk-1"
+    assert hits[0]["score"] == 1.0
+    mock_collection.query.assert_called_once()

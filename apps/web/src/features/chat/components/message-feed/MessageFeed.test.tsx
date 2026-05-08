@@ -26,6 +26,7 @@ function asRenderMessage(message: Partial<ChatRenderMessage>): ChatRenderMessage
     citations: message.citations,
     tokensUsed: message.tokensUsed,
     cost: message.cost,
+    answerContract: message.answerContract,
     displayContent: message.displayContent ?? message.content ?? '',
     displayReasoning: message.displayReasoning ?? '',
     displayToolTimeline: message.displayToolTimeline ?? [],
@@ -286,7 +287,7 @@ describe('MessageFeed', () => {
     );
 
     expect(screen.getByText('思考中')).toBeInTheDocument();
-    expect(screen.getByText('Tools')).toBeInTheDocument();
+    expect(screen.getByText('工具调用')).toBeInTheDocument();
     expect(screen.queryByText('search_docs')).not.toBeInTheDocument();
   });
 
@@ -341,7 +342,7 @@ describe('MessageFeed', () => {
       />
     );
 
-    expect(screen.getAllByText('Tools')).toHaveLength(1);
+    expect(screen.getAllByText('工具调用')).toHaveLength(1);
   });
 
   it('shows stop button only for active assistant stream message', () => {
@@ -381,5 +382,50 @@ describe('MessageFeed', () => {
     );
 
     expect(screen.getAllByRole('button', { name: '停止' })).toHaveLength(1);
+  });
+
+  it('normalizes abstain boilerplate copy for zh assistant messages', () => {
+    render(
+      <MessageFeed
+        renderMessages={[
+          asRenderMessage({
+            id: 'assistant-abstain-1',
+            session_id: 's1',
+            role: 'assistant',
+            content: 'Insufficient evidence to answer confidently.',
+            displayContent: 'Insufficient evidence to answer confidently.',
+            created_at: '2026-01-01T00:00:00Z',
+            answerContract: {
+              response_type: 'rag',
+              answer_mode: 'abstain',
+              answer: 'Insufficient evidence to answer confidently.',
+              claims: [],
+              citations: [],
+              evidence_blocks: [],
+              quality: {
+                fallback_used: false,
+              },
+              trace_id: 'trace-abstain',
+              run_id: 'run-abstain',
+              retrieval_trace_id: 'trace-abstain',
+              error_state: 'abstain',
+            },
+          }),
+        ]}
+        streamState={createInitialState()}
+        currentMessageId={''}
+        thinkingSteps={[]}
+        labels={{ noMessages: '开始新对话', sendFirst: '发送第一条消息', thinking: '思考中', stop: '停止' }}
+        isZh
+        messagesEndRef={createRef<HTMLDivElement>()}
+        onCitationClick={() => {}}
+        onStop={() => {}}
+        formatTime={() => '10:00'}
+      />
+    );
+
+    expect(screen.getByText('当前证据不足以给出可靠回答。')).toBeInTheDocument();
+    expect(screen.queryByText('Insufficient evidence to answer confidently.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^abstain$/i)).not.toBeInTheDocument();
   });
 });

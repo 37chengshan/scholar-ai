@@ -183,6 +183,6 @@ describe('KnowledgeBaseDetail', () => {
 
     await user.click(screen.getByRole('tab', { name: /问答/i }));
     await user.click(screen.getByRole('button', { name: /进入 Chat（全知识库作用域）/i }));
-    expect(mockNavigate).toHaveBeenCalledWith('/chat?kbId=kb-1');
+    expect(mockNavigate).toHaveBeenCalledWith('/chat?kbId=kb-1&new=1');
   });
 });

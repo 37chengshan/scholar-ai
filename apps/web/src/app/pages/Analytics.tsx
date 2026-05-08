@@ -23,38 +23,77 @@ import type {
 function pct(v: number) { return `${(v * 100).toFixed(1)}%`; }
 function sec(v: number) { return `${v.toFixed(2)}s`; }
 function usd(v: number) { return `$${v.toFixed(4)}`; }
+function verdictLabel(verdict: EvalRunVerdict, isZh: boolean) {
+  if (!isZh) return verdict;
+  if (verdict === 'PASS') return '通过';
+  if (verdict === 'FAIL') return '失败';
+  return '预警';
+}
 
-const METRIC_CFG: Record<string, { label: string; fmt: (v: number) => string; higherIsBetter: boolean }> = {
-  retrieval_hit_rate:       { label: 'Retrieval Hit Rate',       fmt: pct, higherIsBetter: true },
-  recall_at_5:              { label: 'Recall@5',                 fmt: pct, higherIsBetter: true },
-  recall_at_10:             { label: 'Recall@10',                fmt: pct, higherIsBetter: true },
-  rerank_gain:              { label: 'Rerank Gain',              fmt: pct, higherIsBetter: true },
-  citation_jump_valid_rate: { label: 'Citation Jump Valid Rate',  fmt: pct, higherIsBetter: true },
-  answer_supported_rate:    { label: 'Answer Supported Rate',    fmt: pct, higherIsBetter: true },
-  groundedness:             { label: 'Groundedness',             fmt: pct, higherIsBetter: true },
-  abstain_precision:        { label: 'Abstain Precision',        fmt: pct, higherIsBetter: true },
-  latency_p50:              { label: 'Latency P50',              fmt: sec, higherIsBetter: false },
-  latency_p95:              { label: 'Latency P95',              fmt: sec, higherIsBetter: false },
-  cost_per_answer:          { label: 'Cost / Answer',            fmt: usd, higherIsBetter: false },
+function formatQueryFamilyLabel(name: string, isZh: boolean) {
+  if (!isZh) return name.replace(/_/g, ' ');
+  switch (name) {
+    case 'single_fact':
+      return '单点事实';
+    case 'method':
+      return '方法细节';
+    case 'experiment_result':
+      return '实验结果';
+    case 'table':
+      return '表格问答';
+    case 'figure_caption':
+      return '图表说明';
+    case 'multi_paper_compare':
+      return '多论文比较';
+    case 'kb_global':
+      return '知识库全局问题';
+    case 'no_answer':
+      return '应拒答问题';
+    default:
+      return name.replace(/_/g, ' ');
+  }
+}
+
+function summarizeRunLabel(runId: string, isZh: boolean): string {
+  const normalized = runId.toLowerCase();
+  if (normalized.includes('baseline')) return isZh ? '基线运行' : 'Baseline Run';
+  if (normalized.includes('candidate')) return isZh ? '当前候选' : 'Current Candidate';
+  if (normalized.includes('offline')) return isZh ? '离线评测' : 'Offline Evaluation';
+  if (normalized.includes('online')) return isZh ? '在线评测' : 'Online Evaluation';
+  return isZh ? '评测运行' : 'Evaluation Run';
+}
+
+const METRIC_CFG: Record<string, { labelZh: string; labelEn: string; fmt: (v: number) => string; higherIsBetter: boolean }> = {
+  retrieval_hit_rate:       { labelZh: '检索命中率', labelEn: 'Retrieval Hit Rate', fmt: pct, higherIsBetter: true },
+  recall_at_5:              { labelZh: 'Recall@5', labelEn: 'Recall@5', fmt: pct, higherIsBetter: true },
+  recall_at_10:             { labelZh: 'Recall@10', labelEn: 'Recall@10', fmt: pct, higherIsBetter: true },
+  rerank_gain:              { labelZh: '重排增益', labelEn: 'Rerank Gain', fmt: pct, higherIsBetter: true },
+  citation_jump_valid_rate: { labelZh: '引文跳转有效率', labelEn: 'Citation Jump Valid Rate', fmt: pct, higherIsBetter: true },
+  answer_supported_rate:    { labelZh: '回答有据率', labelEn: 'Answer Supported Rate', fmt: pct, higherIsBetter: true },
+  groundedness:             { labelZh: '证据扎实度', labelEn: 'Groundedness', fmt: pct, higherIsBetter: true },
+  abstain_precision:        { labelZh: '拒答准确率', labelEn: 'Abstain Precision', fmt: pct, higherIsBetter: true },
+  latency_p50:              { labelZh: '延迟 P50', labelEn: 'Latency P50', fmt: sec, higherIsBetter: false },
+  latency_p95:              { labelZh: '延迟 P95', labelEn: 'Latency P95', fmt: sec, higherIsBetter: false },
+  cost_per_answer:          { labelZh: '单次回答成本', labelEn: 'Cost / Answer', fmt: usd, higherIsBetter: false },
 };
 
-function RunBadge({ mode }: { mode: 'offline' | 'online' }) {
+function RunBadge({ mode, isZh }: { mode: 'offline' | 'online'; isZh: boolean }) {
   return (
     <span className={clsx(
       'inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm',
       mode === 'offline' ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500',
-    )}>{mode}</span>
+    )}>{isZh ? (mode === 'offline' ? '离线' : '在线') : mode}</span>
   );
 }
 
-function VerdictBadge({ verdict }: { verdict: EvalRunVerdict }) {
+function VerdictBadge({ verdict, isZh }: { verdict: EvalRunVerdict; isZh: boolean }) {
   const cls = verdict === 'PASS' ? 'bg-green-500/10 text-green-600'
             : verdict === 'FAIL' ? 'bg-red-500/10 text-red-600'
             : 'bg-yellow-500/10 text-yellow-600';
   const Icon = verdict === 'PASS' ? CheckCircle2 : verdict === 'FAIL' ? XCircle : AlertTriangle;
   return (
     <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-sm', cls)}>
-      <Icon className="h-3.5 w-3.5" />{verdict}
+      <Icon className="h-3.5 w-3.5" />{verdictLabel(verdict, isZh)}
     </span>
   );
 }
@@ -65,10 +104,10 @@ function DeltaIcon({ status }: { status: MetricDeltaStatus }) {
   return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
 }
 
-function FamilyChart({ byFamily }: { byFamily: BenchmarkRunDetail['by_family'] }) {
+function FamilyChart({ byFamily, isZh }: { byFamily: BenchmarkRunDetail['by_family']; isZh: boolean }) {
   const families = Object.keys(byFamily.retrieval);
   const data = families.map((f) => ({
-    name: f.replace(/_/g, ' '),
+    name: formatQueryFamilyLabel(f, isZh),
     recall5: Math.round((byFamily.retrieval[f]?.recall_at_5 ?? 0) * 100),
     supported: Math.round((byFamily.answer_quality[f]?.answer_supported_rate ?? 0) * 100),
   }));
@@ -80,7 +119,7 @@ function FamilyChart({ byFamily }: { byFamily: BenchmarkRunDetail['by_family'] }
         <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `${v}%`} />
         <Tooltip
           contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 4, fontSize: 11 }}
-          formatter={(v: number, name: string) => [`${v}%`, name === 'recall5' ? 'Recall@5' : 'Ans Supported']}
+          formatter={(v: number, name: string) => [`${v}%`, name === 'recall5' ? 'Recall@5' : (isZh ? '回答有据率' : 'Ans Supported')]}
         />
         <Bar dataKey="recall5" fill="hsl(var(--primary))" opacity={0.85} radius={[2, 2, 0, 0]} />
         <Bar dataKey="supported" fill="#22c55e" opacity={0.85} radius={[2, 2, 0, 0]} />
@@ -179,7 +218,7 @@ export function Analytics() {
         <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div>
             <h1 className="text-3xl font-serif font-black tracking-tight">{isZh ? '评测看板' : 'Evaluation Dashboard'}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{isZh ? 'Phase 6 · RAG 质量门禁与基准测试' : 'Phase 6 · RAG Quality Gate & Benchmarks'}</p>
+            <p className="text-sm text-muted-foreground mt-1">{isZh ? 'RAG 质量门槛、趋势与回归对比' : 'RAG quality gates, trends, and regression comparisons'}</p>
           </div>
           <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => void loadData()} disabled={loading}>
             <RefreshCw className={clsx('h-3.5 w-3.5', loading && 'animate-spin')} />
@@ -202,7 +241,7 @@ export function Analytics() {
         {!loading && !error && !overview?.latest_offline_gate && (
           <div className="flex items-center gap-2 p-6 border border-border/60 rounded-md text-muted-foreground text-sm">
             <Database className="h-4 w-4 flex-shrink-0" />
-            {isZh ? '暂无评测数据，请先运行 Phase 6 benchmark' : 'No eval data yet. Run Phase 6 benchmark first.'}
+            {isZh ? '暂无评测数据，请先完成一次评测运行。' : 'No evaluation data yet. Run an evaluation first.'}
           </div>
         )}
 
@@ -226,15 +265,15 @@ export function Analytics() {
               const m = gate.metrics;
               return (
                 <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">
-                    {isZh ? '最新离线门禁' : 'Latest Offline Gate'} · <span className="font-mono">{gate.run_id.slice(-16)}</span>
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 font-serif tracking-tight">
+                    {isZh ? '最新离线门禁' : 'Latest Offline Gate'} · <span className="font-mono">{summarizeRunLabel(gate.run_id, isZh)}</span>
                   </h2>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
-                      { label: isZh ? '门禁状态' : 'Gate Status', value: gate.verdict, sub: `${gate.gate_failures.length} failure(s)`, Icon: gate.verdict === 'PASS' ? CheckCircle2 : XCircle },
+                      { label: isZh ? '门禁状态' : 'Gate Status', value: verdictLabel(gate.verdict, isZh), sub: isZh ? `${gate.gate_failures.length} 项未通过` : `${gate.gate_failures.length} failure(s)`, Icon: gate.verdict === 'PASS' ? CheckCircle2 : XCircle },
                       { label: isZh ? '检索命中率' : 'Hit Rate', value: pct(m.retrieval_hit_rate), sub: `Recall@5: ${pct(m.top_k_recall.recall_at_5)}`, Icon: TrendingUp },
-                      { label: isZh ? '回答有据率' : 'Ans Supported', value: pct(m.answer_supported_rate), sub: `Groundedness: ${pct(m.groundedness)}`, Icon: CheckCircle2 },
-                      { label: 'Latency P95', value: sec(m.latency_p95), sub: `P50: ${sec(m.latency_p50)} · Fallback: ${m.fallback_used_count}`, Icon: Clock },
+                      { label: isZh ? '回答有据率' : 'Ans Supported', value: pct(m.answer_supported_rate), sub: `${isZh ? '证据扎实度' : 'Groundedness'}: ${pct(m.groundedness)}`, Icon: CheckCircle2 },
+                      { label: isZh ? '延迟 P95' : 'Latency P95', value: sec(m.latency_p95), sub: `${isZh ? 'P50' : 'P50'}: ${sec(m.latency_p50)} · ${isZh ? '回退' : 'Fallback'}: ${m.fallback_used_count}`, Icon: Clock },
                     ].map(({ label, value, sub, Icon }) => (
                       <div key={label} className="group flex flex-col gap-3 bg-card border border-border/60 p-5 shadow-sm hover:border-primary/40 transition-all relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-primary/20 to-transparent group-hover:via-primary/50 transition-all" />
@@ -242,7 +281,7 @@ export function Analytics() {
                           <div className="p-2 bg-primary/10 rounded-lg"><Icon className="h-4 w-4 text-primary" /></div>
                           <span className="text-xs font-medium text-muted-foreground">{label}</span>
                         </div>
-                        <div className="text-2xl font-black tracking-tight font-mono">{value}</div>
+                        <div className="text-2xl font-black tracking-tight font-mono font-serif">{value}</div>
                         <div className="text-xs text-muted-foreground">{sub}</div>
                       </div>
                     ))}
@@ -265,7 +304,7 @@ export function Analytics() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground font-serif tracking-tight">
                     {isZh ? '最近运行' : 'Recent Runs'} ({overview.run_count})
                   </h2>
                   <div className="flex gap-1">
@@ -273,7 +312,7 @@ export function Analytics() {
                       <button key={m} onClick={() => setModeFilter(m)}
                         className={clsx('px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-colors',
                           modeFilter === m ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80')}>
-                        {m === 'all' ? (isZh ? '全部' : 'All') : m}
+                        {m === 'all' ? (isZh ? '全部' : 'All') : (isZh ? (m === 'offline' ? '离线' : '在线') : m)}
                       </button>
                     ))}
                   </div>
@@ -285,9 +324,9 @@ export function Analytics() {
                       <table className="w-full text-xs">
                         <thead className="bg-muted/50 border-b border-border/40">
                           <tr>
-                            <th className="text-left py-2 px-3 font-medium text-muted-foreground">Run</th>
-                            <th className="py-2 px-3 font-medium text-muted-foreground">Mode</th>
-                            <th className="py-2 px-3 font-medium text-muted-foreground">Verdict</th>
+                            <th className="text-left py-2 px-3 font-medium text-muted-foreground">{isZh ? '运行' : 'Run'}</th>
+                            <th className="py-2 px-3 font-medium text-muted-foreground">{isZh ? '模式' : 'Mode'}</th>
+                            <th className="py-2 px-3 font-medium text-muted-foreground">{isZh ? '结论' : 'Verdict'}</th>
                             <th className="py-2 px-3 font-medium text-muted-foreground">{isZh ? '日期' : 'Date'}</th>
                           </tr>
                         </thead>
@@ -296,9 +335,9 @@ export function Analytics() {
                             <tr key={run.run_id}
                               className={clsx('border-b border-border/30 cursor-pointer hover:bg-muted/30 transition-colors', selected?.run_id === run.run_id && 'bg-primary/5')}
                               onClick={() => void pickRun(run.run_id)}>
-                              <td className="py-2 px-3 font-mono truncate max-w-[120px]" title={run.run_id}>{run.run_id.slice(-12)}</td>
-                              <td className="py-2 px-3 text-center"><RunBadge mode={run.mode} /></td>
-                              <td className="py-2 px-3 text-center"><VerdictBadge verdict={run.overall_verdict} /></td>
+                              <td className="py-2 px-3 truncate max-w-[120px]" title={run.run_id}>{summarizeRunLabel(run.run_id, isZh)}</td>
+                              <td className="py-2 px-3 text-center"><RunBadge mode={run.mode} isZh={isZh} /></td>
+                              <td className="py-2 px-3 text-center"><VerdictBadge verdict={run.overall_verdict} isZh={isZh} /></td>
                               <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{new Date(run.created_at).toLocaleDateString()}</td>
                             </tr>
                           ))}
@@ -309,18 +348,18 @@ export function Analytics() {
               </section>
 
               <section>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">{isZh ? '运行详情' : 'Run Detail'}</h2>
+                <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 font-serif tracking-tight">{isZh ? '运行详情' : 'Run Detail'}</h2>
                 {!selected
                   ? <div className="flex items-center justify-center h-40 border border-border/60 rounded-md text-muted-foreground text-xs">{isZh ? '点击运行行查看详情' : 'Click a run row to view details'}</div>
                   : (
                     <div className="border border-border/60 rounded-md overflow-hidden">
                       <div className="px-3 py-2 bg-muted/40 border-b border-border/40 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <RunBadge mode={selected.meta.mode} />
-                          <span className="text-xs font-mono text-muted-foreground">{selected.run_id.slice(-16)}</span>
+                          <RunBadge mode={selected.meta.mode} isZh={isZh} />
+                          <span className="text-xs text-muted-foreground">{summarizeRunLabel(selected.run_id, isZh)}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <VerdictBadge verdict={selected.meta.overall_verdict} />
+                          <VerdictBadge verdict={selected.meta.overall_verdict} isZh={isZh} />
                           {filteredRuns.length > 1 && filteredRuns[filteredRuns.length - 1]?.run_id !== selected.run_id && (
                             <button className="text-[10px] text-primary underline underline-offset-2"
                               onClick={() => { const base = filteredRuns[filteredRuns.length - 1]; if (base) void compare(base.run_id, selected.run_id); }}>
@@ -339,7 +378,7 @@ export function Analytics() {
                         <tbody>
                           {Object.entries(METRIC_CFG).map(([key, cfg]) => (
                             <tr key={key} className="border-b border-border/30 hover:bg-muted/20">
-                              <td className="py-1.5 px-3">{cfg.label}</td>
+                              <td className="py-1.5 px-3">{isZh ? cfg.labelZh : cfg.labelEn}</td>
                               <td className="py-1.5 px-3 text-right font-mono">{cfg.fmt(metricVal(selected.metrics, key))}</td>
                             </tr>
                           ))}
@@ -356,12 +395,12 @@ export function Analytics() {
 
             {selected && Object.keys(selected.by_family.retrieval).length > 0 && (
               <section>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">{isZh ? '查询族分布' : 'Query Family Breakdown'}</h2>
+                <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 font-serif tracking-tight">{isZh ? '查询族分布' : 'Query Family Breakdown'}</h2>
                 <div className="border border-border/60 rounded-md p-4">
-                  <FamilyChart byFamily={selected.by_family} />
+                  <FamilyChart byFamily={selected.by_family} isZh={isZh} />
                   <div className="flex gap-4 mt-2 justify-center text-[10px] text-muted-foreground">
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-primary opacity-80 inline-block" />Recall@5</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-green-500 opacity-80 inline-block" />Answer Supported</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-green-500 opacity-80 inline-block" />{isZh ? '回答有据率' : 'Answer Supported'}</span>
                   </div>
                 </div>
               </section>
@@ -369,8 +408,8 @@ export function Analytics() {
 
             {diff && (
               <section>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">
-                  {isZh ? '对比报告' : 'Diff Report'} · <span className="font-mono">{diff.base_run_id.slice(-12)}</span>{' \u2192 '}<span className="font-mono">{diff.candidate_run_id.slice(-12)}</span>
+                <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 font-serif tracking-tight">
+                  {isZh ? '对比报告' : 'Diff Report'} · <span>{summarizeRunLabel(diff.base_run_id, isZh)}</span>{' \u2192 '}<span>{summarizeRunLabel(diff.candidate_run_id, isZh)}</span>
                 </h2>
                 <div className="flex items-center gap-4 mb-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1 text-green-600 font-medium"><TrendingUp className="h-3.5 w-3.5" />{diff.summary.improved} {isZh ? '改进' : 'improved'}</span>
@@ -393,7 +432,7 @@ export function Analytics() {
                         if (!cfg) return null;
                         return (
                           <tr key={key} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
-                            <td className="py-2 px-3 font-medium">{cfg.label}</td>
+                            <td className="py-2 px-3 font-medium">{isZh ? cfg.labelZh : cfg.labelEn}</td>
                             <td className="py-2 px-3 text-right font-mono text-muted-foreground">{cfg.fmt(d.base)}</td>
                             <td className="py-2 px-3 text-right font-mono">{cfg.fmt(d.candidate)}</td>
                             <td className="py-2 px-3">
@@ -417,11 +456,11 @@ export function Analytics() {
               <div className="flex items-center gap-2 text-xs text-muted-foreground p-3 bg-muted/30 rounded-md border border-border/40">
                 <Zap className="h-3.5 w-3.5 flex-shrink-0" />
                 <span>
-                  Reranker: <strong>{selected.meta.reranker === 'on' ? 'ON' : 'OFF'}</strong>
-                  {selected.metrics.rerank_gain > 0 && <> \xb7 Gain: <strong className="text-green-600">{pct(selected.metrics.rerank_gain)}</strong></>}
-                  {' \xb7 '}Abstain precision: <strong>{pct(selected.metrics.abstain_precision)}</strong>
-                  {' \xb7 '}Citation jump valid: <strong>{pct(selected.metrics.citation_jump_valid_rate)}</strong>
-                  {' \xb7 '}Cost/answer: <strong>{usd(selected.metrics.cost_per_answer)}</strong>
+                  {isZh ? '重排器' : 'Reranker'}: <strong>{selected.meta.reranker === 'on' ? 'ON' : 'OFF'}</strong>
+                  {selected.metrics.rerank_gain > 0 && <> {' \xb7 '}{isZh ? '增益' : 'Gain'}: <strong className="text-green-600">{pct(selected.metrics.rerank_gain)}</strong></>}
+                  {' \xb7 '}{isZh ? '拒答准确率' : 'Abstain precision'}: <strong>{pct(selected.metrics.abstain_precision)}</strong>
+                  {' \xb7 '}{isZh ? '引文跳转有效率' : 'Citation jump valid'}: <strong>{pct(selected.metrics.citation_jump_valid_rate)}</strong>
+                  {' \xb7 '}{isZh ? '单次回答成本' : 'Cost/answer'}: <strong>{usd(selected.metrics.cost_per_answer)}</strong>
                 </span>
               </div>
             )}

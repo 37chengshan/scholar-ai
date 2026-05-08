@@ -33,7 +33,22 @@ interface UseChatMessagesViewModelOptions {
 }
 
 function dedupeMessages(messages: SessionChatMessage[]): ExtendedChatMessage[] {
-  return Array.from(new Map(messages.map((message) => [message.id, { ...message }])).values());
+  return Array.from(new Map(messages.map((message) => [
+    message.id,
+    {
+      ...message,
+      reasoningBuffer: message.reasoningBuffer ?? message.reasoning_content ?? undefined,
+      toolTimeline: Array.isArray(message.toolTimeline)
+        ? message.toolTimeline
+        : (Array.isArray(message.tool_timeline) ? message.tool_timeline : undefined),
+      citations: Array.isArray(message.citations) ? (message.citations as CitationItem[]) : undefined,
+      answerContract: (message.answerContract ?? message.answer_contract ?? undefined) as AnswerContractPayload | undefined,
+      streamStatus: message.streamStatus ?? undefined,
+      tokensUsed: message.tokensUsed ?? message.tokens_used ?? undefined,
+      cost: message.cost ?? undefined,
+      responseType: (message.responseType ?? message.response_type ?? undefined) as ExtendedChatMessage['responseType'],
+    },
+  ])).values());
 }
 
 function mergeServerMessages(

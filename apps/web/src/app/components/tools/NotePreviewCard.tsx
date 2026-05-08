@@ -53,7 +53,7 @@ export function NotePreviewCard({ result, tool }: NotePreviewCardProps) {
           <div className="text-xs font-medium mt-0.5">{title}</div>
         )}
         {preview && (
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{preview}</p>
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2 font-sans">{preview}</p>
         )}
         <a
           href={`/notes/${result.note_id}`}

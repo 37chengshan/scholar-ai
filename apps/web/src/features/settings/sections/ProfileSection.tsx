@@ -9,8 +9,8 @@ export function ProfileSection() {
           <User className="w-3.5 h-3.5 text-primary" />
         </div>
         <div>
-          <h3 className="font-sans text-[11px] font-bold uppercase tracking-[0.2em]">Profile Settings</h3>
-          <p className="text-[9px] font-mono text-muted-foreground mt-0.5">Manage your profile information</p>
+          <h3 className="font-sans text-[11px] font-bold uppercase tracking-[0.2em] font-serif tracking-tight">个人资料</h3>
+          <p className="text-[9px] font-mono text-muted-foreground mt-0.5">管理当前账号的基本信息</p>
         </div>
       </div>
 

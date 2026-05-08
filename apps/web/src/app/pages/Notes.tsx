@@ -56,11 +56,19 @@ import * as papersApi from '@/services/papersApi';
 import {
   createEmptyEditorDocument,
   filterUserEditableNotes,
+  getPrimaryReadingNoteForPaper,
+  isEvidenceCaptureNote,
+  READ_WORKSPACE_NOTE_TAG,
   type ReadingSummaryProjection,
 } from '@/features/notes/ownership';
 import {
+  deriveReadableTitleFromText,
+  deriveReadableSummaryPreview,
   extractEditorPlainText,
+  isPlaceholderDisplayTitle,
   normalizeEditorDocument,
+  sanitizeNoteBodyPreview,
+  resolveEvidenceDisplayTitle,
 } from '@/features/notes/content';
 import { LinkedEvidenceList } from '@/features/notes/components/LinkedEvidenceList';
 import { useNotesPreferencesStore } from '@/features/notes/state/notesPreferencesStore';
@@ -85,6 +93,14 @@ interface PaperCatalogItem {
   folderId: string | null;
 }
 
+function buildPaperDisplayTitle(title: string | null | undefined): string {
+  const normalizedTitle = String(title || '').trim();
+  if (normalizedTitle && !isPlaceholderDisplayTitle(normalizedTitle)) {
+    return normalizedTitle;
+  }
+  return '未命名论文';
+}
+
 function highlightText(text: string, query: string): ReactNode {
   if (!query.trim()) return text;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -99,6 +115,58 @@ function highlightText(text: string, query: string): ReactNode {
     ) : (
       part
     ),
+  );
+}
+
+function humanizeNotePreview(raw: string | null | undefined): string {
+  const text = sanitizeNoteBodyPreview(raw || '');
+  if (!text) {
+    return '暂无正文';
+  }
+  return text || '暂无正文';
+}
+
+function humanizeSummaryPreview(raw: string | null | undefined): string {
+  return deriveReadableSummaryPreview(raw, '系统摘要');
+}
+
+function buildSummaryDisplayTitle(
+  title: string | null | undefined,
+  _readingNotes: string | null | undefined,
+): string {
+  return buildPaperDisplayTitle(title);
+}
+
+function buildNoteDisplayTitle(note: Note, paperTitleMap?: Map<string, string>): string {
+  const primaryPaperId = note.paperIds[0] || getPaperIdTag(note.tags);
+  const linkedPaperTitle =
+    (primaryPaperId && paperTitleMap?.get(primaryPaperId))
+    || getPaperTitleTag(note.tags)
+    || null;
+
+  if (isEvidenceCaptureNote(note)) {
+    return linkedPaperTitle ? `${linkedPaperTitle} · 证据摘录` : '证据摘录';
+  }
+
+  if (
+    linkedPaperTitle
+    && (note.sourceType === 'read' || note.tags.includes(READ_WORKSPACE_NOTE_TAG))
+    && isPlaceholderDisplayTitle(note.title)
+  ) {
+    return `${linkedPaperTitle} · 阅读笔记`;
+  }
+
+  if (note.title && !isPlaceholderDisplayTitle(note.title)) {
+    return note.title;
+  }
+
+  if (linkedPaperTitle) {
+    return `${linkedPaperTitle} · 笔记`;
+  }
+
+  return deriveReadableTitleFromText(
+    extractEditorPlainText(note.contentDoc || note.content, 120),
+    note.title || '未命名笔记',
   );
 }
 
@@ -177,6 +245,7 @@ function NotesContent() {
   const [manualFolders, setManualFolders] = useState<NotesFolder[]>([]);
   const [paperCatalog, setPaperCatalog] = useState<PaperCatalogItem[]>([]);
   const [paperTitleMap, setPaperTitleMap] = useState<Map<string, string>>(new Map());
+  const [hydratedPaperIds, setHydratedPaperIds] = useState<Set<string>>(new Set());
 
   const [catalogLoading, setCatalogLoading] = useState(false);
   const userNotes = useMemo(() => filterUserEditableNotes(notes), [notes]);
@@ -194,12 +263,17 @@ function NotesContent() {
       }
       const parsed = JSON.parse(raw) as NotesFolder[];
       if (Array.isArray(parsed)) {
-        setManualFolders(parsed.filter((item) => item.source === 'manual'));
+        const nextManualFolders = parsed.filter((item) => item.source === 'manual');
+        setManualFolders((current) => {
+          const currentSerialized = JSON.stringify(current);
+          const nextSerialized = JSON.stringify(nextManualFolders);
+          return currentSerialized === nextSerialized ? current : nextManualFolders;
+        });
       }
     } catch {
       // Ignore malformed local storage data.
     }
-  }, [selectedNote, updateNote]);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(MANUAL_FOLDERS_STORAGE_KEY, JSON.stringify(manualFolders));
@@ -220,40 +294,24 @@ function NotesContent() {
           source: 'kb',
         }));
 
-        const paperToKbFolder = new Map<string, string>();
-        await Promise.all(
-          knowledgeBases.map(async (kb) => {
-            try {
-              const paperResponse = await kbApi.listPapers(kb.id);
-              (paperResponse.papers || []).forEach((paper) => {
-                paperToKbFolder.set(paper.id, `kb:${kb.id}`);
-              });
-            } catch {
-              // Keep best-effort mapping only.
-            }
-          }),
-        );
-
         const papersResponse = await papersApi.list({ page: 1, limit: 200, sortBy: 'updatedAt' });
         const papers = papersResponse.data.papers || [];
 
         const nextTitleMap = new Map<string, string>();
         const nextCatalog: PaperCatalogItem[] = papers.map((paper) => {
-          nextTitleMap.set(paper.id, paper.title || 'Untitled Paper');
+          const resolvedTitle = buildSummaryDisplayTitle(paper.title, paper.readingNotes);
+          nextTitleMap.set(paper.id, buildPaperDisplayTitle(paper.title));
 
           const normalized = paper as typeof paper & {
             readingNotes?: string | null;
             knowledgeBaseId?: string | null;
           };
 
-          const folderId =
-            (normalized.knowledgeBaseId ? `kb:${normalized.knowledgeBaseId}` : null) ||
-            paperToKbFolder.get(paper.id) ||
-            null;
+          const folderId = normalized.knowledgeBaseId ? `kb:${normalized.knowledgeBaseId}` : null;
 
           return {
             id: paper.id,
-            title: paper.title || 'Untitled Paper',
+            title: resolvedTitle,
             readingNotes: normalized.readingNotes || null,
             folderId,
           };
@@ -272,12 +330,78 @@ function NotesContent() {
     loadCatalog();
   }, []);
 
+  useEffect(() => {
+    if (!paperIdFilter) {
+      return;
+    }
+    const targetPaperId = paperIdFilter;
+    if (paperTitleMap.has(targetPaperId) || hydratedPaperIds.has(targetPaperId)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function hydrateMissingPaperMetadata() {
+      try {
+        const paper = await papersApi.get(targetPaperId);
+        if (cancelled) {
+          return;
+        }
+
+        const resolvedTitle = buildSummaryDisplayTitle(paper.title, paper.readingNotes);
+
+        setPaperTitleMap((current) => {
+          const next = new Map(current);
+          next.set(paper.id, resolvedTitle);
+          return next;
+        });
+
+        setPaperCatalog((current) => {
+          if (current.some((item) => item.id === paper.id)) {
+            return current.map((item) =>
+              item.id === paper.id
+                ? {
+                    ...item,
+                    title: resolvedTitle,
+                    readingNotes: paper.readingNotes || item.readingNotes,
+                    folderId: paper.knowledgeBaseId ? `kb:${paper.knowledgeBaseId}` : item.folderId,
+                  }
+                : item,
+            );
+          }
+
+          return [
+            ...current,
+            {
+              id: paper.id,
+              title: resolvedTitle,
+              readingNotes: paper.readingNotes || null,
+              folderId: paper.knowledgeBaseId ? `kb:${paper.knowledgeBaseId}` : null,
+            },
+          ];
+        });
+      } catch {
+        // Keep the page usable even when the detail lookup fails.
+      } finally {
+        if (!cancelled) {
+          setHydratedPaperIds((current) => new Set(current).add(targetPaperId));
+        }
+      }
+    }
+
+    void hydrateMissingPaperMetadata();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydratedPaperIds, paperIdFilter, paperTitleMap]);
+
   const derivedSummaries = useMemo<ReadingSummaryProjection[]>(() => {
     let summaries = paperCatalog
       .filter((paper) => paper.readingNotes && paper.readingNotes.trim().length > 0)
       .map((paper) => ({
         paperId: paper.id,
-        title: paper.title,
+        title: buildSummaryDisplayTitle(paper.title, paper.readingNotes),
         readingNotes: paper.readingNotes || '',
         folderId: paper.folderId,
       }));
@@ -307,6 +431,25 @@ function NotesContent() {
     [derivedSummaries, selectedSummaryPaperId],
   );
 
+  const notePreviewText = useCallback(
+    (note: Note) => {
+      const preview = humanizeNotePreview(extractEditorPlainText(note.contentDoc || note.content, 80));
+      if (preview !== '暂无正文') {
+        return preview;
+      }
+      if (isEvidenceCaptureNote(note)) {
+        const evidenceText = note.linkedEvidence
+          ?.map((item) => humanizeNotePreview(String(item?.text || '')))
+          .find((text) => text && text !== '暂无正文');
+        if (evidenceText) {
+          return evidenceText;
+        }
+      }
+      return preview;
+    },
+    [],
+  );
+
   const folderCounts = useMemo(() => {
     const counts = new Map<string, number>();
     userNotes.forEach((note) => {
@@ -316,15 +459,21 @@ function NotesContent() {
       }
       counts.set(folderId, (counts.get(folderId) || 0) + 1);
     });
+    derivedSummaries.forEach((summary) => {
+      if (!summary.folderId) {
+        return;
+      }
+      counts.set(summary.folderId, (counts.get(summary.folderId) || 0) + 1);
+    });
     return counts;
-  }, [userNotes]);
+  }, [derivedSummaries, userNotes]);
 
   const folders = useMemo<NotesFolder[]>(() => {
     const merged = [...kbFolders, ...manualFolders];
     const mapped = merged.map((folder) => ({
       ...folder,
       noteCount: folderCounts.get(folder.id) || 0,
-    }));
+    })).filter((folder) => folder.noteCount > 0 || folder.source !== 'kb');
     const unarchivedCount = userNotes.filter((note) => getFolderIdFromTags(note.tags) === null).length;
     return [
       {
@@ -376,8 +525,10 @@ function NotesContent() {
         return;
       }
 
-      if (selectedFolderId !== null || folderSelectionSource !== null) {
+      if (selectedFolderId !== null) {
         setSelectedFolderId(null);
+      }
+      if (folderSelectionSource !== null) {
         setFolderSelectionSource(null);
       }
       return;
@@ -392,8 +543,10 @@ function NotesContent() {
       return;
     }
 
-    if (selectedFolderId !== null || folderSelectionSource !== null) {
+    if (selectedFolderId !== null) {
       setSelectedFolderId(null);
+    }
+    if (folderSelectionSource !== null) {
       setFolderSelectionSource(null);
     }
   }, [catalogLoading, folderSelectionSource, notesLoading, paperCatalog, paperIdFilter, selectedFolderId, userNotes]);
@@ -484,9 +637,14 @@ function NotesContent() {
     return JSON.stringify(editorContent) !== currentContent;
   }, [editorContent, selectedNote]);
 
+  const selectedNoteDisplayTitle = useMemo(
+    () => (selectedNote ? buildNoteDisplayTitle(selectedNote, paperTitleMap) : ''),
+    [paperTitleMap, selectedNote],
+  );
+
   const handleSelectNote = useCallback((note: Note, selectionSource: FolderSelectionSource | null = 'manual') => {
     setSelectedSummaryPaperId(null);
-    setSelectedNoteId(note.id);
+    setSelectedNoteId((current) => (current === note.id ? current : note.id));
 
     const folderId = getFolderIdFromTags(note.tags);
     if (folderId) {
@@ -497,14 +655,19 @@ function NotesContent() {
       setFolderSelectionSource(null);
     }
 
-    setEditorContent(normalizeEditorDocument(note.contentDoc || note.content));
+    const nextContent = normalizeEditorDocument(note.contentDoc || note.content);
+    setEditorContent((current: any) => {
+      const currentSerialized = current ? JSON.stringify(current) : null;
+      const nextSerialized = JSON.stringify(nextContent);
+      return currentSerialized === nextSerialized ? current : nextContent;
+    });
   }, []);
 
   const handleSelectSummary = useCallback(
     (summary: ReadingSummaryProjection, selectionSource: FolderSelectionSource | null = 'manual') => {
     setSelectedNoteId(null);
-    setSelectedSummaryPaperId(summary.paperId);
-    setEditorContent(null);
+    setSelectedSummaryPaperId((current) => (current === summary.paperId ? current : summary.paperId));
+    setEditorContent((current: any) => (current === null ? current : null));
 
     if (summary.folderId) {
       setSelectedFolderId(summary.folderId);
@@ -517,7 +680,9 @@ function NotesContent() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('noteId');
     nextParams.set('paperId', summary.paperId);
-    setSearchParams(nextParams, { replace: true });
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
   }, [searchParams, setSearchParams]);
 
   useEffect(() => {
@@ -542,9 +707,10 @@ function NotesContent() {
     }
 
     if (paperIdFilter) {
-      const related = userNotes.find(
-        (note) => note.paperIds.includes(paperIdFilter) || getPaperIdTag(note.tags) === paperIdFilter,
-      );
+      const related = getPrimaryReadingNoteForPaper(userNotes, paperIdFilter)
+        || userNotes.find(
+          (note) => note.paperIds.includes(paperIdFilter) || getPaperIdTag(note.tags) === paperIdFilter,
+        );
       if (related) {
         handleSelectNote(related, 'auto');
         return;
@@ -713,7 +879,7 @@ function NotesContent() {
       const newNote = await createNote.mutateAsync({
         title: `${summary.title} · 摘要笔记`,
         contentDoc: normalizeEditorDocument(summary.readingNotes),
-        sourceType: 'read',
+        sourceType: 'manual',
         tags: upsertFolderTag([], targetFolderId),
         paperIds: [summary.paperId],
       });
@@ -849,12 +1015,12 @@ function NotesContent() {
   };
 
   return (
-    <div className="relative min-h-screen bg-background">
+    <div className="editorial-app-shell relative min-h-screen bg-background">
       <div className="magazine-toolbar sticky top-0 z-10 border-b border-border/50 bg-background/95 backdrop-blur-md">
         <div className="px-6 py-5 flex items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold text-foreground tracking-tight">笔记</h1>
-            <p className="text-[11px] font-medium text-muted-foreground mt-1">Notes Workspace</p>
+            <h1 className="editorial-display text-3xl font-semibold text-foreground tracking-tight font-serif">笔记</h1>
+            <p className="text-[11px] font-medium text-muted-foreground mt-1">证据沉淀与写作</p>
           </div>
           <div className="flex items-center gap-2">
             {catalogLoading && (
@@ -893,7 +1059,7 @@ function NotesContent() {
         <div className="absolute left-4 top-4 bottom-4 w-[300px] bg-white rounded-lg border border-border/40 flex flex-col shadow-2xl z-10">
           <div className="px-5 py-5 border-b border-border/30 space-y-4 bg-gradient-to-b from-white to-slate-50/50">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-semibold tracking-wide text-foreground">笔记库</h2>
+              <h2 className="text-xs font-semibold tracking-wide text-foreground font-serif tracking-tight">笔记库</h2>
               <Button variant="outline" size="sm" className="h-6 px-2.5 text-[9px] uppercase font-bold tracking-wider rounded-sm shadow-sm" onClick={handleCreateNote}>
                 <Plus className="w-3 h-3 mr-1" />
                 新建
@@ -972,8 +1138,8 @@ function NotesContent() {
             {!notesLoading && !catalogLoading && filteredNotes.length === 0 && derivedSummaries.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <FileText className="w-10 h-10 mb-3 opacity-40" />
-                <p className="text-xs font-medium">暂无笔记</p>
-                <p className="text-[10px] mt-1">你可以：选择已有笔记、查看系统摘要，或先选择文件夹后创建笔记</p>
+                <p className="text-xs font-medium">当前范围内还没有内容</p>
+                <p className="text-[10px] mt-1">先选择文件夹创建笔记，或切换筛选查看其他论文的笔记与摘要。</p>
               </div>
             )}
 
@@ -983,9 +1149,10 @@ function NotesContent() {
                   系统摘要
                 </div>
                 {derivedSummaries.map((summary) => (
-                  <button
+                  <div
                     key={summary.paperId}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     className={clsx(
                       'w-full px-3 py-3 text-left transition-all duration-150 border-l-2 border-l-transparent group',
                       selectedSummaryPaperId === summary.paperId 
@@ -993,14 +1160,20 @@ function NotesContent() {
                         : 'hover:bg-primary/[0.02] hover:border-l-primary/30',
                     )}
                     onClick={() => handleSelectSummary(summary)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleSelectSummary(summary);
+                      }
+                    }}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-amber-950 line-clamp-1">{summary.title}</p>
                         <p className="mt-1 text-[11px] text-amber-900/80 line-clamp-2">
-                          {highlightText(extractEditorPlainText(summary.readingNotes, 80) || '系统摘要', searchQuery)}
+                          {highlightText(humanizeSummaryPreview(summary.readingNotes), searchQuery)}
                         </p>
-                        <p className="mt-1 text-[10px] text-amber-800/80">系统生成 · 只读</p>
+                        <p className="mt-1 text-[10px] text-amber-800/80">系统摘要 · 只读</p>
                         <div className="mt-2 flex items-center gap-1">
                           <Button
                             size="sm"
@@ -1033,7 +1206,7 @@ function NotesContent() {
                         摘要
                       </Badge>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -1046,6 +1219,7 @@ function NotesContent() {
                   const paperLabel =
                     (primaryPaperId && paperTitleMap.get(primaryPaperId)) ||
                     getPaperTitleTag(note.tags);
+                  const displayTitle = buildNoteDisplayTitle(note, paperTitleMap);
 
                   return (
                     <div
@@ -1060,7 +1234,7 @@ function NotesContent() {
                     >
                       <div className="flex items-start justify-between gap-1">
                         <h4 className="text-sm font-medium line-clamp-1 flex-1">
-                          {highlightText(note.title || '未命名笔记', searchQuery)}
+                          {highlightText(displayTitle, searchQuery)}
                         </h4>
                         <div className="flex items-center gap-1">
                           <button
@@ -1085,7 +1259,7 @@ function NotesContent() {
                       )}
 
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                        {highlightText(extractEditorPlainText(note.contentDoc || note.content, 80) || '空笔记', searchQuery)}
+                        {highlightText(notePreviewText(note), searchQuery)}
                       </p>
 
                       <div className="flex items-center gap-2 mt-1.5">
@@ -1116,7 +1290,7 @@ function NotesContent() {
                         onClick={() => handleSelectNote(note)}
                       >
                         <div className="flex items-start justify-between gap-1">
-                          <h4 className="text-sm font-medium line-clamp-1 flex-1">{note.title || '未命名笔记'}</h4>
+                          <h4 className="text-sm font-medium line-clamp-1 flex-1">{buildNoteDisplayTitle(note, paperTitleMap)}</h4>
                           <button
                             className="p-0.5 rounded text-muted-foreground/80 hover:bg-destructive/10 hover:text-destructive transition-colors"
                             onClick={(e) => {
@@ -1129,7 +1303,7 @@ function NotesContent() {
                             <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{extractEditorPlainText(note.contentDoc || note.content, 80) || '空笔记'}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{notePreviewText(note)}</p>
                       </div>
                     ))}
                   </div>
@@ -1152,7 +1326,7 @@ function NotesContent() {
                       onBlur={() => {
                         const nextTitle = draftTitle.trim() || '未命名笔记';
                         setEditingTitle(false);
-                        if (nextTitle === selectedNote.title) {
+                        if (nextTitle === selectedNoteDisplayTitle) {
                           return;
                         }
                         void updateNote.mutateAsync({
@@ -1177,11 +1351,11 @@ function NotesContent() {
                       type="button"
                       className="text-left font-semibold text-sm tracking-tight hover:text-primary"
                       onClick={() => {
-                        setDraftTitle(selectedNote.title || '未命名笔记');
+                        setDraftTitle(selectedNoteDisplayTitle);
                         setEditingTitle(true);
                       }}
                     >
-                      {selectedNote.title || '未命名笔记'}
+                      {selectedNoteDisplayTitle}
                     </button>
                   )}
                   <div className="flex items-center gap-2 mt-1">
@@ -1223,7 +1397,7 @@ function NotesContent() {
                 <div className="mx-auto max-w-4xl">
                   <LinkedEvidenceList
                     evidence={selectedNote.linkedEvidence || []}
-                    noteTitle={selectedNote.title}
+                    noteTitle={buildNoteDisplayTitle(selectedNote, paperTitleMap)}
                     noteId={selectedNote.id}
                   />
                   <NotesEditor
@@ -1238,13 +1412,13 @@ function NotesContent() {
             <>
               <div className="flex items-center justify-between px-5 py-3 border-b border-border/50 bg-background/60 backdrop-blur-sm">
                 <div>
-                  <h3 className="font-medium text-sm">{selectedSummary.title}</h3>
+                  <h3 className="font-medium text-sm font-serif tracking-tight">{buildSummaryDisplayTitle(selectedSummary.title, selectedSummary.readingNotes)}</h3>
                   <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                     <Badge variant="secondary" className="text-[10px] h-4">
                       <Sparkles className="w-2.5 h-2.5 mr-0.5" />
                       系统生成摘要
                     </Badge>
-                    <span>来自 paper.reading_notes 的派生展示</span>
+                    <span>来自论文摘要卡片的系统生成内容</span>
                   </div>
                 </div>
                 <Button asChild variant="outline" size="sm">
@@ -1255,7 +1429,7 @@ function NotesContent() {
               <div className="flex-1 overflow-auto px-6 py-5 bg-background">
                 <div className="mx-auto max-w-3xl rounded-xl border border-amber-200/60 bg-amber-50/30 p-6 shadow-xs">
                   <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                    系统摘要 - 只读视图
+                    系统摘要
                   </p>
                   <NotesEditor
                     content={normalizeEditorDocument(selectedSummary.readingNotes)}
@@ -1270,7 +1444,9 @@ function NotesContent() {
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-gradient-to-b from-background to-slate-50/30">
               <FileText className="w-12 h-12 mb-3 opacity-30" />
               <p className="text-sm font-medium">选择内容开始编辑</p>
-              <p className="text-xs mt-2 text-muted-foreground/60">你可以选择用户笔记、打开系统摘要，或先选择文件夹后新建笔记</p>
+              <p className="text-xs mt-2 text-muted-foreground/60">
+                从左侧选择一条笔记继续编辑，或打开论文摘要继续沉淀到当前笔记。
+              </p>
             </div>
           )}
         </div>

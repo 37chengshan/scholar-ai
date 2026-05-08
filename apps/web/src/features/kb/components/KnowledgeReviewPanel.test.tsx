@@ -70,9 +70,9 @@ describe('KnowledgeReviewPanel', () => {
       expect(kbReviewApi.getRunDetail).toHaveBeenCalledWith('run-1');
     });
 
-    expect(screen.getByText('Run Trace')).toBeInTheDocument();
-    expect(screen.getByText(/run_id: run-1/i)).toBeInTheDocument();
-    expect(screen.getByText(/draft_finalizer/i)).toBeInTheDocument();
-    expect(screen.getByText(/对应 draft 不在当前列表中/i)).toBeInTheDocument();
+    expect(screen.getByText('运行轨迹')).toBeInTheDocument();
+    expect(screen.getByText(/运行 ID\s*:\s*run-1/i)).toBeInTheDocument();
+    expect(screen.getByText(/草稿生成/i)).toBeInTheDocument();
+    expect(screen.getByText(/对应草稿不在当前列表中/i)).toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ from multiple external sources (arXiv and Semantic Scholar).
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from typing import List
+from types import SimpleNamespace
 
 from app.api.search import (
     search_unified,
@@ -391,6 +392,61 @@ class TestUnifiedSearch:
             assert len(result["results"]) == 1
             # Should prefer S2 result (more metadata)
             assert result["results"][0].source == "semantic-scholar"
+
+    @pytest.mark.asyncio
+    async def test_route_unified_search_includes_internal_filename_fallback_results(self):
+        """Route-level unified search should surface known in-library filename fallback hits."""
+        from app.api.search.library import search_unified as route_search_unified
+
+        paper = SimpleNamespace(
+            id="paper-1",
+            title="test_5_pages",
+            authors=[],
+            year=None,
+            abstract=None,
+            doi=None,
+            arxiv_id=None,
+            s2_paper_id=None,
+            pdf_url=None,
+            venue=None,
+            citations=None,
+            status="completed",
+        )
+        task = SimpleNamespace(status="completed")
+        user = SimpleNamespace(id="user-1")
+
+        with patch('app.api.search.library.get_search_cache', new=AsyncMock(return_value=None)), \
+             patch('app.api.search.library.set_search_cache', new=AsyncMock()), \
+             patch('app.api.search.library.search_arxiv', new=AsyncMock(return_value={"results": [], "total": 0})), \
+             patch('app.api.search.library.search_semantic_scholar', new=AsyncMock(return_value={"results": [], "total": 0})), \
+             patch('app.api.search.library.PaperService.search_papers_for_api', new=AsyncMock(return_value={
+                 "papers": [paper],
+                 "task_map": {"paper-1": task},
+                 "chunk_count_map": {"paper-1": 12},
+                 "total": 1,
+                 "page": 1,
+                 "limit": 20,
+                 "total_pages": 1,
+                 "query": "test_5_pages",
+             })):
+
+            result = await route_search_unified(
+                query="test_5_pages",
+                limit=20,
+                offset=0,
+                year_from=None,
+                year_to=None,
+                db=MagicMock(),
+                optional_user=user,
+            )
+
+            assert result.success is True
+            payload = result.data
+            assert payload["total"] == 1
+            assert len(payload["results"]) == 1
+            assert payload["results"][0]["source"] == "internal"
+            assert payload["results"][0]["title"] == "test_5_pages"
+            assert payload["results"][0]["libraryStatus"] == "imported_fulltext_ready"
 
 
 class TestUnifiedSearchErrorHandling:

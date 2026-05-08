@@ -178,7 +178,7 @@ export function SectionTree({ imrad, onPageSelect, currentPage, isZh = true }: S
 
   return (
     <div className="p-3" data-testid="section-tree">
-      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground font-serif tracking-tight">
         {isZh ? '章节导航' : 'Sections'}
       </h3>
       <div className="space-y-1.5">

@@ -304,7 +304,7 @@ export function NoteList({
                   ) : (
                     <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
                   )}
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground font-serif tracking-tight">
                     {groupName}
                   </h3>
                   <span className="text-[10px] font-mono text-muted-foreground">
@@ -384,7 +384,7 @@ export function NoteList({
 
                         {/* Content preview */}
                         <div 
-                          className="text-xs text-muted-foreground line-clamp-2 mb-3 prose prose-sm"
+                          className="text-xs text-muted-foreground line-clamp-2 mb-3 prose prose-sm editorial-reading-surface font-serif"
                           dangerouslySetInnerHTML={{ __html: note.content }}
                         />
 

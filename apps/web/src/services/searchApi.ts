@@ -255,11 +255,14 @@ export async function searchEvidenceV3(
   query: string,
   queryFamily: string = 'fact',
   topK: number = 10,
+  signal?: AbortSignal,
 ): Promise<LayeredEvidenceSearchResult> {
   const response = await apiClient.post<LayeredEvidenceSearchResult>('/api/v1/search/evidence', {
     query,
     query_family: queryFamily,
     top_k: topK,
+  }, {
+    signal,
   });
   return response.data;
 }

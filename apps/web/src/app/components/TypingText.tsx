@@ -149,7 +149,7 @@ export function TypingText({
       {/* Rendered content */}
       {enableMarkdown && isComplete ? (
         <div
-          className="prose prose-sm max-w-none text-foreground whitespace-pre-wrap"
+          className="prose prose-sm max-w-none text-foreground whitespace-pre-wrap editorial-reading-surface font-serif"
           dangerouslySetInnerHTML={{ __html: parsedHtml }}
         />
       ) : (

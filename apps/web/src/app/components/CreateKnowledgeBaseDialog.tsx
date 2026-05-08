@@ -46,8 +46,8 @@ interface CreateKnowledgeBaseDialogProps {
 const defaultData: CreateKBData = {
   name: "",
   description: "",
-  category: "人工智能",
-  embeddingModel: "bge-m3",
+  category: "自然语言处理",
+  embeddingModel: "text-embedding-v4",
   chunkStrategy: "by-paragraph",
   enableGraph: true,
   enableImrad: true,
@@ -229,7 +229,7 @@ export function CreateKnowledgeBaseDialog({
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center gap-2 text-sm font-medium text-muted-foreground 
-                       hover:text-foreground transition-colors w-full text-left py-2"
+  hover:text-foreground transition-colors w-full text-left py-2"
           >
             <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`} />
             高级设置
@@ -260,13 +260,7 @@ export function CreateKnowledgeBaseDialog({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="bge-m3">BGE-M3（推荐）</SelectItem>
-                          <SelectItem value="text-embedding-3-large">
-                            text-embedding-3-large
-                          </SelectItem>
-                          <SelectItem value="text-embedding-3-small">
-                            text-embedding-3-small
-                          </SelectItem>
+                          <SelectItem value="text-embedding-v4">DashScope text-embedding-v4（当前主链）</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

@@ -2,6 +2,7 @@
 
 from typing import Any, List, Literal, Optional
 import json
+import re
 
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from pydantic import BaseModel, Field
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.orm_note import Note
-from app.models.paper import Paper
+from app.models.paper import Paper, PaperChunk
 from app.core.notes_generator import NotesGenerator
 from app.services.reading_notes_service import (
     build_generated_notes_payload,
@@ -18,6 +19,7 @@ from app.services.reading_notes_service import (
 )
 from app.services.evidence_contract_service import (
     build_citation_jump_url,
+    find_best_evidence_source_payload,
     get_evidence_source_payload,
 )
 from app.utils.logger import logger
@@ -29,6 +31,8 @@ notes_generator = NotesGenerator()
 SYSTEM_AI_NOTE_TAG = "__ai_note__"
 DEFAULT_NOTE_SOURCE_TYPE = "manual"
 NOTE_SOURCE_TYPES = {"manual", "chat", "read", "search", "compare", "review"}
+SNAPSHOT_PAGE_RE = re.compile(r"^\[Page:(?P<page>\d+)\]\s*$", re.IGNORECASE)
+NOTE_TITLE_PREFIX_RE = re.compile(r"^(Evidence|Claim)\s*:\s*", re.IGNORECASE)
 
 
 def _empty_editor_document() -> dict[str, Any]:
@@ -100,8 +104,239 @@ def _normalize_note_source_type(value: Optional[str]) -> str:
     return candidate if candidate in NOTE_SOURCE_TYPES else DEFAULT_NOTE_SOURCE_TYPE
 
 
+def _normalize_note_title_text(value: Optional[str]) -> str:
+    title = NOTE_TITLE_PREFIX_RE.sub("", (value or "").strip()).strip()
+    return re.sub(r"\s+", " ", title)
+
+
+def _build_evidence_note_title(claim: str) -> str:
+    normalized = _normalize_note_title_text(claim)
+    if len(normalized) <= 80:
+        return normalized
+    return normalized[:77].rstrip() + "..."
+
+
 def _normalize_linked_evidence(value: Optional[list[dict[str, Any]]]) -> list[dict[str, Any]]:
     return [item for item in (value or []) if isinstance(item, dict)]
+
+
+def _extract_snapshot_page_num(text: str) -> int | None:
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        match = SNAPSHOT_PAGE_RE.match(line)
+        if match:
+            try:
+                return int(match.group("page"))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _normalize_snapshot_text(text: str) -> str:
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            continue
+        if line.startswith("Claim: "):
+            continue
+        if line.startswith("Paper: "):
+            continue
+        if line.startswith("Page: "):
+            continue
+        if line.startswith("Section: "):
+            continue
+        if line.startswith("Comment: "):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _build_paper_chunk_payload(chunk: PaperChunk) -> dict[str, Any]:
+    page_num = chunk.page_start or chunk.page_end
+    if chunk.is_table:
+        content_type = "table"
+    elif chunk.is_figure:
+        content_type = "figure"
+    elif chunk.is_formula:
+        content_type = "formula"
+    else:
+        content_type = "text"
+
+    citation_jump_url = build_citation_jump_url(
+        paper_id=chunk.paper_id,
+        source_chunk_id=chunk.id,
+        page_num=page_num,
+    )
+    return {
+        "evidence_id": chunk.id,
+        "source_type": "paper",
+        "source_chunk_id": chunk.id,
+        "paper_id": chunk.paper_id,
+        "page_num": page_num,
+        "section_path": chunk.section,
+        "content_type": content_type,
+        "content": chunk.content or "",
+        "citation_jump_url": citation_jump_url,
+        "read_url": citation_jump_url,
+    }
+
+
+async def _find_best_evidence_source_payload_db(
+    db: AsyncSession,
+    *,
+    source_chunk_id: str | None = None,
+    paper_id: str | None = None,
+    section_path: str | None = None,
+    page_num: int | None = None,
+    text: str | None = None,
+) -> dict[str, Any] | None:
+    normalized_source_chunk_id = str(source_chunk_id or "").strip()
+    if normalized_source_chunk_id.startswith("chunk_"):
+        exact_result = await db.execute(
+            select(PaperChunk).where(PaperChunk.id == normalized_source_chunk_id).limit(1)
+        )
+        exact_chunk = exact_result.scalar_one_or_none()
+        if exact_chunk:
+            return _build_paper_chunk_payload(exact_chunk)
+
+    normalized_paper_id = str(paper_id or "").strip()
+    if not normalized_paper_id:
+        return None
+
+    result = await db.execute(
+        select(PaperChunk)
+        .where(PaperChunk.paper_id == normalized_paper_id)
+        .order_by(PaperChunk.page_start, PaperChunk.id)
+    )
+    chunks = list(result.scalars().all())
+    if not chunks:
+        return None
+
+    normalized_section = str(section_path or "").strip().lower()
+    raw_text = str(text or "").strip()
+    normalized_text = _normalize_snapshot_text(raw_text)
+    normalized_page = page_num if isinstance(page_num, int) and page_num > 0 else None
+    if normalized_page is None and raw_text:
+        normalized_page = _extract_snapshot_page_num(raw_text)
+
+    best_payload: dict[str, Any] | None = None
+    best_score = -1
+    best_content_len = -1
+
+    for chunk in chunks:
+        score = 0
+        chunk_section = str(chunk.section or "").strip().lower()
+        chunk_page = chunk.page_start or chunk.page_end
+        chunk_content = str(chunk.content or "").strip()
+
+        if normalized_section:
+            if chunk_section == normalized_section:
+                score += 4
+            elif chunk_section and (
+                normalized_section in chunk_section or chunk_section in normalized_section
+            ):
+                score += 2
+
+        if normalized_page and isinstance(chunk_page, int):
+            if chunk_page == normalized_page:
+                score += 3
+            elif abs(chunk_page - normalized_page) == 1:
+                score += 1
+
+        if normalized_text and chunk_content:
+            if normalized_text == chunk_content:
+                score += 8
+            elif normalized_text in chunk_content or chunk_content in normalized_text:
+                score += 6
+            else:
+                left = normalized_text[:220]
+                right = chunk_content[:220]
+                if left and right and (left in right or right in left):
+                    score += 4
+
+        if score <= 0:
+            continue
+
+        content_len = len(chunk_content)
+        if score > best_score or (score == best_score and content_len > best_content_len):
+            best_payload = _build_paper_chunk_payload(chunk)
+            best_score = score
+            best_content_len = content_len
+
+    return best_payload
+
+
+async def _canonicalize_linked_evidence_item(
+    item: dict[str, Any],
+    db: AsyncSession | None = None,
+) -> dict[str, Any]:
+    canonical = find_best_evidence_source_payload(
+        source_chunk_id=str(item.get("source_chunk_id") or "") or None,
+        paper_id=str(item.get("paper_id") or "") or None,
+        section_path=str(item.get("section_path") or "") or None,
+        page_num=item.get("page_num") if isinstance(item.get("page_num"), int) else None,
+        text=str(item.get("text") or "") or None,
+    )
+    if not canonical and db is not None:
+        canonical = await _find_best_evidence_source_payload_db(
+            db,
+            source_chunk_id=str(item.get("source_chunk_id") or "") or None,
+            paper_id=str(item.get("paper_id") or "") or None,
+            section_path=str(item.get("section_path") or "") or None,
+            page_num=item.get("page_num") if isinstance(item.get("page_num"), int) else None,
+            text=str(item.get("text") or "") or None,
+        )
+    if not canonical:
+        fallback_source_chunk_id = str(
+            item.get("source_chunk_id") or item.get("evidence_id") or ""
+        )
+        fallback_paper_id = str(item.get("paper_id") or "")
+        fallback_page_num = item.get("page_num") if isinstance(item.get("page_num"), int) else None
+        citation_jump_url = str(item.get("citation_jump_url") or "")
+        if not citation_jump_url and fallback_paper_id and fallback_source_chunk_id:
+            citation_jump_url = build_citation_jump_url(
+                paper_id=fallback_paper_id,
+                source_chunk_id=fallback_source_chunk_id,
+                page_num=fallback_page_num,
+                source="evidence",
+            )
+        return {
+            **item,
+            "source_chunk_id": fallback_source_chunk_id,
+            "evidence_id": str(item.get("evidence_id") or fallback_source_chunk_id),
+            "citation_jump_url": citation_jump_url,
+        }
+
+    page_num = canonical.get("page_num")
+    if not isinstance(page_num, int):
+        page_num = item.get("page_num") if isinstance(item.get("page_num"), int) else None
+
+    return {
+        **item,
+        "evidence_id": str(item.get("evidence_id") or canonical.get("evidence_id") or canonical.get("source_chunk_id") or ""),
+        "source_type": str(item.get("source_type") or canonical.get("source_type") or "paper"),
+        "paper_id": str(item.get("paper_id") or canonical.get("paper_id") or ""),
+        "source_chunk_id": str(canonical.get("source_chunk_id") or item.get("source_chunk_id") or item.get("evidence_id") or ""),
+        "page_num": page_num,
+        "section_path": str(item.get("section_path") or canonical.get("section_path") or ""),
+        "content_type": str(item.get("content_type") or canonical.get("content_type") or "text"),
+        "text": str(item.get("text") or canonical.get("content") or canonical.get("quote_text") or canonical.get("anchor_text") or ""),
+        "citation_jump_url": str(
+            canonical.get("citation_jump_url")
+            or item.get("citation_jump_url")
+            or ""
+        ),
+        }
+
+
+async def _canonicalize_linked_evidence(
+    items: list[dict[str, Any]],
+    db: AsyncSession | None = None,
+) -> list[dict[str, Any]]:
+    return [await _canonicalize_linked_evidence_item(item, db) for item in items]
 
 
 def _build_note_body_snapshot(
@@ -110,18 +345,17 @@ def _build_note_body_snapshot(
     evidence_block: dict[str, Any],
     user_comment: Optional[str] = None,
 ) -> dict[str, Any]:
-    lines = [
-        f"Claim: {claim}",
-        f"Paper: {evidence_block.get('paper_id') or 'N/A'}",
-        f"Page: {evidence_block.get('page_num') or 'N/A'}",
-        f"Section: {evidence_block.get('section_path') or 'N/A'}",
-        "",
-        str(evidence_block.get("text") or ""),
-    ]
+    body_text = str(evidence_block.get("text") or "").strip() or claim.strip()
+    lines = [body_text]
     if user_comment:
-        lines.extend(["", f"Comment: {user_comment}"])
+        lines.extend(["", user_comment.strip()])
 
     return _text_to_editor_document("\n".join(lines).strip())
+
+
+def _should_append_evidence_snapshot_to_note(target_note_id: Optional[str]) -> bool:
+    """Append machine snapshot text only for standalone evidence notes."""
+    return not bool(target_note_id)
 
 
 def _append_document_content(
@@ -210,7 +444,7 @@ def _format_note_response(note: Note) -> dict:
     return {
         "id": note.id,
         "userId": note.user_id,
-        "title": note.title,
+        "title": _normalize_note_title_text(note.title),
         "content": note.content,
         "contentDoc": content_doc,
         "linkedEvidence": _normalize_linked_evidence(note.linked_evidence),
@@ -220,6 +454,15 @@ def _format_note_response(note: Note) -> dict:
         "createdAt": note.created_at.isoformat() if note.created_at else None,
         "updatedAt": note.updated_at.isoformat() if note.updated_at else None,
     }
+
+
+async def _format_note_response_async(note: Note, db: AsyncSession) -> dict:
+    payload = _format_note_response(note)
+    payload["linkedEvidence"] = await _canonicalize_linked_evidence(
+        _normalize_linked_evidence(note.linked_evidence),
+        db,
+    )
+    return payload
 
 
 def _sanitize_note_tags(tags: Optional[List[str]]) -> List[str]:
@@ -338,7 +581,7 @@ async def create_note(
 
         logger.info("Note created", note_id=note.id, user_id=user_id)
 
-        return NoteResponse(success=True, data=_format_note_response(note))
+        return NoteResponse(success=True, data=await _format_note_response_async(note, db))
 
     except Exception as e:
         logger.error("Failed to create note", error=str(e))
@@ -380,7 +623,7 @@ async def list_notes(
         return NotesListResponse(
             success=True,
             data={
-                "notes": [_format_note_response(n) for n in notes],
+                "notes": [await _format_note_response_async(n, db) for n in notes],
                 "total": total,
                 "limit": limit,
                 "offset": offset,
@@ -412,7 +655,7 @@ async def get_note(
                 detail=Errors.not_found("Note not found"),
             )
 
-        return NoteResponse(success=True, data=_format_note_response(note))
+        return NoteResponse(success=True, data=await _format_note_response_async(note, db))
 
     except HTTPException:
         raise
@@ -468,7 +711,7 @@ async def update_note(
 
         logger.info("Note updated", note_id=note_id, user_id=user_id)
 
-        return NoteResponse(success=True, data=_format_note_response(note))
+        return NoteResponse(success=True, data=await _format_note_response_async(note, db))
 
     except HTTPException:
         raise
@@ -530,7 +773,7 @@ async def get_notes_by_paper(
         return NotesListResponse(
             success=True,
             data={
-                "notes": [_format_note_response(n) for n in notes],
+                "notes": [await _format_note_response_async(n, db) for n in notes],
                 "total": len(notes),
             },
         )
@@ -767,26 +1010,74 @@ async def save_evidence_note(
     """Save evidence block as a first-class note with source backlink."""
     try:
         evidence_source = get_evidence_source_payload(request.evidence_block.source_chunk_id)
-        citation_jump_url = request.evidence_block.citation_jump_url or (
-            evidence_source.get("citation_jump_url")
-            if evidence_source
-            else build_citation_jump_url(
-                paper_id=request.evidence_block.paper_id,
+        if not evidence_source:
+            evidence_source = await _find_best_evidence_source_payload_db(
+                db,
                 source_chunk_id=request.evidence_block.source_chunk_id,
+                paper_id=request.evidence_block.paper_id,
+                section_path=request.evidence_block.section_path,
                 page_num=request.evidence_block.page_num,
+                text=request.evidence_block.text,
+            )
+        if not evidence_source:
+            evidence_source = find_best_evidence_source_payload(
+                source_chunk_id=request.evidence_block.source_chunk_id,
+                paper_id=request.evidence_block.paper_id,
+                section_path=request.evidence_block.section_path,
+                page_num=request.evidence_block.page_num,
+                text=request.evidence_block.text,
+            )
+
+        canonical_source_chunk_id = str(
+            (evidence_source or {}).get("source_chunk_id")
+            or request.evidence_block.source_chunk_id
+        )
+        canonical_paper_id = str(
+            (evidence_source or {}).get("paper_id")
+            or request.evidence_block.paper_id
+        )
+        canonical_page_num = (
+            (evidence_source or {}).get("page_num")
+            if isinstance((evidence_source or {}).get("page_num"), int)
+            else request.evidence_block.page_num
+        )
+        canonical_section_path = str(
+            (evidence_source or {}).get("section_path")
+            or request.evidence_block.section_path
+            or ""
+        ) or None
+        canonical_content_type = str(
+            (evidence_source or {}).get("content_type")
+            or request.evidence_block.content_type
+            or "text"
+        )
+        canonical_text = str(
+            request.evidence_block.text
+            or (evidence_source or {}).get("content")
+            or (evidence_source or {}).get("quote_text")
+            or (evidence_source or {}).get("anchor_text")
+            or ""
+        )
+        citation_jump_url = str(
+            request.evidence_block.citation_jump_url
+            or (evidence_source or {}).get("citation_jump_url")
+            or build_citation_jump_url(
+                paper_id=canonical_paper_id,
+                source_chunk_id=canonical_source_chunk_id,
+                page_num=canonical_page_num,
                 source=request.surface,
             )
         )
 
         persisted_block = {
-            "evidence_id": request.evidence_block.evidence_id,
+            "evidence_id": canonical_source_chunk_id,
             "source_type": request.evidence_block.source_type,
-            "paper_id": request.evidence_block.paper_id,
-            "source_chunk_id": request.evidence_block.source_chunk_id,
-            "page_num": request.evidence_block.page_num,
-            "section_path": request.evidence_block.section_path,
-            "content_type": request.evidence_block.content_type,
-            "text": request.evidence_block.text,
+            "paper_id": canonical_paper_id,
+            "source_chunk_id": canonical_source_chunk_id,
+            "page_num": canonical_page_num,
+            "section_path": canonical_section_path,
+            "content_type": canonical_content_type,
+            "text": canonical_text,
             "score": request.evidence_block.score,
             "rerank_score": request.evidence_block.rerank_score,
             "support_status": request.evidence_block.support_status,
@@ -810,10 +1101,10 @@ async def save_evidence_note(
         else:
             note = Note(
                 user_id=user_id,
-                title=f"Evidence: {request.claim[:80]}",
+                title=_build_evidence_note_title(request.claim),
                 source_type=_normalize_note_source_type(request.surface),
                 tags=["evidence", "citation"],
-                paper_ids=[request.evidence_block.paper_id],
+                paper_ids=[canonical_paper_id],
                 linked_evidence=[],
             )
             db.add(note)
@@ -825,20 +1116,21 @@ async def save_evidence_note(
         )
 
         existing_paper_ids = list(note.paper_ids or [])
-        if request.evidence_block.paper_id and request.evidence_block.paper_id not in existing_paper_ids:
-            existing_paper_ids.append(request.evidence_block.paper_id)
+        if canonical_paper_id and canonical_paper_id not in existing_paper_ids:
+            existing_paper_ids.append(canonical_paper_id)
         note.paper_ids = existing_paper_ids
 
-        content_doc = _append_document_content(
-            note.content_doc,
-            _build_note_body_snapshot(
-                claim=request.claim,
-                evidence_block=persisted_block,
-                user_comment=request.user_comment,
-            ),
-            note.content,
-        )
-        _persist_note_content(note, content=None, content_doc=content_doc)
+        if _should_append_evidence_snapshot_to_note(request.target_note_id):
+            content_doc = _append_document_content(
+                note.content_doc,
+                _build_note_body_snapshot(
+                    claim=request.claim,
+                    evidence_block=persisted_block,
+                    user_comment=request.user_comment,
+                ),
+                note.content,
+            )
+            _persist_note_content(note, content=None, content_doc=content_doc)
 
         await db.flush()
         await db.refresh(note)
@@ -851,7 +1143,7 @@ async def save_evidence_note(
             surface=request.surface,
             target_note_id=request.target_note_id,
         )
-        return NoteResponse(success=True, data=_format_note_response(note))
+        return NoteResponse(success=True, data=await _format_note_response_async(note, db))
     except HTTPException:
         raise
     except Exception as e:

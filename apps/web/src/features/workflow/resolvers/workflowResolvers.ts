@@ -80,31 +80,31 @@ export function resolveRecoverableActions(run: WorkflowRun | null): WorkflowActi
 export function resolveStatusBadge(status: WorkflowRun['status']): WorkflowStatusBadge {
   switch (status) {
     case 'running':
-      return { label: 'RUNNING', tone: 'default' };
+      return { label: 'In Progress', tone: 'default' };
     case 'waiting':
-      return { label: 'WAITING', tone: 'warning' };
+      return { label: 'Needs Review', tone: 'warning' };
     case 'failed':
-      return { label: 'FAILED', tone: 'danger' };
+      return { label: 'Needs Attention', tone: 'danger' };
     case 'completed':
-      return { label: 'COMPLETED', tone: 'success' };
+      return { label: 'Completed', tone: 'success' };
     case 'cancelled':
-      return { label: 'CANCELLED', tone: 'muted' };
+      return { label: 'Cancelled', tone: 'muted' };
     default:
-      return { label: 'IDLE', tone: 'muted' };
+      return { label: 'Standby', tone: 'muted' };
   }
 }
 
 export function resolveWorkflowCopy(type: 'scope' | 'pending' | 'recoverable' | 'artifacts'): string {
   switch (type) {
     case 'scope':
-      return 'Current Scope';
+      return 'Current Workspace';
     case 'pending':
-      return 'Pending Actions';
+      return 'Next Actions';
     case 'recoverable':
-      return 'Recoverable Tasks';
+      return 'Recovery Options';
     case 'artifacts':
-      return 'Artifacts & Evidence';
+      return 'Outputs & Evidence';
     default:
-      return 'Workflow';
+      return 'Workspace';
   }
 }

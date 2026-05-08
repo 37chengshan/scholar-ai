@@ -12,38 +12,38 @@ import { PaperTexture } from "../components/PaperTexture";
 const features = [
   {
     icon: <Search className="w-6 h-6 text-primary" />,
-    title: "智能文献检索",
-    description: "基于全文和多模态数据的精准检索，快速定位核心论文和段落。",
+    title: "打破信息茧房的纵深检索",
+    description: "穿透文献的表层引文，在海量学术知识节点中锚定思想的根源与核心论断的演进轨迹。",
   },
   {
     icon: <LayoutTemplate className="w-6 h-6 text-primary" />,
-    title: "IMRaD结构化解析",
-    description: "自动识别引言、方法、结果和讨论模块，提升阅读效率。",
+    title: "化繁为简的文献解构",
+    description: "精准剥开粗糙的版式与冗余信息，让隐晦的推演过程像思维导图般清晰展现。",
   },
   {
     icon: <BookMarked className="w-6 h-6 text-primary" />,
-    title: "全文多模态问答",
-    description: "不仅读取文本，更解析图表内容，支持跨模态复杂提问。",
+    title: "跨越模态的数据交互",
+    description: "挣脱纯文本的束缚。让静默的图表与庞杂的数据列表说话，在多模态对话中碰撞出灵感。",
   },
   {
     icon: <Network className="w-6 h-6 text-primary" />,
-    title: "知识图谱生成",
-    description: "自动提取实体和关系，构建可视化引文和知识网络，洞悉前沿脉络。",
+    title: "全局视角的知识织网",
+    description: "将孤立的引文连接成三维立体网络，俯瞰学科发展的宏观轮廓与微观的演进脉络。",
   },
 ];
 
 const techStack = [
-  { name: "Agentic RAG", desc: "智能任务分解与多步推理" },
-  { name: "Hybrid Search", desc: "向量+图谱混合检索架构" },
-  { name: "Docling Engine", desc: "多模态PDF高保真解析" },
-  { name: "Knowledge Graph", desc: "基于Neo4j的知识体系构建" },
+  { name: "智能思维链编排", desc: "复刻顶级学者的多步审读逻辑，逻辑逐层递进" },
+  { name: "全模态混合检索", desc: "语义向量检索与高维知识图谱的深度融合协作" },
+  { name: "无损级解析引擎", desc: "精准还原 PDF 原始排版、公式与图表意图" },
+  { name: "图空间关联拓扑", desc: "基于知识图谱锚定学术概念的时空坐标关系" },
 ];
 
 const researchPresets = [
-  "总结这篇论文的核心论点",
-  "对比相关工作与创新点",
-  "抽取方法、实验与局限",
-  "把检索结果整理成研究线索",
+  "梳理这篇文章的核心方法论",
+  "提取论证中的潜在偏见与局限",
+  "总结这些研究脉络间的演进逻辑",
+  "为这批文献提取对比评测矩阵",
 ];
 
 type FooterLink = {
@@ -66,9 +66,9 @@ const footerAboutLinks: FooterLink[] = [
 ] as const;
 
 const footerLegalLinks: FooterLink[] = [
-  { label: "Terms" },
-  { label: "Privacy" },
-  { label: "Cookies" },
+  { label: "服务条款" },
+  { label: "隐私说明" },
+  { label: "Cookie 说明" },
 ] as const;
 
 const scrollToSection = (id: string) => {
@@ -156,16 +156,16 @@ export function Landing() {
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-primary/30 bg-primary/5 text-primary text-xs font-bold tracking-widest uppercase mb-8 ml-12">
                 <Star className="w-3 h-3 fill-primary" />
                 <span>
-                  <InteractiveText text="新一代学术研究引擎" />
+                  <InteractiveText text="你的次世代科研认知引擎" />
                 </span>
               </div>
 
-              <h1 className="text-6xl md:text-[5rem] lg:text-[7rem] font-black tracking-tighter leading-[0.9] flex flex-col">
+              <h1 className="text-6xl md:text-[5rem] lg:text-[7rem] font-black tracking-tighter leading-[0.9] flex flex-col font-serif tracking-tight">
                 <span className="ml-0">
-                  <InteractiveText text="重写" />
+                  <InteractiveText text="重构" />
                 </span>
                 <span className="ml-16 md:ml-32 text-primary italic font-serif relative z-10 text-[1.2em]">
-                  <InteractiveText text="研究阅读" />
+                  <InteractiveText text="学术阅读" />
                   <svg
                     className="absolute w-[120%] h-4 -bottom-1 -left-2 text-primary/20 -z-10"
                     viewBox="0 0 100 10"
@@ -175,7 +175,7 @@ export function Landing() {
                   </svg>
                 </span>
                 <span className="ml-8 md:ml-16 mt-2">
-                  <InteractiveText text="与推演流程" />
+                  <InteractiveText text="与工作推演" />
                 </span>
               </h1>
             </motion.div>
@@ -196,7 +196,7 @@ export function Landing() {
                     onClick={handleExplore}
                     className="bg-primary text-white px-8 py-4 rounded-full text-sm font-bold tracking-widest uppercase hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 flex items-center justify-between group relative z-50"
                   >
-                    <span>进入研究工作区</span>
+                    <span>唤醒专属研究舱</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
                   <button
@@ -243,9 +243,9 @@ export function Landing() {
         >
           <div className="absolute inset-0 bg-primary/5 -skew-y-3 transform origin-left -z-10 rounded-3xl" />
           <div className="text-center mb-12 relative z-10 pointer-events-none">
-            <h2 className="text-sm font-bold tracking-[0.3em] uppercase text-primary mb-3">System Demonstration</h2>
+            <h2 className="text-sm font-bold tracking-[0.3em] uppercase text-primary mb-3 font-serif tracking-tight">平台特性实机演示</h2>
             <p className="text-3xl font-bold font-serif">
-              <InteractiveText text="体验 Agentic RAG 的强大检索" />
+              <InteractiveText text="见证 Agentic RAG 重新定义检索深度" />
             </p>
           </div>
           <DemoAnimation />
@@ -267,8 +267,8 @@ export function Landing() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="max-w-xl relative z-10 pointer-events-none"
             >
-              <h2 className="text-4xl md:text-5xl font-bold mb-4">
-                <InteractiveText text="核心功能与优势" />
+              <h2 className="text-4xl md:text-5xl font-bold mb-4 font-serif tracking-tight">
+                <InteractiveText text="次世代核心功能优势" />
               </h2>
               <p className="text-foreground/70 text-lg">
                 <InteractiveText text="不是把论文塞进对话框，而是把研究流程重新编排成一个连续、可追溯的 AI 协作界面。" />
@@ -281,7 +281,7 @@ export function Landing() {
               transition={{ duration: 0.6, delay: 0.3 }}
               className="text-right flex-shrink-0 text-sm font-bold tracking-[0.2em] uppercase opacity-50"
             >
-              <p>Vol. 1 - The Future of Reading</p>
+              <p>Vol. 1 · 认知获取的进化</p>
             </motion.div>
           </div>
 
@@ -299,7 +299,7 @@ export function Landing() {
                   {feature.icon}
                 </div>
                 <div className="relative z-10 pointer-events-none mt-2 flex flex-col gap-2">
-                  <h3 className="text-xl font-bold">
+                  <h3 className="text-xl font-bold font-serif tracking-tight">
                     <InteractiveText text={feature.title} />
                   </h3>
                   <p className="text-foreground/70 text-sm leading-relaxed">
@@ -328,9 +328,9 @@ export function Landing() {
               transition={{ duration: 0.7, delay: 0.2 }}
               className="relative z-10 pointer-events-none mb-12"
             >
-              <h2 className="text-sm font-bold tracking-[0.3em] uppercase text-primary mb-3">Architecture</h2>
-              <h3 className="text-4xl md:text-5xl font-bold mb-6">
-                <InteractiveText text="强大的核心技术栈" />
+              <h2 className="text-sm font-bold tracking-[0.3em] uppercase text-primary mb-3 font-serif tracking-tight">技术架构</h2>
+              <h3 className="text-4xl md:text-5xl font-bold mb-6 font-serif tracking-tight">
+                <InteractiveText text="企业级核心技术栈" />
               </h3>
               <p className="text-lg text-foreground/70 leading-relaxed max-w-3xl">
                 <InteractiveText text="基于先进的多智能体协作平台与混合检索架构，实现从文献检索到结构化拆解的全流程自动化。将结构化知识与大模型完美结合。" />
@@ -370,7 +370,7 @@ export function Landing() {
               className="mt-12 pt-8 border-t border-border/50"
             >
               <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
-                完整技术白皮书整理中
+                完整系统白皮书与底层逻辑即将公开
               </p>
             </motion.div>
           </div>
@@ -395,7 +395,7 @@ export function Landing() {
               <Logo />
             </div>
             <p className="mt-6 text-background/60 max-w-sm text-sm leading-relaxed">
-              ScholarAI - 下一代 AI 驱动的学术研究平台，致力于打破知识壁垒，让科研探索变得前所未有的高效。
+              ScholarAI - 构建专业研究者的次世代认知中枢。瓦解传统的阅读桎梏，让学术体系的深度推演与高阶洞察变得自然、锋利且触手可及。
             </p>
           </div>
           <div>
@@ -426,7 +426,7 @@ export function Landing() {
           </div>
         </div>
         <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-background/20 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-background/40">
-          <p>© 2026 ScholarAI. All rights reserved.</p>
+          <p>© 2026 ScholarAI。保留所有权利。</p>
           <div className="flex gap-4">
             {footerLegalLinks.map((item) => (
               <span key={item.label}>{item.label}</span>

@@ -49,6 +49,10 @@ interface RawPaper {
   imradJson?: unknown;
   knowledge_base_id?: string | null;
   knowledgeBaseId?: string | null;
+  chunkCount?: number | null;
+  evidenceReady?: boolean | null;
+  evidenceStatus?: string | null;
+  evidenceMessage?: string | null;
 }
 
 function normalizePaper(raw: RawPaper): PaperWithProgress {
@@ -78,6 +82,10 @@ function normalizePaper(raw: RawPaper): PaperWithProgress {
     readingCardDoc: raw.readingCardDoc ?? raw.reading_card_doc ?? null,
     imradJson: raw.imradJson ?? raw.imrad_json ?? null,
     knowledgeBaseId: raw.knowledgeBaseId ?? raw.knowledge_base_id ?? null,
+    chunkCount: raw.chunkCount ?? 0,
+    evidenceReady: raw.evidenceReady ?? null,
+    evidenceStatus: raw.evidenceStatus ?? null,
+    evidenceMessage: raw.evidenceMessage ?? null,
   } as PaperWithProgress & { readingNotes?: string | null };
 }
 
@@ -91,7 +99,7 @@ export async function list(params?: PapersQueryParams): Promise<PapersListRespon
     page: number;
     limit: number;
     totalPages?: number;
-  }>('/api/v1/papers', {
+  }>('/api/v1/papers/', {
     params: {
       page: params?.page || 1,
       limit: params?.limit || 20,

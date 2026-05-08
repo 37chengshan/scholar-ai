@@ -5,6 +5,7 @@ interface UseImportJobsPollingOptions {
   enabled?: boolean;
   intervalMs?: number;
   pauseWhenHidden?: boolean;
+  leading?: boolean;
   onTick: () => Promise<void> | void;
 }
 
@@ -13,9 +14,15 @@ export function useImportJobsPolling(options: UseImportJobsPollingOptions) {
     enabled = true,
     intervalMs = 5000,
     pauseWhenHidden = true,
+    leading = true,
     onTick,
   } = options;
   const timerRef = useRef<number | null>(null);
+  const onTickRef = useRef(onTick);
+
+  useEffect(() => {
+    onTickRef.current = onTick;
+  }, [onTick]);
 
   const canPoll = useCallback(() => {
     if (!enabled) {
@@ -43,16 +50,18 @@ export function useImportJobsPolling(options: UseImportJobsPollingOptions) {
     }
 
     trackImportEvent({ event: 'polling_started', intervalMs });
-    void onTick();
+    if (leading) {
+      void onTickRef.current();
+    }
     timerRef.current = window.setInterval(() => {
       if (!canPoll()) {
         stop();
         return;
       }
       trackImportEvent({ event: 'polling_tick' });
-      void onTick();
+      void onTickRef.current();
     }, intervalMs);
-  }, [canPoll, intervalMs, onTick, stop]);
+  }, [canPoll, intervalMs, leading, stop]);
 
   const restartOnVisibilityChange = useCallback(() => {
     if (canPoll()) {

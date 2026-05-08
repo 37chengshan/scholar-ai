@@ -32,7 +32,7 @@ class ChatStreamRequest(BaseModel):
     )
     scope: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Query scope ({type: paper|knowledge_base|general, paper_id?, knowledge_base_id?})",
+        description="Query scope ({type: paper|knowledge_base|compare|general, paper_id?, knowledge_base_id?, paper_ids?})",
     )
     context: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -234,6 +234,17 @@ class DoneEventData(BaseModel):
     tokens_used: Optional[int] = Field(None, description="Total tokens used")
     cost: Optional[float] = Field(None, description="Estimated cost")
     total_time_ms: Optional[int] = Field(None, description="Total execution time")
+    answer: Optional[str] = Field(None, description="Final assistant answer content")
+    response_type: Optional[str] = Field(None, description="Final response type")
+    answer_mode: Optional[str] = Field(None, description="Final answer mode")
+    claims: list[dict[str, Any]] = Field(default_factory=list, description="Structured answer claims")
+    citations: list[dict[str, Any]] = Field(default_factory=list, description="Structured citations")
+    evidence_blocks: list[dict[str, Any]] = Field(default_factory=list, description="Structured evidence blocks")
+    quality: Optional[Dict[str, Any]] = Field(None, description="Quality metadata")
+    retrieval_trace_id: Optional[str] = Field(None, description="Retrieval trace ID")
+    error_state: Optional[str] = Field(None, description="Error state for degraded answers")
+    run_id: Optional[str] = Field(None, description="Run identifier")
+    trace_id: Optional[str] = Field(None, description="Trace identifier")
 
 
 class ErrorEventData(BaseModel):

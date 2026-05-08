@@ -18,9 +18,11 @@ import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
+from types import SimpleNamespace
 
 from app.api.papers import router
 from app.services.auth_service import User
+from app.services.paper_service import PaperService
 from app.utils.problem_detail import ErrorTypes
 
 
@@ -222,6 +224,57 @@ class TestGetPaper:
 
         assert response.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_get_paper_for_api_preserves_chunk_count_without_loading_chunks(
+        self,
+        monkeypatch,
+        test_user,
+    ):
+        """Detail hydration must keep ready papers compare-ready even with reading_card_doc present."""
+
+        paper = SimpleNamespace(
+            id="paper-ready",
+            user_id=test_user.id,
+            title="LIMA: Less Is More for Alignment (v6)",
+            reading_card_doc={"type": "doc", "content": []},
+        )
+        task = SimpleNamespace(status="completed")
+        db = AsyncMock()
+        db.execute.return_value = SimpleNamespace(
+            scalar_one_or_none=lambda: task,
+        )
+
+        list_chunks = AsyncMock(return_value=[])
+        count_chunks = AsyncMock(return_value=105)
+
+        monkeypatch.setattr(PaperService, "__module__", PaperService.__module__)
+        monkeypatch.setattr(
+            "app.services.paper_service.PaperRepository.get_user_paper",
+            AsyncMock(return_value=paper),
+        )
+        monkeypatch.setattr(
+            "app.services.paper_service.PaperRepository.list_chunks",
+            list_chunks,
+        )
+        monkeypatch.setattr(
+            "app.services.paper_service.PaperRepository.count_chunks",
+            count_chunks,
+        )
+
+        result = await PaperService.get_paper_for_api(
+            db,
+            test_user.id,
+            paper_id=paper.id,
+            include_chunks=False,
+        )
+
+        assert result["paper"] is paper
+        assert result["task"] is task
+        assert result["chunk_count"] == 105
+        assert result["chunks"] == []
+        list_chunks.assert_not_awaited()
+        count_chunks.assert_awaited_once_with(db, paper.id)
+
 
 class TestUpdatePaper:
     """Tests for PATCH /api/v1/papers/:id endpoint."""
@@ -372,3 +425,71 @@ class TestSearchPapers:
         response = await authenticated_client.get(f"/api/v1/papers/search?q={long_query}")
 
         assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_search_papers_can_return_filename_fallback_matches(
+        self,
+        authenticated_client,
+        test_user,
+        monkeypatch,
+    ):
+        """Search response can surface papers matched via upload filename fallback."""
+
+        paper = SimpleNamespace(
+            id="paper-1",
+            title="Test Paper - Page 1",
+            authors=[],
+            year=None,
+            abstract=None,
+            doi=None,
+            arxiv_id=None,
+            pdf_url=None,
+            pdf_path=None,
+            content=None,
+            imrad_json=None,
+            status="completed",
+            file_size=None,
+            page_count=None,
+            keywords=[],
+            venue=None,
+            citations=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            user_id=test_user.id,
+            storage_key="papers/test_5_pages.pdf",
+            reading_notes=None,
+            reading_card_doc=None,
+            notes_version=0,
+            starred=False,
+            project_id=None,
+            batch_id=None,
+            upload_progress=100,
+            upload_status="completed",
+            uploaded_at=datetime.now(timezone.utc),
+            upload_history=[
+                SimpleNamespace(
+                    filename="test_5_pages.pdf",
+                    created_at=datetime.now(timezone.utc),
+                )
+            ],
+        )
+
+        async def mock_search(*args, **kwargs):
+            return {
+                "papers": [paper],
+                "task_map": {},
+                "total": 1,
+                "page": 1,
+                "limit": 20,
+                "total_pages": 1,
+                "query": "test_5_pages",
+            }
+
+        monkeypatch.setattr(PaperService, "search_papers_for_api", mock_search)
+
+        response = await authenticated_client.get("/api/v1/papers/search?q=test_5_pages")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"]["total"] == 1
+        assert data["data"]["papers"][0]["title"] == "test_5_pages"

@@ -32,6 +32,10 @@ from app.core.section_normalizer import (
 )
 from app.core.embedding.factory import get_embedding_service
 from app.core.contextual_chunk_builder import enrich_chunk, build_section_summary_text
+from app.services.paper_display_metadata import (
+    is_plausible_extracted_title,
+    normalize_extracted_authors,
+)
 from app.services.reading_card_service import build_reading_card_doc
 from app.utils.logger import logger
 
@@ -387,6 +391,10 @@ class StorageManager:
 
         # Extract title from metadata, convert empty strings to None
         extracted_title = self._normalize_title(metadata.get("title"))
+        if extracted_title and not is_plausible_extracted_title(extracted_title):
+            extracted_title = None
+
+        normalized_authors = normalize_extracted_authors(metadata.get("authors", []))
 
         if self._should_replace_existing_title(existing_title, extracted_title):
             extracted_title = await self._ensure_unique_title_for_user(
@@ -415,7 +423,7 @@ class StorageManager:
             (ctx.parse_result or {}).get("page_count", 0),
             json.dumps(imrad),
             extracted_title,  # $4 - only used if title_update_clause is "title = $4"
-            metadata.get("authors", []),
+            normalized_authors,
             self._sanitize_text(metadata.get("abstract")),
             self._sanitize_text(metadata.get("doi")),
             metadata.get("keywords", []),
@@ -881,12 +889,17 @@ class StorageManager:
             )
             summary_text = self._truncate_summary_text(summary_text)
             summary_texts.append(summary_text)
+            representative_chunk_id = str(
+                section_chunks[0].get("source_chunk_id")
+                or section_chunks[0].get("chunk_id")
+                or ""
+            )
             summary_entries.append({
                 "paper_id": ctx.paper_id,
                 "user_id": ctx.user_id,
                 "summary_type": "section_summary",
                 "section_name": section_name,
-                "source_chunk_id": str(section_chunks[0].get("chunk_id") or ""),
+                "source_chunk_id": representative_chunk_id,
                 "content_data": summary_text,
             })
 
@@ -900,12 +913,17 @@ class StorageManager:
             )
             paper_summary_text = self._truncate_summary_text(paper_summary_text)
             summary_texts.append(paper_summary_text)
+            representative_chunk_id = str(
+                text_contents[0].get("source_chunk_id")
+                or text_contents[0].get("chunk_id")
+                or ""
+            )
             summary_entries.append({
                 "paper_id": ctx.paper_id,
                 "user_id": ctx.user_id,
                 "summary_type": "paper_summary",
                 "section_name": "_paper",
-                "source_chunk_id": str(text_contents[0].get("chunk_id") or ""),
+                "source_chunk_id": representative_chunk_id,
                 "content_data": paper_summary_text,
             })
 

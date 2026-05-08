@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter, Navigate, useLocation } from "react-router";
 import { lazy, Suspense } from "react";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
@@ -26,6 +26,7 @@ const Compare = lazy(() => import("./pages/Compare").then(m => ({ default: m.Com
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
   const warmAuthHint = hasWarmAuthHint();
+  const location = useLocation();
 
   // Show loading state while checking auth
   if (loading && !isAuthenticated && !warmAuthHint) {
@@ -34,7 +35,23 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   // Redirect to login if not authenticated
   if (!loading && !isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}${location.hash}` }}
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
+export function PublicAuthRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (!loading && isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
@@ -64,15 +81,15 @@ export const router = createBrowserRouter([
   },
   {
     path: "/register",
-    Component: Register,
+    element: <PublicAuthRoute><Register /></PublicAuthRoute>,
   },
   {
     path: "/forgot-password",
-    Component: ForgotPassword,
+    element: <PublicAuthRoute><ForgotPassword /></PublicAuthRoute>,
   },
   {
     path: "/reset-password",
-    Component: ResetPassword,
+    element: <PublicAuthRoute><ResetPassword /></PublicAuthRoute>,
   },
   {
     // Layout is a wrapper for all app pages, no path needed

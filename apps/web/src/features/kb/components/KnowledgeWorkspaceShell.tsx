@@ -20,6 +20,9 @@ import { useKnowledgeRuns } from '@/features/kb/hooks/useKnowledgeRuns';
 import { useKnowledgeWorkflowRefresh } from '@/features/kb/hooks/useKnowledgeWorkflowRefresh';
 import { UploadWorkspace } from '@/features/uploads/components/UploadWorkspace';
 import { buildKnowledgeBaseReadinessItems } from '@/features/workflow/commandCenter';
+import { buildFreshChatHref } from '@/features/chat/chatHandoff';
+import { formatEmbeddingModelLabel, formatParseEngineLabel } from '@/config/modelRuntime';
+import { getKnowledgeBaseDisplayMetadata } from '@/app/lib/knowledgeBaseDisplay';
 
 export function KnowledgeWorkspaceShell() {
   const navigate = useNavigate();
@@ -43,6 +46,7 @@ export function KnowledgeWorkspaceShell() {
   useImportJobsPolling({
     enabled: hasRunningJobs,
     intervalMs: 5000,
+    leading: false,
     onTick: async () => {
       await loadImportJobs({ silent: true });
     },
@@ -67,10 +71,14 @@ export function KnowledgeWorkspaceShell() {
     }
     return buildKnowledgeBaseReadinessItems({ kb, importJobs, runs });
   }, [importJobs, kb, runs]);
+  const kbDisplay = useMemo(
+    () => (kb ? getKnowledgeBaseDisplayMetadata(kb) : null),
+    [kb],
+  );
 
   if (loadingKB) {
     return (
-      <div className="relative min-h-screen bg-background">
+      <div className="editorial-app-shell relative min-h-screen bg-background">
         <PaperTexture />
         <UnifiedLoadingState fullScreen={true} label="正在加载知识库..." />
       </div>
@@ -79,7 +87,7 @@ export function KnowledgeWorkspaceShell() {
 
   if (!kb || !kbId) {
     return (
-      <div className="relative min-h-screen bg-background">
+      <div className="editorial-app-shell relative min-h-screen bg-background">
         <PaperTexture />
         <div className="min-h-[60vh] flex items-center justify-center">
           <UnifiedErrorState
@@ -95,7 +103,7 @@ export function KnowledgeWorkspaceShell() {
   }
 
   return (
-    <div className="relative min-h-screen bg-background">
+    <div className="editorial-app-shell relative min-h-screen bg-background">
       <PaperTexture />
       <div className="space-y-6 pb-20 px-6 max-w-7xl mx-auto relative z-10">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 pb-5 magazine-hairline">
@@ -103,17 +111,13 @@ export function KnowledgeWorkspaceShell() {
             <Link
               to="/knowledge-bases"
               className="mb-1 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-primary"
-              onClick={(event) => {
-                event.preventDefault();
-                navigate('/knowledge-bases');
-              }}
             >
               <ArrowLeft className="w-4 h-4" />
               返回知识库列表
             </Link>
             <div className="flex items-center gap-4">
               <h1 className="text-3xl md:text-4xl font-black font-serif uppercase tracking-tight text-foreground leading-none">
-                {kb.name}
+                {kbDisplay?.displayName ?? kb.name}
               </h1>
               <span className="border border-border/70 bg-paper-1 px-2.5 py-1 font-mono text-xs text-muted-foreground">
                 {kbId}
@@ -121,11 +125,11 @@ export function KnowledgeWorkspaceShell() {
             </div>
             <div className="flex flex-wrap gap-4 pt-1 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
               <span className="flex items-center gap-2">
-                <Database className="w-4 h-4" /> {kb.embeddingModel} Model
+                <Database className="w-4 h-4" /> {formatEmbeddingModelLabel(kb.embeddingModel)}
               </span>
-              <span className="flex items-center gap-2 text-primary">★ {kb.parseEngine} Engine</span>
-              <span>{kb.paperCount} Papers</span>
-              <span>{kb.chunkCount} Chunks</span>
+              <span className="flex items-center gap-2 text-primary">★ {formatParseEngineLabel(kb.parseEngine)}</span>
+              <span>{kb.paperCount} 篇论文</span>
+              <span>{kb.chunkCount} 个切片</span>
             </div>
           </div>
 
@@ -145,7 +149,7 @@ export function KnowledgeWorkspaceShell() {
               导入来源
             </button>
             <button
-              onClick={() => navigate(`/chat?kbId=${kb.id}`)}
+              onClick={() => navigate(buildFreshChatHref({ kbId: kb.id }))}
               className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 font-bold uppercase tracking-[0.14em] text-xs transition-colors"
             >
               <MessageSquare className="w-4 h-4" />
@@ -157,15 +161,15 @@ export function KnowledgeWorkspaceShell() {
         <section className="rounded-2xl border border-border/80 bg-paper-1 p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">Readiness</div>
-              <h2 className="mt-1 font-serif text-xl font-semibold text-foreground">Import to evidence to action</h2>
+              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">工作区状态</div>
+              <h2 className="mt-1 font-serif text-xl font-semibold text-foreground">从导入到证据工作流</h2>
             </div>
             <button
               type="button"
               onClick={() => void refreshAll({ silent: true })}
               className="rounded-full border border-border/70 bg-background px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-foreground/75 transition-colors hover:border-primary/40 hover:text-primary"
             >
-              Refresh
+              刷新
             </button>
           </div>
           <div className="grid gap-3 lg:grid-cols-5">
@@ -193,7 +197,7 @@ export function KnowledgeWorkspaceShell() {
                   </span>
                 </div>
                 <div className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.reason}</div>
-                <div className="mt-3 text-[11px] font-medium text-foreground/80">Open target</div>
+                <div className="mt-3 text-[11px] font-medium text-foreground/80">打开工作区</div>
               </button>
             ))}
           </div>
@@ -234,14 +238,14 @@ export function KnowledgeWorkspaceShell() {
                 ? 'border-primary text-foreground bg-transparent'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
             }`}>
-              <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> Run 历史</span>
+              <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> 运行记录</span>
             </TabsTrigger>
             <TabsTrigger value="review" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'review'
                 ? 'border-primary text-foreground bg-transparent'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
             }`}>
-              <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> Review Draft</span>
+              <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> 综述草稿</span>
             </TabsTrigger>
             <TabsTrigger value="chat" className={`flex-1 sm:flex-none px-8 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
               activeTab === 'chat'
@@ -313,7 +317,7 @@ export function KnowledgeWorkspaceShell() {
           </TabsContent>
 
           <TabsContent value="chat" className="mt-8 outline-none animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <KnowledgeQuickAskPanel kbId={kb.id} onEnterChat={() => navigate(`/chat?kbId=${kb.id}`)} />
+            <KnowledgeQuickAskPanel kbId={kb.id} onEnterChat={() => navigate(buildFreshChatHref({ kbId: kb.id }))} />
           </TabsContent>
         </Tabs>
       </div>
@@ -322,7 +326,7 @@ export function KnowledgeWorkspaceShell() {
         open={isImportDialogOpen}
         onOpenChange={setImportDialogOpen}
         knowledgeBaseId={kb.id}
-        knowledgeBaseName={kb.name}
+        knowledgeBaseName={kbDisplay?.displayName ?? kb.name}
         onImportComplete={() => {
           void handleImportCompleted();
           toast.success('导入任务已提交');

@@ -99,7 +99,7 @@ export function SearchResultsPanel({
       >
       {activeSource === 'authors' && (
         <div>
-          <h2 className="font-semibold mb-4 text-lg">
+          <h2 className="font-semibold mb-4 text-lg font-serif tracking-tight">
             {labels.authorResults} ({authorResults.length})
           </h2>
           {query.trim().length < 3 && (
@@ -125,7 +125,7 @@ export function SearchResultsPanel({
 
       {activeSource !== 'authors' && results.internal.length > 0 && (
         <div>
-          <h2 className="font-semibold mb-4 text-lg">
+          <h2 className="font-semibold mb-4 text-lg font-serif tracking-tight">
             {labels.yourLibrary} ({results.internal.length})
           </h2>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -143,7 +143,7 @@ export function SearchResultsPanel({
 
       {activeSource !== 'authors' && results.external.length > 0 && (
         <div>
-          <h2 className="font-semibold mb-4 text-lg">
+          <h2 className="font-semibold mb-4 text-lg font-serif tracking-tight">
             {labels.externalSources} ({results.external.length})
           </h2>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">

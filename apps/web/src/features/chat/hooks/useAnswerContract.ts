@@ -39,7 +39,7 @@ export function useAnswerContract(message: ChatRenderMessage): AnswerContractPay
         score: citation.score,
         rerank_score: citation.score,
         support_status: 'supported',
-        citation_jump_url: '',
+        citation_jump_url: citation.citation_jump_url || '',
       })),
       quality: {
         fallback_used: false,

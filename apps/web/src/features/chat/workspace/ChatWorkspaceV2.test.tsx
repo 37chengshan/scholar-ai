@@ -7,13 +7,16 @@ let mockCurrentSession: any;
 let mockSessionMessages: any[];
 let mockCreateSession: any;
 let mockWorkspaceState: any;
+let mockSearchParams: URLSearchParams;
+let mockSetSearchParams: any;
+const mockUseSessions = vi.fn();
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
   return {
     ...actual,
     useNavigate: () => vi.fn(),
-    useSearchParams: () => [new URLSearchParams(), vi.fn()],
+    useSearchParams: () => [mockSearchParams, mockSetSearchParams],
     useLocation: () => ({
       pathname: '/chat',
       search: '',
@@ -114,15 +117,7 @@ vi.mock('@/features/chat/runtime/useRuntime', () => ({
 }));
 
 vi.mock('@/app/hooks/useSessions', () => ({
-  useSessions: () => ({
-    sessions: mockCurrentSession ? [mockCurrentSession] : [],
-    currentSession: mockCurrentSession,
-    messages: mockSessionMessages,
-    loading: false,
-    createSession: mockCreateSession,
-    switchSession: vi.fn(async () => {}),
-    deleteSession: vi.fn(async () => true),
-  }),
+  useSessions: (...args: unknown[]) => mockUseSessions(...args),
 }));
 
 vi.mock('@/features/chat/hooks/useChatStreaming', () => ({
@@ -189,6 +184,8 @@ function buildStreamState(overrides: Record<string, unknown> = {}) {
 
 describe('ChatWorkspaceV2', () => {
   beforeEach(() => {
+    mockSearchParams = new URLSearchParams();
+    mockSetSearchParams = vi.fn();
     mockStreamState = buildStreamState();
     mockCurrentSession = null;
     mockSessionMessages = [];
@@ -200,6 +197,17 @@ describe('ChatWorkspaceV2', () => {
       createdAt: new Date().toISOString(),
     }));
     mockWorkspaceState = buildWorkspaceState();
+    mockUseSessions.mockReset();
+    mockUseSessions.mockImplementation(() => ({
+      sessions: mockCurrentSession ? [mockCurrentSession] : [],
+      currentSession: mockCurrentSession,
+      messages: mockSessionMessages,
+      loading: false,
+      createSession: mockCreateSession,
+      switchSession: vi.fn(async () => {}),
+      deleteSession: vi.fn(async () => true),
+      clearCurrentSession: vi.fn(),
+    }));
   });
 
   it('shows assistant placeholder immediately after sending simple message', async () => {
@@ -225,6 +233,15 @@ describe('ChatWorkspaceV2', () => {
       });
       await Promise.resolve();
     });
+  });
+
+  it('suppresses auto session selection when explicit single-paper scope is present without session id', () => {
+    mockSearchParams = new URLSearchParams('paperId=paper-1');
+    render(<ChatWorkspaceV2 />);
+
+    expect(mockUseSessions).toHaveBeenCalledWith(
+      expect.objectContaining({ autoSelectLatest: false, messageSessionId: null }),
+    );
   });
 
   it('renders first message chunk content ahead of runtime metadata updates', () => {
@@ -259,5 +276,37 @@ describe('ChatWorkspaceV2', () => {
     render(<ChatWorkspaceV2 />);
 
     expect(screen.getByText('首个 message chunk')).toBeInTheDocument();
+  });
+
+  it('does not auto-bind an old session during handoff when scope exists without session id', () => {
+    mockSearchParams = new URLSearchParams('handoff=1&paper_ids=paper-1,paper-2');
+    mockCurrentSession = {
+      id: 'session-old',
+      title: 'Old session',
+      status: 'active',
+      messageCount: 3,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    mockWorkspaceState = buildWorkspaceState({
+      composerDraft: 'follow up',
+    });
+
+    render(<ChatWorkspaceV2 />);
+
+    expect(mockSetSearchParams).not.toHaveBeenCalledWith(
+      expect.objectContaining({}),
+      expect.anything(),
+    );
+  });
+
+  it('suppresses latest-session auto select during compare handoff without session id', () => {
+    mockSearchParams = new URLSearchParams('handoff=1&paper_ids=paper-1,paper-2');
+
+    render(<ChatWorkspaceV2 />);
+
+    expect(mockUseSessions).toHaveBeenCalledWith(
+      expect.objectContaining({ autoSelectLatest: false }),
+    );
   });
 });

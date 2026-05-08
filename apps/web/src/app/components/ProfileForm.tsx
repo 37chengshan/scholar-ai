@@ -15,6 +15,10 @@ import * as usersApi from "@/services/usersApi";
 import { toast } from "sonner";
 
 export function ProfileForm() {
+  const avatarInputId = 'profile-avatar-upload';
+  const profileNameInputId = 'profile-display-name';
+  const profileEmailInputId = 'profile-email';
+
   const [profile, setProfile] = useState<{
     name?: string;
     email?: string;
@@ -38,7 +42,7 @@ export function ProfileForm() {
       });
     } catch (error) {
       console.error('Failed to load profile:', error);
-      toast.error('Failed to load profile');
+      toast.error('个人资料加载失败');
     } finally {
       setLoading(false);
     }
@@ -51,10 +55,10 @@ export function ProfileForm() {
     try {
       setSaving(true);
       await usersApi.updateProfile(profile);
-      toast.success('Profile updated');
+      toast.success('个人资料已更新');
     } catch (error: any) {
       console.error('Failed to update profile:', error);
-      toast.error(error.response?.data?.error?.detail || 'Failed to update profile');
+      toast.error(error.response?.data?.error?.detail || '个人资料更新失败');
     } finally {
       setSaving(false);
     }
@@ -66,13 +70,13 @@ export function ProfileForm() {
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size must be less than 5MB');
+      toast.error('头像文件需小于 5MB');
       return;
     }
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      toast.error('File must be an image');
+      toast.error('仅支持上传图片文件');
       return;
     }
 
@@ -80,32 +84,32 @@ export function ProfileForm() {
       setSaving(true);
       const result = await usersApi.uploadAvatar(file);
       setProfile(prev => prev ? { ...prev, avatar: result.avatar } : null);
-      toast.success('Avatar uploaded');
+      toast.success('头像已更新');
     } catch (error: any) {
       console.error('Failed to upload avatar:', error);
-      toast.error(error.response?.data?.error?.detail || 'Failed to upload avatar');
+      toast.error(error.response?.data?.error?.detail || '头像上传失败');
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading profile...</div>;
+    return <div className="text-sm text-muted-foreground">正在加载个人资料...</div>;
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
       {/* Avatar Section */}
       <div className="flex flex-col gap-3">
-        <label className="text-[9px] font-bold tracking-[0.2em] uppercase text-foreground/70">
-          Avatar
+        <label htmlFor={avatarInputId} className="text-[9px] font-bold tracking-[0.2em] uppercase text-foreground/70">
+          头像
         </label>
         <div className="flex items-center gap-4">
           <div className="w-20 h-20 rounded-full border-2 border-background overflow-hidden relative cursor-pointer shadow-md group">
             {profile?.avatar ? (
               <img
                 src={profile.avatar}
-                alt="Avatar"
+                alt="用户头像"
                 className="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-all duration-700"
               />
             ) : (
@@ -117,6 +121,8 @@ export function ProfileForm() {
               <Camera className="w-4 h-4 text-primary-foreground" />
             </div>
             <input
+              id={avatarInputId}
+              name="avatar"
               type="file"
               accept="image/*"
               onChange={handleAvatarUpload}
@@ -124,33 +130,39 @@ export function ProfileForm() {
             />
           </div>
           <div className="text-[10px] text-muted-foreground">
-            <p>Click to upload new avatar</p>
-            <p className="text-[9px] mt-1">JPEG, PNG, WebP • Max 5MB</p>
+            <p>点击上传新头像</p>
+            <p className="text-[9px] mt-1">支持 JPEG、PNG、WebP，最大 5MB</p>
           </div>
         </div>
       </div>
 
       {/* Name Field */}
       <div className="flex flex-col gap-2">
-        <label className="text-[9px] font-bold tracking-[0.2em] uppercase text-foreground/70">
-          Name
+        <label htmlFor={profileNameInputId} className="text-[9px] font-bold tracking-[0.2em] uppercase text-foreground/70">
+          昵称
         </label>
         <input
+          id={profileNameInputId}
+          name="displayName"
           type="text"
+          autoComplete="name"
           value={profile?.name || ''}
           onChange={(e) => setProfile(prev => prev ? { ...prev, name: e.target.value } : null)}
           className="w-full bg-background border border-border/50 rounded-sm px-4 py-2.5 text-[12px] focus:outline-none focus:border-primary transition-colors shadow-sm"
-          placeholder="Your name"
+          placeholder="输入你的显示名称"
         />
       </div>
 
       {/* Email Field */}
       <div className="flex flex-col gap-2">
-        <label className="text-[9px] font-bold tracking-[0.2em] uppercase text-foreground/70">
-          Email
+        <label htmlFor={profileEmailInputId} className="text-[9px] font-bold tracking-[0.2em] uppercase text-foreground/70">
+          邮箱
         </label>
         <input
+          id={profileEmailInputId}
+          name="email"
           type="email"
+          autoComplete="email"
           value={profile?.email || ''}
           onChange={(e) => setProfile(prev => prev ? { ...prev, email: e.target.value } : null)}
           className="w-full bg-background border border-border/50 rounded-sm px-4 py-2.5 text-[12px] focus:outline-none focus:border-primary transition-colors shadow-sm"
@@ -166,7 +178,7 @@ export function ProfileForm() {
           className="text-[9px] font-bold uppercase tracking-[0.2em] bg-primary text-primary-foreground px-6 py-2.5 rounded-sm hover:bg-secondary transition-colors shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save className="w-3 h-3" />
-          {saving ? 'Saving...' : 'Save Changes'}
+          {saving ? '保存中...' : '保存更改'}
         </button>
       </div>
     </form>

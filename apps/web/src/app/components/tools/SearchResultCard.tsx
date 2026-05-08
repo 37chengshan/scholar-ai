@@ -54,7 +54,7 @@ export function SearchResultCard({ result, variant = 'rag' }: SearchResultCardPr
           {isZh ? '搜索结果' : 'Search results'}
         </span>
         {query && (
-          <span className="text-xs text-muted-foreground truncate">
+          <span className="text-xs text-muted-foreground truncate font-sans">
             — {query}
           </span>
         )}
@@ -78,7 +78,7 @@ export function SearchResultCard({ result, variant = 'rag' }: SearchResultCardPr
               </div>
             </div>
             {r.snippet && (
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 font-sans">
                 {r.snippet}
               </p>
             )}
@@ -86,7 +86,7 @@ export function SearchResultCard({ result, variant = 'rag' }: SearchResultCardPr
         ))}
       </div>
       {results.length === 0 && (
-        <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+        <div className="px-3 py-4 text-center text-xs text-muted-foreground font-sans">
           {isZh ? '没有找到结果' : 'No results found'}
         </div>
       )}

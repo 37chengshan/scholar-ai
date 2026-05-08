@@ -19,6 +19,7 @@ export interface ChatSession {
   messageCount: number;
   createdAt: string;
   updatedAt?: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 function isValidSession(session: ChatSession | null | undefined): session is ChatSession {
@@ -31,6 +32,24 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   tool_name?: string;
+  reasoning_content?: string | null;
+  current_phase?: string | null;
+  tool_timeline?: unknown;
+  citations?: unknown;
+  answer_contract?: unknown;
+  stream_status?: string | null;
+  tokens_used?: number | null;
+  cost?: number | null;
+  duration_ms?: number | null;
+  response_type?: string | null;
+  trace_id?: string | null;
+  run_id?: string | null;
+  reasoningBuffer?: string;
+  toolTimeline?: unknown;
+  answerContract?: unknown;
+  streamStatus?: 'idle' | 'streaming' | 'completed' | 'error' | 'cancelled';
+  tokensUsed?: number | null;
+  responseType?: string;
   created_at: string;
 }
 
@@ -41,7 +60,10 @@ interface UseSessionsReturn {
   loading: boolean;
   error: string | null;
   loadSessions: () => Promise<void>;
-  createSession: (title?: string) => Promise<ChatSession | null>;
+  createSession: (
+    title?: string,
+    metadata?: Record<string, unknown>,
+  ) => Promise<ChatSession | null>;
   switchSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<boolean>;
   addMessage: (message: ChatMessage) => void;
@@ -50,7 +72,20 @@ interface UseSessionsReturn {
   updateCurrentSession: (updates: Partial<ChatSession>) => Promise<void>;
 }
 
-export function useSessions(): UseSessionsReturn {
+interface UseSessionsOptions {
+  autoSelectLatest?: boolean;
+  messageSessionId?: string | null;
+  enabled?: boolean;
+  loadMessages?: boolean;
+}
+
+export function useSessions(options: UseSessionsOptions = {}): UseSessionsReturn {
+  const {
+    autoSelectLatest = true,
+    messageSessionId = undefined,
+    enabled = true,
+    loadMessages = true,
+  } = options;
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -67,6 +102,15 @@ export function useSessions(): UseSessionsReturn {
   const LOCAL_MESSAGE_GRACE_PERIOD = 3000;
 
   const loadSessions = useCallback(async () => {
+    if (!enabled) {
+      setSessions([]);
+      setCurrentSession(null);
+      setMessages([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -74,7 +118,7 @@ export function useSessions(): UseSessionsReturn {
       const normalized = (data || []).filter((session) => isValidSession(session));
       setSessions(normalized);
 
-      if (suppressAutoSelectRef.current) {
+      if (suppressAutoSelectRef.current || !autoSelectLatest) {
         setCurrentSession(null);
         return;
       }
@@ -91,7 +135,7 @@ export function useSessions(): UseSessionsReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [autoSelectLatest, enabled]);
 
   const loadSessionMessages = useCallback(async (sessionId: string) => {
     // Skip reload only for the same session where optimistic local message was just added.
@@ -110,10 +154,13 @@ export function useSessions(): UseSessionsReturn {
     }
   }, []); // No dependency on lastLocalMessageRef - it's a ref
 
-  const createSession = useCallback(async (title?: string): Promise<ChatSession | null> => {
+  const createSession = useCallback(async (
+    title?: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<ChatSession | null> => {
     setError(null);
     try {
-      const session = await sessionsApi.createSession(title || '新对话');
+      const session = await sessionsApi.createSession(title || '新对话', metadata || {});
       suppressAutoSelectRef.current = false;
       setSessions(prev => [session, ...prev]);
       setCurrentSession(session);
@@ -190,6 +237,7 @@ export function useSessions(): UseSessionsReturn {
       const updated = await sessionsApi.updateSession(currentSession.id, {
         title: updates.title,
         status: updates.status,
+        metadata: updates.metadata,
       });
       setCurrentSession(updated);
       setSessions(prev => prev.map(s => s.id === updated.id ? updated : s));
@@ -199,14 +247,36 @@ export function useSessions(): UseSessionsReturn {
   }, [currentSession]);
 
   useEffect(() => {
+    if (!enabled) {
+      setSessions([]);
+      setCurrentSession(null);
+      setMessages([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     loadSessions();
-  }, [loadSessions]);
+  }, [enabled, loadSessions]);
 
   useEffect(() => {
-    if (currentSession?.id) {
-      loadSessionMessages(currentSession.id);
+    if (!loadMessages) {
+      setMessages([]);
+      return;
     }
-  }, [currentSession?.id, loadSessionMessages]);
+
+    const targetSessionId =
+      messageSessionId === undefined ? currentSession?.id : messageSessionId;
+
+    if (targetSessionId) {
+      loadSessionMessages(targetSessionId);
+      return;
+    }
+
+    if (messageSessionId === null) {
+      setMessages([]);
+    }
+  }, [currentSession?.id, loadMessages, loadSessionMessages, messageSessionId]);
 
   return {
     sessions,

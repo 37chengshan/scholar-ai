@@ -73,7 +73,7 @@ export function ReferenceListCard({ result }: ReferenceListCardProps) {
         ))}
       </div>
       {references.length === 0 && (
-        <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+        <div className="px-3 py-4 text-center text-xs text-muted-foreground font-sans">
           {isZh ? '未找到引用文献' : 'No references found'}
         </div>
       )}

@@ -99,7 +99,7 @@ export function MarkdownEditor({ value, onChange, placeholder, onSave }: Markdow
           />
         ) : (
           <div
-            className="p-4 prose prose-sm max-w-none overflow-y-auto h-full"
+            className="p-4 prose prose-sm max-w-none overflow-y-auto h-full editorial-reading-surface font-serif"
             dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(value) }}
           />
         )}

@@ -41,6 +41,7 @@ from app.models.chat import (
     SSEEventType,
     ErrorEventData,
 )
+from app.schemas.session import SessionUpdate
 from app.services.message_service import message_service
 from app.services.chat_orchestrator import chat_orchestrator
 from app.utils.session_manager import session_manager
@@ -71,6 +72,13 @@ def _extract_context_paper_ids(context: Dict[str, Any] | None) -> list[str]:
     return [str(paper_id) for paper_id in raw_paper_ids if str(paper_id).strip()]
 
 
+def _extract_scope_paper_ids(scope: Dict[str, Any] | None) -> list[str]:
+    raw_paper_ids = (scope or {}).get("paper_ids")
+    if not isinstance(raw_paper_ids, list):
+        return []
+    return [str(paper_id) for paper_id in raw_paper_ids if str(paper_id).strip()]
+
+
 def _extract_scoped_paper_ids(
     scope: Dict[str, Any] | None,
     context: Dict[str, Any] | None,
@@ -80,7 +88,18 @@ def _extract_scoped_paper_ids(
         paper_id = str((scope or {}).get("paper_id") or "").strip()
         if paper_id:
             return [paper_id]
+    if scope_type == "compare":
+        scope_paper_ids = _extract_scope_paper_ids(scope)
+        if scope_paper_ids:
+            return scope_paper_ids
     return _extract_context_paper_ids(context)
+
+
+def _extract_handoff_evidence(context: Dict[str, Any] | None) -> list[Dict[str, Any]]:
+    raw_rows = (context or {}).get("handoff_evidence")
+    if not isinstance(raw_rows, list):
+        return []
+    return [row for row in raw_rows if isinstance(row, dict)]
 
 
 def _infer_scoped_query_family(message: str, paper_ids: list[str]) -> str:
@@ -90,6 +109,44 @@ def _infer_scoped_query_family(message: str, paper_ids: list[str]) -> str:
         query_family=hinted_family,
         paper_scope=paper_ids,
     ).query_family
+
+
+def _build_session_scope_metadata(
+    scope: Dict[str, Any] | None,
+    context: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    scope_type = str((scope or {}).get("type") or "").strip().lower()
+    paper_ids = _extract_scoped_paper_ids(scope, context)
+
+    if scope_type == "paper":
+        paper_id = str((scope or {}).get("paper_id") or "").strip()
+        if paper_id:
+            return {
+                "scopeType": "single_paper",
+                "paperId": paper_id,
+            }
+
+    if scope_type == "knowledge_base":
+        knowledge_base_id = str((scope or {}).get("knowledge_base_id") or "").strip()
+        if knowledge_base_id:
+            return {
+                "scopeType": "full_kb",
+                "kbId": knowledge_base_id,
+            }
+
+    if scope_type == "compare" and paper_ids:
+        return {
+            "scopeType": "compare",
+            "paperIds": paper_ids,
+        }
+
+    if paper_ids:
+        return {
+            "scopeType": "compare",
+            "paperIds": paper_ids,
+        }
+
+    return {}
 
 
 @router.post("")
@@ -105,6 +162,7 @@ async def chat_v3_query(request: ChatStreamRequest, user_id: str = CurrentUserId
             stage="rule",
             trace_id=trace_id,
             paper_scope=scoped_paper_ids or None,
+            handoff_evidence=_extract_handoff_evidence(request.context),
         )
         return {
             "success": True,
@@ -141,6 +199,30 @@ def _build_simple_fast_reply(query: str) -> str:
     if _SMALLTALK_HINT_PATTERN.match(query.strip()):
         return "你好，我是 ScholarAI。你可以问我论文检索、方法解释、研究对比或知识库问答。"
     return f"收到：{query.strip()}。如果你希望，我可以继续给出更详细的学术解释或下一步建议。"
+
+
+def _build_persisted_answer_contract(done_payload: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "response_type": done_payload.get("response_type", "general"),
+        "answer_mode": done_payload.get("answer_mode"),
+        "answer": done_payload.get("answer", ""),
+        "claims": done_payload.get("claims", []),
+        "citations": done_payload.get("citations", []),
+        "evidence_blocks": done_payload.get("evidence_blocks", []),
+        "quality": done_payload.get("quality") or {},
+        "retrieval_trace_id": done_payload.get("retrieval_trace_id"),
+        "error_state": done_payload.get("error_state"),
+        "trace_id": done_payload.get("trace_id"),
+        "run_id": done_payload.get("run_id"),
+        "compare_matrix": done_payload.get("compare_matrix"),
+        "task_family": done_payload.get("task_family"),
+        "execution_mode": done_payload.get("execution_mode"),
+        "truthfulness_required": done_payload.get("truthfulness_required"),
+        "truthfulness_summary": done_payload.get("truthfulness_summary"),
+        "retrieval_plane_policy": done_payload.get("retrieval_plane_policy"),
+        "degraded_conditions": done_payload.get("degraded_conditions", []),
+        "diagnostics": done_payload.get("diagnostics"),
+    }
 
 
 @router.post("/stream")
@@ -211,6 +293,22 @@ async def chat_stream(
             )
 
         session_id = session.id
+        session_scope_metadata = _build_session_scope_metadata(
+            request.scope,
+            request.context,
+        )
+        if session_scope_metadata:
+            try:
+                await session_manager.update_session(
+                    session_id,
+                    SessionUpdate(metadata=session_scope_metadata),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to persist chat session scope metadata",
+                    session_id=session_id,
+                    error=str(e),
+                )
 
         # Task 1.4: Create SSEEventBuffer for ordered events
         event_buffer = SSEEventBuffer(session_id=session_id)
@@ -400,6 +498,7 @@ async def chat_stream(
                             stage="rule",
                             trace_id=trace_id,
                             run_id=run_id,
+                            handoff_evidence=_extract_handoff_evidence(request.context),
                         )
                         answer = str(payload.get("answer") or "")
                         first_message_emitted_at = time.perf_counter()
@@ -412,11 +511,6 @@ async def chat_stream(
                             },
                         )
                         yield buffered_message.to_sse_format()
-
-                        await chat_orchestrator._safe_update_assistant_message(
-                            assistant_message_id,
-                            answer,
-                        )
 
                         done_payload = {
                             "finish_reason": "stop",
@@ -455,6 +549,19 @@ async def chat_stream(
                                 "paper_scope_size": len(scoped_paper_ids),
                             },
                         }
+                        await chat_orchestrator._safe_update_assistant_message(
+                            assistant_message_id,
+                            answer,
+                            citations=done_payload.get("citations", []),
+                            answer_contract=_build_persisted_answer_contract(done_payload),
+                            stream_status="completed",
+                            tokens_used=done_payload.get("tokens_used"),
+                            cost=done_payload.get("cost"),
+                            duration_ms=done_payload.get("total_time_ms"),
+                            response_type=done_payload.get("response_type"),
+                            trace_id=done_payload.get("trace_id"),
+                            run_id=done_payload.get("run_id"),
+                        )
                         buffered_done = await event_buffer.emit(SSEEventType.DONE, done_payload)
                         yield buffered_done.to_sse_format()
                         return
@@ -509,11 +616,6 @@ async def chat_stream(
                         )
                         yield buffered_message.to_sse_format()
 
-                        await chat_orchestrator._safe_update_assistant_message(
-                            assistant_message_id,
-                            answer,
-                        )
-
                         done_payload = {
                             "finish_reason": "stop",
                             "tokens_used": 0,
@@ -522,6 +624,7 @@ async def chat_stream(
                             "message_id": assistant_message_id,
                             "run_id": run_id,
                             "trace_id": trace_id,
+                            "answer": answer,
                             "response_type": "general",
                             "answer_mode": None,
                             "claims": [],
@@ -540,6 +643,19 @@ async def chat_stream(
                                 "path": "smalltalk_fast_path",
                             },
                         }
+                        await chat_orchestrator._safe_update_assistant_message(
+                            assistant_message_id,
+                            answer,
+                            citations=[],
+                            answer_contract=_build_persisted_answer_contract(done_payload),
+                            stream_status="completed",
+                            tokens_used=0,
+                            cost=0.0,
+                            duration_ms=done_payload.get("total_time_ms"),
+                            response_type="general",
+                            trace_id=trace_id,
+                            run_id=run_id,
+                        )
                         buffered_done = await event_buffer.emit(SSEEventType.DONE, done_payload)
                         yield buffered_done.to_sse_format()
                         return
@@ -591,6 +707,20 @@ async def chat_stream(
                                             "truthfulness_required",
                                             phase_i_route.truthfulness_required,
                                         )
+                                        if current_message_id:
+                                            await chat_orchestrator._safe_update_assistant_message(
+                                                str(current_message_id),
+                                                str(normalized_payload.get("answer") or ""),
+                                                citations=normalized_payload.get("citations", []),
+                                                answer_contract=_build_persisted_answer_contract(normalized_payload),
+                                                stream_status="completed",
+                                                tokens_used=normalized_payload.get("tokens_used"),
+                                                cost=normalized_payload.get("cost"),
+                                                duration_ms=normalized_payload.get("total_time_ms"),
+                                                response_type=normalized_payload.get("response_type"),
+                                                trace_id=normalized_payload.get("trace_id"),
+                                                run_id=normalized_payload.get("run_id"),
+                                            )
 
                                     # Buffer normalized event payload
                                     buffered_event = await event_buffer.emit(

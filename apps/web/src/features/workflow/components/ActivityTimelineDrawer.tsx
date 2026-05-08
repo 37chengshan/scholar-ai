@@ -15,7 +15,7 @@ export function ActivityTimelineDrawer() {
   return (
     <aside className="fixed right-0 top-14 z-40 h-[calc(100vh-3.5rem)] w-[320px] border-l border-border/50 bg-background p-4 shadow-lg">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{isZh ? '最近活动' : 'Recent Activity'}</h3>
+        <h3 className="text-sm font-semibold font-serif tracking-tight">{isZh ? '最近活动' : 'Recent Activity'}</h3>
         <button
           className="text-xs text-zinc-500500 hover:text-zinc-500800"
           onClick={() => workflowActions.setTimelineDrawer(false)}

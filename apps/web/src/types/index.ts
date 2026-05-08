@@ -99,7 +99,12 @@ export interface Paper {
   processingCompletedAt?: string | null;
   imradJson?: unknown;
   readingCardDoc?: ReadingCardDoc | null;
+  readingNotes?: string | null;
   knowledgeBaseId?: string | null;
+  chunkCount?: number;
+  evidenceReady?: boolean;
+  evidenceStatus?: string | null;
+  evidenceMessage?: string | null;
 }
 
 /**

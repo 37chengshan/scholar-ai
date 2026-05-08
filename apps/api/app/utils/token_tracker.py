@@ -8,7 +8,7 @@ Usage:
     tracker = TokenTracker()
     cost = await tracker.track_usage(
         user_id="user-123",
-        model="glm-4.5-air",
+        model="glm-4.6v-flashx",
         input_tokens=100,
         output_tokens=50,
         session_id="session-456"
@@ -70,7 +70,7 @@ class TokenTracker:
 
         Args:
             user_id: User ID
-            model: Model name (e.g., 'glm-4.5-air')
+            model: Model name (e.g., 'glm-4.6v-flashx')
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
             session_id: Optional session ID for session-level tracking

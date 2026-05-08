@@ -43,7 +43,7 @@ class KBCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=50)
     description: Optional[str] = Field(None, max_length=200)
     category: Optional[str] = Field(None)
-    embeddingModel: str = Field(default="bge-m3")
+    embeddingModel: str = Field(default="text-embedding-v4")
     parseEngine: str = Field(default="docling")
     chunkStrategy: str = Field(default="by-paragraph")
     enableGraph: bool = Field(default=False)

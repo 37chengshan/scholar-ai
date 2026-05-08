@@ -86,3 +86,43 @@ async def test_store_vectors_uses_device_batch_size_without_forced_mps_cache_cle
     assert [record["page_num"] for record in ctx.chunk_results] == [1, 1, 2]
     assert [record["char_start"] for record in ctx.chunk_results] == [0, 8, 0]
     mock_empty_cache.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_store_summary_index_uses_canonical_source_chunk_id():
+    manager = StorageManager.__new__(StorageManager)
+    manager.qwen3vl_service = SimpleNamespace(
+        encode_text=Mock(return_value=[[0.1, 0.2], [0.3, 0.4]]),
+    )
+    manager.milvus = Mock()
+    manager.milvus.insert_summaries_batched = Mock(return_value=[1, 2])
+    manager._truncate_summary_text = lambda text: text
+
+    ctx = PipelineContext(
+        task_id="task-1",
+        paper_id="paper-1",
+        user_id="user-1",
+        storage_key="storage-key",
+    )
+    ctx.metadata = {"title": "Test"}
+
+    text_contents = [
+        {
+            "text": "A" * 120,
+            "section": "intro",
+            "chunk_id": "milvus-auto-id-1",
+            "source_chunk_id": "chunk_canonical_intro",
+        },
+        {
+            "text": "B" * 120,
+            "section": "intro",
+            "chunk_id": "milvus-auto-id-2",
+            "source_chunk_id": "chunk_canonical_intro_2",
+        },
+    ]
+
+    await StorageManager._store_summary_index(manager, ctx, text_contents)
+
+    inserted_entries = manager.milvus.insert_summaries_batched.call_args.args[0]
+    assert inserted_entries[0]["source_chunk_id"] == "chunk_canonical_intro"
+    assert inserted_entries[1]["source_chunk_id"] == "chunk_canonical_intro"

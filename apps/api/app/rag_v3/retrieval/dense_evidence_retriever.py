@@ -16,6 +16,34 @@ def _safe_content_type(value: Any) -> str:
     return "text"
 
 
+def _canonical_source_chunk_id(entity: Any, fallback: Any = None) -> str:
+    if entity is None:
+        return str(fallback or "")
+
+    candidates = (
+        entity.get("source_chunk_id"),
+        entity.get("chunk_id"),
+        entity.get("raw_data", {}).get("source_chunk_id") if isinstance(entity.get("raw_data"), dict) else None,
+        entity.get("raw_data", {}).get("chunk_id") if isinstance(entity.get("raw_data"), dict) else None,
+        fallback,
+    )
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        value = str(candidate).strip()
+        if value:
+            return value
+    return ""
+
+
+def _schema_field_names(collection: Any) -> set[str]:
+    return {
+        str(getattr(field, "name", "") or "")
+        for field in getattr(getattr(collection, "schema", None), "fields", [])
+        if getattr(field, "name", None)
+    }
+
+
 def extract_paper_ids_from_query(query: str) -> list[str]:
     """Extract any paper IDs (v2-p-XXX) mentioned in the query."""
     return list(dict.fromkeys(_PAPER_ID_RE.findall(query)))
@@ -39,6 +67,7 @@ class DenseEvidenceRetriever:
         self._collection_name = collection_name
         self._milvus_alias = milvus_alias
         self._output_fields = output_fields or [
+            "source_chunk_id",
             "paper_id",
             "content_type",
             "section",
@@ -166,6 +195,13 @@ class DenseEvidenceRetriever:
         vec = self._embedding_provider.embed_texts([query])[0]
         col = Collection(self._collection_name, using=self._milvus_alias)
         col.load()
+        schema_fields = _schema_field_names(col)
+        requested_output_fields = output_fields or self._output_fields
+        effective_output_fields = self._effective_output_fields(
+            schema_fields=schema_fields,
+            requested_output_fields=requested_output_fields,
+            include_embedding=False,
+        )
 
         expr = self._build_filter_expression(
             paper_id_filter=paper_id_filter,
@@ -181,13 +217,13 @@ class DenseEvidenceRetriever:
             param={"metric_type": "COSINE", "params": {"nprobe": 10}},
             limit=top_k,
             expr=expr,
-            output_fields=output_fields or self._output_fields,
+            output_fields=effective_output_fields,
         )
         candidates: list[EvidenceCandidate] = []
         for batch in results:
             for hit in batch:
                 e = hit.entity
-                source_chunk_id = str(e.get("source_chunk_id") or hit.id or "")
+                source_chunk_id = _canonical_source_chunk_id(e, hit.id)
                 paper_id = str(e.get("paper_id") or "")
                 candidates.append(
                     EvidenceCandidate(
@@ -217,6 +253,7 @@ class DenseEvidenceRetriever:
         vec = self._embedding_provider.embed_texts([query])[0]
         col = Collection(self._collection_name, using=self._milvus_alias)
         col.load()
+        schema_fields = _schema_field_names(col)
 
         expr = self._build_filter_expression(
             paper_id_filter=paper_id_filter,
@@ -227,15 +264,19 @@ class DenseEvidenceRetriever:
         )
         rows = col.query(
             expr=expr,
-            output_fields=[
-                "id",
-                "paper_id",
-                "page_num",
-                "content_type",
-                "section",
-                "content_data",
-                "embedding",
-            ],
+            output_fields=self._effective_output_fields(
+                schema_fields=schema_fields,
+                requested_output_fields=[
+                    "id",
+                    "source_chunk_id",
+                    "paper_id",
+                    "page_num",
+                    "content_type",
+                    "section",
+                    "content_data",
+                ],
+                include_embedding=True,
+            ),
             limit=max(top_k * 24, 240),
         )
         scored: list[tuple[float, dict[str, Any]]] = []
@@ -249,7 +290,7 @@ class DenseEvidenceRetriever:
         scored.sort(key=lambda item: item[0], reverse=True)
         candidates: list[EvidenceCandidate] = []
         for rank, (score, row) in enumerate(scored[:top_k], start=1):
-            source_chunk_id = str(row.get("id") or "")
+            source_chunk_id = _canonical_source_chunk_id(row, row.get("id"))
             candidates.append(
                 EvidenceCandidate(
                     source_chunk_id=source_chunk_id,
@@ -263,6 +304,24 @@ class DenseEvidenceRetriever:
                 )
             )
         return candidates
+
+    @staticmethod
+    def _effective_output_fields(
+        *,
+        schema_fields: set[str],
+        requested_output_fields: list[str],
+        include_embedding: bool,
+    ) -> list[str]:
+        desired = list(dict.fromkeys(requested_output_fields))
+        if "raw_data" not in desired:
+            desired.append("raw_data")
+        if include_embedding and "embedding" not in desired:
+            desired.append("embedding")
+
+        if not schema_fields:
+            return desired
+
+        return [field for field in desired if field in schema_fields]
 
     @staticmethod
     def _cosine_similarity(left: list[float], right: list[float]) -> float:

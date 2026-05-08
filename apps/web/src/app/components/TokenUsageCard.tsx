@@ -102,11 +102,11 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-bold tracking-wide uppercase text-muted-foreground flex items-center gap-2">
+        <h3 className="text-sm font-bold tracking-wide uppercase text-muted-foreground flex items-center gap-2 font-serif tracking-tight font-sans">
           <Activity className="w-4 h-4" />
           {t.title}
         </h3>
-        <span className="text-xs text-muted-foreground">{t.thisMonth}</span>
+        <span className="text-xs text-muted-foreground font-sans">{t.thisMonth}</span>
       </div>
 
       {/* Main Stats */}
@@ -119,7 +119,7 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
               {t.totalTokens}
             </span>
           </div>
-          <div className="text-2xl font-bold text-foreground">
+          <div className="text-2xl font-bold text-foreground font-serif tracking-tight">
             {formatNumber(usage.totalTokens)}
           </div>
         </div>
@@ -132,7 +132,7 @@ export function TokenUsageCard({ className }: TokenUsageCardProps) {
               {t.totalCost}
             </span>
           </div>
-          <div className="text-2xl font-bold text-green-600">
+          <div className="text-2xl font-bold text-green-600 font-serif tracking-tight">
             {formatCurrency(usage.totalCostCny)}
           </div>
         </div>
