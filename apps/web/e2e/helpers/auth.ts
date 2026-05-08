@@ -16,8 +16,8 @@ type CachedAuthState = {
   cookies: AuthCookie[];
 };
 
-let cachedAuthStatePromise: Promise<CachedAuthState> | null = null;
 let cachedAuthState: CachedAuthState | null = null;
+let cachedAuthStatePromise: Promise<CachedAuthState> | null = null;
 
 const AUTH_STATE_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.auth/e2e-auth-state.json');
 
@@ -29,81 +29,37 @@ function buildE2EUser(): E2EUser {
   };
 }
 
-function isDashboardUrl(url: string): boolean {
-  return /\/dashboard(?:[/?#]|$)/.test(url);
-}
+async function validateBrowserSession(page: Page): Promise<boolean> {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-function isLoginUrl(url: string): boolean {
-  return /\/login(?:[/?#]|$)/.test(url);
-}
-
-async function createAuthState(page: Page, request: APIRequestContext): Promise<CachedAuthState> {
-  void request;
-  const user = buildE2EUser();
-
-  await page.goto('/dashboard');
-  await page.waitForLoadState('domcontentloaded');
-
-  // A fresh page can still inherit valid cookies from an earlier attempt.
-  // If protected routes open successfully, reuse that authenticated state.
-  if (isDashboardUrl(page.url())) {
-    await page.locator('#root').waitFor({ timeout: 20000 });
-    return {
-      user,
-      cookies: await page.context().cookies(),
-    };
-  }
-
-  if (!isLoginUrl(page.url())) {
-    await page.goto('/login');
-    await page.waitForLoadState('domcontentloaded');
-  }
-
-  // The login page can asynchronously redirect to /dashboard once auth state
-  // is restored. Give that transition a brief chance to settle before typing.
   try {
-    await page.waitForURL((url) => isDashboardUrl(url.toString()) || isLoginUrl(url.toString()), {
-      timeout: 5000,
+    return await page.evaluate(async () => {
+      const authInit: RequestInit = { credentials: 'include' };
+
+      const me = await fetch('/api/v1/auth/me', authInit);
+      if (me.ok) {
+        return true;
+      }
+
+      if (me.status !== 401) {
+        return false;
+      }
+
+      const refresh = await fetch('/api/v1/auth/refresh', {
+        ...authInit,
+        method: 'POST',
+      });
+
+      if (!refresh.ok) {
+        return false;
+      }
+
+      const meAfterRefresh = await fetch('/api/v1/auth/me', authInit);
+      return meAfterRefresh.ok;
     });
   } catch {
-    // Fall through and let field waits produce a concrete failure.
+    return false;
   }
-
-  if (isDashboardUrl(page.url())) {
-    await page.locator('#root').waitFor({ timeout: 20000 });
-    return {
-      user,
-      cookies: await page.context().cookies(),
-    };
-  }
-
-  await page.fill('input[type="email"]', user.email);
-  await page.fill('input[type="password"]', user.password);
-  const submitButton = page.locator('button[type="submit"]').first();
-  await submitButton.waitFor({ state: 'visible', timeout: 10000 });
-
-  try {
-    await submitButton.click({ timeout: 10000 });
-  } catch {
-    await page.locator('input[type="password"]').press('Enter');
-  }
-
-  try {
-    await page.waitForURL(/\/dashboard/, { timeout: 20000 });
-  } catch {
-    throw new Error(
-      `Failed to login E2E user ${user.email}. `
-      + 'Prepare fixed account first, e.g. run: '
-      + '`cd apps/api && .venv/bin/python scripts/ensure_e2e_test_user.py`',
-    );
-  }
-
-  await page.locator('#root').waitFor({ timeout: 20000 });
-
-  return {
-    user,
-    cookies: await page.context().cookies(),
-  };
 }
 
 async function readPersistedAuthState(): Promise<CachedAuthState | null> {
@@ -113,7 +69,10 @@ async function readPersistedAuthState(): Promise<CachedAuthState | null> {
     if (!Array.isArray(parsed?.cookies) || parsed.cookies.length === 0) {
       return null;
     }
-    return parsed;
+    return {
+      user: buildE2EUser(),
+      cookies: parsed.cookies,
+    };
   } catch {
     return null;
   }
@@ -128,19 +87,74 @@ async function clearPersistedAuthState(): Promise<void> {
   await fs.rm(AUTH_STATE_PATH, { force: true });
 }
 
+async function bootstrapCookies(page: Page, cookies: AuthCookie[]): Promise<boolean> {
+  await page.context().clearCookies();
+  await page.context().addCookies(cookies);
+
+  const valid = await validateBrowserSession(page);
+  if (!valid) {
+    await page.context().clearCookies();
+  }
+  return valid;
+}
+
+async function createFreshAuthState(page: Page): Promise<CachedAuthState> {
+  const user = buildE2EUser();
+
+  await page.context().clearCookies();
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await page.fill('input[type="email"]', user.email);
+  await page.fill('input[type="password"]', user.password);
+
+  const submitButton = page.locator('button[type="submit"]').first();
+  await submitButton.waitFor({ state: 'visible', timeout: 10000 });
+
+  try {
+    await submitButton.click({ timeout: 10000 });
+  } catch {
+    await page.locator('input[type="password"]').press('Enter');
+  }
+
+  try {
+    await page.waitForURL(/\/dashboard/, { timeout: 25000 });
+  } catch {
+    throw new Error(
+      `Failed to login E2E user ${user.email}. `
+      + 'Prepare fixed account first, e.g. run: '
+      + '`cd apps/api && .venv/bin/python scripts/ensure_e2e_test_user.py`',
+    );
+  }
+
+  const valid = await validateBrowserSession(page);
+  if (!valid) {
+    throw new Error(`Authenticated browser session could not be verified for ${user.email}.`);
+  }
+
+  return {
+    user,
+    cookies: await page.context().cookies(),
+  };
+}
+
 async function getAuthState(page: Page, request: APIRequestContext): Promise<CachedAuthState> {
-  if (cachedAuthState) {
+  void request;
+
+  if (cachedAuthState && await bootstrapCookies(page, cachedAuthState.cookies)) {
+    cachedAuthState.cookies = await page.context().cookies();
     return cachedAuthState;
   }
 
   if (!cachedAuthStatePromise) {
     cachedAuthStatePromise = (async () => {
       const persisted = await readPersistedAuthState();
-      if (persisted) {
+      if (persisted && await bootstrapCookies(page, persisted.cookies)) {
+        persisted.cookies = await page.context().cookies();
+        await persistAuthState(persisted);
         return persisted;
       }
 
-      const fresh = await createAuthState(page, request);
+      await clearPersistedAuthState();
+      const fresh = await createFreshAuthState(page);
       await persistAuthState(fresh);
       return fresh;
     })()
@@ -149,48 +163,35 @@ async function getAuthState(page: Page, request: APIRequestContext): Promise<Cac
         return state;
       })
       .catch((error) => {
-        cachedAuthStatePromise = null;
         cachedAuthState = null;
+        cachedAuthStatePromise = null;
         throw error;
       });
   }
 
-  return cachedAuthStatePromise;
+  const state = await cachedAuthStatePromise;
+  cachedAuthStatePromise = null;
+  return state;
 }
 
 export async function registerAndLogin(page: Page, request: APIRequestContext): Promise<E2EUser> {
   const user = buildE2EUser();
 
-  // Tests already load shared Playwright storageState. Prefer that state first
-  // so we do not race the login page against an async auth redirect.
-  await page.goto('/dashboard');
-  try {
-    await page.waitForURL(/\/dashboard/, { timeout: 10000 });
+  if (await validateBrowserSession(page)) {
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await page.waitForURL(/\/dashboard/, { timeout: 20000 });
+    cachedAuthState = {
+      user,
+      cookies: await page.context().cookies(),
+    };
     return user;
-  } catch {
-    // Fall back to worker-level cookie bootstrap below.
   }
 
-  let authState = await getAuthState(page, request);
-
-  // Reuse the authenticated browser cookies after the first login in this worker.
-  await page.context().addCookies(authState.cookies);
-  await page.goto('/dashboard');
-  try {
-    await page.waitForURL(/\/dashboard/, { timeout: 20000 });
-  } catch {
-    // Persisted cookies might have expired; refresh once via UI login.
-    cachedAuthState = null;
-    cachedAuthStatePromise = null;
-    await clearPersistedAuthState();
-    await page.context().clearCookies();
-
-    authState = await createAuthState(page, request);
-    await persistAuthState(authState);
-    await page.context().addCookies(authState.cookies);
-    await page.goto('/dashboard');
-    await page.waitForURL(/\/dashboard/, { timeout: 20000 });
-  }
-
+  const authState = await getAuthState(page, request);
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await page.waitForURL(/\/dashboard/, { timeout: 20000 });
+  authState.cookies = await page.context().cookies();
+  await persistAuthState(authState);
+  cachedAuthState = authState;
   return authState.user;
 }

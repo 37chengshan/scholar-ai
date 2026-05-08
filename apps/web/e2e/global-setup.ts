@@ -23,15 +23,95 @@ function buildE2EUser() {
   };
 }
 
+async function validateBrowserSession(storageStatePath?: string): Promise<boolean> {
+  const browser = await chromium.launch();
+  const context = await browser.newContext({
+    baseURL: BASE_URL,
+    storageState: storageStatePath,
+  });
+  const page = await context.newPage();
+
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const valid = await page.evaluate(async () => {
+      const authInit: RequestInit = { credentials: 'include' };
+
+      const me = await fetch('/api/v1/auth/me', authInit);
+      if (me.ok) {
+        return true;
+      }
+
+      if (me.status !== 401) {
+        return false;
+      }
+
+      const refresh = await fetch('/api/v1/auth/refresh', {
+        ...authInit,
+        method: 'POST',
+      });
+
+      if (!refresh.ok) {
+        return false;
+      }
+
+      const meAfterRefresh = await fetch('/api/v1/auth/me', authInit);
+      return meAfterRefresh.ok;
+    });
+
+    if (valid && storageStatePath) {
+      await context.storageState({ path: storageStatePath });
+    }
+
+    return valid;
+  } finally {
+    await browser.close();
+  }
+}
+
+async function validateCurrentSession(page: import('@playwright/test').Page): Promise<boolean> {
+  try {
+    return await page.evaluate(async () => {
+      const authInit: RequestInit = { credentials: 'include' };
+
+      const me = await fetch('/api/v1/auth/me', authInit);
+      if (me.ok) {
+        return true;
+      }
+
+      if (me.status !== 401) {
+        return false;
+      }
+
+      const refresh = await fetch('/api/v1/auth/refresh', {
+        ...authInit,
+        method: 'POST',
+      });
+
+      if (!refresh.ok) {
+        return false;
+      }
+
+      const meAfterRefresh = await fetch('/api/v1/auth/me', authInit);
+      return meAfterRefresh.ok;
+    });
+  } catch {
+    return false;
+  }
+}
+
 async function authFileValid(): Promise<boolean> {
   try {
     const content = await fs.readFile(AUTH_FILE, 'utf-8');
     const state = JSON.parse(content);
-    // storageState has cookies array
-    return Array.isArray(state?.cookies) && state.cookies.length > 0;
+    if (!Array.isArray(state?.cookies) || state.cookies.length === 0) {
+      return false;
+    }
   } catch {
     return false;
   }
+
+  return validateBrowserSession(AUTH_FILE);
 }
 
 export default async function globalSetup(_config: FullConfig) {
@@ -71,6 +151,12 @@ export default async function globalSetup(_config: FullConfig) {
       + 'Ensure account exists: '
       + '`cd apps/api && python scripts/ensure_e2e_test_user.py`',
     );
+  }
+
+  const valid = await validateCurrentSession(page);
+  if (!valid) {
+    await browser.close();
+    throw new Error(`[global-setup] Login verification failed for ${user.email}.`);
   }
 
   await context.storageState({ path: AUTH_FILE });

@@ -10,6 +10,8 @@ test.describe('Critical E2E - Compare', () => {
       title,
       authors: ['Tester'],
       year,
+      chunkCount: 2,
+      evidenceReady: true,
       status: 'completed',
       created_at: '2026-04-28T00:00:00Z',
       updated_at: '2026-04-28T00:00:00Z',
