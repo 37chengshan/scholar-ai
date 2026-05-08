@@ -307,7 +307,7 @@ async def test_context_paper_ids_use_scoped_rag_path():
     ), patch.object(
         chat_api,
         "build_answer_contract_payload",
-        Mock(return_value=scoped_payload),
+        AsyncMock(return_value=scoped_payload),
     ) as build_payload_mock, patch.object(
         chat_api.chat_orchestrator,
         "_create_assistant_message",

@@ -23,6 +23,19 @@ def test_get_collection_bootstraps_contents_v2_when_missing():
     mock_collection.assert_called_once_with(settings.MILVUS_COLLECTION_CONTENTS_V2, using=service._alias)
 
 
+def test_embedding_dim_tracks_active_embedding_model():
+    """MilvusService should canonicalize dimension from EMBEDDING_MODEL."""
+    with patch("app.core.milvus_service.settings") as mock_settings:
+        mock_settings.MILVUS_HOST = "localhost"
+        mock_settings.MILVUS_PORT = 19530
+        mock_settings.EMBEDDING_MODEL = "BAAI/bge-m3"
+        mock_settings.EMBEDDING_DIMENSION = 2048
+
+        service = MilvusService()
+
+    assert service.embedding_dim == 1024
+
+
 def test_get_collection_does_not_bootstrap_other_collections():
     """Non-content collections should not trigger v2 bootstrap path."""
     service = MilvusService()
@@ -46,11 +59,13 @@ def test_insert_contents_batched_recreates_missing_collection_and_retries():
     missing_collection.insert.side_effect = Exception(
         "Collection 'paper_contents_v2' not exist"
     )
+    missing_collection.schema.fields = []
 
     ok_collection = Mock()
     ok_result = Mock()
     ok_result.primary_keys = [123]
     ok_collection.insert.return_value = ok_result
+    ok_collection.schema.fields = []
 
     with patch.object(
         service,
@@ -67,7 +82,7 @@ def test_insert_contents_batched_recreates_missing_collection_and_retries():
                         "page_num": 1,
                         "text": "hello world",
                         "content_data": "hello world",
-                        "embedding": [0.1, 0.2, 0.3],
+                            "embedding": [0.1] * service.embedding_dim,
                         "raw_data": {},
                     }
                 ],
@@ -97,5 +112,38 @@ def test_get_collection_retries_when_constructor_reports_missing_collection():
 
     assert collection is recovered_collection
     mock_has.assert_called_once_with(settings.MILVUS_COLLECTION_CONTENTS_V2)
+    mock_create.assert_called_once()
+    assert mock_collection.call_count == 2
+
+
+def test_get_collection_recreates_contents_v2_when_embedding_dim_mismatch():
+    """Content v2 collection should self-heal when schema dim drifts from runtime."""
+    service = MilvusService()
+    service._connected = True
+    service.embedding_dim = 1024
+
+    mismatched_collection = Mock()
+    embedding_field = Mock()
+    embedding_field.name = "embedding"
+    embedding_field.params = {"dim": 2048}
+    mismatched_collection.schema.fields = [embedding_field]
+
+    recreated_collection = Mock()
+    recreated_field = Mock()
+    recreated_field.name = "embedding"
+    recreated_field.params = {"dim": 1024}
+    recreated_collection.schema.fields = [recreated_field]
+
+    with patch.object(service, "has_collection", return_value=True):
+        with patch.object(service, "drop_collection") as mock_drop:
+            with patch.object(service, "create_collection_v2") as mock_create:
+                with patch(
+                    "app.core.milvus_service.Collection",
+                    side_effect=[mismatched_collection, recreated_collection],
+                ) as mock_collection:
+                    collection = service.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+
+    assert collection is recreated_collection
+    mock_drop.assert_called_once_with(settings.MILVUS_COLLECTION_CONTENTS_V2)
     mock_create.assert_called_once()
     assert mock_collection.call_count == 2

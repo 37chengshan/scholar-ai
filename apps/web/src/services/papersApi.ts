@@ -119,6 +119,36 @@ export async function list(params?: PapersQueryParams): Promise<PapersListRespon
   } as PapersListResponse;
 }
 
+/** Search papers by title, authors, or abstract */
+export async function search(query: string, params?: { page?: number; limit?: number }): Promise<PapersListResponse> {
+  const response = await apiClient.get<{
+    papers: RawPaper[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages?: number;
+  }>('/api/v1/papers/search', {
+    params: {
+      q: query,
+      page: params?.page || 1,
+      limit: params?.limit || 20,
+    },
+  });
+
+  return {
+    success: true,
+    data: {
+      papers: (response.data.papers || []).map(normalizePaper),
+      total: response.data.total || 0,
+      page: response.data.page || 1,
+      limit: response.data.limit || params?.limit || 20,
+      totalPages:
+        response.data.totalPages ||
+        Math.max(1, Math.ceil((response.data.total || 0) / (response.data.limit || params?.limit || 20))),
+    },
+  } as PapersListResponse;
+}
+
 /** Get paper details */
 export async function get(id: string): Promise<Paper> {
   const response = await apiClient.get<RawPaper>(`/api/v1/papers/${id}`);

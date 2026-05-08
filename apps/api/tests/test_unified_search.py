@@ -133,6 +133,47 @@ class TestUnifiedSearch:
             assert result["results"][0].title == "arXiv Only Paper"
 
     @pytest.mark.asyncio
+    async def test_unified_search_accepts_dict_results_from_adapters(self):
+        """Unified search should normalize dict payloads before deduplication."""
+        arxiv_results = [
+            {
+                "id": "1706.03762",
+                "title": "Attention Is All You Need",
+                "authors": ["Ashish Vaswani"],
+                "year": 2017,
+                "abstract": "Transformer paper",
+                "source": "arxiv",
+                "url": "https://arxiv.org/abs/1706.03762",
+                "arxivId": "1706.03762",
+            }
+        ]
+        s2_results = [
+            {
+                "id": "s2-paper-1",
+                "title": "Attention Is All You Need",
+                "authors": ["Ashish Vaswani", "Noam Shazeer"],
+                "year": 2017,
+                "abstract": "Transformer paper with richer metadata",
+                "source": "semantic-scholar",
+                "url": "https://www.semanticscholar.org/paper/s2-paper-1",
+                "arxivId": "1706.03762",
+                "citationCount": 1000,
+            }
+        ]
+
+        with patch('app.api.search.search_arxiv') as mock_arxiv, \
+             patch('app.api.search.search_semantic_scholar') as mock_s2:
+
+            mock_arxiv.return_value = {"results": arxiv_results}
+            mock_s2.return_value = {"results": s2_results}
+
+            result = await search_unified("Attention Is All You Need", limit=10)
+
+            assert len(result["results"]) == 1
+            assert isinstance(result["results"][0], SearchResult)
+            assert result["results"][0].source == "semantic-scholar"
+
+    @pytest.mark.asyncio
     async def test_year_from_filter_excludes_older_papers(self):
         """
         Test 4: year_from filter excludes papers before specified year.

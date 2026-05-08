@@ -28,6 +28,75 @@ from app.utils.logger import logger
 router = APIRouter()
 
 
+async def _resolve_representative_chunk_ids(
+    db: AsyncSession,
+    raw_results: List[Dict[str, Any]],
+) -> Dict[tuple[str, str], str]:
+    """Resolve stable paper chunk ids for legacy summary hits lacking source ids."""
+    lookup: Dict[tuple[str, str], str] = {}
+
+    def _has_canonical_chunk_id(item: Dict[str, Any]) -> bool:
+        raw_data = item.get("raw_data") or {}
+        if item.get("source_chunk_id") or raw_data.get("source_chunk_id"):
+            return True
+        if item.get("chunk_id") or raw_data.get("chunk_id"):
+            return True
+        if str(item.get("index_type") or "") == "summary":
+            return False
+        return bool(item.get("source_id"))
+
+    pending_pairs = {
+        (str(item.get("paper_id") or ""), str(item.get("section") or ""))
+        for item in raw_results
+        if item.get("paper_id")
+        and not _has_canonical_chunk_id(item)
+    }
+    if not pending_pairs:
+        return lookup
+
+    paper_ids = sorted({paper_id for paper_id, _ in pending_pairs if paper_id})
+    if not paper_ids:
+        return lookup
+
+    chunk_rows = await db.execute(
+        select(
+            PaperChunk.paper_id,
+            PaperChunk.id,
+            PaperChunk.section,
+            PaperChunk.page_start,
+        )
+        .where(PaperChunk.paper_id.in_(paper_ids))
+        .order_by(PaperChunk.paper_id, PaperChunk.page_start, PaperChunk.id)
+    )
+    by_paper: Dict[str, List[tuple[str, str, int | None]]] = {}
+    for paper_id, chunk_id, section, page_start in chunk_rows.fetchall():
+        by_paper.setdefault(str(paper_id), []).append(
+            (str(chunk_id), str(section or "").strip().lower(), page_start)
+        )
+
+    for paper_id, section in pending_pairs:
+        candidates = by_paper.get(paper_id, [])
+        if not candidates:
+            continue
+        normalized_section = section.strip().lower()
+        chosen: str | None = None
+        if normalized_section and normalized_section != "_paper":
+            for chunk_id, chunk_section, _ in candidates:
+                if chunk_section == normalized_section:
+                    chosen = chunk_id
+                    break
+            if chosen is None:
+                for chunk_id, chunk_section, _ in candidates:
+                    if normalized_section in chunk_section or chunk_section in normalized_section:
+                        chosen = chunk_id
+                        break
+        if chosen is None:
+            chosen = candidates[0][0]
+        lookup[(paper_id, section)] = chosen
+
+    return lookup
+
+
 # =============================================================================
 # Request/Response Models
 # =============================================================================
@@ -51,6 +120,119 @@ class KBQueryRequest(BaseModel):
 
     query: str = Field(..., min_length=1)
     topK: int = Field(default=10, ge=1, le=50)
+
+
+@router.post("/{kb_id}/search", response_model=KBResponse)
+async def kb_search(
+    kb_id: str,
+    request: KBQueryRequest,
+    user_id: str = CurrentUserId,
+    db: AsyncSession = Depends(get_db),
+):
+    """Search within a knowledge base and return matching evidence chunks."""
+    try:
+        kb_result = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == kb_id, KnowledgeBase.user_id == user_id
+            )
+        )
+        kb = kb_result.scalar_one_or_none()
+
+        if not kb:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Errors.not_found("Knowledge base not found"),
+            )
+
+        paper_ids_result = await db.execute(
+            select(Paper.id).where(
+                Paper.knowledge_base_id == kb_id, Paper.user_id == user_id
+            )
+        )
+        paper_ids = [row[0] for row in paper_ids_result.fetchall()]
+
+        if not paper_ids:
+            return KBResponse(success=True, data={"results": [], "total": 0})
+
+        from app.core.multimodal_search_service import get_multimodal_search_service
+
+        service = get_multimodal_search_service()
+        result = await service.search(
+            query=request.query,
+            paper_ids=paper_ids,
+            user_id=user_id,
+            top_k=request.topK,
+            use_reranker=True,
+        )
+
+        raw_results = result.get("results", [])
+        result_paper_ids = list(
+            {item.get("paper_id") for item in raw_results if item.get("paper_id")}
+        )
+        paper_titles: dict[str, str] = {}
+        if result_paper_ids:
+            title_result = await db.execute(
+                select(Paper.id, Paper.title).where(Paper.id.in_(result_paper_ids))
+            )
+            paper_titles = {row[0]: row[1] for row in title_result.fetchall()}
+        representative_chunk_ids = await _resolve_representative_chunk_ids(db, raw_results)
+
+        mapped_results = [
+            {
+                "id": str(item.get("id", "")),
+                "paperId": item.get("paper_id", ""),
+                "paperTitle": paper_titles.get(item.get("paper_id")),
+                "content": (item.get("text") or item.get("content") or "")[:500],
+                "section": item.get("section"),
+                "page": item.get("page_num"),
+                "sourceChunkId": str(
+                    item.get("source_chunk_id")
+                    or (item.get("raw_data") or {}).get("source_chunk_id")
+                    or (item.get("raw_data") or {}).get("chunk_id")
+                    or (
+                        representative_chunk_ids.get(
+                            (str(item.get("paper_id") or ""), str(item.get("section") or ""))
+                        )
+                        if str(item.get("index_type") or "") == "summary"
+                        else None
+                    )
+                    or item.get("source_id")
+                    or representative_chunk_ids.get(
+                        (str(item.get("paper_id") or ""), str(item.get("section") or ""))
+                    )
+                    or item.get("id", "")
+                ),
+                "score": item.get(
+                    "score",
+                    item.get("rrf_score", item.get("hybrid_score", item.get("distance", 0.0))),
+                ),
+            }
+            for item in raw_results
+        ]
+
+        logger.info(
+            "KB search executed",
+            kb_id=kb_id,
+            query=request.query[:50],
+            result_count=len(mapped_results),
+        )
+
+        return KBResponse(
+            success=True,
+            data={
+                "results": mapped_results,
+                "total": len(mapped_results),
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to search KB", error=str(e), kb_id=kb_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Errors.internal(f"Failed to search knowledge base: {str(e)}"),
+        )
 
 
 # =============================================================================

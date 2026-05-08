@@ -55,8 +55,9 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        # Use absolute env file path so runtime cwd does not affect config loading.
-        env_file=(str(API_ROOT / ".env"), ".env"),
+        # Only load the API-local env file. The repo root .env is a legacy
+        # cross-stack file and can silently override backend-only settings.
+        env_file=(str(API_ROOT / ".env"),),
         case_sensitive=True,
         extra="ignore",
     )
@@ -180,9 +181,9 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"
     RUNTIME_MODE: str = getattr(os.environ, "RUNTIME_MODE", "online")
-    EMBEDDING_PROVIDER: str = "qwen3vl"
+    EMBEDDING_PROVIDER: str = "dashscope_qwen"
     EMBEDDING_VARIANT: str = "2b"
-    RERANKER_PROVIDER: str = "qwen3vl"
+    RERANKER_PROVIDER: str = "dashscope_qwen"
     RERANKER_VARIANT: str = "2b"
     VECTOR_STORE_BACKEND: Literal["milvus", "qdrant"] = "milvus"
     RETRIEVAL_BENCH_PROFILE: str = "dev"
@@ -253,7 +254,7 @@ class Settings(BaseSettings):
     ZHIPU_TEMPERATURE: float = 0.3
 
     # LLM Configuration
-    LLM_MODEL: str = "glm-4.5-air"
+    LLM_MODEL: str = "glm-4.6v-flashx"
     LLM_API_BASE: str = "https://open.bigmodel.cn/api/paas/v4"
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.7
@@ -267,9 +268,9 @@ class Settings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4o-mini"
 
     # Embedding Model Configuration
-    EMBEDDING_MODEL: str = "qwen3-vl-2b"
+    EMBEDDING_MODEL: str = "qwen_flash"
     EMBEDDING_QUANTIZATION: str = "int4"
-    EMBEDDING_DIMENSION: int = 2048
+    EMBEDDING_DIMENSION: int = 1024
     EMBEDDING_DEVICE: str = "auto"  # auto | cpu | cuda | mps
     EMBEDDING_BATCH_SIZE_CPU: int = 8
     EMBEDDING_BATCH_SIZE_MPS: int = 8
@@ -278,7 +279,7 @@ class Settings(BaseSettings):
     EMBEDDING_WARMUP_ENABLED: bool = True
 
     # Reranker Configuration
-    RERANKER_MODEL: str = "bge-reranker"
+    RERANKER_MODEL: str = "qwen_rerank"
     RERANKER_QUANTIZATION: str = "fp16"
     BGE_DUAL_EMBEDDING_MODEL: str = "bge-m3"
     BGE_DUAL_RERANKER_MODEL: str = "bge-reranker"
@@ -388,6 +389,9 @@ def normalize_embedding_model_name(model_name: str) -> str:
     alias_map = {
         "baai/bge-m3": "bge-m3",
         "bge-m3": "bge-m3",
+        "qwen_flash": "qwen_flash",
+        "qwen_pro": "qwen_pro",
+        "text-embedding-v4": "qwen_flash",
         "qwen/qwen3-vl-embedding-2b": "qwen3-vl-2b",
         "qwen3-vl-embedding-2b": "qwen3-vl-2b",
         "qwen3-vl-2b": "qwen3-vl-2b",
@@ -401,6 +405,8 @@ def normalize_reranker_model_name(model_name: str) -> str:
     alias_map = {
         "baai/bge-reranker-large": "bge-reranker",
         "bge-reranker": "bge-reranker",
+        "qwen_rerank": "qwen_rerank",
+        "qwen3-rerank": "qwen_rerank",
         "qwen/qwen3-vl-reranker-2b": "qwen3-vl-reranker",
         "qwen3-vl-reranker-2b": "qwen3-vl-reranker",
         "qwen3-vl-reranker": "qwen3-vl-reranker",
@@ -413,6 +419,8 @@ def canonical_embedding_dimension(model_name: str, fallback_dimension: int) -> i
     canonical = normalize_embedding_model_name(model_name)
     canonical_map = {
         "bge-m3": 1024,
+        "qwen_flash": 1024,
+        "qwen_pro": 1024,
         "qwen3-vl-2b": 2048,
     }
     return canonical_map.get(canonical, fallback_dimension)

@@ -4,6 +4,7 @@ import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPassword } from "./pages/ResetPassword";
+import { Landing } from "./pages/Landing";
 import { Layout } from "./components/Layout";
 import { LoadingFallback } from "./components/LoadingFallback";
 import { hasWarmAuthHint, useAuth } from "@/contexts/AuthContext";
@@ -51,11 +52,11 @@ function LazyRoute({ children }: { children: React.ReactNode }) {
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <Navigate to="/dashboard" replace />,
+    Component: Landing,
   },
   {
     path: "/home",
-    element: <Navigate to="/dashboard" replace />,
+    Component: Landing,
   },
   {
     path: "/login",

@@ -37,7 +37,10 @@ class TokenTracker:
         redis: Redis client for storage
     """
 
-    PRICING = {"glm-4.5-air": {"input": 0.5, "output": 0.5}}
+    PRICING = {
+        "glm-4.5-air": {"input": 0.5, "output": 0.5},
+        "glm-4.6v-flashx": {"input": 0.5, "output": 0.5},
+    }
 
     def __init__(self):
         """Initialize TokenTracker with Redis client."""

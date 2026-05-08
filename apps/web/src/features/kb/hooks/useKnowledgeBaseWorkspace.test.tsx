@@ -7,8 +7,6 @@ const mockSetSearchParams = vi.fn();
 const mockRefreshAll = vi.fn().mockResolvedValue(undefined);
 const mockSetActiveTab = vi.fn();
 const mockSetImportDialogOpen = vi.fn();
-const mockSetSearchDraft = vi.fn();
-const mockSetSearchResults = vi.fn();
 let mockLocationState: { importJobId?: string; justImported?: boolean; paperId?: string } | null = {
   importJobId: 'job-1',
   justImported: true,
@@ -32,12 +30,8 @@ vi.mock('@/features/kb/state/kbWorkspaceStore', () => ({
   useKBWorkspaceStore: () => ({
     activeTab: 'papers',
     isImportDialogOpen: false,
-    searchDraft: '',
-    searchResults: [],
     setActiveTab: mockSetActiveTab,
     setImportDialogOpen: mockSetImportDialogOpen,
-    setSearchDraft: mockSetSearchDraft,
-    setSearchResults: mockSetSearchResults,
   }),
 }));
 

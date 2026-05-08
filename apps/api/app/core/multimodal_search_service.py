@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.database import redis_db
 from app.core.embedding.factory import get_embedding_service
+from app.core.model_gateway import create_embedding_provider
 from app.core.reranker.factory import get_reranker_service
 from app.core.modality_fusion import detect_intent as detect_modality_intent, weighted_rrf_fusion, WEIGHT_PRESETS
 from app.core.intent_rules import detect_intent as detect_query_intent
@@ -38,12 +39,13 @@ from app.core.query_metadata_extractor import extract_metadata_filters
 from app.core.query_planner import build_academic_query_plan
 from app.core.retrieval_scoring import RetrievalScoringService
 from app.core.retrieval_trace import RetrievalTraceService
+from app.core.rag_runtime_profile import get_active_rag_runtime_profile, get_embedding_model_for_query_family
 from app.core.specter2_embedding_service import create_embedding_service as create_scientific_embedding_service
 from app.core.vector_store_repository import get_vector_store_repository
 from app.core.multi_index_router import route_query, uses_summary_index
 from app.core.citation_hints import build_all_hints
 from app.models.retrieval import RetrievedChunk, SearchConstraints
-from app.config import settings, resolve_model_stack
+from app.config import settings, normalize_embedding_model_name, resolve_model_stack
 from app.utils.cache import CacheError, get_cached_response, set_cached_response
 from app.utils.logger import logger
 
@@ -62,6 +64,7 @@ class MultimodalSearchService:
 
     def __init__(self):
         """Initialize MultimodalSearchService."""
+        self.runtime_profile = get_active_rag_runtime_profile()
         self.embedding_service = get_embedding_service()
         self.vector_store = get_vector_store_repository()
         self.reranker = get_reranker_service()
@@ -120,9 +123,102 @@ class MultimodalSearchService:
             return None
 
     @staticmethod
+    def _canonical_source_chunk_id(hit: Dict[str, Any]) -> Optional[str]:
+        raw_data = hit.get("raw_data") or {}
+        index_type = str(hit.get("index_type") or raw_data.get("index_type") or "")
+
+        explicit = (
+            raw_data.get("source_chunk_id")
+            or raw_data.get("chunk_id")
+            or hit.get("source_chunk_id")
+            or hit.get("chunk_id")
+        )
+        if explicit is not None:
+            return str(explicit)
+
+        if index_type == "summary":
+            return None
+
+        source_id = hit.get("source_id")
+        if source_id is not None:
+            return str(source_id)
+
+        hit_id = hit.get("id")
+        if hit_id is not None:
+            return str(hit_id)
+
+        return None
+
+    @staticmethod
     def _make_cache_hash(payload: Dict[str, Any]) -> str:
         serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def _query_embedding_model(self, query_family: Optional[str]) -> str:
+        return get_embedding_model_for_query_family(query_family)
+
+    def _should_use_runtime_profile_query_embeddings(self) -> bool:
+        provider = str(getattr(settings, "EMBEDDING_PROVIDER", "") or "").strip().lower()
+        model = normalize_embedding_model_name(getattr(settings, "EMBEDDING_MODEL", ""))
+        return provider == self.runtime_profile.embedding_provider or model in {
+            self.runtime_profile.embedding_model_flash,
+            self.runtime_profile.embedding_model_pro,
+        }
+
+    def _local_embedding_cache_identity(self) -> tuple[str, str]:
+        get_info = getattr(self.embedding_service, "get_model_info", None)
+        if callable(get_info):
+            info = get_info() or {}
+            provider_name = str(info.get("provider") or getattr(settings, "EMBEDDING_PROVIDER", "local_embedding"))
+            model_name = str(info.get("name") or normalize_embedding_model_name(getattr(settings, "EMBEDDING_MODEL", "")))
+            return provider_name, model_name
+        return (
+            str(getattr(settings, "EMBEDDING_PROVIDER", "local_embedding")),
+            str(getattr(settings, "EMBEDDING_MODEL", "")),
+        )
+
+    def _encode_query_embedding(
+        self,
+        query: str,
+        *,
+        query_family: Optional[str],
+    ) -> tuple[Optional[List[float]], str, str]:
+        if not self._should_use_runtime_profile_query_embeddings():
+            provider_name, model_name = self._local_embedding_cache_identity()
+            try:
+                vector = self.embedding_service.encode_text(query)
+            except Exception as exc:
+                logger.warning(
+                    "Local query embedding failed",
+                    error=str(exc),
+                    provider=provider_name,
+                    model=model_name,
+                )
+                return None, model_name, provider_name
+            return self._normalize_embedding(vector), model_name, provider_name
+
+        embedding_model = self._query_embedding_model(query_family)
+        provider = create_embedding_provider(
+            self.runtime_profile.embedding_provider,
+            embedding_model,
+        )
+
+        try:
+            if hasattr(provider, "embed_texts"):
+                vectors = provider.embed_texts([query])
+                vector = vectors[0] if vectors else None
+            else:
+                vector = self.embedding_service.encode_text(query)
+        except Exception as exc:
+            logger.warning(
+                "Runtime-profile query embedding failed",
+                error=str(exc),
+                provider=self.runtime_profile.embedding_provider,
+                model=embedding_model,
+            )
+            return None, embedding_model, self.runtime_profile.embedding_provider
+
+        return self._normalize_embedding(vector), embedding_model, self.runtime_profile.embedding_provider
 
     async def _get_cached_search_response(
         self,
@@ -165,26 +261,42 @@ class MultimodalSearchService:
         except CacheError as exc:
             logger.warning("Search cache write skipped", error=str(exc))
 
-    async def _get_cached_query_embedding(self, query: str) -> tuple[Optional[List[float]], bool]:
-        cache_key = f"search:embedding:{settings.EMBEDDING_MODEL}:{self._make_cache_hash({'query': query})}"
+    async def _get_cached_query_embedding(
+        self,
+        query: str,
+        *,
+        query_family: Optional[str],
+    ) -> tuple[Optional[List[float]], bool, str, str]:
+        if self._should_use_runtime_profile_query_embeddings():
+            provider_name = self.runtime_profile.embedding_provider
+            embedding_model = self._query_embedding_model(query_family)
+        else:
+            provider_name, embedding_model = self._local_embedding_cache_identity()
+        cache_key = (
+            f"search:embedding:{provider_name}:"
+            f"{embedding_model}:{self._make_cache_hash({'query': query})}"
+        )
         try:
             cached = await redis_db.get(cache_key)
             if cached:
                 embedding = self._normalize_embedding(json.loads(cached))
                 if embedding is not None:
-                    return embedding, True
+                    return embedding, True, embedding_model, provider_name
         except Exception as exc:
             logger.warning("Embedding cache read skipped", error=str(exc))
 
-        embedding = self._normalize_embedding(self.embedding_service.encode_text(query))
+        embedding, embedding_model, provider_name = self._encode_query_embedding(
+            query,
+            query_family=query_family,
+        )
         if embedding is None:
-            return None, False
+            return None, False, embedding_model, provider_name
 
         try:
             await redis_db.set(cache_key, json.dumps(embedding), expire=3600)
         except Exception as exc:
             logger.warning("Embedding cache write skipped", error=str(exc))
-        return embedding, False
+        return embedding, False, embedding_model, provider_name
 
     async def _get_cached_rerank(
         self,
@@ -255,7 +367,7 @@ class MultimodalSearchService:
             text_span=hit.get("text_span"),
             score=self._raw_score(hit),
             backend=hit.get("backend", settings.VECTOR_STORE_BACKEND),
-            source_id=(str(hit.get("source_id")) if hit.get("source_id") is not None else str(hit.get("id")) if hit.get("id") is not None else None),
+            source_id=self._canonical_source_chunk_id(hit),
             page_num=hit.get("page_num") or hit.get("page"),
             section_path=hit.get("section_path"),
             content_subtype=hit.get("content_subtype"),
@@ -312,7 +424,7 @@ class MultimodalSearchService:
         """Build stable bundle key for bundle-aware dedupe."""
         return (
             hit.get("evidence_bundle_id")
-            or f"{hit.get('paper_id', 'unknown')}:{hit.get('table_ref') or hit.get('figure_ref') or hit.get('source_id') or hit.get('id') or 'chunk'}"
+            or f"{hit.get('paper_id', 'unknown')}:{hit.get('table_ref') or hit.get('figure_ref') or MultimodalSearchService._canonical_source_chunk_id(hit) or hit.get('id') or 'chunk'}"
         )
 
     def _bundle_dedupe_hits(self, hits: List[Dict[str, Any]], limit: int = 20) -> List[Dict[str, Any]]:
@@ -495,6 +607,8 @@ class MultimodalSearchService:
         expanded_query = expanded_queries[0]
         logger.info(f"Expanded query: {expanded_query[:100]}")
 
+        query_family = academic_plan.get("query_family", query_intent)
+
         # Step 4: Extract metadata filters per D-07
         metadata_filters = extract_metadata_filters(query)
         if metadata_filters:
@@ -509,14 +623,22 @@ class MultimodalSearchService:
         self._ensure_service_loaded(self.embedding_service)
         query_embeddings: List[List[float]] = []
         embedding_cache_hit = True
+        embedding_model = self._query_embedding_model(query_family)
+        embedding_provider = self.runtime_profile.embedding_provider
         for planned_query in expanded_queries:
-            embedding, cache_hit = await self._get_cached_query_embedding(planned_query)
+            embedding, cache_hit, embedding_model, embedding_provider = await self._get_cached_query_embedding(
+                planned_query,
+                query_family=query_family,
+            )
             if embedding is None:
                 continue
             query_embeddings.append(embedding)
             embedding_cache_hit = embedding_cache_hit and cache_hit
         if not query_embeddings:
-            fallback_embedding = self._normalize_embedding(self.embedding_service.encode_text(expanded_query))
+            fallback_embedding, embedding_model, embedding_provider = self._encode_query_embedding(
+                expanded_query,
+                query_family=query_family,
+            )
             if fallback_embedding is not None:
                 query_embeddings.append(fallback_embedding)
                 embedding_cache_hit = False
@@ -524,7 +646,8 @@ class MultimodalSearchService:
             "hit": embedding_cache_hit and bool(query_embeddings),
             "scope": "query",
             "items": len(query_embeddings),
-            "model": settings.EMBEDDING_MODEL,
+            "provider": embedding_provider,
+            "model": embedding_model,
         }
         scientific_query_embeddings = [
             self._encode_scientific_query(q)
@@ -556,7 +679,7 @@ class MultimodalSearchService:
                     for result in results:
                         hit = result.model_dump()
                         hit["backend"] = result.backend
-                        hit["id"] = hit.get("source_id") or f"{hit.get('paper_id', 'unknown')}-{hit.get('page_num', 0)}-{hit.get('content_type', 'text')}"
+                        hit["id"] = self._canonical_source_chunk_id(hit) or f"{hit.get('paper_id', 'unknown')}-{hit.get('page_num', 0)}-{hit.get('content_type', 'text')}"
                         planned_hits.append(hit)
 
                 if academic_plan.get("query_family") in {"compare", "numeric", "figure", "table"}:
@@ -596,7 +719,7 @@ class MultimodalSearchService:
 
                 for hit in text_hits:
                     row = hit.model_dump()
-                    row["id"] = row.get("source_id") or row.get("id")
+                    row["id"] = self._canonical_source_chunk_id(row) or row.get("id")
                     row["retrieval_branch"] = "scientific_text_dense"
                     scientific_hits.append(row)
 
@@ -622,7 +745,7 @@ class MultimodalSearchService:
 
             for row in sparse_rows:
                 item = row.model_dump()
-                item["id"] = item.get("source_id") or item.get("id")
+                item["id"] = self._canonical_source_chunk_id(item) or item.get("id")
                 item["retrieval_branch"] = "sparse_bm25"
                 sparse_hits.append(item)
         branch_results["sparse_bm25"] = self._dedupe_hits(sparse_hits, limit=settings.SPARSE_RECALL_TOP_K)
@@ -660,11 +783,14 @@ class MultimodalSearchService:
                 second_pass_used = True
                 extra_embeddings: List[List[float]] = []
                 for rewrite in fallback_rewrites[:2]:
-                    extra_embedding, _ = await self._get_cached_query_embedding(expand_query(rewrite))
+                    extra_embedding, _, _, _ = await self._get_cached_query_embedding(
+                        expand_query(rewrite),
+                        query_family=query_family,
+                    )
                     if extra_embedding is not None:
                         extra_embeddings.append(extra_embedding)
                 before_ids = {
-                    f"{item.get('paper_id')}:{item.get('source_id') or item.get('id') or item.get('page_num')}"
+                    f"{item.get('paper_id')}:{self._canonical_source_chunk_id(item) or item.get('id') or item.get('page_num')}"
                     for item in fused
                 }
                 for content_type in resolved_content_types:
@@ -688,7 +814,7 @@ class MultimodalSearchService:
                         for result in extra_results:
                             hit = result.model_dump()
                             hit["backend"] = result.backend
-                            hit["id"] = hit.get("source_id") or f"{hit.get('paper_id', 'unknown')}-{hit.get('page_num', 0)}-{hit.get('content_type', 'text')}"
+                            hit["id"] = self._canonical_source_chunk_id(hit) or f"{hit.get('paper_id', 'unknown')}-{hit.get('page_num', 0)}-{hit.get('content_type', 'text')}"
                             extra_hits.append(hit)
 
                     merged = (multimodal_results.get(content_type) or []) + extra_hits
@@ -701,7 +827,7 @@ class MultimodalSearchService:
                 self.scoring.annotate_hybrid_scores(query, fused)
                 fused.sort(key=lambda x: x.get("hybrid_score", 0.0), reverse=True)
                 after_ids = {
-                    f"{item.get('paper_id')}:{item.get('source_id') or item.get('id') or item.get('page_num')}"
+                    f"{item.get('paper_id')}:{self._canonical_source_chunk_id(item) or item.get('id') or item.get('page_num')}"
                     for item in fused
                 }
                 second_pass_gain = max(len(after_ids - before_ids), 0)
@@ -730,7 +856,6 @@ class MultimodalSearchService:
                     error=str(e),
                 )
 
-        query_family = academic_plan.get("query_family", "fact")
         index_plan = route_query(query_family)
         summary_index_results: List[Dict[str, Any]] = []
 

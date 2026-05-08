@@ -680,6 +680,8 @@ class DoclingParser:
         section_info = section_spans or imrad_structure
 
         chunks = []
+        page_char_offsets: dict[int, int] = {}
+        page_item_indices: dict[int, int] = {}
 
         for item in items:
             if item.get("type") != "text" or not item.get("text"):
@@ -687,14 +689,40 @@ class DoclingParser:
 
             text = item["text"]
             page = item.get("page", 0)
+            page_num = int(page or 0)
 
             word_count = len(text.split())
             if word_count < 1:
                 continue
 
+            item_index = page_item_indices.get(page_num, 0)
+            page_item_indices[page_num] = item_index + 1
+
+            source_offset_start = item.get("source_offset_start")
+            source_offset_end = item.get("source_offset_end")
+
+            if not isinstance(source_offset_start, int) or source_offset_start < 0:
+                source_offset_start = page_char_offsets.get(page_num, 0)
+
+            if not isinstance(source_offset_end, int) or source_offset_end <= source_offset_start:
+                source_offset_end = source_offset_start + max(len(text), 1)
+
+            bbox = item.get("bbox") if isinstance(item.get("bbox"), dict) else None
+            bbox_top = int(round(float(bbox.get("t", 0)))) if bbox else 0
+            bbox_left = int(round(float(bbox.get("l", 0)))) if bbox else 0
+
+            # Keep deterministic page-local ordering even when parser does not expose
+            # explicit source offsets. This prevents same-page same-section chunks from
+            # collapsing onto the same stable chunk id.
+            char_start = int(source_offset_start)
+            if bbox:
+                char_start = max(char_start, (item_index + 1) * 1000 + bbox_top * 10 + bbox_left)
+            char_end = max(int(source_offset_end), char_start + max(len(text), 1))
+            page_char_offsets[page_num] = char_end + 1
+
             # Per D-06: Pass page for range matching in _assign_section
             section = (
-                self._assign_section(text, section_info, page=page) if section_info else ""
+                self._assign_section(text, section_info, page=page_num) if section_info else ""
             )
             normalized_path_tokens = normalize_section_path(section)
             normalized_path = serialize_section_path(normalized_path_tokens)
@@ -717,8 +745,8 @@ class DoclingParser:
                 {
                     "paper_id": paper_id,
                     "text": text,
-                    "page_start": page,
-                    "page_end": page,
+                    "page_start": page_num,
+                    "page_end": page_num,
                     "section": section,
                     "raw_section_path": section,
                     "normalized_section_path": normalized_path,
@@ -731,8 +759,10 @@ class DoclingParser:
                     "has_special_boundaries": has_special_boundaries,
                     "adaptive_size": adaptive_size,
                     "word_count": word_count,
-                    "char_start": 0,
-                    "char_end": max(len(text), 1),
+                    "char_start": char_start,
+                    "char_end": char_end,
+                    "source_offset_start": char_start,
+                    "source_offset_end": char_end,
                     "anchor_text": text.replace("\n", " ").strip()[:200],
                 }
             )

@@ -19,14 +19,14 @@ from app.core.rag_runtime_profile import (
 def test_active_runtime_profile_is_single_online_first_chain():
     profile = get_active_rag_runtime_profile()
 
-    assert profile.name == "dashscope_qwen_online__qwen_rerank__glm_air"
+    assert profile.name == "dashscope_qwen_online__qwen_rerank__glm_46v_flashx"
     assert profile.embedding_provider == "dashscope_qwen"
     assert profile.embedding_model_flash == "qwen_flash"
     assert profile.embedding_model_pro == "qwen_pro"
     assert profile.reranker_provider == "dashscope_qwen"
     assert profile.reranker_model == "qwen_rerank"
     assert profile.llm_provider == "zhipu"
-    assert profile.llm_model == "glm-4.5-air"
+    assert profile.llm_model == "glm-4.6v-flashx"
     assert profile.vector_store_backend == "milvus"
     assert profile.collections == ACTIVE_COLLECTIONS
 
@@ -41,9 +41,9 @@ def test_active_runtime_report_contract():
     assert payload["llm_model"] == ACTIVE_LLM_MODEL
     assert payload["vector_store_backend"] == "milvus"
     assert payload["collections"] == {
-        "raw": "paper_contents_v2_api_tongyi_flash_raw_v2_3",
-        "rule": "paper_contents_v2_api_tongyi_flash_rule_v2_3",
-        "llm": "paper_contents_v2_api_tongyi_flash_llm_v2_3",
+        "raw": "paper_contents_v2",
+        "rule": "paper_contents_v2",
+        "llm": "paper_contents_v2",
     }
 
 

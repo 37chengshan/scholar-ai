@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.rag_v3.main_path_service import build_answer_contract_payload
 
 
@@ -26,10 +28,14 @@ def test_rag_trace_contract(monkeypatch) -> None:
             diagnostics={},
         ),
     )
-
-    payload = build_answer_contract_payload(
-        query="trace this", user_id="u-1", trace_id="trace-contract-1", stage="rule"
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._generate_answer_from_citations",
+        lambda **kwargs: asyncio.sleep(0, result="trace answer"),
     )
+
+    payload = asyncio.run(build_answer_contract_payload(
+        query="trace this", user_id="u-1", trace_id="trace-contract-1", stage="rule"
+    ))
 
     assert payload["retrieval_trace_id"] == "trace-contract-1"
     assert "trace" in payload
@@ -64,13 +70,17 @@ def test_rag_trace_contract_honestly_degrades_global_review_to_local_execution(m
             diagnostics={},
         ),
     )
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._generate_answer_from_citations",
+        lambda **kwargs: asyncio.sleep(0, result="survey answer"),
+    )
 
-    payload = build_answer_contract_payload(
+    payload = asyncio.run(build_answer_contract_payload(
         query="请做一个研究现状综述",
         user_id="u-1",
         trace_id="trace-survey-1",
         stage="rule",
-    )
+    ))
 
     assert payload["task_family"] == "survey"
     assert payload["execution_mode"] == "local_evidence"
@@ -109,14 +119,18 @@ def test_rag_trace_contract_keeps_multi_paper_global_review_fallback_as_local_ev
             diagnostics={},
         ),
     )
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._generate_answer_from_citations",
+        lambda **kwargs: asyncio.sleep(0, result="multi survey answer"),
+    )
 
-    payload = build_answer_contract_payload(
+    payload = asyncio.run(build_answer_contract_payload(
         query="请做一个多论文研究现状综述",
         user_id="u-1",
         trace_id="trace-survey-multi-1",
         stage="rule",
         paper_scope=["p-1", "p-2"],
-    )
+    ))
 
     assert payload["execution_mode"] == "local_evidence"
     assert payload["retrieval_plane_policy"]["requested_execution_mode"] == "global_review"

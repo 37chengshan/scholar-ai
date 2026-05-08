@@ -13,6 +13,21 @@ from app.utils.zhipu_client import ZhipuLLMClient
 
 logger = structlog.get_logger()
 
+DEFAULT_NOTES_MODEL = "glm-4.6v-flashx"
+PROVIDER_ERROR_TOKENS = (
+    "429",
+    "rate limit",
+    "余额不足",
+    "无可用资源包",
+    '"code":"1113"',
+    "api key",
+    "not configured",
+    "authentication",
+    "unauthorized",
+    "timeout",
+    "connection",
+)
+
 IMRAD_PROMPT_TEMPLATE = """You are an expert academic research assistant analyzing a research paper.
 Generate structured reading notes in the following format.
 
@@ -84,9 +99,9 @@ class NotesGenerator:
         Initialize notes generator.
 
         Args:
-            model: ZhipuAI model name (defaults to glm-4.5-air)
+            model: ZhipuAI model name (defaults to GLM-4.6V-FlashX)
         """
-        self.model = model or os.getenv("LLM_MODEL", "glm-4.5-air")
+        self.model = model or os.getenv("LLM_MODEL", DEFAULT_NOTES_MODEL)
         # Lazily create the LLM client so API startup does not hard-fail
         # when optional AI credentials are not configured.
         self.llm_client: Optional[ZhipuLLMClient] = None
@@ -105,6 +120,96 @@ class NotesGenerator:
         if len(content) <= self.max_content_length:
             return content
         return content[:self.max_content_length] + "\n\n[Content truncated due to length...]"
+
+    @staticmethod
+    def _extract_brief(text: str, *, fallback: str) -> str:
+        """Return a short deterministic summary from extracted section text."""
+        cleaned = " ".join(str(text or "").split())
+        if not cleaned:
+            return fallback
+
+        sentences = [segment.strip() for segment in cleaned.replace("?", ".").split(".") if segment.strip()]
+        if not sentences:
+            return cleaned[:220]
+
+        summary = ". ".join(sentences[:2]).strip()
+        if len(summary) > 220:
+            summary = summary[:217].rstrip() + "..."
+        if not summary.endswith((".", "!", "?", "...")):
+            summary += "."
+        return summary
+
+    @classmethod
+    def _is_provider_error(cls, error: Exception) -> bool:
+        """Return True when the failure comes from an external AI provider path."""
+        message = str(error).lower()
+        return any(token in message for token in PROVIDER_ERROR_TOKENS)
+
+    def _build_fallback_notes(
+        self,
+        paper_metadata: Dict[str, Any],
+        imrad_structure: Dict[str, Any],
+        *,
+        degraded_reason: str,
+        modification_request: str = "",
+    ) -> str:
+        """Build deterministic reading notes when remote generation is unavailable."""
+        sections = self._prepare_imrad_content(imrad_structure)
+        intro = self._extract_brief(
+            sections.get("introduction", ""),
+            fallback="The extracted introduction did not contain enough detail; review the source paper directly.",
+        )
+        methods = self._extract_brief(
+            sections.get("methods", ""),
+            fallback="Method details were not reliably extracted; inspect the Methods section manually.",
+        )
+        results = self._extract_brief(
+            sections.get("results", ""),
+            fallback="Result details were not reliably extracted; inspect the reported experiments manually.",
+        )
+        conclusion = self._extract_brief(
+            sections.get("conclusion", ""),
+            fallback="Conclusion details were not reliably extracted; inspect the paper's closing discussion manually.",
+        )
+
+        venue = paper_metadata.get("venue") or "未提供"
+        year = paper_metadata.get("year") or "未提供"
+        authors = ", ".join(paper_metadata.get("authors", [])) or "未提供"
+
+        fallback_lines = [
+            "## 1. Research Question & Motivation",
+            f"- {intro}",
+            "",
+            "## 2. Key Contributions & Innovation Points",
+            f"- The paper is tracked as {paper_metadata.get('title', 'Unknown')} ({venue}, {year}) by {authors}.",
+            f"- Key contribution signal inferred from extracted content: {conclusion}",
+            "",
+            "## 3. Methodology",
+            f"- {methods}",
+            "",
+            "## 4. Main Results & Findings",
+            f"- {results}",
+            "",
+            "## 5. Limitations & Future Work",
+            f"- Provider-assisted note generation was unavailable, so this fallback may omit nuanced limitations. Reason: {degraded_reason}",
+            f"- Additional closing signal from the paper: {conclusion}",
+            "",
+            "## 6. Personal Takeaways",
+            "- Use these notes as a deterministic fallback summary and validate against the paper before citing fine-grained claims.",
+            f"- Suggested next action: manually review the full PDF for richer evidence beyond this fallback extract.",
+        ]
+
+        if modification_request:
+            fallback_lines.extend(
+                [
+                    "",
+                    "## 7. Regeneration Context",
+                    f"- Requested adjustment: {modification_request}",
+                    "- The request could not be fully applied through the remote model, so the fallback remains extraction-based.",
+                ]
+            )
+
+        return "\n".join(fallback_lines)
 
     def _prepare_imrad_content(self, imrad_structure: Dict[str, Any]) -> Dict[str, str]:
         """Prepare IMRaD sections for prompt."""
@@ -171,6 +276,18 @@ class NotesGenerator:
                 error=str(e),
                 paper_title=paper_metadata.get("title")
             )
+            if self._is_provider_error(e):
+                logger.warning(
+                    "Falling back to deterministic reading notes",
+                    error=str(e),
+                    paper_title=paper_metadata.get("title"),
+                    model=self.model,
+                )
+                return self._build_fallback_notes(
+                    paper_metadata=paper_metadata,
+                    imrad_structure=imrad_structure,
+                    degraded_reason=str(e),
+                )
             raise
 
     async def regenerate_notes(
@@ -231,6 +348,19 @@ class NotesGenerator:
                 paper_title=paper_metadata.get("title"),
                 modification_request=modification_request
             )
+            if self._is_provider_error(e):
+                logger.warning(
+                    "Falling back to deterministic regenerated notes",
+                    error=str(e),
+                    paper_title=paper_metadata.get("title"),
+                    model=self.model,
+                )
+                return self._build_fallback_notes(
+                    paper_metadata=paper_metadata,
+                    imrad_structure=imrad_structure,
+                    degraded_reason=str(e),
+                    modification_request=modification_request,
+                )
             raise
 
     def export_to_markdown(

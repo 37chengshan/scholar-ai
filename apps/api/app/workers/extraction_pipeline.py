@@ -55,7 +55,16 @@ class ExtractionPipeline:
             max_workers=max_workers,
             thread_name_prefix="extraction_worker"
         )
-        self.qwen3vl = get_multimodal_embedding_service()
+        self.qwen3vl = None
+        self.multimodal_init_error: str | None = None
+        try:
+            self.qwen3vl = get_multimodal_embedding_service()
+        except RuntimeError as error:
+            self.multimodal_init_error = str(error)
+            logger.warning(
+                "Multimodal embedding unavailable; auxiliary extraction will degrade",
+                error=self.multimodal_init_error,
+            )
         self.image_extractor = ImageExtractor()
         self.table_extractor = TableExtractor()
         self.storage = ObjectStorage()
@@ -367,6 +376,12 @@ class ExtractionPipeline:
 
         Per D-01: Direct pixel encoding (no text conversion).
         """
+        if self.qwen3vl is None:
+            raise RuntimeError(
+                self.multimodal_init_error
+                or "Multimodal embedding service unavailable for image extraction"
+            )
+
         results = []
 
         # Step 1: Extract images (CPU-bound)
@@ -484,6 +499,12 @@ class ExtractionPipeline:
 
         Per D-02: Table serialization format for embedding.
         """
+        if self.qwen3vl is None:
+            raise RuntimeError(
+                self.multimodal_init_error
+                or "Multimodal embedding service unavailable for table extraction"
+            )
+
         results = []
 
         # Step 1: Extract tables (CPU-bound)

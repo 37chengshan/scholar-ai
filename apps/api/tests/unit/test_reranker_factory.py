@@ -12,6 +12,8 @@ import pytest
 from unittest.mock import Mock, patch
 import os
 
+from app.core.dashscope_runtime import DashScopeRerankService
+
 
 class TestRerankerServiceFactory:
     """Tests for RerankerServiceFactory."""
@@ -68,6 +70,23 @@ class TestRerankerServiceFactory:
 
             # Should be Qwen3VLRerankerService
             assert isinstance(service, Qwen3VLRerankerService)
+
+    def test_factory_creates_dashscope_reranker_when_provider_is_online(self):
+        """Factory should create DashScope reranker for online qwen runtime."""
+        from app.core.reranker.factory import RerankerServiceFactory
+
+        RerankerServiceFactory._instances = {}
+
+        with patch('app.core.reranker.factory.settings') as mock_settings:
+            mock_settings.RERANKER_PROVIDER = "dashscope_qwen"
+            mock_settings.RERANKER_MODEL = "qwen_rerank"
+            mock_settings.RERANKER_QUANTIZATION = "fp16"
+            mock_settings.DASHSCOPE_RERANK_MODEL = "qwen3-rerank"
+
+            service = RerankerServiceFactory.create()
+
+        assert isinstance(service, DashScopeRerankService)
+        assert service.model == "qwen3-rerank"
 
     def test_factory_raises_value_error_for_unknown_model(self):
         """Test that Factory raises ValueError for unknown model type."""

@@ -154,6 +154,10 @@ class BGEEmbeddingService(BaseEmbeddingService):
         """
         return self._service.is_loaded()
 
+    def get_device(self) -> str:
+        """Return the active device used by the wrapped BGE service."""
+        return self._service.get_device()
+
     def get_model_info(self) -> Dict[str, str]:
         """Return BGE-M3 model information.
         

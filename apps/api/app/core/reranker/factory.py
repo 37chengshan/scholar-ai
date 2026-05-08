@@ -24,6 +24,7 @@ Usage:
 """
 
 from typing import Dict, Any
+from app.core.dashscope_runtime import DashScopeRerankService
 from app.core.reranker.base import BaseRerankerService
 from app.core.reranker.qwen3vl_reranker import Qwen3VLRerankerService
 from app.config import settings, normalize_reranker_model_name
@@ -68,11 +69,13 @@ class RerankerServiceFactory:
         resolved_model_type = normalize_reranker_model_name(
             model_type or getattr(settings, "RERANKER_MODEL", "bge-reranker")
         )
+        explicit_model_override = model_type is not None
+        provider_name = str(getattr(settings, "RERANKER_PROVIDER", "") or "").strip().lower()
         resolved_quantization = quantization or getattr(settings, "RERANKER_QUANTIZATION", "fp16")
         device = "auto"  # Auto-detect device
 
         # Create cache key
-        cache_key = f"{resolved_model_type}:{device}:{resolved_quantization}"
+        cache_key = f"{provider_name or 'local'}:{resolved_model_type}:{device}:{resolved_quantization}"
 
         # Return cached instance if exists
         if cache_key in cls._instances:
@@ -91,7 +94,14 @@ class RerankerServiceFactory:
             quantization=resolved_quantization,
         )
 
-        if resolved_model_type == "bge-reranker":
+        if resolved_model_type == "qwen_rerank" or (
+            provider_name == "dashscope_qwen" and not explicit_model_override
+        ):
+            service = DashScopeRerankService(
+                model=settings.DASHSCOPE_RERANK_MODEL,
+                provider_name="dashscope_qwen",
+            )
+        elif resolved_model_type == "bge-reranker":
             from app.core.reranker.bge_reranker import BGERerankerService
             service = BGERerankerService()
         elif resolved_model_type == "qwen3-vl-reranker":

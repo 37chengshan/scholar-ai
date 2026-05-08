@@ -599,6 +599,8 @@ async def execute_with_streaming_impl(
 
             elif event_type == "agent_complete":
                 result = event_data
+                tokens_used = result.get("tokens_used", 0) or 0
+                cost = result.get("cost", 0.0) or 0.0
 
                 if result.get("needs_confirmation"):
                     confirmation_state = await orchestrator.handle_confirmation_required(
@@ -687,8 +689,6 @@ async def execute_with_streaming_impl(
                     await orchestrator._safe_update_assistant_message(message_id, final_content)
 
                     # Build structured final summary
-                    tokens_used = result.get("tokens_used", 0)
-                    cost = result.get("cost", 0.0)
                     final_summary = run_mgr.build_final_summary(
                         answer=final_content,
                         tokens_used=tokens_used or 0,

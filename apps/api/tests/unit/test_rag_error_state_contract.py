@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.rag_v3.main_path_service import build_answer_contract_payload
 
 
@@ -29,8 +31,12 @@ def test_error_state_fallback_used(monkeypatch) -> None:
         "app.rag_v3.main_path_service.retrieve_evidence",
         lambda **kwargs: _pack_with({"dense_fallback_used": 1.0}),
     )
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._generate_answer_from_citations",
+        lambda **kwargs: asyncio.sleep(0, result="fallback answer"),
+    )
 
-    payload = build_answer_contract_payload(query="x", user_id="u-1", stage="rule")
+    payload = asyncio.run(build_answer_contract_payload(query="x", user_id="u-1", stage="rule"))
 
     assert payload["quality"]["fallback_used"] is True
     assert payload["error_state"] in {"fallback_used", "partial_answer", "abstain"}
@@ -41,8 +47,12 @@ def test_error_state_contains_contract_fields(monkeypatch) -> None:
         "app.rag_v3.main_path_service.retrieve_evidence",
         lambda **kwargs: _pack_with({}),
     )
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._generate_answer_from_citations",
+        lambda **kwargs: asyncio.sleep(0, result="contract answer"),
+    )
 
-    payload = build_answer_contract_payload(query="x", user_id="u-1", stage="rule")
+    payload = asyncio.run(build_answer_contract_payload(query="x", user_id="u-1", stage="rule"))
 
     assert "error_state" in payload
     assert "quality" in payload

@@ -126,6 +126,7 @@ describe('KnowledgeWorkspaceShell', () => {
           content: 'Snippet',
           page: 2,
           score: 0.9,
+          sourceChunkId: 'chunk-1',
         },
       ],
       total: 1,
@@ -177,6 +178,27 @@ describe('KnowledgeWorkspaceShell', () => {
     await user.click(screen.getByRole('button', { name: /Run run-1/i }));
 
     expect(mockNavigate).toHaveBeenCalledWith('/knowledge-bases/kb-1?tab=review&runId=run-1');
+  });
+
+  it('opens read page with evidence source highlight when a KB search result is clicked', async () => {
+    const user = userEvent.setup();
+    render(<KnowledgeWorkspaceShell />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Paper One')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('tab', { name: /知识库检索/i }));
+    await user.type(screen.getByPlaceholderText('输入您的问题...'), 'transformer');
+    await user.click(screen.getByRole('button', { name: /检索/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/检索到 1 个相关片段/i)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText(/Snippet/i));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/read/paper-1?page=2&source=evidence&source_id=chunk-1');
   });
 
   it('only refreshes import jobs when upload queue submission completes', async () => {

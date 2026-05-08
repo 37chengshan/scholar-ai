@@ -62,6 +62,7 @@ INTENT_RULES: Dict[IntentType, Dict[str, List[str]]] = {
 RULE_HIGH_CONFIDENCE = 0.9
 RULE_LOW_CONFIDENCE = 0.7
 CLARIFICATION_THRESHOLD = 0.2
+COMPATIBLE_INTENT_GROUP = {"question", "summary", "method", "results"}
 
 
 class IntentClassifier:
@@ -79,7 +80,9 @@ class IntentClassifier:
         rule_results = self._classify_with_rules(query)
         top_intent = max(rule_results, key=lambda x: x["confidence"])
         
-        # If rule confidence is high, return immediately
+        # If one intent is clearly dominant, return immediately.
+        # Normal scoped paper questions often match both question + summary/result
+        # keywords, and should not be blocked for user clarification.
         if top_intent["confidence"] >= RULE_LOW_CONFIDENCE:
             return self._check_clarification(rule_results, top_intent)
         
@@ -172,8 +175,20 @@ Return JSON: {{"primary_intent": "intent_name", "confidence": 0.0-1.0, "alternat
         
         needs_clarification = False
         if len(top_3) >= 2:
-            diff = top_3[0]["confidence"] - top_3[1]["confidence"]
-            if diff < CLARIFICATION_THRESHOLD:
+            top_conf = top_3[0]["confidence"]
+            second_conf = top_3[1]["confidence"]
+            diff = top_conf - second_conf
+            has_meaningful_tie = top_conf > 0 and second_conf > 0
+            top_pair = {top_3[0]["intent"], top_3[1]["intent"]}
+
+            # Only require clarification when multiple intents have positive,
+            # near-equal confidence. A dominant rule hit paired with many zero-score
+            # intents should continue normally.
+            if (
+                has_meaningful_tie
+                and diff < CLARIFICATION_THRESHOLD
+                and not top_pair.issubset(COMPATIBLE_INTENT_GROUP)
+            ):
                 needs_clarification = True
         
         examples = {

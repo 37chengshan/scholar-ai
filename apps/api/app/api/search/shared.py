@@ -321,7 +321,30 @@ def calculate_paper_score(
 # =============================================================================
 
 
-def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
+def _normalize_search_result(result: SearchResult | Dict[str, Any]) -> SearchResult | None:
+    """Coerce adapter payloads into the canonical SearchResult model."""
+    if isinstance(result, SearchResult):
+        return result
+
+    if isinstance(result, dict):
+        try:
+            return SearchResult.model_validate(result)
+        except Exception as error:
+            logger.warning(
+                "Skipping invalid search result during normalization",
+                error=str(error),
+                keys=sorted(result.keys()),
+            )
+            return None
+
+    logger.warning(
+        "Skipping unsupported search result type during normalization",
+        result_type=type(result).__name__,
+    )
+    return None
+
+
+def deduplicate_results(results: List[SearchResult | Dict[str, Any]]) -> List[SearchResult]:
     """Remove duplicates using arXiv ID + title overlap score.
 
     Strategy:
@@ -336,13 +359,18 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
     Returns:
         List of unique search results
     """
+    normalized_results = [
+        normalized for result in results if (normalized := _normalize_search_result(result))
+    ]
+
     seen_arxiv_ids: set[str] = set()
     seen_titles: list[str] = []
     unique_results: list[SearchResult] = []
 
     # Sort so S2 results (with more metadata) are preferred
     sorted_results = sorted(
-        results, key=lambda r: 0 if r.source == "semantic-scholar" else 1
+        normalized_results,
+        key=lambda r: 0 if r.source == "semantic-scholar" else 1,
     )
 
     for result in sorted_results:
@@ -372,8 +400,9 @@ def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
     logger.info(
         "Deduplication complete",
         input_count=len(results),
+        normalized_count=len(normalized_results),
         output_count=len(unique_results),
-        duplicates_removed=len(results) - len(unique_results),
+        duplicates_removed=len(normalized_results) - len(unique_results),
     )
 
     return unique_results

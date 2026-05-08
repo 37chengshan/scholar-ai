@@ -70,7 +70,7 @@ class V3SearchRequest(BaseModel):
 @router.post("/evidence")
 async def search_evidence_v3(request: V3SearchRequest):
 	try:
-		payload = build_answer_contract_payload(
+		payload = await build_answer_contract_payload(
 			query=request.query,
 			user_id="search-system",
 			paper_scope=[request.paper_id] if request.paper_id else None,

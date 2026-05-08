@@ -66,6 +66,24 @@ def test_same_chunk_repeated_generation_keeps_same_chunk_id() -> None:
     assert ids[0] == ids[1] == ids[2]
 
 
+def test_same_page_same_section_chunks_can_still_get_distinct_ids() -> None:
+    first = build_stable_chunk_id(
+        paper_id="paper-2",
+        page_num=5,
+        normalized_section_path="experiment",
+        char_start=1000,
+        char_end=1180,
+    )
+    second = build_stable_chunk_id(
+        paper_id="paper-2",
+        page_num=5,
+        normalized_section_path="experiment",
+        char_start=1181,
+        char_end=1360,
+    )
+    assert first != second
+
+
 def test_methodology_and_approach_hit_same_canonical_method() -> None:
     eval_module = _load_eval_module()
     results = [{"section": "Approach"}]
