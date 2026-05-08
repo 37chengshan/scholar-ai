@@ -6,7 +6,20 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[4]
+
+def _resolve_repo_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "artifacts" / "papers").exists():
+            return parent
+        if (parent / "apps").exists() and (parent / "docs").exists():
+            return parent
+        if (parent / "app").exists():
+            return parent
+    return current.parents[min(2, len(current.parents) - 1)]
+
+
+ROOT = _resolve_repo_root()
 
 
 def build_citation_jump_url(

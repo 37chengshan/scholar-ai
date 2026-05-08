@@ -44,6 +44,7 @@ import { MessageFeed } from '@/features/chat/components/message-feed/MessageFeed
 import { ComposerInput } from '@/features/chat/components/composer-input/ComposerInput';
 import { ChatRightPanel } from '@/features/chat/components/ChatRightPanel';
 import { RunHeader } from '@/features/chat/components/workbench/RunHeader';
+import { SessionSidebar } from '@/features/chat/components/session-sidebar/SessionSidebar';
 import { WorkflowShell } from '@/features/workflow/components/WorkflowShell';
 import { usePinnedBottom } from '@/features/chat/hooks/usePinnedBottom';
 import { useChatWorkspace } from '@/features/chat/hooks/useChatWorkspace';
@@ -264,6 +265,7 @@ export function ChatWorkspaceV2() {
     stop: isZh ? "停止" : "Stop",
     thinking: isZh ? "思考中..." : "Thinking...",
   };
+  const conversationTitle = currentSession?.title || (isZh ? '开始新对话' : 'Start a new conversation');
 
   // Initialize SSEService instance
   useEffect(() => {
@@ -721,6 +723,30 @@ export function ChatWorkspaceV2() {
 
   return (
     <div className="editorial-app-shell relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
+      <SessionSidebar
+        sessions={filteredSessions}
+        currentSessionId={currentSession?.id ?? null}
+        loading={loading}
+        labels={{
+          terminal: t.terminal,
+          sessions: t.sessions,
+          search: t.search,
+          history: t.history,
+          newChat: t.newChat,
+          noSearchResults: isZh ? '没有匹配的会话' : 'No matching sessions',
+          messageSuffix: isZh ? '条消息' : 'messages',
+        }}
+        searchValue={sessionSearchQuery}
+        isZh={isZh}
+        onSearchChange={setSessionSearchQuery}
+        onCreateSession={() => {
+          void handleNewSession();
+        }}
+        onSwitchSession={(sessionId) => {
+          void handleSwitchSession(sessionId);
+        }}
+        onDeleteSession={handleDeleteSession}
+      />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <div className="shrink-0 border-b border-border/30 bg-background/60 backdrop-blur-sm">
           <WorkflowShell />
@@ -767,7 +793,7 @@ export function ChatWorkspaceV2() {
 
         <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden bg-background">
           <div className="border-b border-border/30 bg-background/40 px-4 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-6">
-            {isZh ? '对话' : 'Conversation'}
+            <h1 className="text-[11px] font-semibold text-muted-foreground">{conversationTitle}</h1>
           </div>
           <div className="editorial-reading-surface min-h-0 flex-1">
             <MessageFeed
