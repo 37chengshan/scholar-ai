@@ -191,10 +191,13 @@ export function KnowledgeWorkspaceShell() {
                         <UploadCloud className="h-4 w-4" />
                         导入来源
                       </Button>
-                      <Button className="w-full justify-start" onClick={() => navigate(buildFreshChatHref({ kbId: kb.id }))}>
+                      <Link
+                        to={buildFreshChatHref({ kbId: kb.id })}
+                        className="inline-flex w-full items-center justify-start gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                      >
                         <MessageSquare className="h-4 w-4" />
                         对整个知识库提问
-                      </Button>
+                      </Link>
                     </div>
                   </div>
 

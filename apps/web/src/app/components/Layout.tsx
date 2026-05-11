@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import {
   BookOpen,
   LayoutDashboard,
@@ -196,20 +196,13 @@ export function Layout() {
     navigate("/");
   };
 
-  const handleNewChat = () => {
-    navigate("/chat?new=1");
-    setMobileMenuOpen(false);
-  };
-
-  const handleOpenSession = (sessionId: string) => {
-    const session = sessions.find((item) => item.id === sessionId);
+  const buildSessionHref = (session: ChatSession) => {
     const params = applyScopeMetadataToSearchParams(
       new URLSearchParams(),
-      (session?.metadata as Record<string, unknown> | null) ?? undefined,
+      (session.metadata as Record<string, unknown> | null) ?? undefined,
     );
-    params.set('session', sessionId);
-    navigate(`/chat?${params.toString()}`);
-    setMobileMenuOpen(false);
+    params.set("session", session.id);
+    return `/chat?${params.toString()}`;
   };
 
   const SidebarContent = (
@@ -229,12 +222,9 @@ export function Layout() {
           </div>
         ) : (
           <div className="flex items-start justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                navigate("/dashboard");
-                setMobileMenuOpen(false);
-              }}
+            <Link
+              to="/dashboard"
+              onClick={() => setMobileMenuOpen(false)}
               className="group flex min-w-0 items-center gap-3 text-left transition-colors"
             >
               <Logo
@@ -248,14 +238,14 @@ export function Layout() {
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary/70" />
                 </span>
               </div>
-            </button>
+            </Link>
           </div>
         )}
 
         <div className={clsx("mt-5 flex items-center", leftCollapsed ? "justify-center" : "justify-between gap-3")}>
-          <button
-            type="button"
-            onClick={handleNewChat}
+          <Link
+            to="/chat?new=1"
+            onClick={() => setMobileMenuOpen(false)}
             title={isZh ? "新对话" : "New Thread"}
             className={clsx(
               "inline-flex items-center transition-colors hover:text-primary",
@@ -266,7 +256,7 @@ export function Layout() {
           >
             <MessageSquarePlus className="h-3.5 w-3.5" />
             {!leftCollapsed ? (isZh ? "新对话" : "New Thread") : null}
-          </button>
+          </Link>
           {!leftCollapsed ? (
             <button
               type="button"
@@ -373,16 +363,13 @@ export function Layout() {
                 <MessagesSquare className="h-3 w-3" />
                 {isZh ? "最近对话" : "Recent Threads"}
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  navigate("/dashboard");
-                  setMobileMenuOpen(false);
-                }}
+              <Link
+                to="/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
                 className="text-[10px] text-muted-foreground/70 transition-colors hover:text-primary"
               >
                 {isZh ? "进入" : "Open"}
-              </button>
+              </Link>
             </div>
           ) : null}
 
@@ -406,25 +393,25 @@ export function Layout() {
                         (activeSessionId ? activeSessionId === session.id : currentSession?.id === session.id);
 
                       return (
-                        <button
-                          key={session.id}
-                          type="button"
-                          onClick={() => handleOpenSession(session.id)}
-                          title={session.title}
-                          className={clsx(
-                            "group w-full text-left transition-all duration-150",
-                            leftCollapsed
-                              ? "flex h-10 items-center justify-center rounded-2xl border border-transparent px-0 py-0"
-                              : "rounded-lg px-2.5 py-2",
-                            isActive
-                              ? leftCollapsed
-                                ? "border-primary/30 bg-primary/[0.06]"
-                                : "bg-primary/[0.03]"
-                              : leftCollapsed
-                                ? "hover:border-border/80 hover:bg-background"
-                                : "hover:bg-primary/[0.02]",
-                          )}
-                        >
+                      <Link
+                        key={session.id}
+                        to={buildSessionHref(session)}
+                        onClick={() => setMobileMenuOpen(false)}
+                        title={session.title}
+                        className={clsx(
+                          "group w-full text-left transition-all duration-150",
+                          leftCollapsed
+                            ? "flex h-10 items-center justify-center rounded-2xl border border-transparent px-0 py-0"
+                            : "rounded-lg px-2.5 py-2",
+                          isActive
+                            ? leftCollapsed
+                              ? "border-primary/30 bg-primary/[0.06]"
+                              : "bg-primary/[0.03]"
+                            : leftCollapsed
+                              ? "hover:border-border/80 hover:bg-background"
+                              : "hover:bg-primary/[0.02]",
+                        )}
+                      >
                           {leftCollapsed ? (
                             <MessagesSquare className={clsx("h-3.5 w-3.5", isActive ? "text-primary" : "text-foreground/60")} />
                           ) : (
@@ -439,7 +426,7 @@ export function Layout() {
                               </div>
                             </>
                           )}
-                        </button>
+                      </Link>
                       );
                     })}
                   </div>
@@ -465,29 +452,23 @@ export function Layout() {
                   <BookOpen className="h-3 w-3" />
                   {isZh ? "资料馆藏" : "Collections"}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigate("/knowledge-bases");
-                    setMobileMenuOpen(false);
-                  }}
+                <Link
+                  to="/knowledge-bases"
+                  onClick={() => setMobileMenuOpen(false)}
                   className="text-[10px] text-muted-foreground/70 transition-colors hover:text-primary"
                 >
                   {isZh ? "进入" : "Open"}
-                </button>
+                </Link>
               </div>
             ) : null}
             <div className="space-y-0.5">
               {knowledgeBases.slice(0, 3).map((kb) => {
                 const display = getKnowledgeBaseDisplayMetadata(kb);
                 return (
-                  <button
+                  <Link
                     key={kb.id}
-                    type="button"
-                    onClick={() => {
-                      navigate(`/knowledge-bases/${kb.id}`);
-                      setMobileMenuOpen(false);
-                    }}
+                    to={`/knowledge-bases/${kb.id}`}
+                    onClick={() => setMobileMenuOpen(false)}
                     title={display.displayName}
                     className={clsx(
                       "group flex w-full text-left transition-colors",
@@ -508,7 +489,7 @@ export function Layout() {
                         </div>
                       </div>
                     ) : null}
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -534,18 +515,15 @@ export function Layout() {
               </div>
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              navigate("/settings");
-              setMobileMenuOpen(false);
-            }}
+          <Link
+            to="/settings"
+            onClick={() => setMobileMenuOpen(false)}
             title={isZh ? "打开设置" : "Open settings"}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background text-foreground/60 transition-all duration-150 hover:border-primary/25 hover:text-primary hover:bg-primary/[0.04]"
             aria-label={isZh ? "打开设置" : "Open settings"}
           >
             <Settings className="h-3.5 w-3.5" />
-          </button>
+          </Link>
           <button
             type="button"
             onClick={handleLogout}
@@ -579,14 +557,13 @@ export function Layout() {
           >
             <Menu className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => navigate("/settings")}
+          <Link
+            to="/settings"
             className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-paper-1/90 text-foreground/72 backdrop-blur-md"
             aria-label={isZh ? "打开设置" : "Open settings"}
           >
             <Settings className="h-4 w-4" />
-          </button>
+          </Link>
         </div>
 
         <main className="relative min-h-0 flex-1 overflow-hidden pt-16 md:pt-0">
