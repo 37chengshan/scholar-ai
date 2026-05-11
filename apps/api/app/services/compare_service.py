@@ -47,6 +47,7 @@ from app.services.evidence_contract_service import (
     get_evidence_source_payload,
 )
 from app.services.phase_i_routing_service import get_phase_i_routing_service
+from app.services.evidence_action_service import build_recovery_actions
 from app.services.truthfulness_service import get_truthfulness_service
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -660,7 +661,7 @@ def get_compare_retriever() -> HybridRetriever:
             "content_type",
             "section",
             "page_num",
-            "content_data",
+            "content",
         ],
     )
 
@@ -959,6 +960,19 @@ def build_compare_contract(
         "citation_coverage": supported / max(total, 1),
         "answer_mode": resolved_answer_mode,
     }
+    recovery_actions = build_recovery_actions(
+        scope="compare",
+        answer_mode=resolved_answer_mode,
+        task_family=routing.task_family,
+        execution_mode=routing.execution_mode,
+        truthfulness_report=truthfulness_report,
+        degraded_conditions=[],
+        recovery_entry={
+            "task_family": routing.task_family,
+            "entry_type": "compare",
+            "paper_ids": paper_ids,
+        },
+    )
 
     return AnswerContract(
         response_type="compare",
@@ -982,4 +996,5 @@ def build_compare_contract(
         truthfulness_summary=truthfulness_summary,
         truthfulness_report=truthfulness_report,
         retrieval_plane_policy=routing.retrieval_plane_policy,
+        recovery_actions=recovery_actions,
     )

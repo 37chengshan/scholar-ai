@@ -276,3 +276,4 @@ class AnswerContract(BaseModel):
     truthfulness_report: dict[str, Any] = Field(default_factory=dict)
     retrieval_plane_policy: dict[str, Any] = Field(default_factory=dict)
     degraded_conditions: list[str] = Field(default_factory=list)
+    recovery_actions: list[dict[str, Any]] = Field(default_factory=list)

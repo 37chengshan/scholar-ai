@@ -301,6 +301,7 @@ class RAGQueryResponse(BaseModel):
     retrievalTrace: Optional[Dict] = Field(None, description="retrieval trace for iterative orchestration")
     citationAwareMetadata: Optional[Dict] = Field(None, description="citation-aware expansion metadata")
     scientificSynthesisMetrics: Optional[Dict] = Field(None, description="scientific synthesis quality metrics")
+    recoveryActions: List[Dict] = Field(default_factory=list, description="user-visible recovery actions")
     conversation_id: Optional[str] = Field(None, description="对话会话ID")
     cached: bool = Field(False, description="是否来自缓存")
 
@@ -423,6 +424,7 @@ async def rag_query(
                 retrievalTrace=cached.get("retrievalTrace"),
                 citationAwareMetadata=cached.get("citationAwareMetadata"),
                 scientificSynthesisMetrics=cached.get("scientificSynthesisMetrics"),
+                recoveryActions=cached.get("recoveryActions", []),
                 conversation_id=request.conversation_id,
                 cached=True
             )
@@ -478,6 +480,7 @@ async def rag_query(
             retrievalTrace=retrieval_meta.get("retrieval_trace"),
             citationAwareMetadata=retrieval_meta.get("citation_aware_metadata"),
             scientificSynthesisMetrics=retrieval_meta.get("scientific_synthesis_metrics"),
+            recoveryActions=retrieval_meta.get("recovery_actions", []),
             conversation_id=request.conversation_id,
             cached=False
         )
@@ -508,6 +511,7 @@ async def rag_query(
                 "retrievalTrace": retrieval_meta.get("retrieval_trace"),
                 "citationAwareMetadata": retrieval_meta.get("citation_aware_metadata"),
                 "scientificSynthesisMetrics": retrieval_meta.get("scientific_synthesis_metrics"),
+                "recoveryActions": retrieval_meta.get("recovery_actions", []),
             },
             query_type=request.query_type,
             retrieval_version="v3",
