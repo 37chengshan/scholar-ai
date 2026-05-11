@@ -33,6 +33,8 @@ interface PDFViewerProps {
   onTextSelection?: (selection: { text: string; position: { x: number; y: number; width: number; height: number } } | null) => void;
   activeAnnotationId?: string | null;
   highlightSnippet?: string;
+  scale?: number;
+  showControls?: boolean;
 }
 
 function normalizeTextForMatch(text: string): string {
@@ -67,6 +69,8 @@ export function PDFViewer({
   onTextSelection,
   activeAnnotationId = null,
   highlightSnippet = '',
+  scale: controlledScale,
+  showControls = true,
 }: PDFViewerProps) {
   const { language } = useLanguage();
   const isZh = language === 'zh';
@@ -125,6 +129,13 @@ export function PDFViewer({
       onTextSelection?.(null);
     }
   }, [currentPage, pageNumber, numPages, onTextSelection]);
+
+  useEffect(() => {
+    if (controlledScale === undefined || controlledScale === scale) {
+      return;
+    }
+    setScale(controlledScale);
+  }, [controlledScale, scale]);
 
   useEffect(() => {
     if (containerRef.current && numPages > 0) {
@@ -301,43 +312,45 @@ export function PDFViewer({
 
   return (
     <div className="flex flex-col h-full" data-testid="pdf-viewer">
-      <div className="flex items-center gap-4 p-2 border-b bg-white" data-testid="pdf-controls">
-        <button
-          onClick={() => goToPage(pageNumber - 1)}
-          disabled={pageNumber <= 1}
-          data-testid="prev-page"
-          className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded"
-        >
-          {isZh ? '上一页' : 'Previous'}
-        </button>
-        <span className="text-sm" data-testid="page-counter">
-          {pageNumber} / {numPages}
-        </span>
-        <button
-          onClick={() => goToPage(pageNumber + 1)}
-          disabled={pageNumber >= numPages}
-          data-testid="next-page"
-          className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded"
-        >
-          {isZh ? '下一页' : 'Next'}
-        </button>
-        <div className="flex-1" />
-        <button
-          onClick={() => setScale(s => Math.max(0.5, s - 0.1))}
-          data-testid="zoom-out"
-          className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
-        >
-          -
-        </button>
-        <span className="text-sm min-w-[48px] text-center" data-testid="zoom-level">{Math.round(scale * 100)}%</span>
-        <button
-          onClick={() => setScale(s => Math.min(2, s + 0.1))}
-          data-testid="zoom-in"
-          className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
-        >
-          +
-        </button>
-      </div>
+      {showControls ? (
+        <div className="flex items-center gap-4 p-2 border-b bg-white" data-testid="pdf-controls">
+          <button
+            onClick={() => goToPage(pageNumber - 1)}
+            disabled={pageNumber <= 1}
+            data-testid="prev-page"
+            className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+          >
+            {isZh ? '上一页' : 'Previous'}
+          </button>
+          <span className="text-sm" data-testid="page-counter">
+            {pageNumber} / {numPages}
+          </span>
+          <button
+            onClick={() => goToPage(pageNumber + 1)}
+            disabled={pageNumber >= numPages}
+            data-testid="next-page"
+            className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+          >
+            {isZh ? '下一页' : 'Next'}
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={() => setScale((s) => Math.max(0.5, s - 0.1))}
+            data-testid="zoom-out"
+            className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+          >
+            -
+          </button>
+          <span className="text-sm min-w-[48px] text-center" data-testid="zoom-level">{Math.round(scale * 100)}%</span>
+          <button
+            onClick={() => setScale((s) => Math.min(2, s + 0.1))}
+            data-testid="zoom-in"
+            className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+          >
+            +
+          </button>
+        </div>
+      ) : null}
 
       <div
         ref={containerRef}

@@ -19,6 +19,7 @@ import { clsx } from "clsx";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Logo } from "./landing/Logo";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { ScrollArea } from "./ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./ui/sheet";
 import { useSessions } from "@/app/hooks/useSessions";
@@ -72,6 +73,8 @@ const workspaceItems: WorkspaceItem[] = [
     labelEn: "Notes",
   },
 ];
+
+const PRIMARY_WORKSPACE_ITEMS = ["/dashboard", "/search", "/chat"];
 
 function startOfDay(d: Date) {
   const c = new Date(d);
@@ -161,6 +164,14 @@ export function Layout() {
   const dateGroups = useMemo(
     () => groupSessionsByDate(sortedSessions, isZh),
     [sortedSessions, isZh],
+  );
+  const primaryWorkspaceItems = useMemo(
+    () => workspaceItems.filter((item) => PRIMARY_WORKSPACE_ITEMS.includes(item.to)),
+    [],
+  );
+  const overflowWorkspaceItems = useMemo(
+    () => workspaceItems.filter((item) => !PRIMARY_WORKSPACE_ITEMS.includes(item.to)),
+    [],
   );
 
   useEffect(() => {
@@ -277,7 +288,7 @@ export function Layout() {
           </div>
         ) : null}
         <div className={clsx(leftCollapsed ? "space-y-1" : "space-y-0.5")}>
-          {workspaceItems.map((item) => (
+          {primaryWorkspaceItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -308,6 +319,49 @@ export function Layout() {
             </NavLink>
           ))}
         </div>
+        {overflowWorkspaceItems.length > 0 ? (
+          <div className={clsx("mt-3", leftCollapsed ? "" : "rounded-2xl border border-border/60 bg-background/65 shadow-sm")}>
+            {!leftCollapsed ? (
+              <div className="px-3 pb-2 pt-2 text-[9px] font-bold uppercase tracking-[0.22em] text-muted-foreground/75">
+                {isZh ? "更多工作区" : "More"}
+              </div>
+            ) : null}
+            <ScrollArea className={clsx(leftCollapsed ? "h-[8.5rem]" : "h-[8.75rem]")}>
+              <div className={clsx("space-y-0.5", leftCollapsed ? "px-0" : "px-2 pb-2")}>
+                {overflowWorkspaceItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMobileMenuOpen(false)}
+                    title={isZh ? item.labelZh : item.labelEn}
+                    className={({ isActive }) =>
+                      clsx(
+                        "group flex items-center transition-colors",
+                        isActive
+                          ? "bg-primary/[0.07] text-foreground"
+                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                        leftCollapsed
+                          ? "h-10 justify-center rounded-xl border border-transparent px-0"
+                          : "h-10 gap-2 rounded-xl px-3",
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <item.icon className={clsx("h-3.5 w-3.5 shrink-0", isActive ? "text-primary" : "text-foreground/55 group-hover:text-foreground/75")} />
+                        {!leftCollapsed ? (
+                          <div className={clsx("text-[var(--font-xs)] font-semibold tracking-[0.04em]", isActive ? "text-foreground" : "text-foreground/82")}>
+                            {isZh ? item.labelZh : item.labelEn}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        ) : null}
       </div>
 
       <div className={clsx("min-h-0 flex-1 overflow-y-auto", leftCollapsed ? "px-2 py-3" : "px-5 py-4")}>

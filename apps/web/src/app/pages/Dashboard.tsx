@@ -16,6 +16,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useResearchCommandCenter } from '@/features/workflow/hooks/useResearchCommandCenter';
 import type { ResearchCommandItem } from '@/features/workflow/commandCenter';
+import { useDelayedVisibility } from '@/app/hooks/useDelayedVisibility';
 
 type NavCard = {
   to: string;
@@ -160,6 +161,7 @@ export function Dashboard() {
   const { user } = useAuth();
   const isZh = language === 'zh';
   const { commands, loading } = useResearchCommandCenter();
+  const showLoading = useDelayedVisibility(loading, 200);
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -203,12 +205,16 @@ export function Dashboard() {
           </div>
 
           {loading ? (
-            <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-border/70 bg-card">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {isZh ? '正在整理研究链状态...' : 'Building your research command center...'}
+            showLoading ? (
+              <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-border/70 bg-card">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {isZh ? '正在整理研究链状态...' : 'Building your research command center...'}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="min-h-[220px]" aria-hidden="true" />
+            )
           ) : commands.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               {commands.map((item) => (

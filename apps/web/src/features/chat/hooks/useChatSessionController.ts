@@ -6,15 +6,15 @@ import type { SSEService } from '@/services/sseService';
 interface UseChatSessionControllerOptions {
   isZh: boolean;
   sessionToDelete: string | null;
-  createSession: (title?: string) => Promise<ChatSession | null>;
+  createSession?: (title?: string) => Promise<ChatSession | null>;
   switchSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<boolean>;
   resetForSessionSwitch: () => void;
   resetRuntimeRun: () => void;
   resetStreamingRun: () => void;
-  openDeleteConfirm: (sessionId: string) => void;
+  openDeleteConfirm?: (sessionId: string) => void;
   closeDeleteConfirm: () => void;
-  setSessionSearchQuery: (value: string) => void;
+  setSessionSearchQuery?: (value: string) => void;
   setSessionTokens: (value: number) => void;
   setSessionCost: (value: number) => void;
   sendLockRef: MutableRefObject<boolean>;
@@ -57,6 +57,10 @@ export function useChatSessionController({
   ]);
 
   const handleNewSession = useCallback(async () => {
+    if (!createSession) {
+      return null;
+    }
+
     sseServiceRef.current?.disconnect();
     sendLockRef.current = false;
 
@@ -65,7 +69,7 @@ export function useChatSessionController({
       return null;
     }
 
-    setSessionSearchQuery('');
+    setSessionSearchQuery?.('');
     resetForSessionSwitch();
     setSessionTokens(0);
     setSessionCost(0);
@@ -92,7 +96,7 @@ export function useChatSessionController({
 
   const handleDeleteSession = useCallback((sessionId: string, event: MouseEvent) => {
     event.stopPropagation();
-    openDeleteConfirm(sessionId);
+    openDeleteConfirm?.(sessionId);
   }, [openDeleteConfirm]);
 
   const confirmDeleteSession = useCallback(async () => {
