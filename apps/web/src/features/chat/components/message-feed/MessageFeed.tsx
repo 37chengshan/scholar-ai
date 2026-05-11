@@ -75,8 +75,10 @@ function CopyButton({ text, isZh }: { text: string; isZh: boolean }) {
   }, [text]);
   return (
     <button
+      type="button"
       onClick={handleCopy}
-      className="p-1 rounded transition-colors text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      aria-label={isZh ? '复制回答' : 'Copy answer'}
       title={isZh ? '复制回答' : 'Copy answer'}
     >
       {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -257,8 +259,9 @@ export function MessageFeed({
 
                       {isActiveStreamMessage && (
                         <button
+                          type="button"
                           onClick={onStop}
-                          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                         >
                           <Square className="w-3 h-3" />
                           {labels.stop}
@@ -280,7 +283,7 @@ export function MessageFeed({
 
                       {/* Action bar: copy, token info */}
                       {!isStreaming && normalizedDisplayContent && (
-                        <div className="flex items-center gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="mt-2 flex items-center gap-2">
                           <CopyButton text={normalizedDisplayContent} isZh={isZh} />
                           {tokenCount !== undefined && tokenCount > 0 && (
                             <span
