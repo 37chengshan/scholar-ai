@@ -92,9 +92,9 @@
 2. `Computer Use`：
    - 作为视觉级交互补充
    - 用于真实点击、滚动、菜单、遮挡、悬浮、响应式布局确认
-3. `browser-use`：
-   - 仅作为备用
-   - 只在 MCP 不可用或明确需要其 CLI 形态时启用
+3. `browser-harness`：
+   - 作为脚本化浏览器自动化补充
+   - 用于需要自定义 Python 流程、批量操作或直接接管真实 Chrome 的场景
 
 推荐测试层定义：
 
@@ -163,38 +163,18 @@ pgrep -fl "uvicorn|celery|vite"
 
 1. 优先使用 `Chrome DevTools MCP` 完成页面打开、元素检查、控制台/网络检查、截图和脚本探针。
 2. 遇到视觉层判断、复杂 hover/menu、拖拽、滚动定位、遮挡验证时，补充使用 `Computer Use`。
-3. 只有在 MCP 路径不可用、失真或明确需要 `browser-use` CLI 的场景下，才启用 `browser-use`。
+3. 需要脚本化浏览器自动化时，使用 `browser-harness`；`browser-use` 不再作为执行选项。
 
-### 3.2.1 browser-use 备用规则
+### 3.2.1 browser-harness 使用规则
 
-`browser-use` 的元素 index 每次页面变化后都可能变化，所以执行规则固定为：
+`browser-harness` 适合需要自定义 Python 流程、批量操作或直接接管真实 Chrome 的场景：
 
-1. 每个页面先运行：
-   - `browser-use open <url>`
-   - `browser-use state`
-2. 根据 `state` 返回的 index 执行：
-   - `browser-use click <index>`
-   - `browser-use input <index> "<text>"`
-   - `browser-use upload <index> <file>`
-3. 每个关键动作后都要执行：
-   - `browser-use state`
-   - 必要时 `browser-use screenshot <path>`
-4. 如果 browser-use session 损坏：
-   - `browser-use close`
-   - 重新 `browser-use open http://localhost:5173`
+1. 每个页面先通过脚本显式打开新标签页。
+2. 根据页面状态执行点击、输入、上传、截图或 raw CDP 探针。
+3. 每个关键动作后都要复核页面状态或截图。
+4. 若遇到 attach 失败，优先检查 Chrome profile、CDP 授权与代理环境，而不是切回 `browser-use`。
 
-当前本机若遇到 `browser-use` 相关 daemon/session/Chrome 残留、或 Python 3.14 event loop 报错：
-
-```text
-RuntimeError: There is no current event loop in thread 'MainThread'.
-```
-
-处理顺序：
-
-1. 先记录为 `TOOLING-BLOCKED`，不是产品页面失败。
-2. 尝试 `browser-use close --all` 后重跑。
-3. 若存在残留 daemon、`Python.app`、`browser-use-user-data-dir-*` 或受管 Chrome 实例，先清理残留，再决定是否继续。
-4. 若仍失败，切回 `Chrome DevTools MCP` 或 `Computer Use` 执行同一 runbook，并在缺陷记录中明确写明浏览器工具 fallback。
+如果脚本化流程失败，先把问题归类为 Chrome/CDP 连接或脚本自身问题，再按 MCP 或 Computer Use 的标准路径排查。
 
 ## 3.3 执行证据目录与命名
 
@@ -1857,9 +1837,8 @@ browser-use state
   - kb_id:
   - paper_id:
   - source_chunk_id:
-- browser-use commands:
-  - `browser-use open ...`
-  - `browser-use state`
+- browser-harness commands:
+  - `browser-harness <<'PY' ... PY`
 - expected:
 - actual:
 - screenshots:
@@ -1877,7 +1856,7 @@ browser-use state
 4. KB Detail 的 `runs/review/chat` 深链还可以补更多端到端场景。
 5. Settings 各 section 的真实交互覆盖偏浅。
 6. Landing 与 auth 页更多依赖手工 walkthrough，自动化阻断度不够。
-7. `browser-use` 当前缺少稳定 JSON 执行报告落盘，本 runbook 需要人工填写 `6.2` 模板或转写为 Playwright。
+7. `browser-harness` 仍需要按仓库的验证产物规范落盘报告。
 8. Upload worker status、SQL `paper_chunks`、Milvus evidence、Read source highlight 的四段一致性仍需要一条端到端自动化。
 9. Chat partial/abstain 的原因归类还缺少自动化断言，需要把 retrieval trace、answer contract 和 UI badge 串起来。
 

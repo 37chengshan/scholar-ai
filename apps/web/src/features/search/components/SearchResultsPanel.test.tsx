@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SearchResultsPanel } from './SearchResultsPanel';
 
 vi.mock('motion/react', () => ({
@@ -40,7 +40,16 @@ const labels = {
 };
 
 describe('SearchResultsPanel', () => {
-  it('shows initial loading state before any result is ready', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('shows loading placeholder first, then reveals initial loading state', () => {
     render(
       <SearchResultsPanel
         activeSource="all"
@@ -60,10 +69,16 @@ describe('SearchResultsPanel', () => {
       />,
     );
 
+    expect(screen.getByTestId('search-initial-loading-placeholder')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
     expect(screen.getByTestId('search-initial-loading')).toBeInTheDocument();
   });
 
-  it('keeps current results visible when page is fetching', () => {
+  it('keeps current results visible and reveals page loading after delay', () => {
     render(
       <SearchResultsPanel
         activeSource="all"
@@ -98,6 +113,12 @@ describe('SearchResultsPanel', () => {
         onAuthorClick={vi.fn()}
       />,
     );
+
+    expect(screen.queryByTestId('search-page-loading')).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
 
     expect(screen.getByTestId('search-page-loading')).toBeInTheDocument();
     expect(screen.getAllByTestId('search-card')).toHaveLength(2);

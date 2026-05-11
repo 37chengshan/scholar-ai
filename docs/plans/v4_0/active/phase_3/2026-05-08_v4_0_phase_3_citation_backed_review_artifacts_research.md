@@ -1,8 +1,8 @@
 # v4.0-3 研究文档：Citation-backed Review Artifacts
 
-> 日期：2026-05-08  
-> 状态：research  
-> 对应执行计划：`docs/plans/v4_0/active/phase_3/22_v4_0_phase_3_execution_plan.md`  
+> 日期：2026-05-08
+> 状态：research
+> 对应执行计划：`docs/plans/v4_0/active/phase_3/22_v4_0_phase_3_execution_plan.md`
 > 上游总览：`docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md`
 
 ## 1. 研究问题

@@ -83,4 +83,41 @@ describe('usePinnedBottom', () => {
 
     expect(anchor.scrollIntoView).toHaveBeenCalledTimes(1);
   });
+
+  it('falls back to auto scrolling for stream updates when reduced motion is enabled', () => {
+    const container = createScrollableContainer(600);
+    const anchor = document.createElement('div');
+    anchor.scrollIntoView = vi.fn();
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: true,
+      media: '(prefers-reduced-motion: reduce)',
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as unknown as MediaQueryList);
+
+    const containerRef = { current: container };
+    const anchorRef = { current: anchor };
+
+    const { result } = renderHook(() =>
+      usePinnedBottom({
+        containerRef,
+        anchorRef,
+        threshold: 100,
+        streamFollowIntervalMs: 0,
+        smoothBehavior: 'smooth',
+      })
+    );
+
+    act(() => {
+      result.current.maybeFollowBottom('stream');
+    });
+
+    expect(anchor.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'end' });
+    window.matchMedia = originalMatchMedia;
+  });
 });

@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import type { KBSearchResult } from '@/services/kbApi';
 import { sanitizeSearchSnippet } from '@/features/notes/content';
@@ -8,7 +9,7 @@ interface KnowledgeEvidencePanelProps {
   results: KBSearchResult[] | null;
   papersEmpty: boolean;
   onSearchQueryChange: (value: string) => void;
-  onSearchSubmit: () => void;
+  onSearchSubmit: (value: string) => void;
   onOpenPaper: (paperId: string, page?: number | null, sourceChunkId?: string | null) => void;
 }
 
@@ -21,15 +22,19 @@ export function KnowledgeEvidencePanel({
   onSearchSubmit,
   onOpenPaper,
 }: KnowledgeEvidencePanelProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const buildResultKey = (result: KBSearchResult, index: number) =>
     [result.id, result.paperId, result.page ?? 'na', index].join(':');
+  const submitCurrentQuery = () => {
+    onSearchSubmit(inputRef.current?.value ?? searchQuery);
+  };
 
   return (
     <div className="space-y-8 max-w-4xl">
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          onSearchSubmit();
+          submitCurrentQuery();
         }}
         className="relative max-w-3xl"
       >
@@ -37,6 +42,8 @@ export function KnowledgeEvidencePanel({
           <Search className="h-6 w-6 text-muted-foreground" />
         </div>
         <input
+          ref={inputRef}
+          name="query"
           type="text"
           className="block w-full bg-paper-1 py-5 pl-12 pr-32 text-lg font-medium border border-border/80 placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-0 transition-colors"
           placeholder="输入您的问题..."
@@ -44,8 +51,9 @@ export function KnowledgeEvidencePanel({
           onChange={(event) => onSearchQueryChange(event.target.value)}
         />
         <button
-          type="submit"
+          type="button"
           disabled={isSearching || !searchQuery.trim()}
+          onClick={submitCurrentQuery}
           className="absolute bottom-2 right-2 top-2 flex items-center gap-2 bg-primary px-6 font-bold uppercase tracking-wider text-white transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : '检索'}

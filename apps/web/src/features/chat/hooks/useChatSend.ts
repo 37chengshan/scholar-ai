@@ -52,7 +52,7 @@ interface UseChatSendOptions {
   isZh: boolean;
   setInput: (value: string) => void;
   setSending: (sending: boolean) => void;
-  setAgentUIState: (state: AgentUIState) => void;
+  setAgentUIState?: (state: AgentUIState) => void;
   setSessionTokens: Dispatch<SetStateAction<number>>;
   setSessionCost: Dispatch<SetStateAction<number>>;
   createSession: (
@@ -265,7 +265,7 @@ export function useChatSend({
     clearPlaceholder();
     currentMessageIdRef.current = '';
     streamApi.setCurrentMessageId(null);
-    setAgentUIState('DONE');
+    setAgentUIState?.('DONE');
     setSending(false);
     sendLockRef.current = false;
   }, [clearPlaceholder, currentMessageIdRef, sendLockRef, setAgentUIState, setSending, streamApi]);
@@ -488,7 +488,7 @@ export function useChatSend({
             clearPlaceholder();
             currentMessageIdRef.current = '';
             streamApi.setCurrentMessageId(null);
-            setAgentUIState('DONE');
+            setAgentUIState?.('DONE');
             setSending(false);
             sendLockRef.current = false;
           },

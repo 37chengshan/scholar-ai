@@ -17,6 +17,7 @@ interface ChatRightPanelProps {
   onStop: () => void;
   onClose: () => void;
   isZh: boolean;
+  inline?: boolean;
 }
 
 type SummaryRow = {
@@ -145,6 +146,7 @@ function ChatRightPanelBase({
   onStop,
   onClose,
   isZh,
+  inline = false,
 }: ChatRightPanelProps) {
   const timelineItems = useMemo(() => activeRun.timeline, [activeRun.timeline]);
   const evidenceItems = useMemo(() => activeRun.evidence, [activeRun.evidence]);
@@ -158,7 +160,11 @@ function ChatRightPanelBase({
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="hidden min-w-[320px] shrink-0 border-l border-border/40 bg-paper-1/72 backdrop-blur-md xl:flex xl:w-[320px] xl:flex-col"
+      className={
+        inline
+          ? "flex h-full min-h-0 w-full flex-col bg-paper-1/72 backdrop-blur-md"
+          : "hidden min-w-[320px] shrink-0 border-l border-border/40 bg-paper-1/72 backdrop-blur-md xl:flex xl:w-[320px] xl:flex-col"
+      }
     >
       <div className="sticky top-0 z-10 border-b border-border/40 bg-background/78 px-5 py-4 backdrop-blur-md">
         <div className="flex items-start justify-between gap-3">

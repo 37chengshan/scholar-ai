@@ -111,7 +111,7 @@ export function SearchResultCard({ result, onAddToLibrary, onViewPaper, onContin
 
       {result.abstract && (
         <div className="flex flex-col flex-1">
-          <p className="font-serif text-xs text-foreground/70 leading-[1.6] line-clamp-3 italic border-l-2 border-primary/20 pl-3 mt-1 flex-1">
+          <p className="mt-1 max-w-prose flex-1 border-l-2 border-primary/20 pl-3 font-serif text-xs italic leading-relaxed text-foreground/70 line-clamp-3">
             {result.abstract}
           </p>
         </div>

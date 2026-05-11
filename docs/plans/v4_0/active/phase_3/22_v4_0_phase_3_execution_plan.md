@@ -12,9 +12,9 @@ evidence_commits:
 
 # 22 v4.0-3 执行计划：Citation-backed Review Artifacts
 
-> 日期：2026-05-08  
-> 状态：execution-plan  
-> 上游研究：`docs/plans/v4_0/active/phase_3/2026-05-08_v4_0_phase_3_citation_backed_review_artifacts_research.md`  
+> 日期：2026-05-08
+> 状态：execution-plan
+> 上游研究：`docs/plans/v4_0/active/phase_3/2026-05-08_v4_0_phase_3_citation_backed_review_artifacts_research.md`
 > 上游 Phase 2 closeout：`docs/plans/v4_0/reports/2026-05-04_v4_0_phase_2_closeout_report.md`
 
 ## 0. 执行状态
@@ -257,3 +257,9 @@ Phase 4.0-3 完成时，至少满足：
 | citation audit 只停留在文本层 | 保留 partial / insufficient_evidence |
 | Notes / Review / Compare 口径不一 | 统一 support / coverage / limitation 词汇 |
 | 把前端精修混进来 | 由 Phase 4.0-4 / 4.0-5 承接 |
+
+## 11. Open Questions
+
+1. artifact bundle 是否需要新增独立的后端资源真源，还是继续由现有 ReviewDraft / Note / Compare 资源承接。
+2. known limitations 是否应进入 KB review panel 的首屏显式区域。
+3. return path 是否需要浏览器 walkthrough 作为硬门禁，还是只在 closeout report 中记录。
