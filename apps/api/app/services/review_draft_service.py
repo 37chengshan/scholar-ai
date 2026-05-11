@@ -54,9 +54,49 @@ _ALLOWED_ERROR_STATES = {
     "partial_draft",
 }
 
+_ARTIFACT_TYPES = (
+    "review_draft",
+    "citation_audit",
+    "evidence_note",
+    "compare_matrix",
+    "known_limitations",
+    "run_trace",
+)
+
 
 def _pick_keys(payload: dict[str, Any], keys: set[str]) -> dict[str, Any]:
     return {k: v for k, v in payload.items() if k in keys}
+
+
+def _build_run_artifact(
+    *,
+    artifact_id: str,
+    run_id: str,
+    artifact_type: str,
+    title: str,
+    content: Optional[str] = None,
+    url: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    if artifact_type not in _ARTIFACT_TYPES:
+        artifact_type = "run_trace"
+    return {
+        "artifact_id": artifact_id,
+        "run_id": run_id,
+        "type": artifact_type,
+        "title": title,
+        "content": content,
+        "url": url,
+        "metadata": metadata or {},
+    }
+
+
+def _first_evidence_block(draft_doc: DraftDoc) -> Optional[EvidenceBlock]:
+    for section in draft_doc.sections:
+        for paragraph in section.paragraphs:
+            if paragraph.evidence_blocks:
+                return paragraph.evidence_blocks[0]
+    return None
 
 
 class ReviewDraftService:
@@ -165,7 +205,18 @@ class ReviewDraftService:
                 graph_summary=graph_summary,
                 routing=routing,
             )
-            artifacts.append({"type": "outline", "section_count": len(outline_doc.sections)})
+            artifacts.append(
+                _build_run_artifact(
+                    artifact_id=f"{run.id}:review_draft:outline",
+                    run_id=run.id,
+                    artifact_type="review_draft",
+                    title="Review Draft Outline",
+                    metadata={
+                        "section_count": len(outline_doc.sections),
+                        "paper_ids": source_paper_ids,
+                    },
+                )
+            )
 
             section_evidence = self._retrieve_section_evidence(
                 user_id=user_id,
@@ -227,6 +278,94 @@ class ReviewDraftService:
                 for p in sec.paragraphs:
                     for ev in p.evidence_blocks:
                         evidence_rows.append(ev.model_dump())
+
+            citation_audit_rows = [
+                {
+                    "section": section.heading,
+                    "paragraph_id": paragraph.paragraph_id,
+                    "coverage_status": paragraph.citation_coverage_status,
+                    "claim_count": len(paragraph.claim_verification or []),
+                }
+                for section in final_doc.sections
+                for paragraph in section.paragraphs
+            ]
+            known_limitations = self._derive_known_limitations(
+                draft_doc=final_doc,
+                quality=quality,
+                error_state=error_state,
+                graph_error=graph_error,
+            )
+            first_evidence_block = _first_evidence_block(final_doc)
+            compare_url = (
+                f"/compare?paper_ids={','.join(source_paper_ids)}"
+                if len(source_paper_ids) >= 2
+                else None
+            )
+            evidence_note_url = None
+            evidence_note_metadata: dict[str, Any] = {"available": False}
+            if first_evidence_block:
+                evidence_note_url = (
+                    f"/notes?paperId={first_evidence_block.paper_id}"
+                    f"&sourceChunkId={first_evidence_block.source_chunk_id}"
+                )
+                evidence_note_metadata = {
+                    "available": True,
+                    "paper_id": first_evidence_block.paper_id,
+                    "source_chunk_id": first_evidence_block.source_chunk_id,
+                    "page_num": first_evidence_block.page_num,
+                    "section_path": first_evidence_block.section_path,
+                    "citation_jump_url": first_evidence_block.citation_jump_url,
+                }
+            artifacts.extend(
+                [
+                    _build_run_artifact(
+                        artifact_id=f"{run.id}:citation_audit",
+                        run_id=run.id,
+                        artifact_type="citation_audit",
+                        title="Citation Audit",
+                        metadata={"rows": citation_audit_rows},
+                    ),
+                    _build_run_artifact(
+                        artifact_id=f"{run.id}:evidence_note",
+                        run_id=run.id,
+                        artifact_type="evidence_note",
+                        title="Evidence Note",
+                        url=evidence_note_url,
+                        metadata=evidence_note_metadata,
+                    ),
+                    _build_run_artifact(
+                        artifact_id=f"{run.id}:compare_matrix",
+                        run_id=run.id,
+                        artifact_type="compare_matrix",
+                        title="Compare Matrix",
+                        url=compare_url,
+                        metadata={
+                            "paper_ids": source_paper_ids,
+                            "available": bool(compare_url),
+                        },
+                    ),
+                    _build_run_artifact(
+                        artifact_id=f"{run.id}:known_limitations",
+                        run_id=run.id,
+                        artifact_type="known_limitations",
+                        title="Known Limitations",
+                        content="\n".join(f"- {item}" for item in known_limitations),
+                        metadata={"items": known_limitations},
+                    ),
+                    _build_run_artifact(
+                        artifact_id=f"{run.id}:run_trace",
+                        run_id=run.id,
+                        artifact_type="run_trace",
+                        title="Run Trace",
+                        metadata={
+                            "step_count": len(steps),
+                            "tool_event_count": len(tool_events),
+                            "evidence_count": len(evidence_rows),
+                            "recovery_action_count": 1 if error_state else 0,
+                        },
+                    ),
+                ]
+            )
 
             draft.outline_doc = outline_doc.model_dump(mode="json")
             draft.draft_doc = final_doc.model_dump(mode="json")
@@ -537,6 +676,12 @@ class ReviewDraftService:
             "truthfulness_backend": quality_payload.get("truthfulness_backend", "rarr_cove_scifact_lite") if isinstance(quality_payload, dict) else "rarr_cove_scifact_lite",
             "benchmark_hooks": quality_payload.get("benchmark_hooks", {}) if isinstance(quality_payload, dict) else {},
         }
+        known_limitations = ReviewDraftService._derive_known_limitations(
+            draft_doc=DraftDoc.model_validate(safe_draft),
+            quality=ReviewQuality.model_validate(safe_quality),
+            error_state=(draft.error_state if draft.error_state in _ALLOWED_ERROR_STATES else None),
+            graph_error="graph_unavailable" if draft.error_state == "graph_unavailable" else None,
+        )
 
         return ReviewDraftDto(
             id=draft.id,
@@ -547,6 +692,7 @@ class ReviewDraftService:
             outlineDoc=OutlineDoc.model_validate(safe_outline),
             draftDoc=DraftDoc.model_validate(safe_draft),
             quality=ReviewQuality.model_validate(safe_quality),
+            knownLimitations=known_limitations,
             traceId=draft.trace_id or "",
             runId=draft.run_id or "",
             errorState=(draft.error_state if draft.error_state in _ALLOWED_ERROR_STATES else None),
@@ -1211,6 +1357,31 @@ class ReviewDraftService:
             },
         )
         return draft_doc, quality, error_state
+
+    @staticmethod
+    def _derive_known_limitations(
+        *,
+        draft_doc: DraftDoc,
+        quality: ReviewQuality,
+        error_state: Optional[str],
+        graph_error: Optional[str],
+    ) -> list[str]:
+        limitations: list[str] = []
+        if quality.citation_coverage < 1.0:
+            limitations.append("部分段落仍需要更强证据支撑")
+        if quality.unsupported_paragraph_rate > 0.0:
+            limitations.append("存在未完全支撑的论断，需要继续修复")
+        if error_state == "partial_draft":
+            limitations.append("当前草稿为部分完成状态，不能视为全文闭环")
+        if error_state == "insufficient_evidence":
+            limitations.append("可用证据不足，部分章节被省略")
+        if graph_error == "graph_unavailable":
+            limitations.append("图增强不可用，已降级为 local-only 生成")
+        if not limitations and any(section.omitted_reason for section in draft_doc.sections):
+            limitations.append("存在被省略的章节，需要继续补充证据")
+        if not limitations:
+            limitations.append("当前草稿无显著已知限制")
+        return limitations
 
     @staticmethod
     def _step(

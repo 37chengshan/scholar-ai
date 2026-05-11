@@ -213,6 +213,8 @@ class _RequestStub:
 
 @pytest.mark.asyncio
 async def test_chat_stream_to_session_messages_history_readback_contract():
+    session_id = "11111111-1111-1111-1111-111111111111"
+    query = "Explain retrieval grounding"
     store = _MessageStore()
     final_answer = "final answer"
     assistant_id_holder: dict[str, str] = {}
@@ -251,7 +253,7 @@ async def test_chat_stream_to_session_messages_history_readback_contract():
          patch("app.api.chat.chat_orchestrator._safe_update_assistant_message", AsyncMock()):
 
         response = await chat_stream(
-            request=SimpleNamespace(session_id=session_id, message="Explain the paper", context=None, mode="auto", scope=None),
+            request=SimpleNamespace(session_id=session_id, message=query, context=None, mode="auto", scope=None),
             http_request=_RequestStub(),
             user_id="user-1",
         )

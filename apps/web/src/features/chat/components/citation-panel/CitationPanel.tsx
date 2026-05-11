@@ -14,9 +14,6 @@ export function CitationPanel({ visible, citations }: CitationPanelProps) {
   return (
     <CitationsPanel
       citations={citations.map((citation) => ({
-        source_chunk_id: citation.source_chunk_id || citation.source_id || citation.chunk_id,
-        source_id: citation.source_chunk_id || citation.source_id || citation.chunk_id,
-        chunk_id: citation.chunk_id || citation.source_id || citation.source_chunk_id,
         paper_id: citation.paper_id,
         title: citation.title,
         authors: citation.authors || [],
@@ -25,6 +22,9 @@ export function CitationPanel({ visible, citations }: CitationPanelProps) {
         snippet: citation.text_preview || citation.snippet || '',
         score: citation.score || 0,
         content_type: citation.content_type || 'text',
+        source_chunk_id: citation.source_chunk_id || citation.source_id || citation.chunk_id,
+        source_id: citation.source_chunk_id || citation.source_id || citation.chunk_id,
+        chunk_id: citation.chunk_id || citation.source_id || citation.source_chunk_id,
         citation_jump_url: citation.citation_jump_url,
       }))}
     />

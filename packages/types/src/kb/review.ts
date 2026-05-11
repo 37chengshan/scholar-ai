@@ -7,6 +7,23 @@ export type ReviewErrorState =
   | 'validation_failed'
   | 'writer_failed'
   | 'partial_draft';
+export type ReviewArtifactType =
+  | 'review_draft'
+  | 'citation_audit'
+  | 'evidence_note'
+  | 'compare_matrix'
+  | 'known_limitations'
+  | 'run_trace';
+
+export interface ReviewArtifactDto {
+  artifact_id: string;
+  run_id: string;
+  type: ReviewArtifactType;
+  title: string;
+  content?: string | null;
+  url?: string | null;
+  metadata: Record<string, unknown>;
+}
 
 export interface ReviewOutlineSectionDto {
   title: string;
@@ -65,6 +82,7 @@ export interface ReviewDraftDto {
   outlineDoc: ReviewOutlineDocDto;
   draftDoc: ReviewDraftDocDto;
   quality: ReviewDraftQualityDto;
+  knownLimitations: string[];
   traceId: string;
   runId: string;
   errorState?: ReviewErrorState | null;
@@ -100,7 +118,7 @@ export interface ReviewRunDetailDto extends ReviewRunSummaryDto {
   inputPayload: Record<string, unknown>;
   steps: Array<Record<string, unknown>>;
   toolEvents: Array<Record<string, unknown>>;
-  artifacts: Array<Record<string, unknown>>;
+  artifacts: ReviewArtifactDto[];
   evidence: Array<Record<string, unknown>>;
   recoveryActions: Array<Record<string, unknown>>;
 }

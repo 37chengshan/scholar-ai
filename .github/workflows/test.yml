@@ -102,7 +102,7 @@ jobs:
           SQL
           if ! alembic upgrade heads; then
             echo "Alembic bootstrap failed on clean CI DB; falling back to SQLAlchemy metadata bootstrap"
-            python -c "import asyncio, app.models; from app.database import init_db; asyncio.run(init_db())"
+            python -c "import asyncio; from app.database import ensure_non_production_tables; asyncio.run(ensure_non_production_tables((\"roles\", \"users\", \"user_roles\", \"refresh_tokens\", \"knowledge_bases\", \"papers\", \"paper_chunks\", \"reading_progress\", \"sessions\", \"chat_messages\", \"knowledge_base_papers\", \"import_batches\", \"import_jobs\", \"review_drafts\", \"review_runs\")))"
           fi
 
       - name: Create test environment file

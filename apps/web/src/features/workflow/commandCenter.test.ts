@@ -98,7 +98,11 @@ describe('commandCenter', () => {
 
     expect(command.category).toBe('chat');
     expect(command.priority).toBe('active');
-    expect(command.targetHref).toBe('/chat?kbId=kb-1&handoff=1&new=1');
+    const params = new URLSearchParams(command.targetHref.split('?')[1] || '');
+    expect(command.targetHref.startsWith('/chat?')).toBe(true);
+    expect(params.get('kbId')).toBe('kb-1');
+    expect(params.get('handoff')).toBe('1');
+    expect(params.get('new')).toBe('1');
     expect(command.metadata?.evidenceCount).toBe(2);
   });
 });
