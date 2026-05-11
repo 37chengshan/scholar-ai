@@ -11,8 +11,8 @@ evidence_commits:
 
 # 24 v4.0-6 执行计划：Academic RAG Optimization
 
-> 日期：2026-05-11  
-> 状态：execution-complete  
+> 日期：2026-05-11
+> 状态：execution-complete
 > 上游研究：`docs/plans/v4_0/active/phase_6/2026-05-11_v4_0_phase_6_academic_rag_optimization_research.md`
 
 ## 0. 执行状态

@@ -384,6 +384,33 @@ describe('MessageFeed', () => {
     expect(screen.getAllByRole('button', { name: '停止' })).toHaveLength(1);
   });
 
+  it('keeps assistant copy action visible without hover-only reveal', () => {
+    render(
+      <MessageFeed
+        renderMessages={[
+          asRenderMessage({
+            id: 'assistant-copy-visible',
+            session_id: 's1',
+            role: 'assistant',
+            content: '这是一条可复制的回答',
+            displayContent: '这是一条可复制的回答',
+            created_at: '2026-01-01T00:00:00Z',
+          }),
+        ]}
+        streamState={createInitialState()}
+        currentMessageId={'assistant-copy-visible'}
+        thinkingSteps={[]}
+        labels={{ noMessages: '开始新对话', sendFirst: '发送第一条消息', thinking: '思考中', stop: '停止' }}
+        messagesEndRef={createRef<HTMLDivElement>()}
+        onCitationClick={() => {}}
+        onStop={() => {}}
+        formatTime={() => '10:00'}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '复制回答' })).toBeInTheDocument();
+  });
+
   it('normalizes abstain boilerplate copy for zh assistant messages', () => {
     render(
       <MessageFeed

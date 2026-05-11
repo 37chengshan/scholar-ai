@@ -2,7 +2,9 @@ import { motion } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 import { SearchResultCard } from '@/app/components/SearchResultCard';
 import { AuthorResultCard } from '@/app/components/AuthorResultCard';
-import { NoSearchResultsState } from '@/app/components/EmptyState';
+import { UnifiedFeedbackState } from '@/app/components/UnifiedFeedbackState';
+import { useDelayedVisibility } from '@/app/hooks/useDelayedVisibility';
+
 import { SearchResults } from '@/hooks/useSearch';
 import { AuthorSearchResult } from '@/services/searchApi';
 
@@ -50,7 +52,13 @@ export function SearchResultsPanel({
   onContinueInChat,
   onAuthorClick,
 }: SearchResultsPanelProps) {
+  const showInitialLoading = useDelayedVisibility(isInitialLoading, 200);
+  const showPageLoading = useDelayedVisibility(loading && isPageFetching, 200);
+
   if (isInitialLoading) {
+    if (!showInitialLoading) {
+      return <div className="h-64" data-testid="search-initial-loading-placeholder" aria-hidden="true" />;
+    }
     return (
       <div className="flex items-center justify-center h-64" data-testid="search-initial-loading">
         <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -80,7 +88,7 @@ export function SearchResultsPanel({
 
   return (
     <div className="space-y-4" data-testid="search-results-panel">
-      {loading && isPageFetching && (
+      {showPageLoading && (
         <div
           className="flex items-center gap-2 text-xs text-muted-foreground"
           data-testid="search-page-loading"
@@ -118,7 +126,7 @@ export function SearchResultsPanel({
               ))}
             </div>
           ) : (
-            <NoSearchResultsState query={query} />
+            <UnifiedFeedbackState status="empty" message={`未找到与 "${query}" 相关的作者`} />
           )}
         </div>
       )}
@@ -168,8 +176,8 @@ export function SearchResultsPanel({
 
       {activeSource !== 'authors' && results.internal.length === 0 && results.external.length === 0 && (
         <div>
-          <NoSearchResultsState query={query} />
-          <p className="mt-3 text-xs text-muted-foreground">
+          <UnifiedFeedbackState status="empty" message={`未找到与 "${query}" 相关的结果`} />
+          <p className="mt-3 text-xs text-center text-muted-foreground">
             {activeSource === 'library' ? labels.emptyLibrary : activeSource === 'external' ? labels.emptyExternal : labels.emptyAll}
           </p>
         </div>

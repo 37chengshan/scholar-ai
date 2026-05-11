@@ -1,100 +1,70 @@
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { AlertCircle, FileQuestion, Loader2, Info } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import React from 'react';
 import { Button } from '@/app/components/ui/button';
 
-interface UnifiedLoadingStateProps {
-  label?: string;
-  fullScreen?: boolean;
+const feedbackVariants = cva(
+  "flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500",
+  {
+    variants: {
+      status: {
+        empty: "text-stone-500 bg-stone-50/50 rounded-xl border border-dashed border-stone-200",
+        error: "text-red-700 bg-red-50/50 rounded-xl border border-red-100",
+        loading: "text-orange-600",
+        partial: "text-amber-700 bg-amber-50 rounded-xl border border-amber-200",
+      },
+      size: { sm: "min-h-[120px] text-sm py-4", md: "min-h-[240px] text-base" }
+    },
+    defaultVariants: { status: "empty", size: "md" }
+  }
+);
+
+interface UnifiedFeedbackStateProps extends VariantProps<typeof feedbackVariants> {
+  title?: string;
+  message?: string;
+  action?: React.ReactNode;
   className?: string;
 }
 
-interface UnifiedEmptyStateProps {
-  title: string;
-  description?: string;
-  actionLabel?: string;
-  onAction?: () => void;
-  className?: string;
-}
+export function UnifiedFeedbackState({ status, size, title, message, action, className }: UnifiedFeedbackStateProps) {
+  const Icon = status === 'error' ? AlertCircle :
+               status === 'loading' ? Loader2 :
+               status === 'partial' ? Info : FileQuestion;
 
-interface UnifiedErrorStateProps {
-  title: string;
-  description?: string;
-  retryLabel?: string;
-  onRetry?: () => void;
-  className?: string;
-}
-
-export function UnifiedLoadingState({
-  label = '加载中...',
-  fullScreen = false,
-  className,
-}: UnifiedLoadingStateProps) {
   return (
-    <div
-      className={[
-        'flex items-center justify-center',
-        fullScreen ? 'min-h-[60vh]' : 'py-16',
-        className || '',
-      ]
-        .join(' ')
-        .trim()}
-    >
-      <div className="inline-flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-        <span className="text-sm font-medium">{label}</span>
-      </div>
+    <div className={cn(feedbackVariants({ status, size }), className)}>
+      <Icon className={cn("mb-3 w-8 h-8", status === 'loading' && "animate-spin opacity-80")} />
+      {title && <h3 className="font-semibold text-stone-800 mb-1">{title}</h3>}
+      {message && <p className="max-w-sm text-inherit opacity-80 leading-relaxed">{message}</p>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
 
-export function UnifiedEmptyState({
-  title,
-  description,
-  actionLabel,
-  onAction,
-  className,
-}: UnifiedEmptyStateProps) {
+// Backward compatibility interfaces and wrappers (temporary)
+export function UnifiedEmptyState({ title, description, actionLabel, onAction, className }: any) {
   return (
-    <div
-      className={[
-        'bg-paper-1 border border-border/80 p-10 text-center space-y-4',
-        className || '',
-      ]
-        .join(' ')
-        .trim()}
-    >
-      <div className="text-foreground font-semibold">{title}</div>
-      {description && <p className="text-muted-foreground text-sm leading-relaxed">{description}</p>}
-      {actionLabel && onAction ? <Button onClick={onAction}>{actionLabel}</Button> : null}
-    </div>
+    <UnifiedFeedbackState
+      status="empty"
+      title={title}
+      message={description}
+      action={actionLabel && onAction ? <Button onClick={onAction}>{actionLabel}</Button> : null}
+      className={className}
+    />
   );
 }
-
-export function UnifiedErrorState({
-  title,
-  description,
-  retryLabel,
-  onRetry,
-  className,
-}: UnifiedErrorStateProps) {
+export function UnifiedLoadingState({ label, fullScreen, className }: any) {
+  return <UnifiedFeedbackState status="loading" message={label} size={fullScreen ? "md" : "sm"} className={className} />;
+}
+export function UnifiedErrorState({ title, description, retryLabel, onRetry, className }: any) {
   return (
-    <div
-      className={[
-        'bg-paper-1 border border-border/80 p-8 text-center space-y-4',
-        className || '',
-      ]
-        .join(' ')
-        .trim()}
-    >
-      <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/[0.08] text-primary mx-auto">
-        <AlertCircle className="w-5 h-5" />
-      </div>
-      <div className="text-foreground font-semibold">{title}</div>
-      {description && <p className="text-muted-foreground text-sm leading-relaxed">{description}</p>}
-      {retryLabel && onRetry ? (
-        <Button variant="outline" onClick={onRetry}>
-          {retryLabel}
-        </Button>
-      ) : null}
-    </div>
+    <UnifiedFeedbackState
+      status="error"
+      title={title}
+      message={description}
+      action={retryLabel && onRetry ? <Button variant="outline" onClick={onRetry}>{retryLabel}</Button> : null}
+      className={className}
+    />
   );
 }

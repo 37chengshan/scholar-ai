@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeWorkspaceShell } from './KnowledgeWorkspaceShell';
@@ -145,13 +145,18 @@ describe('KnowledgeWorkspaceShell', () => {
   });
 
   it('renders papers panel by default', async () => {
+    const user = userEvent.setup();
     render(<KnowledgeWorkspaceShell />);
 
     await waitFor(() => {
       expect(screen.getByText('Paper One')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('工作区状态')).toBeInTheDocument();
+    expect(screen.queryByText('工作区状态')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '展开侧注' }));
+
+    expect(await screen.findByText('工作区状态')).toBeInTheDocument();
     expect(screen.getByText('解析与索引已完成')).toBeInTheDocument();
     expect(screen.getByText('综述与问答已就绪')).toBeInTheDocument();
   });
@@ -240,15 +245,26 @@ describe('KnowledgeWorkspaceShell', () => {
       expect(screen.getByText('Paper One')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: /知识库检索/i }));
-    await user.type(screen.getByPlaceholderText('输入您的问题...'), 'transformer');
-    await user.click(screen.getByRole('button', { name: /^检索$/i }));
-
+    const searchTab = screen.getByRole('tab', { name: /知识库检索/i });
+    await user.click(searchTab);
     await waitFor(() => {
-      expect(screen.getByText(/检索到 1 个相关片段/i)).toBeInTheDocument();
+      expect(searchTab).toHaveAttribute('data-state', 'active');
     });
 
-    await user.click(screen.getByRole('button', { name: /打开阅读页/i }));
+    const searchPanel = screen.getByRole('tabpanel');
+    const searchInput = within(searchPanel).getByPlaceholderText('输入您的问题...') as HTMLInputElement;
+    fireEvent.change(searchInput, { target: { value: 'transformer' } });
+    const searchButton = within(searchPanel).getByRole('button', { name: /^检索$/i });
+    await waitFor(() => {
+      expect(searchButton).not.toHaveAttribute('disabled');
+    });
+    await user.click(searchButton);
+
+    await waitFor(() => {
+      expect(within(searchPanel).getByText(/检索到 1 个相关片段/i)).toBeInTheDocument();
+    });
+
+    await user.click(within(searchPanel).getByRole('button', { name: /打开阅读页/i }));
 
     expect(mockNavigate).toHaveBeenCalledWith('/read/paper-1?page=2&source=evidence&source_id=chunk-1');
   });

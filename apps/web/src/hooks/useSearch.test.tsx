@@ -52,15 +52,26 @@ afterEach(() => {
 describe('useSearch', () => {
   it('keeps previous page results visible while fetching next page', async () => {
     const unifiedMock = vi.mocked(searchApi.unified);
-    unifiedMock.mockImplementation(async (query, limit, offset) => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      return buildUnifiedResponse(query, offset ?? 0, limit ?? 20);
+    const pendingResolvers: Array<(value: UnifiedResponse) => void> = [];
+    unifiedMock.mockImplementation(() => {
+      return new Promise<UnifiedResponse>((resolve) => {
+        pendingResolvers.push(resolve);
+      });
     });
 
     const { result } = renderHook(
       () => useSearch({ initialQuery: 'agent', debounceMs: 1 }),
       { wrapper: createWrapper() },
     );
+
+    await waitFor(() => {
+      expect(unifiedMock).toHaveBeenCalledTimes(1);
+      expect(typeof pendingResolvers[0]).toBe('function');
+    });
+
+    await act(async () => {
+      pendingResolvers[0](buildUnifiedResponse('agent', 0, 20));
+    });
 
     await waitFor(() => {
       expect(result.current.results?.external[0]?.id).toBe('agent-0');
@@ -70,7 +81,16 @@ describe('useSearch', () => {
       result.current.nextPage();
     });
 
+    await waitFor(() => {
+      expect(unifiedMock).toHaveBeenCalledTimes(2);
+      expect(typeof pendingResolvers[1]).toBe('function');
+    });
+
     expect(result.current.results?.external[0]?.id).toBe('agent-0');
+
+    await act(async () => {
+      pendingResolvers[1](buildUnifiedResponse('agent', 20, 20));
+    });
 
     await waitFor(() => {
       expect(result.current.results?.external[0]?.id).toBe('agent-20');
@@ -153,5 +173,57 @@ describe('useSearch', () => {
     );
 
     expect(second.result.current.results?.external[0]?.id).toBe('alpha-0');
+  });
+
+  it('keeps previous query results visible while fetching next query', async () => {
+    const unifiedMock = vi.mocked(searchApi.unified);
+    const pendingResolvers: Array<(value: UnifiedResponse) => void> = [];
+    unifiedMock.mockImplementation(() => {
+      return new Promise<UnifiedResponse>((resolve) => {
+        pendingResolvers.push(resolve);
+      });
+    });
+
+    const { result } = renderHook(
+      () => useSearch({ debounceMs: 1 }),
+      { wrapper: createWrapper() },
+    );
+
+    act(() => {
+      result.current.setQuery('agent');
+    });
+
+    await waitFor(() => {
+      expect(unifiedMock).toHaveBeenCalledTimes(1);
+      expect(typeof pendingResolvers[0]).toBe('function');
+    });
+
+    await act(async () => {
+      pendingResolvers[0](buildUnifiedResponse('agent', 0, 20));
+    });
+
+    await waitFor(() => {
+      expect(result.current.results?.external[0]?.id).toBe('agent-0');
+    });
+
+    await act(async () => {
+      result.current.setQuery('graph');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await waitFor(() => {
+      expect(unifiedMock).toHaveBeenCalledTimes(2);
+      expect(typeof pendingResolvers[1]).toBe('function');
+    });
+
+    expect(result.current.results?.external[0]?.id).toBe('agent-0');
+
+    await act(async () => {
+      pendingResolvers[1](buildUnifiedResponse('graph', 0, 20));
+    });
+
+    await waitFor(() => {
+      expect(result.current.results?.external[0]?.id).toBe('graph-0');
+    });
   });
 });
