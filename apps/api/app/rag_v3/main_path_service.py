@@ -36,6 +36,7 @@ from app.services.evidence_contract_service import (
 )
 from app.services.phase_i_routing_service import get_phase_i_routing_service
 from app.services.truthfulness_service import get_truthfulness_service
+from app.services.evidence_action_service import build_recovery_actions
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -1172,9 +1173,22 @@ async def build_answer_contract_payload(
         **truthfulness_report.get("summary", {}),
         "citation_coverage": quality.citation_support_score,
     }
+    runtime_truth = pack.diagnostics.get("runtime_truth", {})
+    recovery_actions = build_recovery_actions(
+        scope="rag",
+        answer_mode=answer_mode,
+        task_family=routing.task_family,
+        execution_mode=resolved_execution_mode,
+        truthfulness_report=truthfulness_report,
+        degraded_conditions=runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
+        recovery_entry={
+            "task_family": routing.task_family,
+            "entry_type": "read",
+            "paper_ids": list(paper_scope or []),
+        },
+    )
 
     fallback_used = bool(pack.diagnostics.get("dense_fallback_used", 0.0) > 0)
-    runtime_truth = pack.diagnostics.get("runtime_truth", {})
     error_state = None
     if answer_mode == "abstain":
         error_state = "abstain"
@@ -1272,6 +1286,7 @@ async def build_answer_contract_payload(
         "truthfulness_report": truthfulness_report,
         "retrieval_plane_policy": trace_payload["retrieval_plane_policy"],
         "degraded_conditions": trace_payload["degraded_conditions"],
+        "recovery_actions": recovery_actions,
     }
 
 
