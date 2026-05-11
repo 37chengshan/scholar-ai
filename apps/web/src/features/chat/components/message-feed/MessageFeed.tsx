@@ -17,6 +17,7 @@ import { useEvidenceNavigation } from '@/features/chat/hooks/useEvidenceNavigati
 import { EvidencePanel } from '@/features/chat/components/evidence/EvidencePanel';
 import { CompareCard } from '@/features/chat/components/CompareCard';
 import { normalizeAnswerDisplayCopy } from '@/features/chat/lib/answerCopy';
+import { MarkdownRenderer } from '@/app/components/MarkdownRenderer';
 
 interface MessageFeedCopy {
   noMessages: string;
@@ -240,8 +241,8 @@ export function MessageFeed({
                             onCitationClick(messageCitations[citationIndex]);
                           })
                         ) : normalizedDisplayContent ? (
-                          <div className="whitespace-pre-wrap">
-                            {normalizedDisplayContent}
+                          <div className="max-w-prose">
+                            <MarkdownRenderer content={normalizedDisplayContent} />
                             {isStreaming && (
                               <span className="ml-0.5 inline-block h-4 w-[2px] animate-[pulse_1s_ease-in-out_infinite] bg-primary/60 align-middle" aria-hidden="true" />
                             )}

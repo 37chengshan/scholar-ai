@@ -254,11 +254,8 @@ export function useSearch(options: UseSearchOptions = {}) {
     });
   }, [debouncedQuery, normalizedFilters, page, queryClient, queryEnabled, searchQuery.data]);
 
-  const shouldHidePlaceholderData = searchQuery.isPlaceholderData && page === 0;
   const results = hasInput
-    ? shouldHidePlaceholderData
-      ? (immediateCachedData ?? sessionCachedData ?? null)
-      : (searchQuery.data ?? immediateCachedData ?? sessionCachedData ?? null)
+    ? (searchQuery.data ?? immediateCachedData ?? sessionCachedData ?? null)
     : null;
   const isInitialLoading = queryEnabled && searchQuery.isFetching && !searchQuery.data;
   const isPageFetching = queryEnabled && searchQuery.isFetching && !!searchQuery.data;

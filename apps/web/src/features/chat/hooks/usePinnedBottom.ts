@@ -5,6 +5,7 @@ interface UsePinnedBottomOptions {
   anchorRef: RefObject<HTMLElement>;
   threshold?: number;
   streamFollowIntervalMs?: number;
+  smoothBehavior?: ScrollBehavior;
 }
 
 type ScrollReason = 'message' | 'stream' | 'done';
@@ -20,6 +21,7 @@ export function usePinnedBottom({
   anchorRef,
   threshold = 120,
   streamFollowIntervalMs = 120,
+  smoothBehavior = 'smooth',
 }: UsePinnedBottomOptions): UsePinnedBottomResult {
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const pinnedRef = useRef(true);
@@ -60,8 +62,10 @@ export function usePinnedBottom({
       lastStreamFollowAtRef.current = now;
     }
 
-    scrollToBottom('auto');
-  }, [scrollToBottom, streamFollowIntervalMs]);
+    const prefersReducedMotion = typeof window !== 'undefined'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scrollToBottom(reason === 'stream' && !prefersReducedMotion ? smoothBehavior : 'auto');
+  }, [scrollToBottom, smoothBehavior, streamFollowIntervalMs]);
 
   useEffect(() => {
     const container = containerRef.current;
