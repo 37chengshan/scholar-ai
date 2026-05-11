@@ -42,6 +42,7 @@ from app.schemas.review_draft import (
 )
 from app.services.evidence_contract_service import build_citation_jump_url, get_evidence_source_payload
 from app.services.phase_i_routing_service import PhaseIRoutingDecision, get_phase_i_routing_service
+from app.services.evidence_action_service import build_claim_recovery_actions
 from app.services.truthfulness_service import get_truthfulness_service
 from app.utils.logger import logger
 
@@ -1187,16 +1188,24 @@ class ReviewDraftService:
     def _truthfulness_report_to_claim_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         for item in report.get("results", []):
+            support_status = item["support_level"]
             results.append(
                 {
                     "claim_id": item["claim_id"],
                     "claim_text": item["text"],
                     "claim_type": item["claim_type"],
-                    "support_status": item["support_level"],
+                    "support_status": support_status,
                     "support_score": item["support_score"],
                     "supporting_evidence_ids": item["evidence_ids"],
-                    "repairable": item["support_level"] != "supported",
+                    "repairable": support_status != "supported",
                     "repair_hint": item["reason"],
+                    "recovery_actions": build_claim_recovery_actions(
+                        claim_id=item["claim_id"],
+                        support_status=support_status,
+                        repair_hint=item.get("reason"),
+                        supporting_evidence_ids=item.get("evidence_ids"),
+                        scope="review",
+                    ),
                 }
             )
         return results

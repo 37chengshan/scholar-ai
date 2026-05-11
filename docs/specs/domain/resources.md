@@ -186,6 +186,7 @@ ClaimVerificationReport 最小字段契约：
 - `unsupportedClaimRate`
 - `results[]`：每条 claim 包含 `claim_id`、`text`、`claim_type`、`support_level`、`support_score`、`evidence_ids[]`
 - 回答决策字段：`abstained`、`abstainReason`、`answerMode(full|partial|abstain)`
+- Phase 6 action 字段：`recoveryActions[]`，单项至少包含 `action`、`status`、`scope`、`reason`、`params{}`
 
 GraphRetrievalResult 最小字段契约：
 
@@ -202,6 +203,7 @@ ReviewDraft 最小字段契约（Phase 5）：
 - `draft_doc.sections[]`：`heading`、`paragraphs[]`、`omitted_reason`
 - `draft_doc.sections[].paragraphs[]`：`paragraph_id`、`text`、`citations[]`、`evidence_blocks[]`、`citation_coverage_status(covered|insufficient)`
 - `draft_doc.sections[].paragraphs[]` 可选补充 `claim_verification[]` 与 `truthfulness_summary{}`，且两者必须来自统一 truthfulness substrate。
+- `draft_doc.sections[].paragraphs[].claim_verification[]` 若 `support_status != supported`，应显式暴露 `recovery_actions[]`，而不只是 `repair_hint`。
 - `quality`：`citation_coverage`、`unsupported_paragraph_rate`、`graph_assist_used`、`fallback_used`
 - `trace_id`、`run_id`、`error_state`、`created_at`、`updated_at`
 

@@ -265,8 +265,10 @@ RAG Iteration 3 契约补充（Citation-Aware Iterative Retrieval + Outline-Guid
   - `retrievalTrace`：iterative orchestration trace，至少包含 `mode`、`iterative_triggered`、`rounds[]`。
   - `citationAwareMetadata`：citation-aware 扩展统计，至少包含 `citation_expansion_applied` 与 relation 计数。
   - `scientificSynthesisMetrics`：科学综合质量指标，至少包含 `citation_faithfulness`、`unsupported_claim_rate`、`cross_paper_synthesis_quality`、`partial_abstain_quality`。
+  - `recoveryActions[]`：Phase 6 recovery action contract，单项至少包含 `action`、`status`、`scope`、`reason`、`params{}`。
 - `metadata.answerMode` 仍维持 `full|partial|abstain` 冻结取值，不允许新增第四态。
 - `retrievalTrace` 与 `citationAwareMetadata` 在 cache 命中响应中必须保持结构同构。
+- `recoveryActions[]` 在 cache 命中响应中也必须保持结构同构。
 - `POST /api/v1/chat/retry`
   - 请求：`session_id`（必填），可选 `mode` 与 `scope`
   - 语义：重放该会话最后一条 `user` 消息，并复用 `chat/stream` 流式返回。

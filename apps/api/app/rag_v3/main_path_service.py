@@ -30,16 +30,17 @@ from app.rag_v3.schemas import EvidenceBlock, EvidenceCandidate, EvidencePack
 from app.services.paper_display_metadata import sanitize_paper_display_metadata
 from app.utils.zhipu_client import ZhipuLLMClient
 from app.services.evidence_contract_service import (
+    ARTIFACTS_ROOT,
     build_citation_jump_url,
     get_evidence_source_payload,
 )
 from app.services.phase_i_routing_service import get_phase_i_routing_service
 from app.services.truthfulness_service import get_truthfulness_service
-from app.utils.artifact_paths import resolve_artifact_papers_root
+from app.services.evidence_action_service import build_recovery_actions
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-ARTIFACT_ROOT = resolve_artifact_papers_root(__file__)
+ARTIFACT_ROOT = ARTIFACTS_ROOT / "papers"
 RUNTIME_PROFILE = get_active_rag_runtime_profile()
 _QUERY_PREFIX_PATTERN = re.compile(r"^\s*(再次回答|继续分析|继续回答|继续|重新回答|重新分析|再回答一遍|重新来过)\s*[:：,，-]?\s*", re.IGNORECASE)
 _CONTRIBUTION_QUERY_PATTERN = re.compile(
@@ -1172,9 +1173,22 @@ async def build_answer_contract_payload(
         **truthfulness_report.get("summary", {}),
         "citation_coverage": quality.citation_support_score,
     }
+    runtime_truth = pack.diagnostics.get("runtime_truth", {})
+    recovery_actions = build_recovery_actions(
+        scope="rag",
+        answer_mode=answer_mode,
+        task_family=routing.task_family,
+        execution_mode=resolved_execution_mode,
+        truthfulness_report=truthfulness_report,
+        degraded_conditions=runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
+        recovery_entry={
+            "task_family": routing.task_family,
+            "entry_type": "read",
+            "paper_ids": list(paper_scope or []),
+        },
+    )
 
     fallback_used = bool(pack.diagnostics.get("dense_fallback_used", 0.0) > 0)
-    runtime_truth = pack.diagnostics.get("runtime_truth", {})
     error_state = None
     if answer_mode == "abstain":
         error_state = "abstain"
@@ -1272,6 +1286,7 @@ async def build_answer_contract_payload(
         "truthfulness_report": truthfulness_report,
         "retrieval_plane_policy": trace_payload["retrieval_plane_policy"],
         "degraded_conditions": trace_payload["degraded_conditions"],
+        "recovery_actions": recovery_actions,
     }
 
 
