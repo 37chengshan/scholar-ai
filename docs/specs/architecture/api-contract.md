@@ -266,9 +266,11 @@ RAG Iteration 3 契约补充（Citation-Aware Iterative Retrieval + Outline-Guid
   - `citationAwareMetadata`：citation-aware 扩展统计，至少包含 `citation_expansion_applied` 与 relation 计数。
   - `scientificSynthesisMetrics`：科学综合质量指标，至少包含 `citation_faithfulness`、`unsupported_claim_rate`、`cross_paper_synthesis_quality`、`partial_abstain_quality`。
   - `recoveryActions[]`：Phase 6 recovery action contract，单项至少包含 `action`、`status`、`scope`、`reason`、`params{}`。
+  - `phase6_runtime`：Phase 6 统一 runtime contract，至少包含 `answer_mode`、`confidence_level(high-confidence|medium-confidence|low-confidence)`、`degraded`、`degraded_reasons[]`、`corrective_retrieval_used`、`corrective_actions[]`、`fallback_used`、`fallback_events[]`、`unsupported_claim_count`、`recovery_outcome(not_needed|recovered|partial|failed)`、`silent_fallback`、`next_step_entry`。
 - `metadata.answerMode` 仍维持 `full|partial|abstain` 冻结取值，不允许新增第四态。
 - `retrievalTrace` 与 `citationAwareMetadata` 在 cache 命中响应中必须保持结构同构。
 - `recoveryActions[]` 在 cache 命中响应中也必须保持结构同构。
+- `phase6_runtime` 在 cache 命中响应中也必须保持结构同构。
 - `POST /api/v1/chat/retry`
   - 请求：`session_id`（必填），可选 `mode` 与 `scope`
   - 语义：重放该会话最后一条 `user` 消息，并复用 `chat/stream` 流式返回。
@@ -316,6 +318,7 @@ Phase 5 ReviewDraft 与 KB Runs 契约（冻结）：
 - `GET /api/v1/runs/{run_id}`
   - 语义：返回完整 run 详情。
   - 响应最小字段：`steps[]`、`tool_events[]`、`artifacts[]`、`evidence[]`、`recovery_actions[]`、`trace_id`、`error_state`。
+  - 若 run 属于 Phase 6 review/runtime 路径，允许在 `tool_events[].result` 或 `artifacts[].metadata` 中带出 `phase6_runtime`，其字段语义必须与 `POST /api/v1/rag/query` 的 `phase6_runtime` 保持一致。
   - `artifacts[]` 需使用统一 artifact contract，至少包含：
     - `artifact_id`
     - `run_id`
@@ -430,6 +433,7 @@ Chat v3 Done 事件契约补充（Frontend Evidence UI）：
 - `compare_matrix`：当 `response_type=compare` 时必须保留，不允许在 SDK 或前端 normalizer 中丢失
 - `trace{}`（包含 `runtime_profile`、`spans[]`、`fallback`、`cost_estimate`）
 - Phase I 首批新增：`task_family`、`execution_mode`、`truthfulness_required`、`truthfulness_summary`、`truthfulness_report`、`retrieval_plane_policy`、`degraded_conditions`
+- Phase 6 follow-up 新增：`phase6_runtime`
   - `cost_estimate`、`error_state`（取值允许 `fallback_used|partial_answer|abstain`）
 - SSE `done` 字段扩展必须向后兼容：老客户端仅消费 `answer`/`citations` 时不可崩溃。
 
@@ -445,6 +449,7 @@ Chat v3 Done 事件契约补充（Frontend Evidence UI）：
 - `response_type` 固定为 `compare`
 - `compare_matrix` 必须存在，且其所有 cell 均来自真实 evidence candidates；证据不足时仅允许 `support_status=not_enough_evidence`
 - compare / review / rag 共享同一 claim truthfulness substrate；若返回 claim 级校验结果，字段语义必须与 `truthfulness_report.results[]` 对齐，不允许各服务私有命名漂移。
+- compare / review / rag / agentic retrieval 若暴露 `phase6_runtime`，则必须共享同一字段集合与取值语义；不得在某条链上重命名 `confidence_level`、`degraded_reasons`、`recovery_outcome` 或 `next_step_entry`。
   - `evidence_blocks[]` / `citations[]` 必须可回跳到 Read 页，不得返回 synthetic lexical placeholder 作为生产证据
 
 Plan C 契约治理约束：

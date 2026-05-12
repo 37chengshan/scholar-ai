@@ -133,6 +133,8 @@ def test_finalize_marks_partial_when_some_sections_omitted():
     assert quality.graph_assist_used is True
     assert quality.storm_lite_used is True
     assert error_state == "partial_draft"
+    assert quality.benchmark_hooks["phase6_runtime"]["answer_mode"] == "partial"
+    assert quality.benchmark_hooks["phase6_runtime"]["degraded"] is True
 
 
 def test_finalize_sets_fallback_when_graph_unavailable():
@@ -153,6 +155,7 @@ def test_finalize_sets_fallback_when_graph_unavailable():
 
     assert quality.fallback_used is True
     assert error_state in {"insufficient_evidence", "partial_draft"}
+    assert "graph_unavailable" in quality.benchmark_hooks["phase6_runtime"]["degraded_reasons"]
 
 
 def test_review_dto_includes_known_limitations_and_run_artifacts():
@@ -232,6 +235,28 @@ def test_run_detail_preserves_phase3_artifact_bundle_links():
     assert payload["artifacts"][0]["url"] == "/notes?paperId=paper-1&sourceChunkId=chunk-1"
     assert payload["artifacts"][1]["type"] == "compare_matrix"
     assert payload["artifacts"][1]["url"] == "/compare?paper_ids=paper-1,paper-2"
+
+
+def test_run_detail_preserves_phase6_runtime_recovery_actions():
+    run = ReviewRun(
+        id="run-phase6",
+        knowledge_base_id="kb-1",
+        review_draft_id="draft-1",
+        user_id="user-1",
+        status="completed",
+        scope="full_kb",
+        input_payload={},
+        steps=[],
+        tool_events=[],
+        artifacts=[],
+        evidence=[],
+        recovery_actions=[{"action": "retry", "reason": "partial_draft"}],
+        trace_id="trace-1",
+    )
+
+    payload = ReviewDraftService.to_run_detail(run)
+
+    assert payload["recoveryActions"] == [{"action": "retry", "reason": "partial_draft"}]
 
 
 def test_candidate_to_evidence_block_prefers_source_payload_content(mocker):

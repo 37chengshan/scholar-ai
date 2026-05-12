@@ -43,6 +43,7 @@ from app.schemas.review_draft import (
 from app.services.evidence_contract_service import build_citation_jump_url, get_evidence_source_payload
 from app.services.phase_i_routing_service import PhaseIRoutingDecision, get_phase_i_routing_service
 from app.services.evidence_action_service import build_claim_recovery_actions
+from app.services.phase6_runtime_service import build_phase6_runtime_contract
 from app.services.truthfulness_service import get_truthfulness_service
 from app.utils.logger import logger
 
@@ -385,9 +386,7 @@ class ReviewDraftService:
             run.artifacts = artifacts
             run.evidence = evidence_rows
             run.error_state = error_state
-            run.recovery_actions = (
-                [{"action": "retry", "reason": error_state}] if error_state else []
-            )
+            run.recovery_actions = list(quality.benchmark_hooks.get("phase6_runtime", {}).get("recovery_actions") or [])
             run.tool_events = tool_events + [
                 {
                     "event_id": uuid4().hex,
@@ -1334,6 +1333,32 @@ class ReviewDraftService:
         if graph_error == "graph_unavailable" and error_state is None:
             error_state = "partial_draft"
 
+        truthfulness_summary = {
+            "unsupported_claim_rate": round(unsupported_rate, 4),
+            "citation_coverage": round(citation_coverage, 4),
+            "verifier_backend": routing.verification_backend,
+            "answer_mode": "abstain" if total == 0 else ("partial" if error_state == "partial_draft" else "full"),
+            "unsupported_claims": total - covered,
+        }
+        recovery_actions = (
+            [{"action": "retry", "reason": error_state}] if error_state
+            else []
+        )
+        phase6_runtime = build_phase6_runtime_contract(
+            answer_mode=truthfulness_summary["answer_mode"],
+            degraded_conditions=[graph_error] if graph_error else ([error_state] if error_state else []),
+            recovery_actions=recovery_actions,
+            truthfulness_summary=truthfulness_summary,
+            retrieval_evaluator=None,
+            iterative_actions=None,
+            fallback_used=fallback_used,
+            fallback_events=[graph_error] if graph_error else [],
+            recovery_entry={
+                "task_family": routing.task_family,
+                "entry_type": "review",
+            },
+        )
+
         quality = ReviewQuality(
             citation_coverage=citation_coverage,
             unsupported_paragraph_rate=unsupported_rate,
@@ -1347,13 +1372,13 @@ class ReviewDraftService:
             benchmark_hooks={
                 "task_family": routing.task_family,
                 "execution_mode": routing.execution_mode,
-                "truthfulness_report_summary": {
-                    "unsupported_claim_rate": round(unsupported_rate, 4),
-                    "citation_coverage": round(citation_coverage, 4),
-                    "verifier_backend": routing.verification_backend,
-                },
+                "truthfulness_report_summary": truthfulness_summary,
                 "retrieval_plane_policy": routing.retrieval_plane_policy,
                 "degraded_conditions": [graph_error] if graph_error else [],
+                "phase6_runtime": {
+                    **phase6_runtime,
+                    "recovery_actions": recovery_actions,
+                },
             },
         )
         return draft_doc, quality, error_state
