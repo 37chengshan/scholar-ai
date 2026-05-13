@@ -156,6 +156,72 @@ def test_finalize_sets_fallback_when_graph_unavailable():
     assert quality.fallback_used is True
     assert error_state in {"insufficient_evidence", "partial_draft"}
     assert "graph_unavailable" in quality.benchmark_hooks["phase6_runtime"]["degraded_reasons"]
+    assert quality.execution_mode == "local_evidence"
+    assert quality.benchmark_hooks["execution_mode"] == "local_evidence"
+
+
+def test_finalize_surfaces_review_global_graph_evidence():
+    service = ReviewDraftService(db=MagicMock())
+
+    doc = DraftDoc(
+        sections=[
+            DraftSection(
+                heading="Landscape",
+                paragraphs=[
+                    DraftParagraph(
+                        paragraph_id="p1",
+                        text="supported paragraph",
+                        citations=[{"paper_id": "p1"}],
+                        evidence_blocks=[
+                            {
+                                "evidence_id": "e1",
+                                "source_type": "paper",
+                                "paper_id": "p1",
+                                "source_chunk_id": "c1",
+                                "content_type": "text",
+                                "text": "snippet",
+                                "citation_jump_url": "/read/p1?page=1",
+                            }
+                        ],
+                        citation_coverage_status="covered",
+                    )
+                ],
+            )
+        ]
+    )
+
+    final_input = DraftFinalizerInput(
+        draft_doc=doc,
+        coverage_report=[],
+        run_metadata={
+            "graph_summary": {
+                "graph_assist_used": True,
+                "themes": ["retrieval", "benchmark"],
+                "candidate_papers": ["p1", "p2"],
+                "section_seeds": [
+                    {"title": "Method Trends", "perspective": "methods", "retrieval_mode": "global_review"},
+                    {"title": "Conflicting Evidence", "perspective": "conflicts", "retrieval_mode": "global_review"},
+                ],
+                "storm_lite_used": True,
+            }
+        },
+    )
+    _, quality, error_state = service._finalize(
+        finalizer_input=final_input,
+        graph_used=True,
+        graph_error=None,
+        routing=get_phase_i_routing_service().route(
+            query="Write a literature review of retrieval augmented generation",
+            query_family="survey",
+            paper_scope=["p1", "p2"],
+        ),
+    )
+
+    assert error_state is None
+    assert quality.benchmark_hooks["graph_global_evidence"]["graph_assist_used"] is True
+    assert quality.benchmark_hooks["graph_global_evidence"]["section_seed_titles"] == ["Method Trends", "Conflicting Evidence"]
+    assert quality.benchmark_hooks["phase6_runtime"]["review_global_evidence_used"] is True
+    assert quality.benchmark_hooks["phase6_runtime"]["review_global_evidence"]["candidate_papers"] == ["p1", "p2"]
 
 
 def test_review_dto_includes_known_limitations_and_run_artifacts():

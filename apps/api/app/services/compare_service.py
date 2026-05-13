@@ -981,6 +981,7 @@ def build_compare_contract(
         truthfulness_report=truthfulness_report,
         truthfulness_summary=truthfulness_summary,
         retrieval_evaluator=pack.diagnostics.get("retrieval_evaluator"),
+        retrieval_diagnostics=pack.diagnostics,
         iterative_actions=pack.diagnostics.get("iterative_actions"),
         fallback_used=False,
         fallback_events=[],

@@ -81,6 +81,11 @@ def _is_compare_family(query_family: str | None) -> bool:
     return query_family in {"compare", "cross_paper", "survey", "related_work", "method_evolution", "conflicting_evidence"}
 
 
+def _should_merge_summary_candidates(*, query: str, query_family: str | None) -> bool:
+    normalized_family = str(query_family or "").strip().lower()
+    return _is_summary_seeking_query(query) or _is_compare_family(query_family) or normalized_family == "evolution"
+
+
 def _is_summary_candidate(candidate: EvidenceCandidate) -> bool:
     section_id = (candidate.section_id or "").strip().lower()
     if section_id in _SUMMARY_SECTION_IDS:
@@ -425,7 +430,7 @@ def retrieve_evidence(
         content_types=content_types,
     )
 
-    if paper_scope and _is_summary_seeking_query(query):
+    if paper_scope and _should_merge_summary_candidates(query=query, query_family=family):
         summary_candidates = _retrieve_summary_index_candidates(
             query=query,
             user_id=user_id,
@@ -447,6 +452,7 @@ def retrieve_evidence(
                     "diagnostics": {
                         **pack.diagnostics,
                         "summary_index_hits": float(len(summary_candidates)),
+                        "summary_index_used": 1.0,
                     },
                 }
             )
@@ -1189,7 +1195,10 @@ async def build_answer_contract_payload(
         },
     )
 
-    fallback_used = bool(pack.diagnostics.get("dense_fallback_used", 0.0) > 0)
+    fallback_used = bool(
+        pack.diagnostics.get("dense_fallback_used", 0.0) > 0
+        or runtime_truth.get("fallback_events")
+    )
     phase6_runtime = build_phase6_runtime_contract(
         answer_mode=answer_mode,
         degraded_conditions=runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
@@ -1197,6 +1206,7 @@ async def build_answer_contract_payload(
         truthfulness_report=truthfulness_report,
         truthfulness_summary=truthfulness_summary,
         retrieval_evaluator=pack.diagnostics.get("retrieval_evaluator"),
+        retrieval_diagnostics=pack.diagnostics,
         iterative_actions=pack.diagnostics.get("iterative_actions"),
         fallback_used=fallback_used,
         fallback_events=runtime_truth.get("fallback_events", []),

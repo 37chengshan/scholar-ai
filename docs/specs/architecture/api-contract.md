@@ -266,7 +266,7 @@ RAG Iteration 3 契约补充（Citation-Aware Iterative Retrieval + Outline-Guid
   - `citationAwareMetadata`：citation-aware 扩展统计，至少包含 `citation_expansion_applied` 与 relation 计数。
   - `scientificSynthesisMetrics`：科学综合质量指标，至少包含 `citation_faithfulness`、`unsupported_claim_rate`、`cross_paper_synthesis_quality`、`partial_abstain_quality`。
   - `recoveryActions[]`：Phase 6 recovery action contract，单项至少包含 `action`、`status`、`scope`、`reason`、`params{}`。
-  - `phase6_runtime`：Phase 6 统一 runtime contract，至少包含 `answer_mode`、`confidence_level(high-confidence|medium-confidence|low-confidence)`、`degraded`、`degraded_reasons[]`、`corrective_retrieval_used`、`corrective_actions[]`、`fallback_used`、`fallback_events[]`、`unsupported_claim_count`、`recovery_outcome(not_needed|recovered|partial|failed)`、`silent_fallback`、`next_step_entry`。
+  - `phase6_runtime`：Phase 6 统一 runtime contract，至少包含 `answer_mode`、`confidence_level(high-confidence|medium-confidence|low-confidence)`、`degraded`、`degraded_reasons[]`、`corrective_retrieval_used`、`corrective_actions[]`、`fallback_used`、`fallback_events[]`、`unsupported_claim_count`、`recovery_outcome(not_needed|recovered|partial|failed)`、`silent_fallback`、`next_step_entry`、`raptor_lite_used`、`raptor_lite_signals[]`、`review_global_evidence_used`、`review_global_evidence{}`。
 - `metadata.answerMode` 仍维持 `full|partial|abstain` 冻结取值，不允许新增第四态。
 - `retrievalTrace` 与 `citationAwareMetadata` 在 cache 命中响应中必须保持结构同构。
 - `recoveryActions[]` 在 cache 命中响应中也必须保持结构同构。
@@ -318,11 +318,11 @@ Phase 5 ReviewDraft 与 KB Runs 契约（冻结）：
 - `GET /api/v1/runs/{run_id}`
   - 语义：返回完整 run 详情。
   - 响应最小字段：`steps[]`、`tool_events[]`、`artifacts[]`、`evidence[]`、`recovery_actions[]`、`trace_id`、`error_state`。
-  - 若 run 属于 Phase 6 review/runtime 路径，允许在 `tool_events[].result` 或 `artifacts[].metadata` 中带出 `phase6_runtime`，其字段语义必须与 `POST /api/v1/rag/query` 的 `phase6_runtime` 保持一致。
+  - 若 run 属于 Phase 6 review/runtime 路径，允许在 `tool_events[].result` 或 `artifacts[].metadata` 中带出 `phase6_runtime`，其字段语义必须与 `POST /api/v1/rag/query` 的 `phase6_runtime` 保持一致；ReviewDraft 路径还可以在 `artifacts[].metadata` 中携带 `graph_global_synthesis` 证据摘要，用于记录 Phase 6 review/global evidence 的机器可读快照。
   - `artifacts[]` 需使用统一 artifact contract，至少包含：
     - `artifact_id`
     - `run_id`
-    - `type`（`review_draft|citation_audit|evidence_note|compare_matrix|known_limitations|run_trace`）
+    - `type`（`review_draft|citation_audit|evidence_note|compare_matrix|graph_global_synthesis|known_limitations|run_trace`）
     - `title`
     - `content`
     - `url`

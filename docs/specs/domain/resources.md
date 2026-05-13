@@ -222,8 +222,9 @@ ReviewDraft 最小字段契约（Phase 5）：
 - `draft_doc.sections[].paragraphs[]`：`paragraph_id`、`text`、`citations[]`、`evidence_blocks[]`、`citation_coverage_status(covered|insufficient)`
 - `draft_doc.sections[].paragraphs[]` 可选补充 `claim_verification[]` 与 `truthfulness_summary{}`，且两者必须来自统一 truthfulness substrate。
 - `draft_doc.sections[].paragraphs[].claim_verification[]` 若 `support_status != supported`，应显式暴露 `recovery_actions[]`，而不只是 `repair_hint`。
-- `quality`：`citation_coverage`、`unsupported_paragraph_rate`、`graph_assist_used`、`fallback_used`
-- `quality.benchmark_hooks.phase6_runtime`：若 ReviewDraft 属于 Phase 6 review/runtime 路径，必须与统一 Phase6RuntimeContract 语义对齐
+- `quality`：`citation_coverage`、`unsupported_paragraph_rate`、`graph_assist_used`、`fallback_used`、`execution_mode`
+- `quality.benchmark_hooks.phase6_runtime`：若 ReviewDraft 属于 Phase 6 review/runtime 路径，必须与统一 Phase6RuntimeContract 语义对齐，且可包含 `raptor_lite_used`、`raptor_lite_signals[]`、`review_global_evidence_used`、`review_global_evidence{}`
+- `quality.benchmark_hooks.graph_global_evidence`：若 review 任务启用了 graph/global synthesis 汇总，则应记录 `graph_assist_used`、`graph_error`、`themes[]`、`candidate_papers[]`、`section_seed_titles[]`、`section_seed_perspectives[]`、`comparative_section_count`、`storm_lite_used`、`execution_mode`
 - `trace_id`、`run_id`、`error_state`、`created_at`、`updated_at`
 
 ReviewDraft 约束（Phase 5）：
@@ -238,7 +239,8 @@ ReviewRun 最小字段契约（Phase 5）：
 - `steps[]`：每步至少包含 `step_name`、`status`、`started_at`、`ended_at`
 - `steps[].metadata`：至少包含 `input_schema_name`、`output_schema_name`
 - `tool_events[]`、`artifacts[]`、`evidence[]`、`recovery_actions[]`
-- `tool_events[].result` 或 `artifacts[].metadata` 若包含 `phase6_runtime`，必须与统一 Phase6RuntimeContract 对齐
+- `tool_events[].result` 或 `artifacts[].metadata` 若包含 `phase6_runtime`，必须与统一 Phase6RuntimeContract 对齐；review 路径的 `artifacts[].metadata` 还可以带有 `graph_global_synthesis` 证据摘要
+- `artifacts[].type` 在 Phase 6 review/runtime 路径下可额外取 `graph_global_synthesis`
 - `trace_id`、`error_state`、`created_at`、`updated_at`
 
 ## Required Updates

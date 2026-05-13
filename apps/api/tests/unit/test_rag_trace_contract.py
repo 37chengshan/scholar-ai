@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from app.rag_v3.main_path_service import build_answer_contract_payload
+from app.services.phase6_runtime_service import build_phase6_runtime_contract
 
 
 def test_rag_trace_contract(monkeypatch) -> None:
@@ -50,6 +51,110 @@ def test_rag_trace_contract(monkeypatch) -> None:
     assert payload["phase6_runtime"]["recovery_outcome"] in {"not_needed", "recovered", "partial", "failed"}
     assert captured["retrieval_depth"] == "shallow"
     assert captured["retrieval_model_policy"] == "flash"
+
+
+def test_phase6_runtime_marks_unsurfaced_fallback_as_silent_and_low_confidence() -> None:
+    contract = build_phase6_runtime_contract(
+        answer_mode="full",
+        degraded_conditions=["graph_unavailable"],
+        recovery_actions=[],
+        fallback_used=True,
+        fallback_events=["graph_unavailable"],
+    )
+
+    assert contract["silent_fallback"] is True
+    assert contract["confidence_level"] == "low-confidence"
+
+
+def test_rag_trace_contract_surfaces_raptor_lite_signals(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service.retrieve_evidence",
+        lambda **kwargs: __import__("app.rag_v3.schemas", fromlist=["EvidencePack", "EvidenceCandidate"]).EvidencePack(
+            query_id="q-raptor",
+            query=kwargs["query"],
+            query_family="compare",
+            stage=kwargs["stage"],
+            candidates=[
+                __import__("app.rag_v3.schemas", fromlist=["EvidenceCandidate"]).EvidenceCandidate(
+                    source_chunk_id="sid-summary-1",
+                    paper_id="p-1",
+                    section_id="paper_summary",
+                    content_type="text",
+                    anchor_text="summary-backed evidence",
+                    candidate_sources=["summary_index"],
+                    rerank_score=0.9,
+                )
+            ],
+            diagnostics={
+                "summary_index_hits": 1.0,
+                "section_candidates": 3.0,
+                "retrieval_depth_rank": 2.0,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._generate_answer_from_citations",
+        lambda **kwargs: asyncio.sleep(0, result="compare answer"),
+    )
+
+    payload = asyncio.run(build_answer_contract_payload(
+        query="比较两篇论文的方法差异",
+        user_id="u-1",
+        trace_id="trace-raptor-1",
+        query_family="compare",
+        paper_scope=["p-1", "p-2"],
+        stage="rule",
+    ))
+
+    assert payload["phase6_runtime"]["raptor_lite_used"] is True
+    assert "paper_summary_index" in payload["phase6_runtime"]["raptor_lite_signals"]
+    assert "section_summary_recall" in payload["phase6_runtime"]["raptor_lite_signals"]
+    assert "deep_retrieval_plan" in payload["phase6_runtime"]["raptor_lite_signals"]
+
+
+def test_rag_trace_contract_marks_runtime_fallback_events_as_fallback_used(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service.retrieve_evidence",
+        lambda **kwargs: __import__("app.rag_v3.schemas", fromlist=["EvidencePack", "EvidenceCandidate"]).EvidencePack(
+            query_id="q-runtime-fallback",
+            query=kwargs["query"],
+            query_family="fact",
+            stage=kwargs["stage"],
+            candidates=[
+                __import__("app.rag_v3.schemas", fromlist=["EvidenceCandidate"]).EvidenceCandidate(
+                    source_chunk_id="sid-runtime-fallback-1",
+                    paper_id="p-1",
+                    section_id="methods",
+                    content_type="text",
+                    anchor_text="runtime fallback evidence",
+                    rerank_score=0.81,
+                )
+            ],
+            diagnostics={
+                "runtime_truth": {
+                    "fallback_events": ["embedding_provider_fallback"],
+                    "degraded_conditions": ["embedding_provider_fallback"],
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._generate_answer_from_citations",
+        lambda **kwargs: asyncio.sleep(0, result="fact answer"),
+    )
+
+    payload = asyncio.run(build_answer_contract_payload(
+        query="这篇论文的方法是什么",
+        user_id="u-1",
+        trace_id="trace-runtime-fallback-1",
+        query_family="fact",
+        paper_scope=["p-1"],
+        stage="rule",
+    ))
+
+    assert payload["phase6_runtime"]["fallback_used"] is True
+    assert payload["quality"]["fallback_used"] is True
+    assert payload["trace"]["fallback_used"] is True
 
 
 def test_rag_trace_contract_honestly_degrades_global_review_to_local_execution(monkeypatch) -> None:

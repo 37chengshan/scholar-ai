@@ -1,18 +1,19 @@
 ---
 owner: ai-runtime
-status: done
+status: complete
 depends_on:
   - 2026-05-11_v4_0_phase_6_academic_rag_optimization_research
   - 18_v4_0_overview_plan
-last_verified_at: 2026-05-11
+last_verified_at: 2026-05-12
 evidence_commits:
   - working-tree-v4-0-phase-6-execution
+  - working-tree-v4-0-phase-6-runtime-followup
 ---
 
 # 24 v4.0-6 执行计划：Academic RAG Optimization
 
 > 日期：2026-05-11
-> 状态：execution-complete
+> 状态：implementation-in-progress / runtime-contract-extended
 > 上游研究：`docs/plans/v4_0/active/phase_6/2026-05-11_v4_0_phase_6_academic_rag_optimization_research.md`
 
 ## 0. 执行状态
@@ -35,6 +36,7 @@ evidence action contract
 3. `review` claim rows 除 `repair_hint` 外，还要带 `recovery_actions`。
 4. 契约和资源文档承认这些字段为 Phase 6 首批真源。
 5. 必须有真实后端测试与治理检查证据。
+6. 本文档不能把当前状态写成 full closeout；RAPTOR-lite 深扩与 review-only graph/global comparative evidence 的后续波次仍需回填验证证据。
 
 ## 2. 交付单元
 
