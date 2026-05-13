@@ -37,6 +37,7 @@ from app.services.evidence_contract_service import (
 from app.services.phase_i_routing_service import get_phase_i_routing_service
 from app.services.truthfulness_service import get_truthfulness_service
 from app.services.evidence_action_service import build_recovery_actions
+from app.services.phase6_runtime_service import build_phase6_runtime_contract
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -78,6 +79,11 @@ def _is_summary_seeking_query(query: str) -> bool:
 
 def _is_compare_family(query_family: str | None) -> bool:
     return query_family in {"compare", "cross_paper", "survey", "related_work", "method_evolution", "conflicting_evidence"}
+
+
+def _should_merge_summary_candidates(*, query: str, query_family: str | None) -> bool:
+    normalized_family = str(query_family or "").strip().lower()
+    return _is_summary_seeking_query(query) or _is_compare_family(query_family) or normalized_family == "evolution"
 
 
 def _is_summary_candidate(candidate: EvidenceCandidate) -> bool:
@@ -424,7 +430,7 @@ def retrieve_evidence(
         content_types=content_types,
     )
 
-    if paper_scope and _is_summary_seeking_query(query):
+    if paper_scope and _should_merge_summary_candidates(query=query, query_family=family):
         summary_candidates = _retrieve_summary_index_candidates(
             query=query,
             user_id=user_id,
@@ -446,6 +452,7 @@ def retrieve_evidence(
                     "diagnostics": {
                         **pack.diagnostics,
                         "summary_index_hits": float(len(summary_candidates)),
+                        "summary_index_used": 1.0,
                     },
                 }
             )
@@ -1188,7 +1195,27 @@ async def build_answer_contract_payload(
         },
     )
 
-    fallback_used = bool(pack.diagnostics.get("dense_fallback_used", 0.0) > 0)
+    fallback_used = bool(
+        pack.diagnostics.get("dense_fallback_used", 0.0) > 0
+        or runtime_truth.get("fallback_events")
+    )
+    phase6_runtime = build_phase6_runtime_contract(
+        answer_mode=answer_mode,
+        degraded_conditions=runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
+        recovery_actions=recovery_actions,
+        truthfulness_report=truthfulness_report,
+        truthfulness_summary=truthfulness_summary,
+        retrieval_evaluator=pack.diagnostics.get("retrieval_evaluator"),
+        retrieval_diagnostics=pack.diagnostics,
+        iterative_actions=pack.diagnostics.get("iterative_actions"),
+        fallback_used=fallback_used,
+        fallback_events=runtime_truth.get("fallback_events", []),
+        recovery_entry={
+            "task_family": routing.task_family,
+            "entry_type": "read",
+            "paper_ids": list(paper_scope or []),
+        },
+    )
     error_state = None
     if answer_mode == "abstain":
         error_state = "abstain"
@@ -1224,6 +1251,7 @@ async def build_answer_contract_payload(
         "fallback_reason": "unsupported_field_type" if fallback_used else None,
         "fallback_events": runtime_truth.get("fallback_events", []),
         "degraded_conditions": runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
+        "phase6_runtime": phase6_runtime,
         "cost_estimate": round(candidate_count * 0.00002, 6),
         "answer_mode": answer_mode,
         "error_state": error_state,
@@ -1271,6 +1299,7 @@ async def build_answer_contract_payload(
             "answer_evidence_consistency": quality.evidence_relevance_score,
             "fallback_used": fallback_used,
             "fallback_reason": "unsupported_field_type" if fallback_used else None,
+            "phase6_runtime": phase6_runtime,
         },
         "trace": trace_payload,
         "trace_id": trace,
@@ -1287,6 +1316,7 @@ async def build_answer_contract_payload(
         "retrieval_plane_policy": trace_payload["retrieval_plane_policy"],
         "degraded_conditions": trace_payload["degraded_conditions"],
         "recovery_actions": recovery_actions,
+        "phase6_runtime": phase6_runtime,
     }
 
 

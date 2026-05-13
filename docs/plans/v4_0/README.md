@@ -8,6 +8,7 @@
 - `active/phase_4/`: v4.0 Phase 4 Frontend Experience Craft 研究文档与执行计划（2026-05-11 closeout 完成，保持对 Phase 4.0-3 未收口边界的依赖约束）
 - `active/phase_5/`: v4.0 Phase 5 Frontend Interaction Quality 研究文档与后续执行计划
 - `active/phase_6/`: v4.0 Phase 6 Academic RAG Optimization 研究文档与后续执行计划
+- `active/phase_7/`: v4.0 Phase 7 Testing and Evaluation Gate 研究文档、执行计划与 gate 真源
 - `complete/`: 后续完成的 v4.0 阶段计划
 - `search/`: v4.0 研究、外部资料与技术路线取舍
 - `reports/`: v4.0 验证、评测、治理与发布结果

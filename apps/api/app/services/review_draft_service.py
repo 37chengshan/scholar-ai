@@ -43,6 +43,7 @@ from app.schemas.review_draft import (
 from app.services.evidence_contract_service import build_citation_jump_url, get_evidence_source_payload
 from app.services.phase_i_routing_service import PhaseIRoutingDecision, get_phase_i_routing_service
 from app.services.evidence_action_service import build_claim_recovery_actions
+from app.services.phase6_runtime_service import build_phase6_runtime_contract
 from app.services.truthfulness_service import get_truthfulness_service
 from app.utils.logger import logger
 
@@ -59,6 +60,7 @@ _ARTIFACT_TYPES = (
     "citation_audit",
     "evidence_note",
     "compare_matrix",
+    "graph_global_synthesis",
     "known_limitations",
     "run_trace",
 )
@@ -190,6 +192,21 @@ class ReviewDraftService:
                 question=review_question,
                 routing=routing,
             )
+            graph_global_evidence = self._build_graph_global_evidence(
+                graph_summary=graph_summary,
+                graph_error=graph_error,
+                routing=routing,
+            )
+            if graph_global_evidence:
+                artifacts.append(
+                    _build_run_artifact(
+                        artifact_id=f"{run.id}:graph_global_synthesis",
+                        run_id=run.id,
+                        artifact_type="graph_global_synthesis",
+                        title="Review Graph Global Synthesis",
+                        metadata=graph_global_evidence,
+                    )
+                )
             steps.append(
                 self._step(
                     step_name="outline_planner",
@@ -257,6 +274,8 @@ class ReviewDraftService:
                 run_metadata={
                     "run_id": run.id,
                     "trace_id": run.trace_id,
+                    "graph_summary": graph_summary,
+                    "graph_error": graph_error,
                 },
             )
             final_doc, quality, error_state = self._finalize(
@@ -385,9 +404,7 @@ class ReviewDraftService:
             run.artifacts = artifacts
             run.evidence = evidence_rows
             run.error_state = error_state
-            run.recovery_actions = (
-                [{"action": "retry", "reason": error_state}] if error_state else []
-            )
+            run.recovery_actions = list(quality.benchmark_hooks.get("phase6_runtime", {}).get("recovery_actions") or [])
             run.tool_events = tool_events + [
                 {
                     "event_id": uuid4().hex,
@@ -1334,26 +1351,63 @@ class ReviewDraftService:
         if graph_error == "graph_unavailable" and error_state is None:
             error_state = "partial_draft"
 
+        graph_summary = finalizer_input.run_metadata.get("graph_summary") if isinstance(finalizer_input.run_metadata, dict) else {}
+        graph_global_evidence = self._build_graph_global_evidence(
+            graph_summary=graph_summary if isinstance(graph_summary, dict) else {},
+            graph_error=graph_error,
+            routing=routing,
+        )
+        resolved_execution_mode = "local_evidence" if graph_error == "graph_unavailable" else routing.execution_mode
+
+        truthfulness_summary = {
+            "unsupported_claim_rate": round(unsupported_rate, 4),
+            "citation_coverage": round(citation_coverage, 4),
+            "verifier_backend": routing.verification_backend,
+            "answer_mode": "abstain" if total == 0 else ("partial" if error_state == "partial_draft" else "full"),
+            "unsupported_claims": total - covered,
+        }
+        recovery_actions = (
+            [{"action": "retry", "reason": error_state}] if error_state
+            else []
+        )
+        phase6_runtime = build_phase6_runtime_contract(
+            answer_mode=truthfulness_summary["answer_mode"],
+            degraded_conditions=[graph_error] if graph_error else ([error_state] if error_state else []),
+            recovery_actions=recovery_actions,
+            truthfulness_summary=truthfulness_summary,
+            retrieval_evaluator=None,
+            retrieval_diagnostics=None,
+            iterative_actions=None,
+            fallback_used=fallback_used,
+            fallback_events=[graph_error] if graph_error else [],
+            recovery_entry={
+                "task_family": routing.task_family,
+                "entry_type": "review",
+            },
+            graph_summary=graph_summary if isinstance(graph_summary, dict) else None,
+        )
+
         quality = ReviewQuality(
             citation_coverage=citation_coverage,
             unsupported_paragraph_rate=unsupported_rate,
             graph_assist_used=graph_used,
             fallback_used=fallback_used,
-            execution_mode=routing.execution_mode,
+            execution_mode=resolved_execution_mode,
             kernel_profile=routing.kernel_scope,
             storm_lite_used=routing.review_strategy == "storm_lite",
             adaptive_routing_used=routing.retrieval_plane_policy.get("routing_policy") == "adaptive_depth",
             truthfulness_backend=routing.verification_backend,
             benchmark_hooks={
                 "task_family": routing.task_family,
-                "execution_mode": routing.execution_mode,
-                "truthfulness_report_summary": {
-                    "unsupported_claim_rate": round(unsupported_rate, 4),
-                    "citation_coverage": round(citation_coverage, 4),
-                    "verifier_backend": routing.verification_backend,
-                },
+                "execution_mode": resolved_execution_mode,
+                "truthfulness_report_summary": truthfulness_summary,
                 "retrieval_plane_policy": routing.retrieval_plane_policy,
                 "degraded_conditions": [graph_error] if graph_error else [],
+                "graph_global_evidence": graph_global_evidence,
+                "phase6_runtime": {
+                    **phase6_runtime,
+                    "recovery_actions": recovery_actions,
+                },
             },
         )
         return draft_doc, quality, error_state
@@ -1382,6 +1436,32 @@ class ReviewDraftService:
         if not limitations:
             limitations.append("当前草稿无显著已知限制")
         return limitations
+
+    @staticmethod
+    def _build_graph_global_evidence(
+        *,
+        graph_summary: dict[str, Any] | None,
+        graph_error: Optional[str],
+        routing: PhaseIRoutingDecision,
+    ) -> dict[str, Any]:
+        payload = graph_summary or {}
+        section_seeds = [seed for seed in (payload.get("section_seeds") or []) if isinstance(seed, dict)]
+        resolved_execution_mode = "local_evidence" if graph_error == "graph_unavailable" else routing.execution_mode
+
+        def _dedupe(values: list[str]) -> list[str]:
+            return list(dict.fromkeys(value for value in values if value))
+
+        return {
+            "graph_assist_used": bool(payload.get("graph_assist_used", False)),
+            "graph_error": graph_error,
+            "themes": _dedupe([str(item).strip() for item in (payload.get("themes") or [])]),
+            "candidate_papers": _dedupe([str(item).strip() for item in (payload.get("candidate_papers") or [])]),
+            "section_seed_titles": _dedupe([str(seed.get("title") or "").strip() for seed in section_seeds]),
+            "section_seed_perspectives": _dedupe([str(seed.get("perspective") or "").strip() for seed in section_seeds]),
+            "comparative_section_count": len(section_seeds),
+            "storm_lite_used": bool(payload.get("storm_lite_used", False)),
+            "execution_mode": resolved_execution_mode,
+        }
 
     @staticmethod
     def _step(

@@ -48,6 +48,7 @@ from app.services.evidence_contract_service import (
 )
 from app.services.phase_i_routing_service import get_phase_i_routing_service
 from app.services.evidence_action_service import build_recovery_actions
+from app.services.phase6_runtime_service import build_phase6_runtime_contract
 from app.services.truthfulness_service import get_truthfulness_service
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -973,6 +974,23 @@ def build_compare_contract(
             "paper_ids": paper_ids,
         },
     )
+    phase6_runtime = build_phase6_runtime_contract(
+        answer_mode=resolved_answer_mode,
+        degraded_conditions=[],
+        recovery_actions=recovery_actions,
+        truthfulness_report=truthfulness_report,
+        truthfulness_summary=truthfulness_summary,
+        retrieval_evaluator=pack.diagnostics.get("retrieval_evaluator"),
+        retrieval_diagnostics=pack.diagnostics,
+        iterative_actions=pack.diagnostics.get("iterative_actions"),
+        fallback_used=False,
+        fallback_events=[],
+        recovery_entry={
+            "task_family": routing.task_family,
+            "entry_type": "compare",
+            "paper_ids": paper_ids,
+        },
+    )
 
     return AnswerContract(
         response_type="compare",
@@ -986,6 +1004,7 @@ def build_compare_contract(
             "unsupported_claim_rate": truthfulness_report.get("unsupportedClaimRate", 0.0),
             "fallback_used": False,
             "fallback_reason": None,
+            "phase6_runtime": phase6_runtime,
         },
         trace_id=trace_id or uuid4().hex,
         run_id=run_id or uuid4().hex,
@@ -996,5 +1015,6 @@ def build_compare_contract(
         truthfulness_summary=truthfulness_summary,
         truthfulness_report=truthfulness_report,
         retrieval_plane_policy=routing.retrieval_plane_policy,
+        degraded_conditions=phase6_runtime["degraded_reasons"],
         recovery_actions=recovery_actions,
     )

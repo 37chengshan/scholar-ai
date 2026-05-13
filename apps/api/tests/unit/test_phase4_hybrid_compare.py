@@ -257,6 +257,9 @@ class TestCompareService:
         assert isinstance(contract, AnswerContract)
         assert contract.response_type == "compare"
         assert contract.compare_matrix is not None
+        assert "phase6_runtime" in contract.quality
+        assert contract.quality["phase6_runtime"]["answer_mode"] == contract.answer_mode
+        assert contract.degraded_conditions == contract.quality["phase6_runtime"]["degraded_reasons"]
 
     def test_compare_contract_truthfulness_tracks_compare_output_not_raw_evidence_concat(self):
         paper_ids = ["p-001", "p-002"]

@@ -35,6 +35,7 @@ from app.core.multimodal_search_service import get_multimodal_search_service
 from app.core.citation_verifier import get_citation_verifier
 from app.core.retrieval_evaluator import RetrievalEvaluator
 from app.services.evidence_action_service import build_recovery_actions
+from app.services.phase6_runtime_service import build_phase6_runtime_contract
 
 
 class AgenticRetrievalOrchestrator:
@@ -334,6 +335,39 @@ class AgenticRetrievalOrchestrator:
         else:
             partial_abstain_quality = 1.0
 
+        recovery_actions = build_recovery_actions(
+            scope="rag",
+            answer_mode=abstain_decision.answer_mode.value,
+            task_family=str(academic_plan.get("query_family") or effective_query_type),
+            execution_mode="iterative_local_evidence" if iterative_retrieval_triggered else "local_evidence",
+            retrieval_evaluator=retrieval_evaluation,
+            iterative_actions=iterative_actions,
+            truthfulness_report=claim_report,
+            degraded_conditions=[],
+            recovery_entry={
+                "task_family": str(academic_plan.get("query_family") or effective_query_type),
+                "entry_type": "rag_query",
+                "paper_ids": list(paper_ids or []),
+            },
+        )
+        phase6_runtime = build_phase6_runtime_contract(
+            answer_mode=abstain_decision.answer_mode.value,
+            degraded_conditions=[],
+            recovery_actions=recovery_actions,
+            truthfulness_report=claim_report,
+            truthfulness_summary=None,
+            retrieval_evaluator=retrieval_evaluation,
+            iterative_actions=iterative_actions,
+            fallback_used=False,
+            fallback_events=[],
+            recovery_entry={
+                "task_family": str(academic_plan.get("query_family") or effective_query_type),
+                "entry_type": "rag_query",
+                "paper_ids": list(paper_ids or []),
+            },
+        )
+        retrieval_trace["phase6_runtime"] = phase6_runtime
+
         return {
             "answer": verified_answer,
             "sub_questions": [
@@ -383,21 +417,8 @@ class AgenticRetrievalOrchestrator:
                     "cross_paper_synthesis_quality": round(cross_paper_synthesis_quality, 4),
                     "partial_abstain_quality": round(partial_abstain_quality, 4),
                 },
-                "recovery_actions": build_recovery_actions(
-                    scope="rag",
-                    answer_mode=abstain_decision.answer_mode.value,
-                    task_family=str(academic_plan.get("query_family") or effective_query_type),
-                    execution_mode="iterative_local_evidence" if iterative_retrieval_triggered else "local_evidence",
-                    retrieval_evaluator=retrieval_evaluation,
-                    iterative_actions=iterative_actions,
-                    truthfulness_report=claim_report,
-                    degraded_conditions=[],
-                    recovery_entry={
-                        "task_family": str(academic_plan.get("query_family") or effective_query_type),
-                        "entry_type": "rag_query",
-                        "paper_ids": list(paper_ids or []),
-                    },
-                ),
+                "recovery_actions": recovery_actions,
+                "phase6_runtime": phase6_runtime,
                 "benchmarkMetrics": {
                     "unsupported_claim_rate": abstain_decision.unsupported_claim_rate,
                     "citation_coverage": abstain_decision.citation_coverage,

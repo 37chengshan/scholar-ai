@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.rag_v3.main_path_service import build_answer_contract_payload
+from app.rag_v3.main_path_service import build_answer_contract_payload, retrieve_evidence as retrieve_contract_evidence
 from app.rag_v3.schemas import EvidenceBlock
 
 
@@ -208,6 +208,73 @@ def test_summary_query_uses_summary_index_when_local_artifact_missing(monkeypatc
     assert payload["citations"]
     assert payload["citations"][0]["source_chunk_id"] == "chunk-summary-1"
     assert payload["answer_mode"] in {"partial", "full"}
+
+
+def test_retrieve_evidence_merges_summary_index_for_compare_queries(monkeypatch) -> None:
+    schemas = __import__("app.rag_v3.schemas", fromlist=["EvidencePack", "EvidenceCandidate"])
+
+    class _FakeRetriever:
+        def retrieve_evidence(self, **kwargs):
+            return schemas.EvidencePack(
+                query_id="q-compare-summary-merge",
+                query=kwargs["query"],
+                query_family=kwargs["query_family"],
+                stage=kwargs["stage"],
+                candidates=[
+                    schemas.EvidenceCandidate(
+                        source_chunk_id="chunk-method-1",
+                        paper_id="paper-1",
+                        section_id="methods",
+                        content_type="text",
+                        anchor_text="Method evidence",
+                        rerank_score=0.82,
+                    )
+                ],
+                diagnostics={},
+            )
+
+    class _Binding:
+        def to_dict(self):
+            return {"resolved_mode": "online", "fallback_events": [], "degraded_conditions": []}
+
+    monkeypatch.setattr("app.rag_v3.main_path_service.get_settings", lambda: type("Settings", (), {"RUNTIME_MODE": "online"})())
+    monkeypatch.setattr("app.rag_v3.main_path_service.get_embedding_model_for_policy", lambda *args, **kwargs: "test-embedding")
+    monkeypatch.setattr("app.rag_v3.main_path_service._get_retriever", lambda *args, **kwargs: _FakeRetriever())
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._retrieve_summary_index_candidates",
+        lambda **kwargs: [
+            schemas.EvidenceCandidate(
+                source_chunk_id="chunk-summary-1",
+                paper_id="paper-2",
+                section_id="paper_summary",
+                content_type="text",
+                anchor_text="Paper summary evidence",
+                candidate_sources=["summary_index"],
+                rerank_score=0.9,
+            )
+        ],
+    )
+    monkeypatch.setattr("app.rag_v3.main_path_service.create_embedding_provider", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._provider_runtime_truth",
+        lambda *args, **kwargs: {"resolved_mode": "online", "fallback_events": [], "degraded_conditions": []},
+    )
+    monkeypatch.setattr("app.rag_v3.main_path_service.get_rerank_runtime_binding", lambda: _Binding())
+    monkeypatch.setattr("app.rag_v3.main_path_service.build_vector_store_binding", lambda **kwargs: _Binding())
+    monkeypatch.setattr("app.rag_v3.main_path_service.build_online_binding", lambda **kwargs: _Binding())
+    monkeypatch.setattr("app.rag_v3.main_path_service.get_collection_for_stage", lambda stage: stage)
+
+    pack = retrieve_contract_evidence(
+        query="继续比较两篇论文的方法差异",
+        user_id="u-1",
+        query_family="compare",
+        stage="rule",
+        paper_scope=["paper-1", "paper-2"],
+        top_k=3,
+    )
+
+    assert any("summary_index" in candidate.candidate_sources for candidate in pack.candidates)
+    assert pack.diagnostics["summary_index_hits"] == 1.0
 
 
 def test_abstain_payload_keeps_single_paper_source_jump_fallback(monkeypatch) -> None:

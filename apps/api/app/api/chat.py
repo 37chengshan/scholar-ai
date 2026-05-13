@@ -221,6 +221,7 @@ def _build_persisted_answer_contract(done_payload: Dict[str, Any]) -> Dict[str, 
         "truthfulness_summary": done_payload.get("truthfulness_summary"),
         "retrieval_plane_policy": done_payload.get("retrieval_plane_policy"),
         "degraded_conditions": done_payload.get("degraded_conditions", []),
+        "phase6_runtime": done_payload.get("phase6_runtime"),
         "diagnostics": done_payload.get("diagnostics"),
     }
 
@@ -533,6 +534,7 @@ async def chat_stream(
                             "truthfulness_summary": payload.get("truthfulness_summary"),
                             "retrieval_plane_policy": payload.get("retrieval_plane_policy"),
                             "degraded_conditions": payload.get("degraded_conditions", []),
+                            "phase6_runtime": payload.get("phase6_runtime"),
                             "retrieval_trace_id": payload.get("retrieval_trace_id"),
                             "error_state": payload.get("error_state"),
                             "compare_matrix": payload.get("compare_matrix"),

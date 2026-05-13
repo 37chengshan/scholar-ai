@@ -86,4 +86,6 @@ async def test_iteration3_triggers_iterative_on_weak_first_pass(monkeypatch: pyt
     assert meta["retrieval_evaluator"]["is_weak"] is True
     assert meta["citation_aware_metadata"]["citation_expansion_applied"] is True
     assert meta["retrieval_trace"]["iterative_triggered"] is True
+    assert meta["phase6_runtime"]["corrective_retrieval_used"] is True
+    assert "continue_retrieval" in meta["phase6_runtime"]["corrective_actions"]
     assert meta["answer_outline"]
