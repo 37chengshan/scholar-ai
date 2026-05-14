@@ -960,13 +960,24 @@ def build_compare_contract(
         "citation_coverage": supported / max(total, 1),
         "answer_mode": resolved_answer_mode,
     }
+    degraded_conditions = list(
+        dict.fromkeys(
+            list(pack.diagnostics.get("degraded_conditions", []))
+            + list(truthfulness_report.get("degraded_conditions", []))
+        )
+    )
+    fallback_used = bool(
+        degraded_conditions
+        or truthfulness_report.get("answerMode") in {"partial", "abstain"}
+        or truthfulness_report.get("unsupportedClaimCount", 0) > 0
+    )
     recovery_actions = build_recovery_actions(
         scope="compare",
         answer_mode=resolved_answer_mode,
         task_family=routing.task_family,
         execution_mode=routing.execution_mode,
         truthfulness_report=truthfulness_report,
-        degraded_conditions=[],
+        degraded_conditions=degraded_conditions,
         recovery_entry={
             "task_family": routing.task_family,
             "entry_type": "compare",
@@ -984,8 +995,8 @@ def build_compare_contract(
         quality={
             "citation_coverage": supported / max(total, 1),
             "unsupported_claim_rate": truthfulness_report.get("unsupportedClaimRate", 0.0),
-            "fallback_used": False,
-            "fallback_reason": None,
+            "fallback_used": fallback_used,
+            "fallback_reason": degraded_conditions[0] if degraded_conditions else None,
         },
         trace_id=trace_id or uuid4().hex,
         run_id=run_id or uuid4().hex,
@@ -996,5 +1007,6 @@ def build_compare_contract(
         truthfulness_summary=truthfulness_summary,
         truthfulness_report=truthfulness_report,
         retrieval_plane_policy=routing.retrieval_plane_policy,
+        degraded_conditions=degraded_conditions,
         recovery_actions=recovery_actions,
     )

@@ -43,6 +43,7 @@
 
 - Paper 属于零个或多个 Collection。
 - Paper 产生多个 Chunk。
+- KnowledgeBase 与 Paper 的归属真源优先使用 `Paper.knowledge_base_id`；`KnowledgeBasePaper` 仅作为兼容补充关联，不得在主链检索中反向覆盖 `Paper.knowledge_base_id` 已声明的成员事实。
 - ChatSession 包含多个 ChatMessage。
 - Task 作用于 Paper、Collection 或 IndexArtifact。
 - UploadHistory 是 ImportJob、UploadSession、ProcessingTask 的状态投影视图，不应成为并行真源。
@@ -81,12 +82,14 @@ ChatSession/ChatMessage 读取契约约束：
 
 Chat 查询作用域资源约束：
 
-- Chat stream 请求允许 `scope`：
+- Chat / search 共享请求允许 `scope`：
 	- `paper`（绑定单论文）
 	- `knowledge_base`（绑定知识库）
+	- `compare`（绑定多论文集合）
 	- `general`（全局无绑定）
 - `mode` 固定枚举：`auto | rag | agent`。
 - `context.paper_ids[]` 是 Compare -> Chat follow-up 的 canonical 多论文作用域输入；当其存在且 `mode=auto|rag` 时，后端必须把它转成真实 retrieval `paper_scope`，不能只作为前端展示上下文。
+- `knowledge_base` 作用域一旦进入 `POST /api/v1/chat`、`POST /api/v1/chat/stream`、`POST /api/v1/search/evidence` 等共享 RAG 主链，后端必须先把 KB 解析成真实 `paper_scope`；允许合并 `Paper.knowledge_base_id` 与 `KnowledgeBasePaper`，但禁止只保留 `kb_id` 元数据而不收窄检索候选。
 
 状态机：
 
@@ -107,6 +110,7 @@ Paper 交互资源补充：
 - PaperBatchOperation：批量操作结果资源，至少包含 `successItems` 与 `failedItems`。
 - SearchResult：搜索结果资源，支持论文与知识片段的统一搜索，包括请求取消与前端缓存策略。
 - ExternalPaper：外部论文发现的 canonical 只读投影视图，由统一搜索接口返回，不单独要求数据库真源。
+- KBQueryResult：知识库问答兼容投影视图，最小字段为 `answer`、`citations[]`、`sources[]`、`confidence`；当知识库无论文时允许返回空证据和 `confidence=0.0`，但不得伪造内容。
 
 关键生命周期事件：
 

@@ -283,6 +283,27 @@ class TestCompareService:
         assert contract.quality["unsupported_claim_rate"] == contract.truthfulness_report["unsupportedClaimRate"]
         assert contract.quality["citation_coverage"] == contract.truthfulness_summary["citation_coverage"]
 
+    def test_compare_contract_marks_fallback_and_degraded_conditions(self):
+        paper_ids = ["p-001", "p-002"]
+        dims = [CompareDimension(id="method", label="Method")]
+        pack = self._make_pack_for_papers(paper_ids)
+        pack.diagnostics["degraded_conditions"] = ["compare_handoff_only"]
+        paper_meta = {
+            "p-001": {"title": "Paper 1", "year": 2020},
+            "p-002": {"title": "Paper 2", "year": 2021},
+        }
+
+        contract = build_compare_contract(
+            paper_ids=paper_ids,
+            paper_meta=paper_meta,
+            pack=pack,
+            dimensions=dims,
+        )
+
+        assert "compare_handoff_only" in contract.degraded_conditions
+        assert contract.quality["fallback_used"] is True
+        assert contract.quality["fallback_reason"] == "compare_handoff_only"
+
     def test_compare_matrix_all_required_fields(self):
         """CompareMatrix must expose paper_ids, dimensions, rows, summary, cross_paper_insights."""
         paper_ids = ["p-001", "p-002"]

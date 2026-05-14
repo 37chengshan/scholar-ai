@@ -1,6 +1,6 @@
 # 计划状态总览
 
-最后更新：2026-05-11
+最后更新：2026-05-13
 
 ## 使用规则
 
@@ -58,6 +58,12 @@
 | 6 | ai-runtime | closeout-complete / focused-runtime-shipped | 2026-05-11 | docs/plans/v4_0/active/phase_6/24_v4_0_phase_6_execution_plan.md | B 优化 phase：Phase 6 首批执行已完成，范围限定为统一 evidence/recovery action contract，并接入 rag / compare / review 的可执行纠偏语义；Graph/global synthesis 主链替换与 comparative verdict 仍留后续 wave |
 | 7 | ai-platform | direction-confirmed / plan-required | 2026-05-02 | docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md | B 测试 phase：Testing and Evaluation Gate，验证产品、前端质量和技术收益 |
 
+## v4.5 Bridge 面板
+
+| phase | owner | closeout_status | last_verified_at | truth_doc | notes |
+|---|---|---|---|---|---|
+| 0 | product-engineering | closeout-complete / live-rag-benchmark-complete-no-verdict | 2026-05-13 | docs/plans/v4_5/active/phase_0/26_v4_5_phase_0_execution_plan.md | v4.5 phase_0 已补齐真实 backend RAG chain 审计：KB scope truth 修正、expanded live benchmark、full RAG chain state report 与 artifacts 已回填；当前仍不宣称 release verdict，`v4.0` 仍是实现与发布状态真源 |
+
 ## 活跃计划面板
 
 | 计划 | owner | status | depends_on | last_verified_at | evidence_commits | phase_unit_id | deliverable_unit_id | pr_link | coverage_scope | risk_level | notes |
@@ -76,8 +82,10 @@
 | PR21_PR23_契约收口与持久化闭环三阶段执行计划 | app-foundation | in-progress | - | 2026-04-18 | wip-pr21-pr23-contract-close | PR21-PR23 | DU-20260418-007 | open | apps/api,apps/web,docs | high | 三阶段执行中，PR21已完成，PR22/PR23推进中 |
 | knowledge-workflow-closure-phase-plan | product-engineering | in-progress | PR10,PR19,PR21-PR23,PR7-PR8 | 2026-04-20 | planning-doc-20260420 | KWC | DU-20260420-001 | pending | apps/web,apps/api,docs,tests | high | 作为 Upload->Import->KB->Chat->History 的统一执行总计划，不替代现有 active 子计划，而用于统筹 wave 顺序、验收与交付 |
 | 06_v3_0_overview_plan | product-engineering | in-progress | knowledge-workflow-closure-phase-plan,PlanB,PR10 | 2026-04-28 | planning-doc-20260428 | V3.0 | DU-20260428-001 | pending | apps/web,apps/api,docs | high | 作为当前 v3.0 总入口真源，定义双主线、Phase 思路与优先级；后续细化研究与实施文档需围绕它展开 |
-| v4_0_phase_6_academic_rag_optimization_research | ai-runtime | done | 18_v4_0_overview_plan | 2026-05-11 | working-tree-v4-0-phase-6-research | V4.0-6 | DU-20260511-003 | pending | docs/plans,apps/api | high | Phase 4.0-6 研究文档已落地；冻结为 evidence action contract、corrective retrieval surfacing、claim repair 优先，graph/global synthesis 仅限 review-only experiment |
 | 24_v4_0_phase_6_execution_plan | ai-runtime | done | v4_0_phase_6_academic_rag_optimization_research | 2026-05-11 | working-tree-v4-0-phase-6-execution | V4.0-6-EXEC | DU-20260511-004 | pending | apps/api,docs/specs,docs/plans | high | Phase 4.0-6 首批执行已完成：统一 evidence/recovery action contract，RAG/Compare/Review 共用可执行纠偏语义，并以真实后端测试与治理检查验收 |
+| v4_5_release_readiness_bridge_research | product-engineering | done | 21_v4_0_phase_2_execution_plan,22_v4_0_phase_3_execution_plan,24_v4_0_phase_5_execution_plan,24_v4_0_phase_6_execution_plan | 2026-05-13 | working-tree-v4-5-bridge-prework | V4.5-W0 | DU-20260513-001 | pending | docs/plans,apps/api,packages,tests,scripts | high | v4.5 bridge 研究真源已按 repo 真实状态打磨完成，并补入真实 backend benchmark 与数据边界约束；该研究文档本身不构成 release verdict |
+| 25_v4_5_overview_plan | product-engineering | done | v4_5_release_readiness_bridge_research | 2026-05-13 | working-tree-v4-5-phase-0-kickoff | V4.5-W1 | DU-20260513-002 | pending | docs/plans,scripts | high | v4.5 版本定位、phase_0 范围与 benchmark/gate 输入已冻结；当前配套的 full RAG chain report 已落地，但它仍不是 release verdict |
+| 26_v4_5_phase_0_execution_plan | product-engineering | done | 25_v4_5_overview_plan | 2026-05-13 | working-tree-v4-5-phase-0-kickoff,working-tree-v4-5-rag-chain-audit | V4.5-W1 | DU-20260513-002,DU-20260513-003 | pending | docs/plans,scripts,artifacts | high | phase_0 执行计划、runtime freeze、gate input matrix、expanded live benchmark 脚本、full RAG chain state report 与最终 artifacts 已补齐；当前结论限定为 benchmark-complete，不替代 release verdict |
 | v3_0A_academic_benchmark_3_0_research | ai-platform | in-progress | 06_v3_0_overview_plan,PR12,PlanB | 2026-04-28 | planning-doc-20260428-v3a | V3.0-A | DU-20260428-002 | pending | apps/api,docs,scripts | high | 作为 Academic Benchmark 3.0 研究真源，明确 corpus 扩容、gold evidence、blind set、artifact/gate 升级方向；后续实现计划另立文 |
 | 07_v3_0A_execution_plan | ai-platform | in-progress | v3_0A_academic_benchmark_3_0_research | 2026-04-28 | planning-doc-20260428-v3a-exec | V3.0-A-EXEC | DU-20260428-003 | pending | apps/api,docs,scripts | high | 作为 Phase A 主执行计划真源，连同 schema/annotation/artifact-gate/review 文档形成实施闭环；代码与数据落地待后续 PR 补齐 |
 | v3_0B_external_search_import_research | product-engineering | in-progress | 06_v3_0_overview_plan,07_v3_0A_execution_plan | 2026-04-28 | planning-doc-20260428-v3b | V3.0-B | DU-20260428-004 | pending | apps/web,apps/api,docs | high | 作为 External Search + Import to KB 研究真源，按“Phase A 结构性产物已完成”前提定义 Search -> Import -> KB 主链、provider、状态语义与导入边界 |

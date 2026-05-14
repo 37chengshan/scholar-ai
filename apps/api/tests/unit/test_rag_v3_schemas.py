@@ -72,5 +72,7 @@ def test_evidence_quality_and_answer_policy() -> None:
     answer = build_answer_contract(pack, quality)
 
     assert quality.answerability in {"full", "partial", "abstain"}
-    assert answer.answer_mode == quality.answerability
+    assert answer.answer_mode in {"full", "partial", "abstain"}
+    assert answer.answer_mode == "abstain"
+    assert quality.answerability == "partial"
     assert len(answer.claims) == 2

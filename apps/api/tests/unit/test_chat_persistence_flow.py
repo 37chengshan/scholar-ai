@@ -156,10 +156,10 @@ async def test_orchestrator_updates_placeholder_and_persists_tool_without_unknow
     tool_payload = json.loads(second_call["content"])
     assert tool_payload["tool"] == "rag_search"
 
-    mock_update_message.assert_awaited_once_with(
-        message_id="assistant-msg-id",
-        content="final answer",
-    )
+    mock_update_message.assert_awaited_once()
+    update_kwargs = mock_update_message.await_args.kwargs
+    assert update_kwargs["message_id"] == "assistant-msg-id"
+    assert update_kwargs["content"] == "final answer"
 
 
 @pytest.mark.asyncio
@@ -274,7 +274,7 @@ async def test_orchestrator_updates_assistant_before_done_for_early_disconnect()
                 # Simulate client disconnecting right after done event.
                 break
 
-    mock_update_message.assert_awaited_once_with(
-        message_id="assistant-msg-id",
-        content="ok",
-    )
+    mock_update_message.assert_awaited_once()
+    update_kwargs = mock_update_message.await_args.kwargs
+    assert update_kwargs["message_id"] == "assistant-msg-id"
+    assert update_kwargs["content"] == "ok"

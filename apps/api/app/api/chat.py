@@ -95,6 +95,14 @@ def _extract_scoped_paper_ids(
     return _extract_context_paper_ids(context)
 
 
+def _extract_scope_kb_id(scope: Dict[str, Any] | None) -> str | None:
+    scope_type = str((scope or {}).get("type") or "").strip().lower()
+    if scope_type != "knowledge_base":
+        return None
+    knowledge_base_id = str((scope or {}).get("knowledge_base_id") or "").strip()
+    return knowledge_base_id or None
+
+
 def _extract_handoff_evidence(context: Dict[str, Any] | None) -> list[Dict[str, Any]]:
     raw_rows = (context or {}).get("handoff_evidence")
     if not isinstance(raw_rows, list):
@@ -155,12 +163,14 @@ async def chat_v3_query(request: ChatStreamRequest, user_id: str = CurrentUserId
     trace_id = str(uuid4())
     try:
         scoped_paper_ids = _extract_scoped_paper_ids(request.scope, request.context)
+        scoped_kb_id = _extract_scope_kb_id(request.scope)
         payload = await build_answer_contract_payload(
             query=request.message,
             user_id=user_id,
             query_family=_infer_scoped_query_family(request.message, scoped_paper_ids),
             stage="rule",
             trace_id=trace_id,
+            kb_id=scoped_kb_id,
             paper_scope=scoped_paper_ids or None,
             handoff_evidence=_extract_handoff_evidence(request.context),
         )
@@ -490,6 +500,7 @@ async def chat_stream(
                         payload = await build_answer_contract_payload(
                             query=request.message,
                             user_id=user_id,
+                            kb_id=_extract_scope_kb_id(request.scope),
                             paper_scope=scoped_paper_ids,
                             query_family=_infer_scoped_query_family(
                                 request.message,
