@@ -218,6 +218,27 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
 
 cd ../..
 bash scripts/check-governance.sh
+
+cd apps/api
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/unit/test_chat_fast_path.py \
+  tests/test_notes_api_contract.py \
+  tests/unit/test_evidence_source_service.py \
+  tests/unit/test_upload_session_service.py \
+  tests/unit/test_import_pipeline_reliability.py \
+  tests/unit/test_tasks.py \
+  tests/test_import_processing_state_sync.py \
+  tests/unit/test_schema_contracts_v45.py \
+  --maxfail=1 -p no:cacheprovider
+
+cd ../web
+npx vitest run --maxWorkers=1 \
+  src/services/sseService.test.ts \
+  src/features/search/components/SearchAuthorPanel.test.tsx \
+  src/features/kb/components/KnowledgeWorkspaceShell.test.tsx \
+  src/app/components/layout/WorkspaceShell.test.tsx \
+  src/services/papersApi.test.ts \
+  src/utils/apiClient.test.ts
 ```
 
 结果：
@@ -237,6 +258,8 @@ bash scripts/check-governance.sh
 13. `python -m py_compile app/api/rag.py`：passed
 14. shared AnswerContract / RAG contract targeted pytest：28 passed
 15. `bash scripts/check-governance.sh`：passed
+16. auth / task / schema targeted pytest：54 passed
+17. frontend regression vitest：6 files / 32 tests passed
 
 本轮已关闭：
 
@@ -246,12 +269,15 @@ bash scripts/check-governance.sh
 4. `P1-DATA-004`：blocking query route 已改用 shared AnswerContract 主路径，并通过 legacy adapter 维持 `RAGQueryResponse` 兼容字段。
 5. `P1-GOV-002`：Symphony / WORKFLOW / `.codex/skills` 的架构定位已在 canonical 文档中统一收口。
 6. `P2-GOV-001`：testing strategy、本地 verify 脚本与 CI governance baseline 已收敛。
+7. `P1-AUTH-001` / `P1-AUTH-002`：`chat/cancel` / `chat/retry` 已先做 session ownership 校验；`retry` 不再在鉴权前读取消息。
+8. `P1-AUTH-003` / `P1-AUTH-004` / `P1-AUTH-005`：notes generate / regenerate / export、evidence note canonical chunk 查询、artifact fallback 都已带 `Paper.user_id` 可见性约束。
+9. `P1-TASK-001` / `P1-TASK-003` / `P1-TASK-004` / `P1-TASK-005`：local upload `os` import、batch import enqueue、task retry enqueue、ImportJob stage callback 已全部接通并有定向测试覆盖。
+10. `P1-TASK-002`：chunked upload create / complete 已同时收口总大小、PDF 类型和 magic bytes 校验。
+11. `P1-SCHEMA-001` / `P1-SCHEMA-002`：`Paper.is_search_ready` 已映射到 canonical `"isSearchReady"` 列，`review_drafts` / `review_runs` 已有正式 Alembic migration `015_add_review_tables_and_align_paper_indexes.py`。
 
 仍保持未修复且优先级高的项：
 
-1. `P1-AUTH-001` / `P1-AUTH-002`：`chat/cancel` 与 `chat/retry` 仍存在 session ownership / SSE error semantics 缺口。
-2. `P1-TASK-002` / `P1-TASK-003` / `P1-TASK-004` / `P1-TASK-005`：chunked upload 校验、batch import enqueue、retry enqueue、import stage callback 仍未闭环。
-3. `P1-SCHEMA-001` / `P1-SCHEMA-002`：`isSearchReady` 列映射与 `review_drafts` / `review_runs` 正式 migration 仍缺。
+当前按代码与测试复核，本报告列出的高优先级项已全部闭环。下方 Finding tables 保留为历史审计记录，不再代表当前 head 上的未修复缺陷。
 
 ## 5. P1 Findings
 
