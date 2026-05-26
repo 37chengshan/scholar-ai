@@ -514,7 +514,7 @@ def retrieve_evidence(
                 }
             )
 
-    if paper_scope:
+    if paper_scope is not None:
         allowed_papers = {p for p in paper_scope if p}
         filtered_candidates = [c for c in pack.candidates if c.paper_id in allowed_papers]
         pack = pack.model_copy(

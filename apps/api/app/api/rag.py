@@ -279,6 +279,11 @@ class RAGQueryResponse(BaseModel):
     """RAG查询响应"""
     answer: str = Field(..., description="回答内容")
     query: Optional[str] = Field(None, description="原始查询")
+    query_family: Optional[str] = Field(None, description="Canonical planner query family")
+    planner_query_count: Optional[int] = Field(None, description="Planner-generated query variant count")
+    decontextualized_query: Optional[str] = Field(None, description="Decontextualized planner query")
+    second_pass_used: Optional[bool] = Field(None, description="Whether second-pass rewrite executed")
+    second_pass_gain: Optional[float] = Field(None, description="Incremental recall gain from second pass")
     expanded_query: Optional[str] = Field(None, description="扩展后的查询")
     intent: Optional[str] = Field(None, description="查询意图 (question/compare/summary/evolution)")
     metadata_filters: Optional[Dict] = Field(None, description="提取的元数据过滤条件")
@@ -302,6 +307,7 @@ class RAGQueryResponse(BaseModel):
     citationAwareMetadata: Optional[Dict] = Field(None, description="citation-aware expansion metadata")
     scientificSynthesisMetrics: Optional[Dict] = Field(None, description="scientific synthesis quality metrics")
     recoveryActions: List[Dict] = Field(default_factory=list, description="user-visible recovery actions")
+    phase6_runtime: Optional[Dict] = Field(None, description="Phase 6 runtime contract")
     conversation_id: Optional[str] = Field(None, description="对话会话ID")
     cached: bool = Field(False, description="是否来自缓存")
 
@@ -405,6 +411,11 @@ async def rag_query(
             return RAGQueryResponse(
                 answer=cached.get("answer", ""),
                 query=request.question,
+                query_family=cached.get("query_family"),
+                planner_query_count=cached.get("planner_query_count"),
+                decontextualized_query=cached.get("decontextualized_query"),
+                second_pass_used=cached.get("second_pass_used"),
+                second_pass_gain=cached.get("second_pass_gain"),
                 sources=cached_sources,
                 confidence=cached.get("confidence", 0.0),
                 confidence_explain=cached.get("confidence_explain"),
@@ -425,6 +436,7 @@ async def rag_query(
                 citationAwareMetadata=cached.get("citationAwareMetadata"),
                 scientificSynthesisMetrics=cached.get("scientificSynthesisMetrics"),
                 recoveryActions=cached.get("recoveryActions", []),
+                phase6_runtime=cached.get("phase6_runtime"),
                 conversation_id=request.conversation_id,
                 cached=True
             )
@@ -458,6 +470,23 @@ async def rag_query(
         response = RAGQueryResponse(
             answer=answer,
             query=request.question,
+            query_family=str(retrieval_meta.get("query_family") or request.query_type),
+            planner_query_count=(
+                int(retrieval_meta.get("planner_query_count"))
+                if retrieval_meta.get("planner_query_count") is not None
+                else int(retrieval_meta.get("rewrite_count") or 0)
+            ),
+            decontextualized_query=retrieval_meta.get("decontextualized_query"),
+            second_pass_used=(
+                retrieval_meta.get("second_pass_used")
+                if retrieval_meta.get("second_pass_used") is not None
+                else bool(retrieval_meta.get("iterative_retrieval_triggered", False))
+            ),
+            second_pass_gain=(
+                float(retrieval_meta.get("second_pass_gain"))
+                if retrieval_meta.get("second_pass_gain") is not None
+                else None
+            ),
             expanded_query=None,  # Not available from AgenticRetrievalOrchestrator
             intent=request.query_type,  # Use query_type as intent
             metadata_filters=None,  # Not available from AgenticRetrievalOrchestrator
@@ -481,6 +510,7 @@ async def rag_query(
             citationAwareMetadata=retrieval_meta.get("citation_aware_metadata"),
             scientificSynthesisMetrics=retrieval_meta.get("scientific_synthesis_metrics"),
             recoveryActions=retrieval_meta.get("recovery_actions", []),
+            phase6_runtime=retrieval_meta.get("phase6_runtime"),
             conversation_id=request.conversation_id,
             cached=False
         )
@@ -492,6 +522,23 @@ async def rag_query(
             paper_ids=paper_ids,
             response={
                 "answer": answer,
+                "query_family": str(retrieval_meta.get("query_family") or request.query_type),
+                "planner_query_count": (
+                    int(retrieval_meta.get("planner_query_count"))
+                    if retrieval_meta.get("planner_query_count") is not None
+                    else int(retrieval_meta.get("rewrite_count") or 0)
+                ),
+                "decontextualized_query": retrieval_meta.get("decontextualized_query"),
+                "second_pass_used": (
+                    retrieval_meta.get("second_pass_used")
+                    if retrieval_meta.get("second_pass_used") is not None
+                    else bool(retrieval_meta.get("iterative_retrieval_triggered", False))
+                ),
+                "second_pass_gain": (
+                    float(retrieval_meta.get("second_pass_gain"))
+                    if retrieval_meta.get("second_pass_gain") is not None
+                    else None
+                ),
                 "sources": sources,
                 "confidence": confidence,
                 "confidence_explain": confidence_explain,
@@ -512,6 +559,7 @@ async def rag_query(
                 "citationAwareMetadata": retrieval_meta.get("citation_aware_metadata"),
                 "scientificSynthesisMetrics": retrieval_meta.get("scientific_synthesis_metrics"),
                 "recoveryActions": retrieval_meta.get("recovery_actions", []),
+                "phase6_runtime": retrieval_meta.get("phase6_runtime"),
             },
             query_type=request.query_type,
             retrieval_version="v3",

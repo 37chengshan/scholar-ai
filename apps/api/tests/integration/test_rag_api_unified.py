@@ -38,6 +38,11 @@ def retrieval_result():
             "unsupportedClaimCount": 0,
             "abstained": False,
             "answerMode": "full",
+            "query_family": "compare",
+            "decontextualized_query": "compare yolov3 yolov4 training efficiency",
+            "rewrite_count": 2,
+            "second_pass_used": True,
+            "second_pass_gain": 0.25,
             "graph_retrieval_used": False,
             "graph_candidate_count": 0,
             "graph_vector_merged_evidence": 1,
@@ -47,6 +52,24 @@ def retrieval_result():
             "citation_aware_metadata": {"citation_expansion_applied": False},
             "scientific_synthesis_metrics": {"citation_faithfulness": 1.0},
             "recovery_actions": [],
+            "phase6_runtime": {
+                "answer_mode": "full",
+                "confidence_level": "high-confidence",
+                "degraded": False,
+                "degraded_reasons": [],
+                "corrective_retrieval_used": False,
+                "corrective_actions": [],
+                "fallback_used": False,
+                "fallback_events": [],
+                "unsupported_claim_count": 0,
+                "recovery_outcome": "not_needed",
+                "silent_fallback": False,
+                "next_step_entry": {"entry_type": "read"},
+                "raptor_lite_used": False,
+                "raptor_lite_signals": [],
+                "review_global_evidence_used": False,
+                "review_global_evidence": {},
+            },
         },
     }
 
@@ -84,6 +107,12 @@ class TestRAGAPIUnified:
         assert data["supportedClaimCount"] == 1
         assert data["unsupportedClaimCount"] == 0
         assert data["answerMode"] == "full"
+        assert data["query_family"] == "compare"
+        assert data["planner_query_count"] == 2
+        assert data["decontextualized_query"] == "compare yolov3 yolov4 training efficiency"
+        assert data["second_pass_used"] is True
+        assert data["second_pass_gain"] == 0.25
+        assert data["phase6_runtime"]["confidence_level"] == "high-confidence"
         assert data["sources"][0]["source_id"] == "chunk-1"
 
     @pytest.mark.asyncio
@@ -148,6 +177,10 @@ class TestRAGAPIUnified:
         resp = RAGQueryResponse(
             answer="test answer",
             query="test query",
+            query_family="fact",
+            planner_query_count=1,
+            decontextualized_query="test query",
+            second_pass_used=False,
             intent="question",
             sources=[],
             confidence=0.85,
@@ -156,8 +189,62 @@ class TestRAGAPIUnified:
             supportedClaimCount=0,
             unsupportedClaimCount=0,
             answerMode="partial",
+            phase6_runtime={"confidence_level": "medium-confidence"},
         )
 
         assert resp.intent == "question"
         assert resp.answerMode == "partial"
         assert resp.lowConfidenceReasons == ["retrieval_weak"]
+        assert resp.query_family == "fact"
+        assert resp.phase6_runtime == {"confidence_level": "medium-confidence"}
+
+    @pytest.mark.asyncio
+    async def test_rag_query_cached_response_preserves_phase6_runtime(self):
+        cached_payload = {
+            "answer": "cached answer",
+            "query_family": "fact",
+            "planner_query_count": 1,
+            "decontextualized_query": "cached query",
+            "second_pass_used": False,
+            "second_pass_gain": None,
+            "sources": [],
+            "confidence": 0.9,
+            "confidence_explain": None,
+            "answerEvidenceConsistency": 0.8,
+            "lowConfidenceReasons": [],
+            "claimVerification": None,
+            "supportedClaimCount": 1,
+            "unsupportedClaimCount": 0,
+            "abstained": False,
+            "abstainReason": None,
+            "answerMode": "full",
+            "graphRetrievalUsed": False,
+            "graphCandidateCount": 0,
+            "graphVectorMergedEvidence": 0,
+            "retrievalEvaluator": None,
+            "iterativeRetrievalTriggered": False,
+            "retrievalTrace": {"mode": "cached"},
+            "citationAwareMetadata": None,
+            "scientificSynthesisMetrics": None,
+            "recoveryActions": [],
+            "phase6_runtime": {"confidence_level": "high-confidence"},
+        }
+
+        with (
+            patch("app.api.rag.get_cached_response", new=AsyncMock(return_value=cached_payload)),
+            patch("app.api.rag.set_cached_response", new=AsyncMock(return_value=None)),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as ac:
+                response = await ac.post(
+                    "/api/v1/queries/query",
+                    json={"question": "cached question", "paper_ids": ["paper-1"]},
+                )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is True
+        assert data["phase6_runtime"] == {"confidence_level": "high-confidence"}
+        assert data["query_family"] == "fact"

@@ -74,6 +74,48 @@ def test_main_path_retrieve_evidence_forwards_explicit_paper_scope(monkeypatch) 
     assert pack.candidates[0].paper_id == "paper-1"
 
 
+def test_main_path_retrieve_evidence_honors_empty_paper_scope(monkeypatch) -> None:
+    retriever = _CapturingRetriever()
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service._get_retriever",
+        lambda stage, embedding_model: retriever,
+    )
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service.create_embedding_provider",
+        lambda provider, model: type(
+            "Provider",
+            (),
+            {
+                "dim": 1024,
+                "embed_texts": lambda self, texts: [[0.1] * 1024 for _ in texts],
+                "get_runtime_binding": lambda self: type(
+                    "Binding",
+                    (),
+                    {"to_dict": lambda _self: {"resolved_mode": "online", "degraded_conditions": []}},
+                )(),
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "app.rag_v3.main_path_service.get_rerank_runtime_binding",
+        lambda: type("Binding", (), {"to_dict": lambda self: {"resolved_mode": "online", "degraded_conditions": []}})(),
+    )
+
+    pack = retrieve_evidence(
+        query="空知识库范围",
+        user_id="u-1",
+        paper_scope=[],
+        query_family="fact",
+        stage="rule",
+    )
+
+    assert retriever.kwargs is not None
+    assert retriever.kwargs["paper_scope"] == []
+    assert pack.candidates == []
+    assert pack.diagnostics["paper_scope_filter_applied"] == 1.0
+    assert pack.diagnostics["paper_scope_filter_size"] == 0.0
+
+
 @pytest.mark.asyncio
 async def test_build_answer_contract_payload_resolves_kb_scope_into_retrieval_scope(monkeypatch) -> None:
     captured: dict[str, object] = {}

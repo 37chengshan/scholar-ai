@@ -133,6 +133,9 @@ bash scripts/check-runtime-hygiene.sh strict
 5. `P2-UX-001`：Search 作者弹窗与 KB 导入弹窗迁移到 Radix `Dialog` 基础组件。
 6. `P1-GOV-001`：`data/` 已补入 `.gitignore` 与 `scripts/check-runtime-hygiene.sh` tracked gate。
 7. Search source 过滤链路已打通到请求层，Search sidebar 的 Semantic Scholar 统计与 active source 已改为 canonical `semantic_scholar`。
+8. `BE-V45-006`：`retrieve_evidence()` 现在会对 `paper_scope == []` 执行真实收窄，不再把空 KB scope 放宽成全局候选池。
+9. `BE-V45-005`：`/api/v1/rag/query` 现在显式暴露 `query_family`、`planner_query_count`、`decontextualized_query`、`second_pass_used`、`second_pass_gain`、`phase6_runtime`，并保证 cache 命中同构。
+10. `P2-CONTRACT-005` / `BE-V45-008`：新增 canonical `POST /api/v1/papers/{paperId}/star`，保留 `PATCH /starred` 作为兼容别名；`POST /api/v1/papers/batch-delete` 现在返回 `deletedIds` 与带 reason 的失败列表。
 
 本轮新增验证：
 
@@ -156,6 +159,12 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
 
 cd ..
 bash scripts/check-runtime-hygiene.sh tracked
+
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/unit/test_main_path_service_scope_routing.py \
+  tests/unit/test_paper_contracts_v45.py \
+  tests/integration/test_rag_api_unified.py \
+  --maxfail=1 -p no:cacheprovider
 ```
 
 结果：
@@ -164,14 +173,14 @@ bash scripts/check-runtime-hygiene.sh tracked
 2. 前端 `npm run type-check`：passed
 3. 后端 targeted pytest：17 passed
 4. runtime hygiene tracked：passed
+5. 后端 contract follow-up pytest：11 passed
 
 仍保持未修复且优先级高的项：
 
 1. `P1-DATA-001` ~ `P1-DATA-003`：Milvus fail-closed、旧向量清理、dimension mismatch 自动 drop
-2. `P1-DATA-004` / `BE-V45-005`：`/api/v1/rag/query` 仍未对齐 shared answer / phase6 runtime contract
+2. `P1-DATA-004`：`/api/v1/rag/query` 仍未切到 shared AnswerContract 主路径；这轮只补了 planner / phase6 runtime 字段同构。
 3. `BE-V45-004`：cancel 仍是 DB-only cancel，worker 继续运行
-4. `BE-V45-006`：`/search/evidence` 的空 KB scope 仍可能放宽候选范围
-5. `P2-CONTRACT-005` / `BE-V45-008`：paper star / batch delete 契约仍未收敛
+4. `P2-CONTRACT-005`：前端 `papersApi` 仍未切到 canonical star / batch-delete DTO，这轮先完成后端兼容收敛
 
 ## 5. P1 Findings
 

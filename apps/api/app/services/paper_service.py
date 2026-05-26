@@ -687,16 +687,27 @@ class PaperService:
         user_id: str,
         *,
         paper_ids: List[str],
-    ) -> int:
+    ) -> Dict[str, Any]:
         papers = await PaperRepository.list_user_papers_by_ids(db, user_id, paper_ids)
+        found_ids = {paper.id for paper in papers}
         storage_keys_to_delete: List[str] = []
-        deleted_count = 0
+        deleted_ids: List[str] = []
+        failures: List[Dict[str, str]] = []
         for paper in papers:
             storage_key = paper.storage_key
             if storage_key:
                 storage_keys_to_delete.append(storage_key)
             await db.delete(paper)
-            deleted_count += 1
+            deleted_ids.append(paper.id)
+
+        for paper_id in paper_ids:
+            if paper_id not in found_ids:
+                failures.append(
+                    {
+                        "id": paper_id,
+                        "reason": "not_found_or_not_owned",
+                    }
+                )
 
         if storage_keys_to_delete:
             storage_service = get_storage_service()
@@ -710,7 +721,10 @@ class PaperService:
                         error=str(e),
                     )
 
-        return deleted_count
+        return {
+            "deleted_ids": deleted_ids,
+            "failures": failures,
+        }
 
     @staticmethod
     async def batch_star_for_api(
@@ -719,12 +733,28 @@ class PaperService:
         *,
         paper_ids: List[str],
         starred: bool,
-    ) -> int:
+    ) -> Dict[str, Any]:
         papers = await PaperRepository.list_user_papers_by_ids(db, user_id, paper_ids)
+        found_ids = {paper.id for paper in papers}
+        updated_ids: List[str] = []
         for paper in papers:
             paper.starred = starred
             paper.updated_at = datetime.now(timezone.utc)
-        return len(papers)
+            updated_ids.append(paper.id)
+
+        failures = [
+            {
+                "id": paper_id,
+                "reason": "not_found_or_not_owned",
+            }
+            for paper_id in paper_ids
+            if paper_id not in found_ids
+        ]
+
+        return {
+            "updated_ids": updated_ids,
+            "failures": failures,
+        }
 
 
 __all__ = ["PaperService"]
