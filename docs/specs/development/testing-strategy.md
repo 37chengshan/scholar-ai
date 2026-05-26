@@ -45,6 +45,12 @@ E2E 覆盖范围：
 - `browser-harness`：作为脚本化浏览器自动化补充，用于需要自定义 Python 流程、批量操作或直接接管真实 Chrome 的场景。
 - `browser-use`：已弃用，不得作为新工作的执行路径。
 
+自动化基线：
+
+- `scripts/verify/run-all.sh` 与 `.github/workflows/verify.yml` 是默认自动化验证基线。
+- `ci-lite.yml` 与 `governance.yml` 是基线的子集或治理 smoke 变体，不得引入不同的 Node major 或冲突的必测定义。
+- PR19 / Playwright 分步 walkthrough 属于扩展浏览器验证；只有当变更触及真实上传、任务编排、流式交互或响应式界面时才进入阻断清单。
+
 PR19 最小流程分步验证（先节点后整跑）：
 
 - 后端/Worker 启动基线（必须显式使用 `.venv`，避免环境漂移）：
@@ -118,33 +124,20 @@ PR19 最小流程分步验证（先节点后整跑）：
 
 ## Verification
 
-- 本地最小验证：
-	- bash scripts/check-runtime-hygiene.sh tracked
-	- bash scripts/check-doc-governance.sh
-	- bash scripts/check-structure-boundaries.sh
-	- bash scripts/check-code-boundaries.sh
+- 本地自动化基线：
 	- bash scripts/check-governance.sh
-	- bash scripts/check-phase-tracking.sh
-	- bash scripts/check-branch-lifecycle.sh
-	- bash scripts/check-contract-gate.sh
-	- bash scripts/check-fallback-expiry.sh
-	- bash scripts/check-e2e-gate.sh --mode manifest
-	- cd apps/web && npm run type-check
+	- bash scripts/verify/run-all.sh
+
+- 扩展浏览器验证（按变更触发）：
 	- cd apps/web && npm run test:e2e:ci
 	- cd apps/web && npx playwright test e2e/pr19-stepwise-flow.spec.ts
 	- cd apps/web && npx playwright test e2e/pr19-min-flow.spec.ts
-	- cd packages/types && npm run build
-	- cd packages/sdk && npm run build
-	- cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1
-	- cd apps/api && .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1
 
 - CI 最小验证：
-	- 核心文档存在性检查
-	- frontend type-check
-	- backend pytest 冒烟
-	- contract gate
-	- fallback expiry gate
-	- e2e gate
+	- `.github/workflows/verify.yml`：本地自动化基线的 CI 等价物
+	- `.github/workflows/ci-lite.yml`：轻量 PR smoke
+	- `.github/workflows/governance.yml`：治理与结构 smoke
+	- `.github/workflows/e2e-gate.yml`：浏览器阻断链路
 
 ## Open Questions
 

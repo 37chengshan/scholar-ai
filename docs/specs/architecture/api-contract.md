@@ -273,6 +273,7 @@ RAG 检索与规划字段补充（Phase 1 + 2）：
 
 RAG 回答验证与图检索字段补充（Phase 3 + 4）：
 
+- `POST /api/v1/queries/query`（兼容 legacy `RAGQueryResponse` 的 blocking query route）现已统一走 shared `build_answer_contract_payload()` / `AnswerContract` 主路径计算，再适配回 `RAGQueryResponse`；命中缓存时必须优先复用 `answer_contract_payload + query_plan`，保证与首次计算同构。
 - `POST /api/v1/rag/query` 的 `RAGQueryResponse` 在保留既有字段基础上新增可选字段：
   - `claimVerification`：claim 级验证报告，至少包含 `totalClaims`、`supportedClaimCount`、`weaklySupportedClaimCount`、`unsupportedClaimCount`、`unsupportedClaimRate`、`results[]`。
   - `supportedClaimCount`、`unsupportedClaimCount`：回答级 claim 支持统计。

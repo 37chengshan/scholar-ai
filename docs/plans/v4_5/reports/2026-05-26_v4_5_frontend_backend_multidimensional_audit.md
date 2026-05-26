@@ -122,7 +122,7 @@ bash scripts/check-runtime-hygiene.sh strict
 
 ## 4. 2026-05-26 Closeout Update
 
-本轮在 `feat/v4-5-bridge-closeout` 上继续修复了一组高价值但可局部验证的问题，并保留 Milvus / cancel / legacy RAG 这类高风险链路到下一批。
+本轮在 `feat/v4-5-bridge-closeout` 上继续修复了一组高价值且可局部验证的问题，当前已把 Milvus strict / cancel 收口 / legacy RAG 主路径对齐 / governance baseline 收敛补到同一批闭环。
 
 已落地修复：
 
@@ -139,6 +139,9 @@ bash scripts/check-runtime-hygiene.sh strict
 11. `P2-CONTRACT-005` 前端适配：`apps/web/src/services/papersApi.ts` 已切到 canonical `/star` 路由、snake_case `paper_ids` 请求体，并消费 traceable batch-delete / batch-star 返回结构。
 12. `P2-TASK-001`：`PDFCoordinator.process()` 现在在成功/失败收口后清理临时 PDF 文件，避免 `delete=False` 残留。
 13. `P1-DATA-002`：Milvus 现在支持按 `paper_id` 清理 content v2、summary、image、table 四类向量；该清理已接入 `delete_paper`、`batch_delete`、`regenerate-chunks` 和 storage rerun 路径，避免旧证据残留。
+14. `P1-DATA-004`：`POST /api/v1/queries/query` 现在统一走 shared `build_answer_contract_payload()` / `AnswerContract` 主路径计算，再适配回 legacy `RAGQueryResponse`；cache 也持久化 `answer_contract_payload + query_plan`，命中时保持同构。
+15. `P1-GOV-002`：`architecture.md`、`system-overview`、`documentation-validation` 已统一声明 `WORKFLOW.md` / `.codex/skills/` / `scripts/symphony/` 只是本地编排覆盖层，不是产品 runtime canonical。
+16. `P2-GOV-001`：`testing-strategy`、`scripts/verify/run-all.sh`、`verify.yml`、`ci-lite.yml`、`governance.yml` 已收敛到同一 governance baseline，并消除 Node 20/22 偏差与失效 workflow 引用。
 
 本轮新增验证：
 
@@ -201,6 +204,20 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
   tests/unit/test_tasks.py -k cancel \
   tests/test_import_processing_state_sync.py \
   --maxfail=1 -p no:cacheprovider
+
+cd apps/api
+python -m py_compile app/api/rag.py
+
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/integration/test_rag_api_unified.py \
+  tests/unit/test_main_path_service_scope_routing.py \
+  tests/unit/test_answer_contract.py \
+  tests/unit/test_rag_trace_contract.py \
+  tests/unit/test_rag_error_state_contract.py \
+  --maxfail=1 -p no:cacheprovider
+
+cd ../..
+bash scripts/check-governance.sh
 ```
 
 结果：
@@ -217,18 +234,24 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
 10. Milvus strict insert / schema mismatch / worker cancel targeted pytest：16 passed
 11. PDF coordinator cancel gate targeted pytest：3 passed
 12. task cancel / import state sync targeted pytest：9 passed
+13. `python -m py_compile app/api/rag.py`：passed
+14. shared AnswerContract / RAG contract targeted pytest：28 passed
+15. `bash scripts/check-governance.sh`：passed
 
 本轮已关闭：
 
 1. `P1-DATA-001`：Milvus 主向量写入改为 strict/fail-closed；storage path 不再把部分写入当成功。
 2. `P1-DATA-003`：collection dimension mismatch 不再自动 drop/recreate，而是显式 fail-fast。
 3. `P2-TASK-002` / `BE-V45-004`：task / import cancel 已接入 processing task cancel、coordinator 阶段闸门、worker terminal overwrite 防护。
+4. `P1-DATA-004`：blocking query route 已改用 shared AnswerContract 主路径，并通过 legacy adapter 维持 `RAGQueryResponse` 兼容字段。
+5. `P1-GOV-002`：Symphony / WORKFLOW / `.codex/skills` 的架构定位已在 canonical 文档中统一收口。
+6. `P2-GOV-001`：testing strategy、本地 verify 脚本与 CI governance baseline 已收敛。
 
 仍保持未修复且优先级高的项：
 
-1. `P1-DATA-004`：`/api/v1/rag/query` 仍未切到 shared AnswerContract 主路径；当前只做到 planner / phase6 runtime 字段同构。
-2. `P1-GOV-002`：Symphony / WORKFLOW 相关架构真源同步还未统一收口。
-3. `P2-GOV-001`：testing strategy、本地 verify 脚本、CI workflow 仍有矩阵偏差。
+1. `P1-AUTH-001` / `P1-AUTH-002`：`chat/cancel` 与 `chat/retry` 仍存在 session ownership / SSE error semantics 缺口。
+2. `P1-TASK-002` / `P1-TASK-003` / `P1-TASK-004` / `P1-TASK-005`：chunked upload 校验、batch import enqueue、retry enqueue、import stage callback 仍未闭环。
+3. `P1-SCHEMA-001` / `P1-SCHEMA-002`：`isSearchReady` 列映射与 `review_drafts` / `review_runs` 正式 migration 仍缺。
 
 ## 5. P1 Findings
 

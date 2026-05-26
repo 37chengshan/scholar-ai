@@ -9,7 +9,7 @@ Provides endpoints for:
 
 import time
 import uuid
-from typing import List, Optional, Dict, Tuple
+from typing import Any, List, Optional, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.responses import StreamingResponse
@@ -24,12 +24,14 @@ from app.utils.cache import (
 from app.utils.session_manager import session_manager
 from app.schemas.session import SessionUpdate
 from app.core.agentic_retrieval import AgenticRetrievalOrchestrator
+from app.core.query_planner import build_academic_query_plan
 from app.core.streaming import (
     stream_rag_response,
     format_sse_done,
     format_sse_event,
 )
 from app.core.multimodal_search_service import get_multimodal_search_service
+from app.rag_v3.main_path_service import build_answer_contract_payload
 from app.deps import CurrentUserId
 
 router = APIRouter()
@@ -256,6 +258,100 @@ def calculate_confidence(
     return final_confidence, explain, answer_evidence_consistency, low_confidence_reasons
 
 
+def _normalize_query_type_for_contract(query_type: str) -> str:
+    normalized = str(query_type or "single").strip().lower().replace("-", "_")
+    if normalized == "single":
+        return "fact"
+    if normalized == "cross_paper":
+        return "compare"
+    return normalized or "fact"
+
+
+def _citation_to_legacy_source(citation: Dict[str, Any]) -> Dict[str, Any]:
+    content_subtype = citation.get("content_subtype") or citation.get("content_type") or "text"
+    source_id = citation.get("source_id") or citation.get("source_chunk_id")
+    text_preview = citation.get("text_preview") or citation.get("anchor_text") or ""
+    return {
+        "paper_id": citation.get("paper_id"),
+        "source_id": source_id,
+        "chunk_id": citation.get("source_chunk_id"),
+        "score": citation.get("score", 0.0),
+        "page_num": citation.get("page_num", 0),
+        "section_path": citation.get("section_path") or "unknown",
+        "content_subtype": content_subtype,
+        "content_type": content_subtype,
+        "anchor_text": citation.get("anchor_text") or text_preview,
+        "text_preview": text_preview,
+        "title": citation.get("title"),
+        "citation_jump_url": citation.get("citation_jump_url"),
+    }
+
+
+def _build_rag_query_response_from_answer_contract(
+    *,
+    payload: Dict[str, Any],
+    request: "RAGQueryRequest",
+    query_plan: Dict[str, Any],
+    cached: bool,
+) -> "RAGQueryResponse":
+    sources = normalize_sources_with_tolerance(
+        [_citation_to_legacy_source(citation) for citation in payload.get("citations", [])]
+    )
+    answer = str(payload.get("answer") or "")
+    confidence, confidence_explain, answer_evidence_consistency, low_confidence_reasons = calculate_confidence(
+        answer,
+        sources,
+        with_explain=True,
+    )
+
+    truthfulness_report = payload.get("truthfulness_report") or {}
+    truthfulness_summary = payload.get("truthfulness_summary") or truthfulness_report.get("summary") or {}
+    phase6_runtime = payload.get("phase6_runtime") or (payload.get("quality") or {}).get("phase6_runtime")
+    phase6_runtime = phase6_runtime if isinstance(phase6_runtime, dict) else {}
+    answer_mode = str(payload.get("answer_mode") or "full")
+    unsupported_claim_count = int(
+        truthfulness_summary.get("unsupportedClaimCount")
+        or phase6_runtime.get("unsupported_claim_count")
+        or 0
+    )
+
+    return RAGQueryResponse(
+        answer=answer,
+        query=request.question,
+        query_family=str(query_plan.get("query_family") or _normalize_query_type_for_contract(request.query_type)),
+        planner_query_count=int(query_plan.get("planner_query_count") or 0),
+        decontextualized_query=str(query_plan.get("decontextualized_query") or request.question),
+        second_pass_used=False,
+        second_pass_gain=None,
+        expanded_query=None,
+        intent=request.query_type,
+        metadata_filters=None,
+        sources=sources,
+        confidence=confidence,
+        confidence_explain=confidence_explain,
+        answerEvidenceConsistency=answer_evidence_consistency,
+        lowConfidenceReasons=low_confidence_reasons,
+        claimVerification=truthfulness_report,
+        supportedClaimCount=int(truthfulness_summary.get("supportedClaimCount") or 0),
+        unsupportedClaimCount=unsupported_claim_count,
+        abstained=answer_mode == "abstain",
+        abstainReason=str(payload.get("error_state") or "insufficient_evidence") if answer_mode == "abstain" else None,
+        answerMode=answer_mode,
+        graphRetrievalUsed=False,
+        graphCandidateCount=0,
+        graphVectorMergedEvidence=0,
+        retrievalEvaluator=None,
+        iterativeRetrievalTriggered=bool(phase6_runtime.get("corrective_retrieval_used", False)),
+        retrievalTrace=payload.get("trace"),
+        citationAwareMetadata=None,
+        scientificSynthesisMetrics=None,
+        recoveryActions=list(payload.get("recovery_actions") or []),
+        phase6_runtime=phase6_runtime,
+        conversation_id=request.conversation_id,
+        cached=cached,
+    )
+
+
 # =============================================================================
 # Request/Response Models
 # =============================================================================
@@ -398,7 +494,6 @@ async def rag_query(
 
         if cached:
             logger.info(f"Returning cached response for query: {request.question[:50]}...")
-            cached_sources = normalize_sources_with_tolerance(cached.get("sources", []))
             duration_ms = (time.perf_counter() - started) * 1000
             logger.info(
                 "run_completed",
@@ -408,6 +503,18 @@ async def rag_query(
                 status="cached",
                 duration_ms=round(duration_ms, 2),
             )
+
+            cached_payload = cached.get("answer_contract_payload")
+            cached_query_plan = cached.get("query_plan")
+            if isinstance(cached_payload, dict) and isinstance(cached_query_plan, dict):
+                return _build_rag_query_response_from_answer_contract(
+                    payload=cached_payload,
+                    request=request,
+                    query_plan=cached_query_plan,
+                    cached=True,
+                )
+
+            cached_sources = normalize_sources_with_tolerance(cached.get("sources", []))
             return RAGQueryResponse(
                 answer=cached.get("answer", ""),
                 query=request.question,
@@ -441,78 +548,31 @@ async def rag_query(
                 cached=True
             )
 
-        # Use AgenticRetrievalOrchestrator for proper citation formatting
-        orchestrator = AgenticRetrievalOrchestrator(max_rounds=1)
+        normalized_query_type = _normalize_query_type_for_contract(request.query_type)
+        query_plan = build_academic_query_plan(
+            request.question,
+            paper_ids=paper_ids,
+            query_intent=normalized_query_type,
+        )
 
         retrieve_started = time.perf_counter()
-
-        result = await orchestrator.retrieve(
+        answer_contract_payload = await build_answer_contract_payload(
             query=request.question,
-            query_type=request.query_type,
-            paper_ids=paper_ids,
             user_id=user_id,
-            top_k_per_subquestion=request.top_k,
+            paper_scope=paper_ids or None,
+            query_family=str(query_plan.get("query_family") or normalized_query_type),
+            stage="rule",
+            trace_id=run_id,
+            run_id=run_id,
+            top_k=request.top_k,
         )
-
-        # Extract answer and sources from orchestrator result
-        answer = result.get("answer", "")
-        sources = normalize_sources_with_tolerance(result.get("sources", []))
         retrieve_duration_ms = (time.perf_counter() - retrieve_started) * 1000
 
-        confidence, confidence_explain, answer_evidence_consistency, low_confidence_reasons = calculate_confidence(
-            answer,
-            sources,
-            with_explain=True,
-        )
-
-        # Build response (expanded_query/intent not available from orchestrator)
-        retrieval_meta = result.get("metadata", {}) if isinstance(result.get("metadata"), dict) else {}
-        response = RAGQueryResponse(
-            answer=answer,
-            query=request.question,
-            query_family=str(retrieval_meta.get("query_family") or request.query_type),
-            planner_query_count=(
-                int(retrieval_meta.get("planner_query_count"))
-                if retrieval_meta.get("planner_query_count") is not None
-                else int(retrieval_meta.get("rewrite_count") or 0)
-            ),
-            decontextualized_query=retrieval_meta.get("decontextualized_query"),
-            second_pass_used=(
-                retrieval_meta.get("second_pass_used")
-                if retrieval_meta.get("second_pass_used") is not None
-                else bool(retrieval_meta.get("iterative_retrieval_triggered", False))
-            ),
-            second_pass_gain=(
-                float(retrieval_meta.get("second_pass_gain"))
-                if retrieval_meta.get("second_pass_gain") is not None
-                else None
-            ),
-            expanded_query=None,  # Not available from AgenticRetrievalOrchestrator
-            intent=request.query_type,  # Use query_type as intent
-            metadata_filters=None,  # Not available from AgenticRetrievalOrchestrator
-            sources=sources,
-            confidence=confidence,
-            confidence_explain=confidence_explain,
-            answerEvidenceConsistency=answer_evidence_consistency,
-            lowConfidenceReasons=low_confidence_reasons,
-            claimVerification=retrieval_meta.get("claimVerification"),
-            supportedClaimCount=int(retrieval_meta.get("supportedClaimCount") or 0),
-            unsupportedClaimCount=int(retrieval_meta.get("unsupportedClaimCount") or 0),
-            abstained=bool(retrieval_meta.get("abstained", False)),
-            abstainReason=retrieval_meta.get("abstainReason"),
-            answerMode=str(retrieval_meta.get("answerMode") or "full"),
-            graphRetrievalUsed=bool(retrieval_meta.get("graph_retrieval_used", False)),
-            graphCandidateCount=int(retrieval_meta.get("graph_candidate_count") or 0),
-            graphVectorMergedEvidence=int(retrieval_meta.get("graph_vector_merged_evidence") or 0),
-            retrievalEvaluator=retrieval_meta.get("retrieval_evaluator"),
-            iterativeRetrievalTriggered=bool(retrieval_meta.get("iterative_retrieval_triggered", False)),
-            retrievalTrace=retrieval_meta.get("retrieval_trace"),
-            citationAwareMetadata=retrieval_meta.get("citation_aware_metadata"),
-            scientificSynthesisMetrics=retrieval_meta.get("scientific_synthesis_metrics"),
-            recoveryActions=retrieval_meta.get("recovery_actions", []),
-            phase6_runtime=retrieval_meta.get("phase6_runtime"),
-            conversation_id=request.conversation_id,
-            cached=False
+        response = _build_rag_query_response_from_answer_contract(
+            payload=answer_contract_payload,
+            request=request,
+            query_plan=query_plan,
+            cached=False,
         )
 
         # Cache the response (with user_id and version per D-04)
@@ -521,45 +581,9 @@ async def rag_query(
             query=request.question,
             paper_ids=paper_ids,
             response={
-                "answer": answer,
-                "query_family": str(retrieval_meta.get("query_family") or request.query_type),
-                "planner_query_count": (
-                    int(retrieval_meta.get("planner_query_count"))
-                    if retrieval_meta.get("planner_query_count") is not None
-                    else int(retrieval_meta.get("rewrite_count") or 0)
-                ),
-                "decontextualized_query": retrieval_meta.get("decontextualized_query"),
-                "second_pass_used": (
-                    retrieval_meta.get("second_pass_used")
-                    if retrieval_meta.get("second_pass_used") is not None
-                    else bool(retrieval_meta.get("iterative_retrieval_triggered", False))
-                ),
-                "second_pass_gain": (
-                    float(retrieval_meta.get("second_pass_gain"))
-                    if retrieval_meta.get("second_pass_gain") is not None
-                    else None
-                ),
-                "sources": sources,
-                "confidence": confidence,
-                "confidence_explain": confidence_explain,
-                "answerEvidenceConsistency": answer_evidence_consistency,
-                "lowConfidenceReasons": low_confidence_reasons,
-                "claimVerification": retrieval_meta.get("claimVerification"),
-                "supportedClaimCount": int(retrieval_meta.get("supportedClaimCount") or 0),
-                "unsupportedClaimCount": int(retrieval_meta.get("unsupportedClaimCount") or 0),
-                "abstained": bool(retrieval_meta.get("abstained", False)),
-                "abstainReason": retrieval_meta.get("abstainReason"),
-                "answerMode": str(retrieval_meta.get("answerMode") or "full"),
-                "graphRetrievalUsed": bool(retrieval_meta.get("graph_retrieval_used", False)),
-                "graphCandidateCount": int(retrieval_meta.get("graph_candidate_count") or 0),
-                "graphVectorMergedEvidence": int(retrieval_meta.get("graph_vector_merged_evidence") or 0),
-                "retrievalEvaluator": retrieval_meta.get("retrieval_evaluator"),
-                "iterativeRetrievalTriggered": bool(retrieval_meta.get("iterative_retrieval_triggered", False)),
-                "retrievalTrace": retrieval_meta.get("retrieval_trace"),
-                "citationAwareMetadata": retrieval_meta.get("citation_aware_metadata"),
-                "scientificSynthesisMetrics": retrieval_meta.get("scientific_synthesis_metrics"),
-                "recoveryActions": retrieval_meta.get("recovery_actions", []),
-                "phase6_runtime": retrieval_meta.get("phase6_runtime"),
+                **response.model_dump(),
+                "answer_contract_payload": answer_contract_payload,
+                "query_plan": query_plan,
             },
             query_type=request.query_type,
             retrieval_version="v3",
@@ -569,7 +593,7 @@ async def rag_query(
         # Update conversation if conversation_id provided (with user_id per D-05)
         if request.conversation_id:
             try:
-                await _update_conversation(request, answer, sources, user_id)
+                await _update_conversation(request, response.answer, response.sources, user_id)
             except Exception as conv_err:
                 logger.warning(
                     "Conversation update failed, continue returning answer",
@@ -587,8 +611,8 @@ async def rag_query(
             status="success",
             duration_ms=round(duration_ms, 2),
             rag_retrieve_duration_ms=round(retrieve_duration_ms, 2),
-            source_count=len(sources),
-            confidence=confidence,
+            source_count=len(response.sources),
+            confidence=response.confidence,
         )
 
         return response

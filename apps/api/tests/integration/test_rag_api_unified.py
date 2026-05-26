@@ -17,72 +17,82 @@ def override_auth():
 
 
 @pytest.fixture
-def retrieval_result():
+def answer_contract_payload():
     return {
+        "response_type": "rag",
+        "answer_mode": "full",
         "answer": "YOLOv4 improves training efficiency.",
-        "sources": [
+        "claims": [],
+        "citations": [
             {
                 "paper_id": "paper-1",
+                "source_chunk_id": "chunk-1",
                 "source_id": "chunk-1",
                 "score": 0.95,
                 "page_num": 5,
                 "section_path": "Results",
-                "content_subtype": "paragraph",
+                "content_type": "paragraph",
                 "anchor_text": "YOLOv4 improves training efficiency.",
                 "text_preview": "YOLOv4 improves training efficiency compared with YOLOv3.",
             }
         ],
-        "metadata": {
-            "claimVerification": {"supportedClaimCount": 1},
+        "evidence_blocks": [],
+        "quality": {},
+        "trace": {
+            "query_family": "compare",
+            "trace_id": "trace-1",
+            "run_id": "run-1",
+        },
+        "truthfulness_summary": {
             "supportedClaimCount": 1,
             "unsupportedClaimCount": 0,
-            "abstained": False,
+        },
+        "truthfulness_report": {
             "answerMode": "full",
-            "query_family": "compare",
-            "decontextualized_query": "compare yolov3 yolov4 training efficiency",
-            "rewrite_count": 2,
-            "second_pass_used": True,
-            "second_pass_gain": 0.25,
-            "graph_retrieval_used": False,
-            "graph_candidate_count": 0,
-            "graph_vector_merged_evidence": 1,
-            "retrieval_evaluator": {"is_weak": False},
-            "iterative_retrieval_triggered": False,
-            "retrieval_trace": {"mode": "orchestrator_v2"},
-            "citation_aware_metadata": {"citation_expansion_applied": False},
-            "scientific_synthesis_metrics": {"citation_faithfulness": 1.0},
-            "recovery_actions": [],
-            "phase6_runtime": {
-                "answer_mode": "full",
-                "confidence_level": "high-confidence",
-                "degraded": False,
-                "degraded_reasons": [],
-                "corrective_retrieval_used": False,
-                "corrective_actions": [],
-                "fallback_used": False,
-                "fallback_events": [],
-                "unsupported_claim_count": 0,
-                "recovery_outcome": "not_needed",
-                "silent_fallback": False,
-                "next_step_entry": {"entry_type": "read"},
-                "raptor_lite_used": False,
-                "raptor_lite_signals": [],
-                "review_global_evidence_used": False,
-                "review_global_evidence": {},
+            "summary": {
+                "supportedClaimCount": 1,
+                "unsupportedClaimCount": 0,
             },
+        },
+        "recovery_actions": [],
+        "phase6_runtime": {
+            "answer_mode": "full",
+            "confidence_level": "high-confidence",
+            "degraded": False,
+            "degraded_reasons": [],
+            "corrective_retrieval_used": False,
+            "corrective_actions": [],
+            "fallback_used": False,
+            "fallback_events": [],
+            "unsupported_claim_count": 0,
+            "recovery_outcome": "not_needed",
+            "silent_fallback": False,
+            "next_step_entry": {"entry_type": "read"},
+            "raptor_lite_used": False,
+            "raptor_lite_signals": [],
+            "review_global_evidence_used": False,
+            "review_global_evidence": {},
         },
     }
 
 
 class TestRAGAPIUnified:
     @pytest.mark.asyncio
-    async def test_rag_query_route_returns_current_contract(self, retrieval_result):
+    async def test_rag_query_route_returns_current_contract(self, answer_contract_payload):
         with (
             patch("app.api.rag.get_cached_response", new=AsyncMock(return_value=None)),
             patch("app.api.rag.set_cached_response", new=AsyncMock(return_value=None)),
             patch(
-                "app.api.rag.AgenticRetrievalOrchestrator.retrieve",
-                new=AsyncMock(return_value=retrieval_result),
+                "app.api.rag.build_answer_contract_payload",
+                new=AsyncMock(return_value=answer_contract_payload),
+            ),
+            patch(
+                "app.api.rag.build_academic_query_plan",
+                return_value={
+                    "query_family": "compare",
+                    "planner_query_count": 2,
+                    "decontextualized_query": "compare yolov3 yolov4 training efficiency",
+                },
             ),
         ):
             async with AsyncClient(
@@ -110,35 +120,52 @@ class TestRAGAPIUnified:
         assert data["query_family"] == "compare"
         assert data["planner_query_count"] == 2
         assert data["decontextualized_query"] == "compare yolov3 yolov4 training efficiency"
-        assert data["second_pass_used"] is True
-        assert data["second_pass_gain"] == 0.25
+        assert data["second_pass_used"] is False
+        assert data["second_pass_gain"] is None
         assert data["phase6_runtime"]["confidence_level"] == "high-confidence"
         assert data["sources"][0]["source_id"] == "chunk-1"
 
     @pytest.mark.asyncio
     async def test_rag_query_normalizes_partial_legacy_source_fields(self):
-        retrieval_result = {
+        answer_contract_payload = {
+            "response_type": "rag",
+            "answer_mode": "partial",
             "answer": "Test answer",
-            "sources": [
+            "claims": [],
+            "citations": [
                 {
                     "paper_id": "paper-1",
-                    "chunk_id": "legacy-1",
+                    "source_chunk_id": "legacy-1",
                     "score": 0.8,
                     "page_num": 2,
-                    "section": "Methods",
+                    "section_path": "Methods",
                     "content_type": "text",
                     "text_preview": "Legacy source preview",
                 }
             ],
-            "metadata": {},
+            "evidence_blocks": [],
+            "quality": {},
+            "trace": {"query_family": "fact", "trace_id": "trace-2", "run_id": "run-2"},
+            "truthfulness_summary": {"supportedClaimCount": 0, "unsupportedClaimCount": 0},
+            "truthfulness_report": {"answerMode": "partial", "summary": {"supportedClaimCount": 0, "unsupportedClaimCount": 0}},
+            "recovery_actions": [],
+            "phase6_runtime": {"corrective_retrieval_used": False, "confidence_level": "medium-confidence"},
         }
 
         with (
             patch("app.api.rag.get_cached_response", new=AsyncMock(return_value=None)),
             patch("app.api.rag.set_cached_response", new=AsyncMock(return_value=None)),
             patch(
-                "app.api.rag.AgenticRetrievalOrchestrator.retrieve",
-                new=AsyncMock(return_value=retrieval_result),
+                "app.api.rag.build_answer_contract_payload",
+                new=AsyncMock(return_value=answer_contract_payload),
+            ),
+            patch(
+                "app.api.rag.build_academic_query_plan",
+                return_value={
+                    "query_family": "fact",
+                    "planner_query_count": 1,
+                    "decontextualized_query": "YOLO目标检测",
+                },
             ),
         ):
             async with AsyncClient(
@@ -201,33 +228,25 @@ class TestRAGAPIUnified:
     @pytest.mark.asyncio
     async def test_rag_query_cached_response_preserves_phase6_runtime(self):
         cached_payload = {
-            "answer": "cached answer",
-            "query_family": "fact",
-            "planner_query_count": 1,
-            "decontextualized_query": "cached query",
-            "second_pass_used": False,
-            "second_pass_gain": None,
-            "sources": [],
-            "confidence": 0.9,
-            "confidence_explain": None,
-            "answerEvidenceConsistency": 0.8,
-            "lowConfidenceReasons": [],
-            "claimVerification": None,
-            "supportedClaimCount": 1,
-            "unsupportedClaimCount": 0,
-            "abstained": False,
-            "abstainReason": None,
-            "answerMode": "full",
-            "graphRetrievalUsed": False,
-            "graphCandidateCount": 0,
-            "graphVectorMergedEvidence": 0,
-            "retrievalEvaluator": None,
-            "iterativeRetrievalTriggered": False,
-            "retrievalTrace": {"mode": "cached"},
-            "citationAwareMetadata": None,
-            "scientificSynthesisMetrics": None,
-            "recoveryActions": [],
-            "phase6_runtime": {"confidence_level": "high-confidence"},
+            "answer_contract_payload": {
+                "response_type": "rag",
+                "answer_mode": "full",
+                "answer": "cached answer",
+                "claims": [],
+                "citations": [],
+                "evidence_blocks": [],
+                "quality": {},
+                "trace": {"query_family": "fact", "trace_id": "trace-cached", "run_id": "run-cached"},
+                "truthfulness_summary": {"supportedClaimCount": 1, "unsupportedClaimCount": 0},
+                "truthfulness_report": {"answerMode": "full", "summary": {"supportedClaimCount": 1, "unsupportedClaimCount": 0}},
+                "recovery_actions": [],
+                "phase6_runtime": {"confidence_level": "high-confidence", "corrective_retrieval_used": False},
+            },
+            "query_plan": {
+                "query_family": "fact",
+                "planner_query_count": 1,
+                "decontextualized_query": "cached query",
+            },
         }
 
         with (
@@ -246,5 +265,5 @@ class TestRAGAPIUnified:
         assert response.status_code == 200
         data = response.json()
         assert data["cached"] is True
-        assert data["phase6_runtime"] == {"confidence_level": "high-confidence"}
+        assert data["phase6_runtime"]["confidence_level"] == "high-confidence"
         assert data["query_family"] == "fact"

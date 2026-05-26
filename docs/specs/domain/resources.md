@@ -57,6 +57,7 @@
 - ClaimVerificationReport 绑定单次 RAG 响应，引用 EvidenceBundle/Chunk 作为 claim 证据来源。
 - TruthfulnessReport 可绑定单次 RAG/Compare/Review 段落响应，最小字段为 `totalClaims`、四档 support count、`unsupportedClaimRate`、`answerMode` 与 `results[]`。
 - Phase6RuntimeContract 绑定单次 RAG/Compare/Review/agentic retrieval 响应或 run trace，不独立落库；它是 answer contract、SSE done payload、review quality benchmark_hooks 与 run artifact metadata 上的统一语义投影。
+- `RAGQueryResponse` 是 shared `AnswerContract` 的兼容投影视图：`POST /api/v1/queries/query` 必须先产出 canonical `AnswerContract` / `TruthfulnessReport` / `Phase6RuntimeContract`，再适配回 legacy `sources[]`、claim 统计与 planner 字段；cache 也必须保留 `answer_contract_payload + query_plan` 以维持命中同构。
 - GraphRetrievalResult 绑定单次检索计划，作为 vector 检索的约束与重排辅助，不独立替代 Chunk。
 - ReviewDraft 归属 KnowledgeBase，可选绑定 `sourcePaperIds[]` 子集；同一 draft 可被多次 retry/run 覆盖更新。
 - ReviewRun 归属 KnowledgeBase 且可回链到 ReviewDraft；Run 是执行轨迹真源，禁止用 session 列表投影伪装。

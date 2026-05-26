@@ -92,6 +92,12 @@ Notes/Read ownership：
 - Nginx 配置位于 nginx。
 - 部署脚本位于根目录 deploy-cloud*.sh，后续纳入 infra/deploy 逻辑聚合。
 
+仓库本地编排覆盖层：
+
+- `WORKFLOW.md`、`.codex/skills/`、`scripts/symphony/` 若存在，只承担 agent / developer workflow 编排职责，不定义产品运行时边界。
+- 这些覆盖层可以组织命令、阶段和验证顺序，但不能替代 `AGENTS.md`、`docs/specs/development/pr-process.md`、`docs/specs/development/testing-strategy.md` 与本文件。
+- 任何由覆盖层触发的自动化流程，仍必须回到现有 PR 模板、治理脚本与验证门禁。
+
 ## Required Updates
 
 - 新增/删除子系统：同步更新本文件与 architecture.md。
