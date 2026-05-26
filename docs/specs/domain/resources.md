@@ -35,6 +35,7 @@
 - EvidenceNote：由 claim+citation 落盘生成的用户可编辑笔记资源（归属 Note 主模型）
 - ClaimVerificationReport：RAG 回答阶段的 claim 级验证结果资源（支持/弱支持/不支持）
 - TruthfulnessReport：Phase I 首批统一 truthfulness substrate 资源，服务于 rag/chat/compare/review 共享 claim 校验与 repair
+- Phase6RuntimeContract：Phase 6 统一运行时语义投影视图，服务于 rag/chat/compare/review/agentic retrieval 共享 confidence、degraded、corrective、fallback 与 recovery 解释
 - GraphRetrievalResult：图增强检索候选与融合统计资源（compare/evolution/numeric 场景）
 - ReviewDraft：KB 级正式综述草稿资源（outlineDoc + draftDoc 同源承载）
 - ReviewRun：KB 级综述生成运行记录资源（steps/tool_events/artifacts/evidence/recovery）
@@ -55,6 +56,7 @@
 - EvidenceNote 是 Note 的受控创建路径之一，必须绑定 `paper_id` 与 `source_chunk_id`，并把 EvidenceBlock 2.0 写入 `linkedEvidence[]`，不得创建并行笔记模型。
 - ClaimVerificationReport 绑定单次 RAG 响应，引用 EvidenceBundle/Chunk 作为 claim 证据来源。
 - TruthfulnessReport 可绑定单次 RAG/Compare/Review 段落响应，最小字段为 `totalClaims`、四档 support count、`unsupportedClaimRate`、`answerMode` 与 `results[]`。
+- Phase6RuntimeContract 绑定单次 RAG/Compare/Review/agentic retrieval 响应或 run trace，不独立落库；它是 answer contract、SSE done payload、review quality benchmark_hooks 与 run artifact metadata 上的统一语义投影。
 - GraphRetrievalResult 绑定单次检索计划，作为 vector 检索的约束与重排辅助，不独立替代 Chunk。
 - ReviewDraft 归属 KnowledgeBase，可选绑定 `sourcePaperIds[]` 子集；同一 draft 可被多次 retry/run 覆盖更新。
 - ReviewRun 归属 KnowledgeBase 且可回链到 ReviewDraft；Run 是执行轨迹真源，禁止用 session 列表投影伪装。
@@ -192,6 +194,22 @@ ClaimVerificationReport 最小字段契约：
 - 回答决策字段：`abstained`、`abstainReason`、`answerMode(full|partial|abstain)`
 - Phase 6 action 字段：`recoveryActions[]`，单项至少包含 `action`、`status`、`scope`、`reason`、`params{}`
 
+Phase6RuntimeContract 最小字段契约：
+
+- `answer_mode`
+- `confidence_level`：`high-confidence|medium-confidence|low-confidence`
+- `degraded`
+- `degraded_reasons[]`
+- `corrective_retrieval_used`
+- `corrective_actions[]`
+- `fallback_used`
+- `fallback_events[]`
+- `unsupported_claim_count`
+- `recovery_outcome`：`not_needed|recovered|partial|failed`
+- `silent_fallback`
+- `next_step_entry`
+- 约束：compare / review / rag / agentic retrieval 若暴露该资源，不允许私有命名漂移或删减关键字段语义
+
 GraphRetrievalResult 最小字段契约：
 
 - `graphRetrievalUsed`、`graphCandidateCount`、`graphVectorMergedEvidence`
@@ -208,7 +226,9 @@ ReviewDraft 最小字段契约（Phase 5）：
 - `draft_doc.sections[].paragraphs[]`：`paragraph_id`、`text`、`citations[]`、`evidence_blocks[]`、`citation_coverage_status(covered|insufficient)`
 - `draft_doc.sections[].paragraphs[]` 可选补充 `claim_verification[]` 与 `truthfulness_summary{}`，且两者必须来自统一 truthfulness substrate。
 - `draft_doc.sections[].paragraphs[].claim_verification[]` 若 `support_status != supported`，应显式暴露 `recovery_actions[]`，而不只是 `repair_hint`。
-- `quality`：`citation_coverage`、`unsupported_paragraph_rate`、`graph_assist_used`、`fallback_used`
+- `quality`：`citation_coverage`、`unsupported_paragraph_rate`、`graph_assist_used`、`fallback_used`、`execution_mode`
+- `quality.benchmark_hooks.phase6_runtime`：若 ReviewDraft 属于 Phase 6 review/runtime 路径，必须与统一 Phase6RuntimeContract 语义对齐，且可包含 `raptor_lite_used`、`raptor_lite_signals[]`、`review_global_evidence_used`、`review_global_evidence{}`
+- `quality.benchmark_hooks.graph_global_evidence`：若 review 任务启用了 graph/global synthesis 汇总，则应记录 `graph_assist_used`、`graph_error`、`themes[]`、`candidate_papers[]`、`section_seed_titles[]`、`section_seed_perspectives[]`、`comparative_section_count`、`storm_lite_used`、`execution_mode`
 - `trace_id`、`run_id`、`error_state`、`created_at`、`updated_at`
 
 ReviewDraft 约束（Phase 5）：
@@ -223,6 +243,8 @@ ReviewRun 最小字段契约（Phase 5）：
 - `steps[]`：每步至少包含 `step_name`、`status`、`started_at`、`ended_at`
 - `steps[].metadata`：至少包含 `input_schema_name`、`output_schema_name`
 - `tool_events[]`、`artifacts[]`、`evidence[]`、`recovery_actions[]`
+- `tool_events[].result` 或 `artifacts[].metadata` 若包含 `phase6_runtime`，必须与统一 Phase6RuntimeContract 对齐；review 路径的 `artifacts[].metadata` 还可以带有 `graph_global_synthesis` 证据摘要
+- `artifacts[].type` 在 Phase 6 review/runtime 路径下可额外取 `graph_global_synthesis`
 - `trace_id`、`error_state`、`created_at`、`updated_at`
 
 ## Required Updates
