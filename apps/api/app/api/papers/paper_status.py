@@ -27,6 +27,7 @@ from app.deps import get_current_user
 from app.models import Paper, ProcessingTask, PaperChunk
 from app.services.auth_service import User
 from app.services.paper_service import PaperService
+from app.core.milvus_service import get_milvus_service
 from app.services.reading_card_service import ensure_reading_card_doc
 from app.utils.problem_detail import ErrorTypes
 from app.config import settings
@@ -353,6 +354,7 @@ async def regenerate_chunks(
     existing_task = existing_task_result.scalar_one_or_none()
 
     now = datetime.now(timezone.utc)
+    get_milvus_service().delete_all_vectors_by_paper(paper_id)
 
     if existing_task:
         existing_task.status = "pending"

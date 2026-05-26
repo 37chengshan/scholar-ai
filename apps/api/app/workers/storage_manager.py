@@ -744,6 +744,7 @@ class StorageManager:
 
         # 4. Batch insert to Milvus
         if all_contents:
+            self.milvus.delete_all_vectors_by_paper(ctx.paper_id)
             chunk_ids = self.milvus.insert_contents_batched(all_contents)
 
             logger.info(

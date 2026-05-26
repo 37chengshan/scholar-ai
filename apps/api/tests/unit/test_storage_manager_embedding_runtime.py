@@ -47,6 +47,7 @@ async def test_store_vectors_uses_device_batch_size_without_forced_mps_cache_cle
         encode_text=Mock(side_effect=lambda batch: [[0.0] * 2048 for _ in batch]),
     )
     manager.milvus = Mock()
+    manager.milvus.delete_all_vectors_by_paper = Mock()
     manager.milvus.insert_contents_batched = Mock(return_value=["c1", "c2", "c3"])
     manager._store_summary_index = AsyncMock()
 
@@ -79,6 +80,7 @@ async def test_store_vectors_uses_device_batch_size_without_forced_mps_cache_cle
         chunk_ids = await StorageManager._store_vectors(manager, ctx)
 
     assert chunk_ids == ["c1", "c2", "c3"]
+    manager.milvus.delete_all_vectors_by_paper.assert_called_once_with("paper-1")
     assert manager.qwen3vl_service.encode_text.call_count == 2
     assert len(manager.qwen3vl_service.encode_text.call_args_list[0].args[0]) == 2
     assert len(manager.qwen3vl_service.encode_text.call_args_list[1].args[0]) == 1
@@ -95,6 +97,7 @@ async def test_store_summary_index_uses_canonical_source_chunk_id():
         encode_text=Mock(return_value=[[0.1, 0.2], [0.3, 0.4]]),
     )
     manager.milvus = Mock()
+    manager.milvus.delete_all_vectors_by_paper = Mock()
     manager.milvus.insert_summaries_batched = Mock(return_value=[1, 2])
     manager._truncate_summary_text = lambda text: text
 

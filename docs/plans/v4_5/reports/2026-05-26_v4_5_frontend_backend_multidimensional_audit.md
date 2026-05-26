@@ -138,6 +138,7 @@ bash scripts/check-runtime-hygiene.sh strict
 10. `P2-CONTRACT-005` / `BE-V45-008`：新增 canonical `POST /api/v1/papers/{paperId}/star`，保留 `PATCH /starred` 作为兼容别名；`POST /api/v1/papers/batch-delete` 现在返回 `deletedIds` 与带 reason 的失败列表。
 11. `P2-CONTRACT-005` 前端适配：`apps/web/src/services/papersApi.ts` 已切到 canonical `/star` 路由、snake_case `paper_ids` 请求体，并消费 traceable batch-delete / batch-star 返回结构。
 12. `P2-TASK-001`：`PDFCoordinator.process()` 现在在成功/失败收口后清理临时 PDF 文件，避免 `delete=False` 残留。
+13. `P1-DATA-002`：Milvus 现在支持按 `paper_id` 清理 content v2、summary、image、table 四类向量；该清理已接入 `delete_paper`、`batch_delete`、`regenerate-chunks` 和 storage rerun 路径，避免旧证据残留。
 
 本轮新增验证：
 
@@ -178,6 +179,12 @@ cd apps/api
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
   tests/unit/test_pdf_coordinator.py -k temporary_pdf \
   --maxfail=1 -p no:cacheprovider
+
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/unit/test_paper_contracts_v45.py \
+  tests/unit/test_storage_manager_embedding_runtime.py \
+  tests/unit/core/test_milvus_unified.py -k "delete_by_paper_contents or delete_all_vectors_by_paper" \
+  --maxfail=1 -p no:cacheprovider
 ```
 
 结果：
@@ -190,10 +197,11 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
 6. 前端 papersApi / apiClient Vitest：2 files / 14 tests passed
 7. 前端 `npm run type-check`：passed
 8. PDF temp cleanup targeted pytest：1 passed
+9. Milvus cleanup / delete / regenerate targeted pytest：10 passed（其中 Milvus 文件仅跑新增 cleanup 相关用例，避开无关旧断言）
 
 仍保持未修复且优先级高的项：
 
-1. `P1-DATA-001` ~ `P1-DATA-003`：Milvus fail-closed、旧向量清理、dimension mismatch 自动 drop
+1. `P1-DATA-001` / `P1-DATA-003`：Milvus fail-closed、dimension mismatch 自动 drop 仍未收口
 2. `P1-DATA-004`：`/api/v1/rag/query` 仍未切到 shared AnswerContract 主路径；这轮只补了 planner / phase6 runtime 字段同构。
 3. `BE-V45-004`：cancel 仍是 DB-only cancel，worker 继续运行
 

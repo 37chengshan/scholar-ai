@@ -25,6 +25,7 @@ from app.models.paper import Paper, PaperChunk
 from app.models.reading_progress import ReadingProgress
 from app.models.task import ProcessingTask
 from app.models.upload_history import UploadHistory
+from app.core.milvus_service import get_milvus_service
 from app.repositories.paper_repository import PaperRepository
 from app.services.reading_card_service import ensure_reading_card_doc
 from app.services.storage_service import get_storage_service
@@ -666,6 +667,7 @@ class PaperService:
             raise ValueError("Paper not found")
 
         storage_key = paper.storage_key
+        get_milvus_service().delete_all_vectors_by_paper(paper_id)
         await db.delete(paper)
 
         if storage_key:
@@ -697,8 +699,17 @@ class PaperService:
             storage_key = paper.storage_key
             if storage_key:
                 storage_keys_to_delete.append(storage_key)
-            await db.delete(paper)
-            deleted_ids.append(paper.id)
+            try:
+                get_milvus_service().delete_all_vectors_by_paper(paper.id)
+                await db.delete(paper)
+                deleted_ids.append(paper.id)
+            except Exception as e:
+                failures.append(
+                    {
+                        "id": paper.id,
+                        "reason": f"milvus_cleanup_failed:{type(e).__name__}",
+                    }
+                )
 
         for paper_id in paper_ids:
             if paper_id not in found_ids:

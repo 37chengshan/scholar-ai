@@ -652,17 +652,29 @@ class MilvusService:
         logger.info(f"Inserted {len(entities)} tables")
         return ids.primary_keys
 
+    def _delete_from_collection_if_exists(self, collection_name: str, expr: str) -> None:
+        """Delete entities from an existing collection without creating it implicitly."""
+        if not self.has_collection(collection_name):
+            logger.info(
+                "Skip Milvus delete because collection does not exist",
+                collection_name=collection_name,
+            )
+            return
+
+        collection = Collection(collection_name, using=self._alias)
+        collection.delete(expr)
+        collection.flush()
+
     def delete_by_paper(self, paper_id: str) -> None:
         """Delete all vectors for a paper."""
-        # Delete from images collection
-        img_collection = self.get_collection(settings.MILVUS_COLLECTION_IMAGES)
-        img_collection.delete(f'paper_id == "{paper_id}"')
-        img_collection.flush()
-
-        # Delete from tables collection
-        tbl_collection = self.get_collection(settings.MILVUS_COLLECTION_TABLES)
-        tbl_collection.delete(f'paper_id == "{paper_id}"')
-        tbl_collection.flush()
+        self._delete_from_collection_if_exists(
+            settings.MILVUS_COLLECTION_IMAGES,
+            f'paper_id == "{paper_id}"',
+        )
+        self._delete_from_collection_if_exists(
+            settings.MILVUS_COLLECTION_TABLES,
+            f'paper_id == "{paper_id}"',
+        )
 
         logger.info(f"Deleted vectors for paper {paper_id}")
 
@@ -1610,10 +1622,25 @@ class MilvusService:
         Args:
             paper_id: Paper UUID
         """
-        collection = self.get_collection(settings.MILVUS_COLLECTION_CONTENTS)
-        collection.delete(f'paper_id == "{paper_id}"')
-        collection.flush()
+        self._delete_from_collection_if_exists(
+            settings.MILVUS_COLLECTION_CONTENTS,
+            f'paper_id == "{paper_id}"',
+        )
         logger.info(f"Deleted content entries for paper {paper_id}")
+
+    def delete_summary_by_paper(self, paper_id: str) -> None:
+        """Delete summary-index entries for a paper."""
+        self._delete_from_collection_if_exists(
+            self.SUMMARY_COLLECTION_NAME,
+            f'paper_id == "{paper_id}"',
+        )
+        logger.info(f"Deleted summary entries for paper {paper_id}")
+
+    def delete_all_vectors_by_paper(self, paper_id: str) -> None:
+        """Delete all Milvus vectors for a paper across content, summary, image, and table collections."""
+        self.delete_by_paper_contents(paper_id)
+        self.delete_summary_by_paper(paper_id)
+        self.delete_by_paper(paper_id)
 
 
 # Singleton instance

@@ -195,10 +195,24 @@ class TestPaperContentsCollection:
         mock_col_instance = MagicMock()
         mock_collection.return_value = mock_col_instance
 
-        service.delete_by_paper_contents("paper-123")
+        with patch.object(service, "has_collection", return_value=True):
+            service.delete_by_paper_contents("paper-123")
 
         # Verify delete was called
         mock_col_instance.delete.assert_called_once()
+
+    def test_delete_all_vectors_by_paper_includes_summary_collection(self, mock_milvus_service):
+        """Delete-all helper should clear contents, summaries, images, and tables."""
+        service, mock_collection = mock_milvus_service
+
+        mock_col_instance = MagicMock()
+        mock_collection.return_value = mock_col_instance
+
+        with patch.object(service, "has_collection", return_value=True):
+            service.delete_all_vectors_by_paper("paper-123")
+
+        assert mock_collection.call_count == 4
+        assert mock_col_instance.delete.call_count == 4
 
 
 class TestUnifiedCollectionIntegration:
