@@ -10,8 +10,11 @@ Tests for the parallel PDF processing pipeline foundation:
 - Parsing stage success/failure scenarios
 """
 
+import os
+
 import pytest
 from unittest.mock import AsyncMock, patch
+from unittest.mock import Mock
 
 from app.workers.pipeline_context import PipelineContext, PipelineStage
 from app.workers.pdf_coordinator import PDFCoordinator, get_pdf_coordinator
@@ -598,3 +601,38 @@ class TestPDFCoordinator:
         assert ctx.metadata is not None
         assert ctx.chunk_results is not None
         assert len(ctx.chunk_results) == 1
+
+    @pytest.mark.asyncio
+    async def test_process_cleans_up_temporary_pdf(self):
+        """Process should remove the temp PDF after the pipeline finishes."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test-task",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key",
+        )
+        written_paths: list[str] = []
+
+        coordinator.init_db = AsyncMock()
+        coordinator._init_context = AsyncMock(return_value=ctx)
+
+        async def _fake_download(_storage_key: str, destination: str) -> None:
+            with open(destination, "wb") as handle:
+                handle.write(b"%PDF-1.4\n")
+            written_paths.append(destination)
+
+        coordinator.storage.download_file = AsyncMock(side_effect=_fake_download)
+        coordinator.parser.parse_pdf = AsyncMock(
+            return_value={"pages": [], "items": [], "markdown": "", "page_count": 0}
+        )
+        coordinator.extraction_pipeline.extract = AsyncMock(return_value=ctx)
+        coordinator._storage_manager = Mock(spec=StorageManager)
+        coordinator._storage_manager.store = AsyncMock(return_value=ctx)
+        coordinator._update_status = AsyncMock()
+
+        result = await coordinator.process("test-task")
+
+        assert result is True
+        assert written_paths
+        assert not os.path.exists(written_paths[0])

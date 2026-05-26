@@ -197,6 +197,17 @@ class PDFCoordinator:
             await _fire("failed", 0, {"error": str(e)})
             logger.error("Pipeline failed", task_id=task_id, error=str(e))
             return False
+        finally:
+            if ctx.local_path and os.path.exists(ctx.local_path):
+                try:
+                    os.unlink(ctx.local_path)
+                except OSError as cleanup_error:
+                    logger.warning(
+                        "Failed to remove temporary PDF",
+                        task_id=task_id,
+                        local_path=ctx.local_path,
+                        error=str(cleanup_error),
+                    )
 
     async def _init_context(self, task_id: str) -> PipelineContext:
         """Initialize pipeline context from task database record.
