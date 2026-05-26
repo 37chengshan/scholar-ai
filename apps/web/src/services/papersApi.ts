@@ -175,17 +175,28 @@ export async function remove(id: string): Promise<void> {
 export async function batchDelete(paperIds: string[]): Promise<{
   deletedCount: number;
   requestedCount: number;
+  deletedIds: string[];
+  failedIds: string[];
+  failures: Array<{ id: string; reason: string }>;
   message: string;
 }> {
   const response = await apiClient.post<{
     deletedCount: number;
     requestedCount: number;
+    deletedIds?: string[];
+    failedIds?: string[];
+    failures?: Array<{ id: string; reason: string }>;
     message: string;
   }>('/api/v1/papers/batch-delete', {
-    paperIds,
+    paper_ids: paperIds,
   });
 
-  return response.data;
+  return {
+    ...response.data,
+    deletedIds: response.data.deletedIds || [],
+    failedIds: response.data.failedIds || [],
+    failures: response.data.failures || [],
+  };
 }
 
 /** Batch star/unstar papers */
@@ -195,20 +206,31 @@ export async function batchStar(
 ): Promise<{
   updatedCount: number;
   requestedCount: number;
+  updatedIds: string[];
+  failedIds: string[];
+  failures: Array<{ id: string; reason: string }>;
   starred: boolean;
   message: string;
 }> {
   const response = await apiClient.post<{
     updatedCount: number;
     requestedCount: number;
+    updatedIds?: string[];
+    failedIds?: string[];
+    failures?: Array<{ id: string; reason: string }>;
     starred: boolean;
     message: string;
   }>('/api/v1/papers/batch/star', {
-    paperIds,
+    paper_ids: paperIds,
     starred,
   });
 
-  return response.data;
+  return {
+    ...response.data,
+    updatedIds: response.data.updatedIds || [],
+    failedIds: response.data.failedIds || [],
+    failures: response.data.failures || [],
+  };
 }
 
 /** Get paper processing status */
@@ -292,8 +314,8 @@ export async function exportNotes(id: string): Promise<string> {
 
 /** Toggle paper starred status */
 export async function toggleStar(id: string, starred: boolean): Promise<Paper> {
-  const response = await apiClient.patch<RawPaper>(`/api/v1/papers/${id}/starred`, {
-    starred: String(starred),
+  const response = await apiClient.post<RawPaper>(`/api/v1/papers/${id}/star`, {
+    starred,
   });
 
   return normalizePaper(response.data) as Paper;

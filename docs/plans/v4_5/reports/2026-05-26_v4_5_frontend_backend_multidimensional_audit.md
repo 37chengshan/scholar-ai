@@ -136,6 +136,7 @@ bash scripts/check-runtime-hygiene.sh strict
 8. `BE-V45-006`：`retrieve_evidence()` 现在会对 `paper_scope == []` 执行真实收窄，不再把空 KB scope 放宽成全局候选池。
 9. `BE-V45-005`：`/api/v1/rag/query` 现在显式暴露 `query_family`、`planner_query_count`、`decontextualized_query`、`second_pass_used`、`second_pass_gain`、`phase6_runtime`，并保证 cache 命中同构。
 10. `P2-CONTRACT-005` / `BE-V45-008`：新增 canonical `POST /api/v1/papers/{paperId}/star`，保留 `PATCH /starred` 作为兼容别名；`POST /api/v1/papers/batch-delete` 现在返回 `deletedIds` 与带 reason 的失败列表。
+11. `P2-CONTRACT-005` 前端适配：`apps/web/src/services/papersApi.ts` 已切到 canonical `/star` 路由、snake_case `paper_ids` 请求体，并消费 traceable batch-delete / batch-star 返回结构。
 
 本轮新增验证：
 
@@ -165,6 +166,12 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
   tests/unit/test_paper_contracts_v45.py \
   tests/integration/test_rag_api_unified.py \
   --maxfail=1 -p no:cacheprovider
+
+cd apps/web
+npx vitest run --maxWorkers=1 \
+  src/services/papersApi.test.ts \
+  src/utils/apiClient.test.ts
+npm run type-check
 ```
 
 结果：
@@ -174,13 +181,14 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
 3. 后端 targeted pytest：17 passed
 4. runtime hygiene tracked：passed
 5. 后端 contract follow-up pytest：11 passed
+6. 前端 papersApi / apiClient Vitest：2 files / 14 tests passed
+7. 前端 `npm run type-check`：passed
 
 仍保持未修复且优先级高的项：
 
 1. `P1-DATA-001` ~ `P1-DATA-003`：Milvus fail-closed、旧向量清理、dimension mismatch 自动 drop
 2. `P1-DATA-004`：`/api/v1/rag/query` 仍未切到 shared AnswerContract 主路径；这轮只补了 planner / phase6 runtime 字段同构。
 3. `BE-V45-004`：cancel 仍是 DB-only cancel，worker 继续运行
-4. `P2-CONTRACT-005`：前端 `papersApi` 仍未切到 canonical star / batch-delete DTO，这轮先完成后端兼容收敛
 
 ## 5. P1 Findings
 
