@@ -36,7 +36,7 @@ describe('SearchAuthorPanel', () => {
       expect.objectContaining({
         externalId: 's2-paper-1',
         s2PaperId: 's2-paper-1',
-        source: 's2',
+        source: 'semantic_scholar',
       })
     );
   });

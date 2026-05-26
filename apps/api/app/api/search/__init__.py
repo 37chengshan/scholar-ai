@@ -91,28 +91,34 @@ async def search_evidence_v3(request: V3SearchRequest, user_id: str = CurrentUse
 		papers = sorted({c.get("paper_id") for c in citations if c.get("paper_id")})
 		sections = sorted({c.get("section_path") for c in citations if c.get("section_path")})
 
-		return {
-			"paper_results": papers,
-			"section_matches": sections,
-			"evidence_matches": evidence,
-			"relation_matches": [],
-			"answer_mode": payload.get("answer_mode"),
-			"retrieval_trace_id": payload.get("retrieval_trace_id") or payload.get("trace_id"),
-			"quality": payload.get("quality", {}),
-		}
-	except Exception as exc:
-		return {
-			"paper_results": [],
-			"section_matches": [],
-			"evidence_matches": [],
-			"relation_matches": [],
-			"answer_mode": "abstain",
-			"retrieval_trace_id": None,
-			"quality": {
-				"error": "search_evidence_unavailable",
-				"message": str(exc),
+		return SearchResponse(
+			success=True,
+			data={
+				"paper_results": papers,
+				"section_matches": sections,
+				"evidence_matches": evidence,
+				"relation_matches": [],
+				"answer_mode": payload.get("answer_mode"),
+				"retrieval_trace_id": payload.get("retrieval_trace_id") or payload.get("trace_id"),
+				"quality": payload.get("quality", {}),
 			},
-		}
+		)
+	except Exception as exc:
+		return SearchResponse(
+			success=True,
+			data={
+				"paper_results": [],
+				"section_matches": [],
+				"evidence_matches": [],
+				"relation_matches": [],
+				"answer_mode": "abstain",
+				"retrieval_trace_id": None,
+				"quality": {
+					"error": "search_evidence_unavailable",
+					"message": str(exc),
+				},
+			},
+		)
 
 
 def _extract_data(result: Any) -> Dict[str, Any]:

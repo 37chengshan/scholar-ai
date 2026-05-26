@@ -12,10 +12,11 @@ def test_search_evidence_v3_returns_degraded_payload_when_backend_fails(monkeypa
         search_evidence_v3(V3SearchRequest(query="test", top_k=5), user_id="user-1")
     )
 
-    assert payload["paper_results"] == []
-    assert payload["evidence_matches"] == []
-    assert payload["answer_mode"] == "abstain"
-    assert payload["quality"]["error"] == "search_evidence_unavailable"
+    assert payload.success is True
+    assert payload.data["paper_results"] == []
+    assert payload.data["evidence_matches"] == []
+    assert payload.data["answer_mode"] == "abstain"
+    assert payload.data["quality"]["error"] == "search_evidence_unavailable"
 
 
 def test_search_evidence_v3_forwards_kb_id(monkeypatch):

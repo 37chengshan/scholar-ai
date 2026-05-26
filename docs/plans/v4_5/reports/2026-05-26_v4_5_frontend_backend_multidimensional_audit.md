@@ -120,7 +120,60 @@ bash scripts/check-runtime-hygiene.sh strict
 1. tracked / doc / structure / code / governance gates: passed
 2. strict runtime hygiene: failed，主要来自本地 `test-results`、`uploads`、`apps/web/test-results`、`apps/api/.venv/**/__pycache__`
 
-## 4. P1 Findings
+## 4. 2026-05-26 Closeout Update
+
+本轮在 `feat/v4-5-bridge-closeout` 上继续修复了一组高价值但可局部验证的问题，并保留 Milvus / cancel / legacy RAG 这类高风险链路到下一批。
+
+已落地修复：
+
+1. `P2-CONTRACT-002`：`apps/web/src/utils/apiClient.ts` 现在在解 envelope 时保留顶层 `meta`，列表调用可直接消费 `meta.total/limit/offset`。
+2. `P2-CONTRACT-003`：`/api/v1/search/unified` 增加 `source` filter、`meta` envelope，并统一 Semantic Scholar canonical source 为 `semantic_scholar`。
+3. `P2-CONTRACT-004`：`/api/v1/search/evidence` 现在返回标准 envelope，而不是 raw object。
+4. `P1-FE-004`：`WorkspaceShell` 在窄屏下切为单列 stack，避免固定横向三栏。
+5. `P2-UX-001`：Search 作者弹窗与 KB 导入弹窗迁移到 Radix `Dialog` 基础组件。
+6. `P1-GOV-001`：`data/` 已补入 `.gitignore` 与 `scripts/check-runtime-hygiene.sh` tracked gate。
+7. Search source 过滤链路已打通到请求层，Search sidebar 的 Semantic Scholar 统计与 active source 已改为 canonical `semantic_scholar`。
+
+本轮新增验证：
+
+```bash
+cd apps/web
+npx vitest run --maxWorkers=1 \
+  src/utils/apiClient.test.ts \
+  src/features/search/components/SearchKnowledgeBaseImportModal.test.tsx \
+  src/features/search/components/SearchAuthorPanel.test.tsx \
+  src/app/components/layout/WorkspaceShell.test.tsx \
+  src/features/kb/components/KnowledgeWorkspaceShell.test.tsx
+npm run type-check
+
+cd apps/api
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/unit/test_search_evidence_api.py \
+  tests/unit/test_search_uses_v3_retriever.py \
+  tests/unit/test_search_contracts_v45.py \
+  tests/test_unified_search.py \
+  --maxfail=1 -p no:cacheprovider
+
+cd ..
+bash scripts/check-runtime-hygiene.sh tracked
+```
+
+结果：
+
+1. 前端 Vitest：5 files / 25 tests passed
+2. 前端 `npm run type-check`：passed
+3. 后端 targeted pytest：17 passed
+4. runtime hygiene tracked：passed
+
+仍保持未修复且优先级高的项：
+
+1. `P1-DATA-001` ~ `P1-DATA-003`：Milvus fail-closed、旧向量清理、dimension mismatch 自动 drop
+2. `P1-DATA-004` / `BE-V45-005`：`/api/v1/rag/query` 仍未对齐 shared answer / phase6 runtime contract
+3. `BE-V45-004`：cancel 仍是 DB-only cancel，worker 继续运行
+4. `BE-V45-006`：`/search/evidence` 的空 KB scope 仍可能放宽候选范围
+5. `P2-CONTRACT-005` / `BE-V45-008`：paper star / batch delete 契约仍未收敛
+
+## 5. P1 Findings
 
 ### 4.1 Auth / Ownership / Visibility
 
@@ -174,7 +227,7 @@ bash scripts/check-runtime-hygiene.sh strict
 | P1-GOV-001 | `.gitignore:128`, `scripts/check-runtime-hygiene.sh:12` | `data/` runtime state 未 ignore，也不在 tracked forbidden prefixes | 本地状态、stream payload、cache 可能误提交 | 明确 ignore `data/`，并把 runtime state 加入 hygiene gate |
 | P1-GOV-002 | `architecture.md:11`, `docs/specs/architecture/system-overview.md:11` | `WORKFLOW.md`, `.codex/skills`, `scripts/symphony` 只同步到部分文档 | 编排入口和架构真源形成两套说法 | 明确 Symphony 是否为仓库编排子系统，并同步 architecture / system overview / testing strategy / doc gate |
 
-## 5. P2 Findings
+## 6. P2 Findings
 
 | id | surface | issue | impact | recommended fix |
 |---|---|---|---|---|
@@ -188,7 +241,7 @@ bash scripts/check-runtime-hygiene.sh strict
 | P2-TASK-002 | `apps/api/app/api/tasks.py:259` | cancel 只是 DB 标记，worker 不 revoke 也不检查 | cancelled task 仍可能写 chunks/vectors 并最终 completed | coordinator 每阶段检查 cancellation，防止 terminal overwrite |
 | P2-GOV-001 | `docs/specs/development/testing-strategy.md:121`, `scripts/verify/run-all.sh:15`, `.github/workflows/*` | 本地验证矩阵与 CI workflow 不完全一致，Node 20/22 混用 | 本地 pass 与 CI pass 含义不一致 | 收敛 testing strategy、verify script、CI workflow |
 
-## 6. Fix Order
+## 7. Fix Order
 
 建议按以下顺序修，不建议先处理视觉或文档小问题：
 
@@ -222,7 +275,7 @@ bash scripts/check-runtime-hygiene.sh strict
    - Symphony / WORKFLOW 架构真源同步
    - testing matrix 与 CI 收敛
 
-## 7. Suggested Acceptance Gates
+## 8. Suggested Acceptance Gates
 
 每组修复完成后建议至少跑以下门禁：
 

@@ -1,5 +1,11 @@
-import { motion } from 'motion/react';
 import { clsx } from 'clsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/app/components/ui/dialog';
 
 interface KnowledgeBaseItem {
   id: string;
@@ -42,17 +48,14 @@ export function SearchKnowledgeBaseImportModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-card border border-border rounded-lg shadow-xl w-full max-w-md max-h-[min(80vh,42rem)] flex flex-col"
-      >
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-serif font-bold text-lg">{labels.title}</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
-        </div>
-        <div className="px-6 pt-4 text-xs text-muted-foreground">{labels.selectPrompt}</div>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <DialogContent className="flex max-h-[min(80vh,42rem)] w-full max-w-md flex-col p-0">
+        <DialogHeader className="border-b border-border px-6 py-4 text-left">
+          <DialogTitle className="font-serif text-lg font-bold">{labels.title}</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            {labels.selectPrompt}
+          </DialogDescription>
+        </DialogHeader>
         <div className="p-6 space-y-3 overflow-y-auto">
           {loadingKnowledgeBases ? (
             <div className="flex items-center justify-center py-4">
@@ -99,7 +102,7 @@ export function SearchKnowledgeBaseImportModal({
             {labels.confirm}
           </button>
         </div>
-      </motion.div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

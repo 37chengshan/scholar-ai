@@ -1,5 +1,5 @@
+import { useEffect, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { cn } from "@/lib/utils";
 
 interface WorkspaceShellProps {
   sidebar?: React.ReactNode;
@@ -19,6 +19,49 @@ const StyledResizeHandle = ({ id }: { id: string }) => (
 );
 
 export function WorkspaceShell({ sidebar, main, inspector, layoutId }: WorkspaceShellProps) {
+  const [isCompactLayout, setIsCompactLayout] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return window.matchMedia("(max-width: 767px)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const onChange = (event: MediaQueryListEvent) => setIsCompactLayout(event.matches);
+
+    setIsCompactLayout(mediaQuery.matches);
+    mediaQuery.addEventListener("change", onChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", onChange);
+    };
+  }, []);
+
+  if (isCompactLayout) {
+    return (
+      <div className="flex h-full w-full flex-col overflow-y-auto bg-stone-50 text-stone-900">
+        <div className="min-h-[50vh] flex-none bg-white shadow-sm ring-1 ring-stone-900/5">
+          {main}
+        </div>
+        {sidebar && (
+          <div className="flex-none border-t border-stone-200 bg-stone-50/80">
+            {sidebar}
+          </div>
+        )}
+        {inspector && (
+          <div className="flex-none border-t border-stone-200 bg-stone-50/80">
+            {inspector}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <PanelGroup direction="horizontal" autoSaveId={`scholar-layout-${layoutId}`} className="h-full w-full bg-stone-50 text-stone-900">
       {sidebar && (

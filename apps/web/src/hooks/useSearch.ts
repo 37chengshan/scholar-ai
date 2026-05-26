@@ -22,7 +22,7 @@ export interface SearchResult {
   authors?: string[];
   abstract?: string;
   year?: number;
-  source: 'internal' | 'arxiv' | 's2' | 'semantic_scholar';
+  source: 'internal' | 'arxiv' | 'semantic_scholar';
   paperId?: string;
   externalId?: string;
   pdfUrl?: string;
@@ -100,6 +100,12 @@ async function fetchSearchResults({
   filters,
   signal,
 }: FetchSearchParams): Promise<SearchResults> {
+  const normalizedSource =
+    filters?.sources?.length === 1
+      ? filters.sources[0] === 's2' || filters.sources[0] === 'semantic-scholar'
+        ? 'semantic_scholar'
+        : filters.sources[0]
+      : 'all';
   const offset = page * PAGE_SIZE;
   const data = await searchApi.unified(
     query,
@@ -108,6 +114,7 @@ async function fetchSearchResults({
     filters?.yearFrom,
     filters?.yearTo,
     signal,
+    normalizedSource as 'all' | 'internal' | 'arxiv' | 'semantic_scholar',
   );
 
   let internal = data.results.filter((result) => result.source === 'internal');
@@ -117,7 +124,9 @@ async function fetchSearchResults({
     external = external.filter((result) =>
       filters.sources!.some((source) => {
         if (source === 'arxiv') return result.source === 'arxiv';
-        if (source === 'semantic-scholar' || source === 's2') return result.source === 's2';
+        if (source === 'semantic-scholar' || source === 's2' || source === 'semantic_scholar') {
+          return result.source === 'semantic_scholar';
+        }
         return false;
       }),
     );
@@ -132,7 +141,7 @@ async function fetchSearchResults({
   return {
     internal,
     external,
-    total: data.total,
+    total: data.meta?.total ?? data.total,
     metadata: {
       query_family: (data as Record<string, unknown>).query_family as string | undefined,
       planner_query_count: (data as Record<string, unknown>).planner_query_count as number | undefined,

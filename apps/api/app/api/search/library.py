@@ -51,6 +51,19 @@ def _stable_query_hash(query: str) -> str:
     return hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
 
 
+def _normalize_source_filter(source: Optional[str]) -> str:
+    if source is not None and not isinstance(source, str):
+        default_value = getattr(source, "default", None)
+        return _normalize_source_filter(default_value)
+    if not source or source == "all":
+        return "all"
+    if source in {"s2", "semantic-scholar"}:
+        return "semantic_scholar"
+    if source in {"internal", "arxiv", "semantic_scholar"}:
+        return source
+    raise HTTPException(status_code=422, detail=Errors.validation("Invalid source filter"))
+
+
 def _serialize_search_results(results: List[Any]) -> List[Dict[str, Any]]:
     serialized: List[Dict[str, Any]] = []
     for result in results:
@@ -263,6 +276,7 @@ async def search_unified(
     offset: int = Query(default=0, ge=0),
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
+    source: Optional[str] = Query(default="all"),
     db: AsyncSession = Depends(get_db),
     optional_user=Depends(get_optional_user),
 ) -> Dict[str, Any]:
@@ -293,10 +307,21 @@ async def search_unified(
         offset=offset,
         year_from=year_from,
         year_to=year_to,
+        source=source,
     )
 
+    normalized_source = _normalize_source_filter(source)
+
     user_scope = getattr(optional_user, "id", "anon")
-    cache_key = f"search:unified:{user_scope}:{query}:{limit}:{offset}:{year_from}:{year_to}"
+    cache_key = (
+        f"search:unified:{user_scope}:{normalized_source}:{query}:{limit}:{offset}:{year_from}:{year_to}"
+    )
+
+    response_meta = {
+        "limit": limit,
+        "offset": offset,
+        "total": 0,
+    }
 
     cached = await get_search_cache(cache_key)
     if cached:
@@ -316,7 +341,8 @@ async def search_unified(
             cache_hit=True,
             duration_ms=round((time.perf_counter() - started) * 1000, 2),
         )
-        return SearchResponse(success=True, data=cached_data)
+        response_meta["total"] = int(cached_data.get("total", len(cached_data.get("results", []))) or 0)
+        return SearchResponse(success=True, data=cached_data, meta=response_meta)
 
     logger.info(
         "Unified search initiated",
@@ -328,7 +354,7 @@ async def search_unified(
 
     internal_results: List[SearchResult] = []
     internal_total = 0
-    if optional_user is not None:
+    if optional_user is not None and normalized_source in {"all", "internal"}:
         internal_payload = await PaperService.search_papers_for_api(
             db,
             optional_user.id,
@@ -339,29 +365,34 @@ async def search_unified(
         internal_results = _build_internal_search_results(internal_payload)
         internal_total = int(internal_payload.get("total", len(internal_results)) or 0)
 
-    arxiv_task = search_arxiv(query, limit=limit, offset=offset)
-    s2_task = search_semantic_scholar(query, limit=limit, offset=offset)
+    tasks: List[Any] = []
+    task_labels: List[str] = []
+    if normalized_source in {"all", "arxiv"}:
+        tasks.append(search_arxiv(query, limit=limit, offset=offset))
+        task_labels.append("arxiv")
+    if normalized_source in {"all", "semantic_scholar"}:
+        tasks.append(search_semantic_scholar(query, limit=limit, offset=offset))
+        task_labels.append("semantic_scholar")
 
-    results = await asyncio.gather(arxiv_task, s2_task, return_exceptions=True)
+    results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
 
     arxiv_list: List[SearchResult] = []
     s2_list: List[SearchResult] = []
     arxiv_total = 0
     s2_total = 0
 
-    if isinstance(results[0], Exception):
-        logger.warning(f"arXiv search failed: {results[0]}")
-    else:
-        arxiv_data = results[0].data if hasattr(results[0], "data") else results[0]
-        arxiv_list = arxiv_data.get("results", [])
-        arxiv_total = arxiv_data.get("total", 0)
+    for label, result in zip(task_labels, results):
+        if isinstance(result, Exception):
+            logger.warning(f"{label} search failed: {result}")
+            continue
 
-    if isinstance(results[1], Exception):
-        logger.warning(f"Semantic Scholar search failed: {results[1]}")
-    else:
-        s2_data = results[1].data if hasattr(results[1], "data") else results[1]
-        s2_list = s2_data.get("results", [])
-        s2_total = s2_data.get("total", 0)
+        source_data = result.data if hasattr(result, "data") else result
+        if label == "arxiv":
+            arxiv_list = source_data.get("results", [])
+            arxiv_total = source_data.get("total", 0)
+        elif label == "semantic_scholar":
+            s2_list = source_data.get("results", [])
+            s2_total = source_data.get("total", 0)
 
     all_results = internal_results + arxiv_list + s2_list
     unique_results = deduplicate_results(all_results)
@@ -379,11 +410,18 @@ async def search_unified(
         reverse=True,
     )
 
-    final_results = scored_results[:limit]
-    total = internal_total + arxiv_total + s2_total
+    total = len(unique_results)
+    response_meta["total"] = total
+    paged_results = scored_results[offset : offset + limit]
     cached_result_data = {
-        "results": _serialize_search_results(final_results),
+        "query": query,
+        "source": normalized_source,
+        "results": _serialize_search_results(paged_results),
         "total": total,
+        "filters": {
+            "year_from": year_from,
+            "year_to": year_to,
+        },
     }
 
     await set_search_cache(cache_key, cached_result_data)
@@ -409,7 +447,7 @@ async def search_unified(
         duration_ms=round((time.perf_counter() - started) * 1000, 2),
     )
 
-    return SearchResponse(success=True, data=response_data)
+    return SearchResponse(success=True, data=response_data, meta=response_meta)
 
 
 @router.post("/fusion", response_model=FusionSearchResponse)
