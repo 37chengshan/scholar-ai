@@ -13,6 +13,7 @@ all uploads go through the canonical ImportJob-first pipeline.
 """
 
 import aiofiles
+import os
 
 from fastapi import APIRouter, Depends, Request, UploadFile, File, status
 from pydantic import BaseModel

@@ -576,7 +576,7 @@ class PDFProcessor:
             logger.error("Metadata enrichment failed", paper_id=paper_id, error=str(e))
             return False
 
-    async def process_pdf_task(self, task_id: str) -> bool:
+    async def process_pdf_task(self, task_id: str, on_stage_change=None) -> bool:
         """
         Process a single PDF task through all stages.
 
@@ -593,7 +593,7 @@ class PDFProcessor:
         await self.coordinator.init_db()
 
         # Delegate to parallel pipeline coordinator
-        return await self.coordinator.process(task_id)
+        return await self.coordinator.process(task_id, on_stage_change=on_stage_change)
 
     async def _update_status(
         self, task_id: str, status: str, error: Optional[str] = None

@@ -19,6 +19,7 @@ interface SearchAuthorPanelProps {
     year?: number;
     source: 's2';
     externalId: string;
+    s2PaperId: string;
   }) => void;
 }
 
@@ -70,6 +71,7 @@ export function SearchAuthorPanel({
                     year: paper.year,
                     source: 's2',
                     externalId: paper.paperId,
+                    s2PaperId: paper.paperId,
                   })}
                   className="px-3 py-1 bg-primary text-primary-foreground rounded-sm text-[9px] font-bold uppercase tracking-[0.1em] hover:bg-primary/90 transition-colors"
                 >

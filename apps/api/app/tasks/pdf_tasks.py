@@ -298,7 +298,13 @@ async def process_single_pdf_async(
                 state='PROGRESS',
                 meta={'paper_id': paper_id, 'stage': 'processing', 'progress': 10},
             )
-            success = await processor.process_pdf_task(task_id)
+            async def _on_stage_change(stage: str, progress: int, metadata: dict[str, Any]) -> None:
+                await _sync_import_job_stage(db, task_id, stage)
+
+            success = await processor.process_pdf_task(
+                task_id,
+                on_stage_change=_on_stage_change,
+            )
 
             if success:
                 await db.execute(

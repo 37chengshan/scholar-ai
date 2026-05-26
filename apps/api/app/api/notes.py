@@ -187,6 +187,7 @@ def _build_paper_chunk_payload(chunk: PaperChunk) -> dict[str, Any]:
 async def _find_best_evidence_source_payload_db(
     db: AsyncSession,
     *,
+    user_id: str | None = None,
     source_chunk_id: str | None = None,
     paper_id: str | None = None,
     section_path: str | None = None,
@@ -196,7 +197,13 @@ async def _find_best_evidence_source_payload_db(
     normalized_source_chunk_id = str(source_chunk_id or "").strip()
     if normalized_source_chunk_id.startswith("chunk_"):
         exact_result = await db.execute(
-            select(PaperChunk).where(PaperChunk.id == normalized_source_chunk_id).limit(1)
+            select(PaperChunk)
+            .join(Paper, Paper.id == PaperChunk.paper_id)
+            .where(
+                PaperChunk.id == normalized_source_chunk_id,
+                *( [Paper.user_id == user_id] if user_id else [] ),
+            )
+            .limit(1)
         )
         exact_chunk = exact_result.scalar_one_or_none()
         if exact_chunk:
@@ -208,7 +215,11 @@ async def _find_best_evidence_source_payload_db(
 
     result = await db.execute(
         select(PaperChunk)
-        .where(PaperChunk.paper_id == normalized_paper_id)
+        .join(Paper, Paper.id == PaperChunk.paper_id)
+        .where(
+            PaperChunk.paper_id == normalized_paper_id,
+            *( [Paper.user_id == user_id] if user_id else [] ),
+        )
         .order_by(PaperChunk.page_start, PaperChunk.id)
     )
     chunks = list(result.scalars().all())
@@ -267,6 +278,23 @@ async def _find_best_evidence_source_payload_db(
             best_content_len = content_len
 
     return best_payload
+
+
+async def _paper_is_visible_to_user(
+    db: AsyncSession,
+    *,
+    paper_id: str | None,
+    user_id: str,
+) -> bool:
+    normalized_paper_id = str(paper_id or "").strip()
+    if not normalized_paper_id:
+        return False
+    result = await db.execute(
+        select(Paper.id)
+        .where(Paper.id == normalized_paper_id, Paper.user_id == user_id)
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
 
 
 async def _canonicalize_linked_evidence_item(
@@ -807,7 +835,9 @@ async def generate_notes(
     """
     try:
         # Fetch paper data using SQLAlchemy
-        result = await db.execute(select(Paper).where(Paper.id == request.paper_id))
+        result = await db.execute(
+            select(Paper).where(Paper.id == request.paper_id, Paper.user_id == user_id)
+        )
         paper = result.scalar_one_or_none()
 
         if not paper:
@@ -877,7 +907,9 @@ async def regenerate_notes(
     """Regenerate reading notes with modification request."""
     try:
         # Fetch paper data using SQLAlchemy
-        result = await db.execute(select(Paper).where(Paper.id == request.paper_id))
+        result = await db.execute(
+            select(Paper).where(Paper.id == request.paper_id, Paper.user_id == user_id)
+        )
         paper = result.scalar_one_or_none()
 
         if not paper:
@@ -952,7 +984,9 @@ async def export_notes(
     """Export reading notes as Markdown."""
     try:
         # Fetch paper data using SQLAlchemy
-        result = await db.execute(select(Paper).where(Paper.id == paper_id))
+        result = await db.execute(
+            select(Paper).where(Paper.id == paper_id, Paper.user_id == user_id)
+        )
         paper = result.scalar_one_or_none()
 
         if not paper:
@@ -1009,10 +1043,20 @@ async def save_evidence_note(
 ):
     """Save evidence block as a first-class note with source backlink."""
     try:
-        evidence_source = get_evidence_source_payload(request.evidence_block.source_chunk_id)
+        evidence_source = None
+        direct_evidence_source = get_evidence_source_payload(
+            request.evidence_block.source_chunk_id
+        )
+        if direct_evidence_source and await _paper_is_visible_to_user(
+            db,
+            paper_id=direct_evidence_source.get("paper_id"),
+            user_id=user_id,
+        ):
+            evidence_source = direct_evidence_source
         if not evidence_source:
             evidence_source = await _find_best_evidence_source_payload_db(
                 db,
+                user_id=user_id,
                 source_chunk_id=request.evidence_block.source_chunk_id,
                 paper_id=request.evidence_block.paper_id,
                 section_path=request.evidence_block.section_path,
@@ -1020,13 +1064,18 @@ async def save_evidence_note(
                 text=request.evidence_block.text,
             )
         if not evidence_source:
-            evidence_source = find_best_evidence_source_payload(
-                source_chunk_id=request.evidence_block.source_chunk_id,
+            if await _paper_is_visible_to_user(
+                db,
                 paper_id=request.evidence_block.paper_id,
-                section_path=request.evidence_block.section_path,
-                page_num=request.evidence_block.page_num,
-                text=request.evidence_block.text,
-            )
+                user_id=user_id,
+            ):
+                evidence_source = find_best_evidence_source_payload(
+                    source_chunk_id=request.evidence_block.source_chunk_id,
+                    paper_id=request.evidence_block.paper_id,
+                    section_path=request.evidence_block.section_path,
+                    page_num=request.evidence_block.page_num,
+                    text=request.evidence_block.text,
+                )
 
         canonical_source_chunk_id = str(
             (evidence_source or {}).get("source_chunk_id")

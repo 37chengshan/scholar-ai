@@ -160,6 +160,7 @@ async def create_batch_import(
         # Create individual ImportJobs
         service = ImportJobService()
         items_response: List[Dict[str, Any]] = []
+        jobs_by_id: Dict[str, ImportJob] = {}
 
         for item in request.items:
             # Extract source_ref_raw from payload
@@ -179,6 +180,7 @@ async def create_batch_import(
                 db=db,
                 auto_commit=False,
             )
+            jobs_by_id[job.id] = job
 
             items_response.append({
                 "importJobId": job.id,
@@ -188,6 +190,25 @@ async def create_batch_import(
             })
 
         await db.commit()
+
+        from app.workers.import_worker import process_import_job
+
+        for item_response in items_response:
+            if item_response["sourceType"] == "local_file":
+                continue
+            job = jobs_by_id[item_response["importJobId"]]
+            try:
+                process_import_job.delay(job.id)
+            except Exception as queue_error:
+                job = await service.set_error(
+                    job=job,
+                    error_code="QUEUE_SUBMIT_FAILED",
+                    error_message="Failed to enqueue import job",
+                    db=db,
+                    error_detail={"reason": str(queue_error)},
+                )
+                item_response["status"] = job.status
+                item_response["nextAction"] = job.next_action
 
         logger.info(
             "Batch import created",

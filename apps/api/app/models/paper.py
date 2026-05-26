@@ -120,19 +120,19 @@ class Paper(Base):
     # 子状态字段（Per Section 2 语义，统一 PostgreSQL Boolean）
     # is_search_ready: PostgreSQL + Milvus text chunks 成功
     is_search_ready: Mapped[bool] = mapped_column(
-        "issearchready", Boolean, default=False
+        "isSearchReady", Boolean, default=False
     )
     # is_multimodal_ready: Milvus images/tables 成功
     is_multimodal_ready: Mapped[bool] = mapped_column(
-        "ismultimodalready", Boolean, default=False
+        "isMultimodalReady", Boolean, default=False
     )
     # is_notes_ready: reading_notes 字段有内容
-    is_notes_ready: Mapped[bool] = mapped_column("isnotesready", Boolean, default=False)
+    is_notes_ready: Mapped[bool] = mapped_column("isNotesReady", Boolean, default=False)
 
     # 失败标记
-    notes_failed: Mapped[bool] = mapped_column("notesfailed", Boolean, default=False)
+    notes_failed: Mapped[bool] = mapped_column("notesFailed", Boolean, default=False)
     multimodal_failed: Mapped[bool] = mapped_column(
-        "multimodalfailed", Boolean, default=False
+        "multimodalFailed", Boolean, default=False
     )
 
     # trace_id（继承自 task，贯穿日志）
@@ -189,7 +189,7 @@ class Paper(Base):
     __table_args__ = (
         UniqueConstraint("userId", "title", name="unique_user_title"),
         UniqueConstraint("s2_paper_id", name="idx_papers_s2_paper_id"),
-        Index("idx_papers_userId", "userId"),
+        Index("idx_papers_user_id", "userId"),
         Index("idx_papers_starred", "starred"),
         Index("idx_papers_batch_id", "batch_id"),
         Index("idx_papers_citation_count", citation_count),
