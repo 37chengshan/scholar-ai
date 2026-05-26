@@ -77,6 +77,24 @@ def _should_force_query_fallback() -> bool:
     return os.getenv("MILVUS_FORCE_QUERY_FALLBACK", "0") == "1"
 
 
+class MilvusCollectionSchemaMismatchError(RuntimeError):
+    """Raised when an existing Milvus collection schema drifts from runtime."""
+
+    def __init__(self, collection: str, expected_dim: int, actual_dim: int):
+        super().__init__(
+            "Milvus collection embedding dimension mismatch: "
+            f"{collection} expected {expected_dim}, got {actual_dim}. "
+            "Automatic drop/recreate is disabled; reindex the collection explicitly."
+        )
+        self.collection = collection
+        self.expected_dim = expected_dim
+        self.actual_dim = actual_dim
+
+
+class MilvusInsertContractError(RuntimeError):
+    """Raised when a required Milvus insert cannot satisfy strict semantics."""
+
+
 def retry_with_backoff(max_retries: int = 5, base_delay: float = 1.0):
     """Decorator for retry with exponential backoff."""
 
@@ -522,15 +540,17 @@ class MilvusService:
         if actual_dim in {None, self.embedding_dim}:
             return collection
 
-        logger.warning(
-            "Milvus collection embedding dimension mismatch, recreating collection",
+        logger.error(
+            "Milvus collection embedding dimension mismatch",
             collection=name,
             expected_dim=self.embedding_dim,
             actual_dim=actual_dim,
         )
-        self.drop_collection(name)
-        recreate()
-        return Collection(name, using=self._alias)
+        raise MilvusCollectionSchemaMismatchError(
+            collection=name,
+            expected_dim=self.embedding_dim,
+            actual_dim=actual_dim,
+        )
 
     def search_images(
         self, embedding: List[float], user_id: Optional[str] = None, top_k: int = 10
@@ -1148,7 +1168,12 @@ class MilvusService:
         return ids.primary_keys
 
     def insert_contents_batched(
-        self, data: List[Dict[str, Any]], batch_size: int = 50, max_retries: int = 3
+        self,
+        data: List[Dict[str, Any]],
+        batch_size: int = 50,
+        max_retries: int = 3,
+        *,
+        strict: bool = False,
     ) -> List[int]:
         """Insert content embeddings in small batches with retry logic.
 
@@ -1162,9 +1187,11 @@ class MilvusService:
             max_retries: Max retry attempts per batch (default 3 per D-29)
 
         Returns:
-            List of inserted IDs (may be partial if some batches failed)
+            List of inserted IDs (may be partial if some batches failed unless strict=True)
         """
         all_ids = []
+        total_skipped = 0
+        total_failed = 0
 
         # Process in batches
         total_batches = (len(data) + batch_size - 1) // batch_size
@@ -1197,6 +1224,7 @@ class MilvusService:
                                 content_type=item.get("content_type"),
                             )
                             skipped_count += 1
+                            total_skipped += 1
                             continue  # Don't insert
 
                         if len(embedding) != self.embedding_dim:
@@ -1208,6 +1236,7 @@ class MilvusService:
                                 actual_dim=len(embedding),
                             )
                             skipped_count += 1
+                            total_skipped += 1
                             continue
 
                         quality_score = calculate_chunk_quality(item)
@@ -1261,6 +1290,11 @@ class MilvusService:
                     )
 
                     if not entities:
+                        if strict:
+                            raise MilvusInsertContractError(
+                                "Milvus strict insert rejected a batch because all items "
+                                f"were non-indexable (batch {batch_num}/{total_batches})."
+                            )
                         logger.warning(
                             "Skipping Milvus batch because all items were non-indexable",
                             batch=f"{batch_num}/{total_batches}",
@@ -1281,12 +1315,14 @@ class MilvusService:
                             error=str(batch_insert_error),
                         )
                         fallback_inserted = 0
+                        fallback_failed = 0
                         for entity in entities:
                             try:
                                 single = collection.insert([entity])
                                 all_ids.extend(single.primary_keys)
                                 fallback_inserted += 1
                             except Exception as single_error:
+                                fallback_failed += 1
                                 logger.warning(
                                     "Milvus single-row fallback insert failed",
                                     batch=f"{batch_num}/{total_batches}",
@@ -1295,8 +1331,17 @@ class MilvusService:
                                     error=str(single_error),
                                 )
 
+                        total_failed += fallback_failed
+
                         if fallback_inserted <= 0:
                             raise
+
+                        if strict and fallback_failed > 0:
+                            raise MilvusInsertContractError(
+                                "Milvus strict insert fallback completed partially "
+                                f"(batch {batch_num}/{total_batches}, inserted "
+                                f"{fallback_inserted}/{len(entities)})."
+                            )
 
                         logger.info(
                             "Milvus per-row fallback insert complete",
@@ -1342,6 +1387,12 @@ class MilvusService:
                             batch=f"{batch_num}/{total_batches}",
                             error=str(e),
                         )
+                        total_failed += len(batch)
+                        if strict:
+                            raise MilvusInsertContractError(
+                                "Milvus strict insert failed after max retries "
+                                f"(batch {batch_num}/{total_batches})."
+                            ) from e
                         # Record failure but continue with other batches
                         # Per D-28: Don't fail entire operation on one batch
                     else:
@@ -1357,7 +1408,15 @@ class MilvusService:
             total_items=len(data),
             inserted=len(all_ids),
             batches=total_batches,
+            skipped=total_skipped,
+            failed=total_failed,
         )
+
+        if strict and (total_skipped > 0 or total_failed > 0):
+            raise MilvusInsertContractError(
+                "Milvus strict insert finished with incomplete coverage "
+                f"(inserted={len(all_ids)}, skipped={total_skipped}, failed={total_failed})."
+            )
 
         return all_ids
 

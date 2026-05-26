@@ -185,6 +185,22 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
   tests/unit/test_storage_manager_embedding_runtime.py \
   tests/unit/core/test_milvus_unified.py -k "delete_by_paper_contents or delete_all_vectors_by_paper" \
   --maxfail=1 -p no:cacheprovider
+
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/unit/test_milvus_service_collection_bootstrap.py \
+  tests/unit/test_storage_manager_embedding_runtime.py \
+  tests/unit/test_pdf_tasks_cancellation.py \
+  tests/unit/test_import_job_cancel_sync.py \
+  --maxfail=1 -p no:cacheprovider
+
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/unit/test_pdf_coordinator.py -k "temporary_pdf or ensure_task_active or returns_without_failed_overwrite" \
+  --maxfail=1 -p no:cacheprovider
+
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/unit/test_tasks.py -k cancel \
+  tests/test_import_processing_state_sync.py \
+  --maxfail=1 -p no:cacheprovider
 ```
 
 结果：
@@ -198,12 +214,21 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
 7. 前端 `npm run type-check`：passed
 8. PDF temp cleanup targeted pytest：1 passed
 9. Milvus cleanup / delete / regenerate targeted pytest：10 passed（其中 Milvus 文件仅跑新增 cleanup 相关用例，避开无关旧断言）
+10. Milvus strict insert / schema mismatch / worker cancel targeted pytest：16 passed
+11. PDF coordinator cancel gate targeted pytest：3 passed
+12. task cancel / import state sync targeted pytest：9 passed
+
+本轮已关闭：
+
+1. `P1-DATA-001`：Milvus 主向量写入改为 strict/fail-closed；storage path 不再把部分写入当成功。
+2. `P1-DATA-003`：collection dimension mismatch 不再自动 drop/recreate，而是显式 fail-fast。
+3. `P2-TASK-002` / `BE-V45-004`：task / import cancel 已接入 processing task cancel、coordinator 阶段闸门、worker terminal overwrite 防护。
 
 仍保持未修复且优先级高的项：
 
-1. `P1-DATA-001` / `P1-DATA-003`：Milvus fail-closed、dimension mismatch 自动 drop 仍未收口
-2. `P1-DATA-004`：`/api/v1/rag/query` 仍未切到 shared AnswerContract 主路径；这轮只补了 planner / phase6 runtime 字段同构。
-3. `BE-V45-004`：cancel 仍是 DB-only cancel，worker 继续运行
+1. `P1-DATA-004`：`/api/v1/rag/query` 仍未切到 shared AnswerContract 主路径；当前只做到 planner / phase6 runtime 字段同构。
+2. `P1-GOV-002`：Symphony / WORKFLOW 相关架构真源同步还未统一收口。
+3. `P2-GOV-001`：testing strategy、本地 verify 脚本、CI workflow 仍有矩阵偏差。
 
 ## 5. P1 Findings
 

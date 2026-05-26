@@ -81,6 +81,7 @@ async def test_store_vectors_uses_device_batch_size_without_forced_mps_cache_cle
 
     assert chunk_ids == ["c1", "c2", "c3"]
     manager.milvus.delete_all_vectors_by_paper.assert_called_once_with("paper-1")
+    assert manager.milvus.insert_contents_batched.call_args.kwargs["strict"] is True
     assert manager.qwen3vl_service.encode_text.call_count == 2
     assert len(manager.qwen3vl_service.encode_text.call_args_list[0].args[0]) == 2
     assert len(manager.qwen3vl_service.encode_text.call_args_list[1].args[0]) == 1
@@ -88,6 +89,54 @@ async def test_store_vectors_uses_device_batch_size_without_forced_mps_cache_cle
     assert [record["page_num"] for record in ctx.chunk_results] == [1, 1, 2]
     assert [record["char_start"] for record in ctx.chunk_results] == [0, 8, 0]
     mock_empty_cache.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_store_vectors_raises_when_milvus_returns_too_few_ids():
+    manager = StorageManager.__new__(StorageManager)
+    manager.MIN_CHUNK_QUALITY = 0.0
+    manager.parser = Mock()
+    manager.parser.chunk_by_semantic.return_value = [
+        {"text": "chunk 1", "page_start": 1, "section": "intro", "char_start": 0, "char_end": 7},
+        {"text": "chunk 2", "page_start": 2, "section": "method", "char_start": 0, "char_end": 7},
+    ]
+    manager.qwen3vl_service = SimpleNamespace(
+        is_loaded=lambda: True,
+        load_model=lambda: None,
+        get_device=lambda: "cpu",
+        encode_text=Mock(side_effect=lambda batch: [[0.0] * 2048 for _ in batch]),
+    )
+    manager.milvus = Mock()
+    manager.milvus.delete_all_vectors_by_paper = Mock()
+    manager.milvus.insert_contents_batched = Mock(return_value=["c1"])
+    manager._store_summary_index = AsyncMock()
+
+    ctx = PipelineContext(
+        task_id="task-1",
+        paper_id="paper-1",
+        user_id="user-1",
+        storage_key="storage-key",
+    )
+    ctx.parse_result = {
+        "items": [{"type": "text", "text": "abc", "page": 1}],
+        "metadata": {},
+    }
+    ctx.metadata = {"title": "Test"}
+    ctx.image_results = []
+    ctx.table_results = []
+    ctx.imrad = None
+
+    with patch("app.workers.storage_manager.settings") as mock_settings, patch(
+        "app.workers.storage_manager.enrich_chunk",
+        side_effect=lambda **kwargs: {"content_data": kwargs["chunk"]["text"], "context_window": ""},
+    ), patch("app.workers.storage_manager.calculate_chunk_quality", return_value=1.0):
+        mock_settings.EMBEDDING_BATCH_SIZE_CPU = 8
+        mock_settings.EMBEDDING_BATCH_SIZE_MPS = 8
+        mock_settings.EMBEDDING_BATCH_SIZE_CUDA = 8
+        mock_settings.EMBEDDING_MPS_EMPTY_CACHE_INTERVAL = 0
+
+        with pytest.raises(RuntimeError, match="fewer ids than indexed text chunks"):
+            await StorageManager._store_vectors(manager, ctx)
 
 
 @pytest.mark.asyncio
