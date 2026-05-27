@@ -14,3 +14,4 @@
 
 1. `2026-05-13_v4_5_full_rag_chain_state_report.md`
 2. `2026-05-26_v4_5_frontend_backend_multidimensional_audit.md`
+3. `2026-05-27_v4_5_rag_drift_recheck.md`
