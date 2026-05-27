@@ -34,6 +34,7 @@
 - architecture.md 只做导航，不承载实现细节。
 - 结构变化时优先更新对应子文档，再回链到本文件。
 - 禁止在本文件复制粘贴完整规范，避免双份真相。
+- `WORKFLOW.md`、`.codex/skills/`、`scripts/symphony/` 若存在，只能作为仓库本地编排覆盖层；不得改写 `AGENTS.md`、`system-overview`、`pr-process`、`testing-strategy` 的 canonical 规则。
 - Phase 5 起，KB 综述草稿能力以 `ReviewDraft/ReviewRun` 为真源，边界定义统一落在 system-overview 与 api-contract。
 - Phase 6 起，v2.0 发版门禁以 `scripts/evals/phase6_gate.py` + `/analytics` artifact-backed eval surface 为真源。
 - v4.0 草案当前以 `docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md` 为讨论入口；正式执行边界需用户确认后再落定。

@@ -9,12 +9,14 @@ Covers:
 
 from datetime import datetime, timezone
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import UploadFile
 
 from app.api.imports.batches import upload_batch_local_files
+from app.api.imports.batches import create_batch_import, BatchImportRequest
 from app.api.imports.dedupe import DedupeDecisionRequest, submit_dedupe_decision
 from app.models.import_batch import ImportBatch
 from app.models.import_job import ImportJob
@@ -216,6 +218,58 @@ async def test_upload_batch_local_files_marks_job_failed_when_enqueue_fails():
     assert response.data["rejected"][0]["importJobId"] == job.id
     assert job.status == "failed"
     assert job.error_code == "QUEUE_SUBMIT_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_create_batch_import_enqueues_external_jobs_after_commit():
+    db = AsyncMock()
+    db.add = MagicMock()
+    kb = SimpleNamespace(id="kb-1", user_id="user-1")
+    job_local = ImportJob(
+        id="imp_local",
+        user_id="user-1",
+        knowledge_base_id="kb-1",
+        source_type="local_file",
+        source_ref_raw="local.pdf",
+        status="created",
+        stage="awaiting_input",
+    )
+    job_external = ImportJob(
+        id="imp_external",
+        user_id="user-1",
+        knowledge_base_id="kb-1",
+        source_type="semantic_scholar",
+        source_ref_raw="s2-id",
+        status="queued",
+        stage="resolving_source",
+    )
+
+    db.execute.return_value = _ScalarResult(kb)
+
+    with (
+        patch.object(
+            ImportJobService,
+            "create_job",
+            AsyncMock(side_effect=[job_local, job_external]),
+        ),
+        patch("app.workers.import_worker.process_import_job.delay") as mock_delay,
+    ):
+        response = await create_batch_import(
+            kb_id="kb-1",
+            request=BatchImportRequest(
+                items=[
+                    {"sourceType": "local_file", "payload": {"filename": "local.pdf"}},
+                    {"sourceType": "semantic_scholar", "payload": {"input": "s2-id"}},
+                ]
+            ),
+            user_id="user-1",
+            db=db,
+        )
+
+    assert response.data["items"][0]["status"] == "created"
+    assert response.data["items"][1]["status"] == "queued"
+    mock_delay.assert_called_once_with("imp_external")
+    db.commit.assert_awaited()
 
 
 @pytest.mark.asyncio

@@ -18,7 +18,11 @@ from app.models.import_job import ImportJob
 from app.models.upload_history import UploadHistory
 from app.models.upload_session import UploadSession
 from app.schemas.upload_session import CreateUploadSessionRequest
-from app.services.import_file_service import build_upload_storage_key
+from app.services.import_file_service import (
+    MAX_PDF_SIZE_BYTES,
+    build_upload_storage_key,
+    validate_pdf_content,
+)
 from app.services.import_job_service import ImportJobService
 from app.utils.logger import logger
 from app.workers.import_worker import process_import_job
@@ -56,6 +60,12 @@ class UploadSessionService:
             raise ValueError("Only local_file jobs support upload sessions")
         if job.status not in {"created", "failed"}:
             raise ValueError(f"Job status does not allow upload session: {job.status}")
+        if payload.size_bytes > MAX_PDF_SIZE_BYTES:
+            raise ValueError("File size exceeds 50MB limit")
+        if not payload.filename.lower().endswith(".pdf"):
+            raise ValueError("Only PDF files are accepted")
+        if payload.mime_type and payload.mime_type != "application/pdf":
+            raise ValueError("Only PDF files are accepted")
 
         if payload.sha256:
             matched_job = await self._find_completed_match(job, payload.sha256, payload.size_bytes, db)
@@ -197,6 +207,16 @@ class UploadSessionService:
                     raise ValueError(f"Missing upload part file: {part_number}")
                 with open(part_path, "rb") as in_file:
                     out_file.write(in_file.read())
+
+        merged_content = final_path.read_bytes()
+        try:
+            validate_pdf_content(session.filename, merged_content)
+        except ValueError as exc:
+            session.status = "failed"
+            session.error_message = str(exc)
+            session.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+            raise
 
         computed_sha256 = self._compute_sha256(final_path)
         if session.file_sha256 and computed_sha256 != session.file_sha256:

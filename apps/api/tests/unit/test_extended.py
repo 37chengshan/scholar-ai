@@ -273,16 +273,17 @@ class TestSystemEndpoints:
         """Test storage endpoint returns valid structure."""
         from app.api.system import get_storage_info
 
-        # Mock database connection
-        with patch("app.api.system.get_db_connection") as mock_conn:
-            mock_conn.return_value.__aenter__ = AsyncMock()
-            mock_conn.return_value.__aenter__.return_value.fetchval = AsyncMock(return_value=10)
+        with patch("app.api.system.get_storage_metrics", new_callable=AsyncMock) as mock_metrics:
+            mock_metrics.return_value = {
+                "vectorDB": {"used": "1.2", "total": "5", "percentage": 24},
+                "fileStorage": {"used": "0.0", "total": "50", "percentage": 0},
+            }
 
-            result = await get_storage_info()
+            result = await get_storage_info(db=AsyncMock())
 
-            assert result.success is True
-            assert "vectorDB" in result.data
-            assert "fileStorage" in result.data
+        assert result.success is True
+        assert "vectorDB" in result.data
+        assert "fileStorage" in result.data
 
 
 # =============================================================================

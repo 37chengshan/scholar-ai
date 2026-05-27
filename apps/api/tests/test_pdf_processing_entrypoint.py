@@ -24,7 +24,7 @@ async def test_process_pdf_task_delegates_to_coordinator():
     with patch("app.workers.pdf_worker.get_pdf_coordinator", return_value=mock_coordinator):
         result = await processor.process_pdf_task("task-1")
 
-    mock_coordinator.process.assert_called_once_with("task-1")
+    mock_coordinator.process.assert_called_once_with("task-1", on_stage_change=None)
     assert result is True
 
 
@@ -40,6 +40,23 @@ async def test_process_pdf_task_returns_false_on_coordinator_failure():
         result = await processor.process_pdf_task("task-1")
 
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_process_pdf_task_passes_stage_callback_to_coordinator():
+    processor = PDFProcessor()
+    mock_coordinator = MagicMock()
+    mock_coordinator.init_db = AsyncMock()
+    mock_coordinator.process = AsyncMock(return_value=True)
+
+    async def on_stage_change(stage: str, progress: int, metadata: dict[str, object]) -> None:
+        return None
+
+    with patch("app.workers.pdf_worker.get_pdf_coordinator", return_value=mock_coordinator):
+        result = await processor.process_pdf_task("task-1", on_stage_change=on_stage_change)
+
+    mock_coordinator.process.assert_called_once_with("task-1", on_stage_change=on_stage_change)
+    assert result is True
 
 
 def test_process_pdf_main_chain_emits_deprecation_warning():

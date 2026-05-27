@@ -13,6 +13,7 @@ from app.core.model_gateway import create_embedding_provider
 from app.database import AsyncSessionLocal
 from app.core.vector_store_repository import get_vector_store_repository
 from app.models import Paper
+from app.models.knowledge_base_paper import KnowledgeBasePaper
 from app.models.retrieval import SearchConstraints
 from app.core.rag_runtime_profile import (
     get_active_rag_runtime_profile,
@@ -223,6 +224,53 @@ async def _load_paper_display_title_map(user_id: str, paper_ids: list[str] | Non
     return display_titles
 
 
+async def _resolve_kb_paper_scope(
+    *,
+    user_id: str,
+    kb_id: str,
+    requested_paper_scope: list[str] | None,
+) -> list[str]:
+    scoped_paper_ids = [paper_id for paper_id in dict.fromkeys(requested_paper_scope or []) if paper_id]
+
+    try:
+        async with AsyncSessionLocal() as session:
+            primary_rows = await session.execute(
+                select(Paper.id).where(
+                    Paper.user_id == user_id,
+                    Paper.knowledge_base_id == kb_id,
+                )
+            )
+            association_rows = await session.execute(
+                select(KnowledgeBasePaper.paper_id)
+                .join(Paper, Paper.id == KnowledgeBasePaper.paper_id)
+                .where(
+                    KnowledgeBasePaper.knowledge_base_id == kb_id,
+                    Paper.user_id == user_id,
+                )
+            )
+    except Exception:
+        return scoped_paper_ids
+
+    kb_paper_ids = [
+        paper_id
+        for paper_id in dict.fromkeys(
+            [
+                *[str(row[0]) for row in primary_rows.fetchall()],
+                *[str(row[0]) for row in association_rows.fetchall()],
+            ]
+        )
+        if paper_id
+    ]
+
+    if not kb_paper_ids:
+        return scoped_paper_ids
+    if not scoped_paper_ids:
+        return kb_paper_ids
+
+    allowed_paper_ids = set(kb_paper_ids)
+    return [paper_id for paper_id in scoped_paper_ids if paper_id in allowed_paper_ids]
+
+
 def _build_summary_record_map(summary_records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {
         str(record.get("paper_id") or ""): record
@@ -284,6 +332,15 @@ def _append_abstain_scope_fallback(
             "citation_jump_url": fallback_jump_url,
         }
     )
+
+
+def _should_preserve_empty_kb_scope(
+    *,
+    kb_id: str | None,
+    effective_paper_scope: list[str],
+    requested_paper_scope: list[str] | None,
+) -> bool:
+    return bool(kb_id) and not effective_paper_scope and requested_paper_scope is None
 
 
 def _build_summary_display_text(summary_record: dict[str, Any]) -> str:
@@ -457,7 +514,7 @@ def retrieve_evidence(
                 }
             )
 
-    if paper_scope:
+    if paper_scope is not None:
         allowed_papers = {p for p in paper_scope if p}
         filtered_candidates = [c for c in pack.candidates if c.paper_id in allowed_papers]
         pack = pack.model_copy(
@@ -876,14 +933,27 @@ async def build_answer_contract_payload(
     trace = trace_id or str(uuid4())
     run = run_id or str(uuid4())
     settings = get_settings()
+    effective_paper_scope = list(paper_scope or [])
+    if kb_id:
+        effective_paper_scope = await _resolve_kb_paper_scope(
+            user_id=user_id,
+            kb_id=kb_id,
+            requested_paper_scope=effective_paper_scope or None,
+        )
+    preserve_empty_kb_scope = _should_preserve_empty_kb_scope(
+        kb_id=kb_id,
+        effective_paper_scope=effective_paper_scope,
+        requested_paper_scope=paper_scope,
+    )
+    route_scope = effective_paper_scope if (effective_paper_scope or preserve_empty_kb_scope) else None
     routing = get_phase_i_routing_service().route(
         query=normalized_query,
         query_family=query_family,
-        paper_scope=paper_scope,
+        paper_scope=route_scope,
     )
     resolved_execution_mode, execution_mode_degraded_conditions = _resolve_runtime_execution_mode(
         requested_execution_mode=routing.execution_mode,
-        paper_scope=paper_scope,
+        paper_scope=route_scope,
     )
 
     t0 = perf_counter()
@@ -891,7 +961,7 @@ async def build_answer_contract_payload(
         query=normalized_query,
         user_id=user_id,
         kb_id=kb_id,
-        paper_scope=paper_scope,
+        paper_scope=route_scope,
         query_family=routing.query_family,
         stage=stage,
         trace_id=trace,
@@ -913,7 +983,7 @@ async def build_answer_contract_payload(
     citations: list[dict[str, Any]] = []
     evidence_blocks: list[dict[str, Any]] = []
     summary_query = _is_summary_seeking_query(normalized_query)
-    paper_title_map = await _load_paper_display_title_map(user_id, paper_scope)
+    paper_title_map = await _load_paper_display_title_map(user_id, route_scope)
     normalized_handoff_evidence = _normalize_handoff_evidence_rows(handoff_evidence)
     boosted_candidates = list(pack.candidates)
     if summary_query:
@@ -926,14 +996,16 @@ async def build_answer_contract_payload(
         )
 
     summary_records: list[dict[str, Any]] = []
-    include_summary_records = bool(paper_scope) and (summary_query or _is_compare_family(routing.query_family))
-    if include_summary_records and paper_scope:
+    include_summary_records = bool(effective_paper_scope) and (
+        summary_query or _is_compare_family(routing.query_family)
+    )
+    if include_summary_records and effective_paper_scope:
         paper_index, _ = build_indexes_from_artifacts(
             artifact_root=ARTIFACT_ROOT,
             stage=stage,
-            paper_ids=paper_scope,
+            paper_ids=effective_paper_scope,
         )
-        for paper_id in paper_scope:
+        for paper_id in effective_paper_scope:
             artifact = paper_index.get(paper_id)
             if artifact is None:
                 continue
@@ -1106,7 +1178,7 @@ async def build_answer_contract_payload(
 
     if _is_compare_family(routing.query_family):
         cited_paper_ids = {citation["paper_id"] for citation in citations}
-        for paper_id in paper_scope or []:
+        for paper_id in effective_paper_scope or []:
             if paper_id in cited_paper_ids:
                 continue
             summary_record = summary_record_map.get(paper_id)
@@ -1156,14 +1228,16 @@ async def build_answer_contract_payload(
     _append_abstain_scope_fallback(
         citations=citations,
         evidence_blocks=evidence_blocks,
-        paper_scope=paper_scope,
+        paper_scope=route_scope,
         paper_title_map=paper_title_map,
     )
 
     answer_text = await _generate_answer_from_citations(
         query=normalized_query,
         citations=citations[:top_k],
-        paper_summaries=summary_records[: max(1, len(paper_scope or []))] if include_summary_records else None,
+        paper_summaries=summary_records[: max(1, len(effective_paper_scope or []))]
+        if include_summary_records
+        else None,
         query_family=routing.query_family,
     )
     typed_blocks = [EvidenceBlock.model_validate(block) for block in evidence_blocks]
@@ -1181,17 +1255,23 @@ async def build_answer_contract_payload(
         "citation_coverage": quality.citation_support_score,
     }
     runtime_truth = pack.diagnostics.get("runtime_truth", {})
+    combined_degraded_conditions = (
+        runtime_truth.get("degraded_conditions", [])
+        + execution_mode_degraded_conditions
+        + (["kb_scope_empty"] if preserve_empty_kb_scope else [])
+    )
+
     recovery_actions = build_recovery_actions(
         scope="rag",
         answer_mode=answer_mode,
         task_family=routing.task_family,
         execution_mode=resolved_execution_mode,
         truthfulness_report=truthfulness_report,
-        degraded_conditions=runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
+        degraded_conditions=combined_degraded_conditions,
         recovery_entry={
             "task_family": routing.task_family,
             "entry_type": "read",
-            "paper_ids": list(paper_scope or []),
+            "paper_ids": list(route_scope or []),
         },
     )
 
@@ -1201,7 +1281,7 @@ async def build_answer_contract_payload(
     )
     phase6_runtime = build_phase6_runtime_contract(
         answer_mode=answer_mode,
-        degraded_conditions=runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
+        degraded_conditions=combined_degraded_conditions,
         recovery_actions=recovery_actions,
         truthfulness_report=truthfulness_report,
         truthfulness_summary=truthfulness_summary,
@@ -1250,7 +1330,7 @@ async def build_answer_contract_payload(
         "fallback_used": fallback_used,
         "fallback_reason": "unsupported_field_type" if fallback_used else None,
         "fallback_events": runtime_truth.get("fallback_events", []),
-        "degraded_conditions": runtime_truth.get("degraded_conditions", []) + execution_mode_degraded_conditions,
+        "degraded_conditions": combined_degraded_conditions,
         "phase6_runtime": phase6_runtime,
         "cost_estimate": round(candidate_count * 0.00002, 6),
         "answer_mode": answer_mode,
@@ -1316,6 +1396,15 @@ async def build_answer_contract_payload(
         "retrieval_plane_policy": trace_payload["retrieval_plane_policy"],
         "degraded_conditions": trace_payload["degraded_conditions"],
         "recovery_actions": recovery_actions,
+        "diagnostics": {
+            "kb_scope_resolution": {
+                "kb_id": kb_id,
+                "resolved_paper_scope_size": len(effective_paper_scope),
+                "empty_scope_preserved": preserve_empty_kb_scope,
+            }
+            if kb_id
+            else None,
+        },
         "phase6_runtime": phase6_runtime,
     }
 

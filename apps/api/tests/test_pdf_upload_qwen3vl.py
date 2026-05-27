@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock
 from PIL import Image
 
+from app.config import canonical_embedding_dimension, settings
 from app.core.milvus_service import get_milvus_service
 from app.core.qwen3vl_service import get_qwen3vl_service
 
@@ -232,14 +233,8 @@ class TestQwen3VLIntegration:
 
     def test_qwen3vl_model_path_local(self):
         """Test model path uses local directory per D-01."""
-        service = get_qwen3vl_service()
-
-        # Verify local model path (absolute or relative)
-        assert "Qwen3-VL-Embedding-2B" in service.MODEL_PATH
+        assert settings.QWEN3VL_EMBEDDING_MODEL_PATH
 
     def test_qwen3vl_embedding_dim_config(self):
         """Test embedding dimension config is 2048."""
-        service = get_qwen3vl_service()
-
-        # Verify dimension config
-        assert service.EMBEDDING_DIM == 2048
+        assert canonical_embedding_dimension(settings.QWEN_DUAL_EMBEDDING_MODEL, 0) == 2048

@@ -15,6 +15,13 @@
 
 如果旧计划仍标记为 `in-progress`，但内容与 `v4.0` 草案冲突，先进入人工讨论，不直接按草案覆盖。v3.0 strict close-out 中未验证项先作为 Phase 4.0-0 候选输入，不直接丢弃。
 
+`docs/plans/v4_5/` 已启动 phase_0 前置材料，当前入口为：
+
+1. `docs/plans/v4_5/active/overview/25_v4_5_overview_plan.md`
+2. `docs/plans/v4_5/active/phase_0/26_v4_5_phase_0_execution_plan.md`
+
+当前 `v4.0` 仍是实现与发布状态真源；`v4.5` 负责把跨 phase 的 release-readiness 收口成独立 bridge。
+
 ## Directory Rules
 
 - `PLAN_STATUS.md`
@@ -23,6 +30,10 @@
   - 历史或维护态版本化计划主目录
 - `v4_0/`
   - 当前讨论中的版本化草案目录，待用户确认后再升级为正式主线
+- `v4_5/`
+  - v4.5 release-readiness bridge 预热目录
+  - 用于收口跨 `v4.0` phase 的发布真相、路线修正、walkthrough/gate 前置材料
+  - 在 overview / phase_0 execution plan 冻结前，不替代 `v4.0` 主线真源
 - `phase-text/`
   - 跨版本事实型功能盘点、功能真相报告、测试真相文档与查漏材料
   - 同时承载 `phase-text` 自身的整体规划与维护契约

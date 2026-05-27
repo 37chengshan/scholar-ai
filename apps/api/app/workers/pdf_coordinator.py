@@ -32,6 +32,10 @@ from app.core.multimodal_indexer import get_multimodal_indexer
 from app.utils.logger import logger
 
 
+class TaskCancelledError(PipelineError):
+    """Raised when a processing task is cancelled mid-pipeline."""
+
+
 class PDFCoordinator:
     """PDF processing pipeline coordinator.
 
@@ -138,6 +142,8 @@ class PDFCoordinator:
                 )
 
         try:
+            await self._ensure_task_active(ctx, "download")
+
             # Stage 1: Download
             ctx.current_stage = PipelineStage.DOWNLOAD
             await _fire("downloading", 15)
@@ -154,6 +160,8 @@ class PDFCoordinator:
                 await self._update_status(ctx, PipelineStage.FAILED.value, error=str(e))
                 await _fire("failed", 0, {"error": str(e)})
                 raise PipelineError(f"Download stage failed: {e}")
+
+            await self._ensure_task_active(ctx, "parsing")
 
             # Stage 2: Parsing
             ctx.current_stage = PipelineStage.PARSING
@@ -173,23 +181,37 @@ class PDFCoordinator:
                 await _fire("failed", 0, {"error": str(e)})
                 raise PipelineError(f"Parsing stage failed: {e}")
 
+            await self._ensure_task_active(ctx, "extraction")
+
             # Stage 3: Parallel extraction
             ctx.current_stage = PipelineStage.EXTRACTION
             await _fire("extracting", 55)
             ctx = await self.extraction_pipeline.extract(ctx)
             logger.info(f"Completed parallel extraction for task {ctx.task_id}")
 
+            await self._ensure_task_active(ctx, "storage")
+
             # Stage 4: Storage
             ctx.current_stage = PipelineStage.STORAGE
             await _fire("storing", 80)
-            ctx = await self.storage_manager.store(ctx)
+            ctx = await self.storage_manager.store(
+                ctx,
+                before_step=lambda step: self._ensure_task_active(ctx, step),
+            )
             logger.info(f"Completed storage for task {ctx.task_id}")
+
+            await self._ensure_task_active(ctx, "completion")
 
             ctx.current_stage = PipelineStage.COMPLETED
             await self._update_status(ctx, "completed")
             await _fire("completed", 100)
             return True
 
+        except TaskCancelledError:
+            ctx.current_stage = PipelineStage.FAILED
+            await _fire("cancelled", 0, {"reason": "user_request"})
+            logger.info("Pipeline cancelled", task_id=task_id)
+            return False
         except Exception as e:
             ctx.add_error(str(e))
             ctx.current_stage = PipelineStage.FAILED
@@ -197,6 +219,17 @@ class PDFCoordinator:
             await _fire("failed", 0, {"error": str(e)})
             logger.error("Pipeline failed", task_id=task_id, error=str(e))
             return False
+        finally:
+            if ctx.local_path and os.path.exists(ctx.local_path):
+                try:
+                    os.unlink(ctx.local_path)
+                except OSError as cleanup_error:
+                    logger.warning(
+                        "Failed to remove temporary PDF",
+                        task_id=task_id,
+                        local_path=ctx.local_path,
+                        error=str(cleanup_error),
+                    )
 
     async def _init_context(self, task_id: str) -> PipelineContext:
         """Initialize pipeline context from task database record.
@@ -231,6 +264,22 @@ class PDFCoordinator:
             storage_key=task["storage_key"],
         )
 
+    async def _ensure_task_active(self, ctx: PipelineContext, checkpoint: str) -> None:
+        """Stop pipeline work when a task has already been cancelled."""
+        async with self.db_pool.acquire() as conn:
+            status = await conn.fetchval(
+                "SELECT status FROM processing_tasks WHERE id = $1",
+                ctx.task_id,
+            )
+
+        if status != "cancelled":
+            return
+
+        await self._update_status(ctx, "cancelled")
+        raise TaskCancelledError(
+            f"Task {ctx.task_id} cancelled before checkpoint {checkpoint}"
+        )
+
     async def _update_status(
         self, ctx: PipelineContext, status: str, error: Optional[str] = None
     ) -> None:
@@ -247,26 +296,44 @@ class PDFCoordinator:
             completed_at = datetime.now() if status == "completed" else None
 
             # Update processing_tasks
-            await conn.execute(
-                """UPDATE processing_tasks
-                   SET status = $1,
-                       updated_at = NOW(),
-                       error_message = $2,
-                       completed_at = COALESCE($3::timestamp, completed_at)
-                   WHERE id = $4""",
-                status,
-                error,
-                completed_at,
-                ctx.task_id,
-            )
+            if status == "cancelled":
+                await conn.execute(
+                    """UPDATE processing_tasks
+                       SET status = 'cancelled',
+                           updated_at = NOW(),
+                           cancelled_at = COALESCE(cancelled_at, NOW()),
+                           cancellation_reason = COALESCE(cancellation_reason, 'user_request'),
+                           failure_stage = 'cancelled',
+                           failure_code = 'user_cancelled',
+                           failure_message = COALESCE(failure_message, 'Task cancelled by user'),
+                           error_message = COALESCE($1, error_message)
+                       WHERE id = $2""",
+                    error,
+                    ctx.task_id,
+                )
+            else:
+                await conn.execute(
+                    """UPDATE processing_tasks
+                       SET status = $1,
+                           updated_at = NOW(),
+                           error_message = $2,
+                           completed_at = COALESCE($3::timestamp, completed_at)
+                       WHERE id = $4
+                         AND status <> 'cancelled'""",
+                    status,
+                    error,
+                    completed_at,
+                    ctx.task_id,
+                )
 
             # Update papers status to keep them synchronized
-            if status in ("completed", "failed"):
+            if status in ("completed", "failed", "cancelled"):
                 await conn.execute(
                     """UPDATE papers
                        SET status = $1,
                            "updatedAt" = NOW()
-                       WHERE id = $2""",
+                       WHERE id = $2
+                         AND status <> 'cancelled'""",
                     status,
                     ctx.paper_id,
                 )

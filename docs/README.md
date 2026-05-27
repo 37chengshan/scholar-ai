@@ -13,12 +13,22 @@
 
 在用户确认前，`v4.0` 文档只作为讨论草案；已验证实现基线仍需同时参考 `v3.0` strict close-out 状态。v3.0 中未验证的 gate 不能直接视为完成。
 
+`docs/plans/v4_5/` 已进入 phase_0 前置阶段，当前正式入口为：
+
+1. `docs/plans/v4_5/active/overview/25_v4_5_overview_plan.md`
+2. `docs/plans/v4_5/active/phase_0/26_v4_5_phase_0_execution_plan.md`
+3. `docs/plans/v4_5/active/phase_0/v4_5_runtime_contract_freeze.md`
+4. `docs/plans/v4_5/active/phase_0/v4_5_gate_input_matrix.md`
+
+但它仍不替代 `v4.0` 的实现和发布状态真源。
+
 ## Structure
 
 - `specs/`
   - agent 读取的规范、架构、设计、治理与参考资料真源
 - `plans/`
   - 按版本组织的计划、研究、报告、归档与状态真源
+  - `v4_5/` 目录已预留给 release-readiness bridge，当前为 prework 状态
   - `phase-text/` 目录用于跨版本事实型功能盘点，不替代版本计划和状态真源
   - `phase-text/` 也可承载基于真实代码入口整理的跨版本测试设计文档，以及这条文档线自身的维护契约
   - `phase-text/` 允许补充机器可读模板，用于后续逐页测试结果回填

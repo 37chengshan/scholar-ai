@@ -249,7 +249,7 @@ async def search_semantic_scholar(
                     authors=authors,
                     year=paper.get("year") or 0,
                     abstract=paper.get("abstract") or "No abstract available",
-                    source="s2",
+                    source="semantic_scholar",
                     pdfUrl=pdf_url,
                     url=f"https://www.semanticscholar.org/paper/{paper_id}",
                     citationCount=paper.get("citationCount"),

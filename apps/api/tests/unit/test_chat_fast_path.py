@@ -203,6 +203,48 @@ async def test_paper_scope_query_does_not_use_fast_path():
 
 
 @pytest.mark.asyncio
+async def test_cancel_run_rejects_foreign_session():
+    chat_api = _load_chat_module()
+
+    request = type(
+        "Req",
+        (),
+        {"json": AsyncMock(return_value={"session_id": "session-foreign", "run_id": "run-1"})},
+    )()
+
+    with patch.object(
+        chat_api.session_manager,
+        "get_session",
+        AsyncMock(return_value=type("S", (), {"id": "session-foreign", "user_id": "other-user"})()),
+    ):
+        with pytest.raises(chat_api.HTTPException) as exc:
+            await chat_api.cancel_run(request=request, user_id="user-1")
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_retry_run_checks_session_ownership_before_loading_messages():
+    chat_api = _load_chat_module()
+    request = type(
+        "Req",
+        (),
+        {"json": AsyncMock(return_value={"session_id": "session-foreign"})},
+    )()
+
+    with patch.object(
+        chat_api.session_manager,
+        "get_session",
+        AsyncMock(return_value=type("S", (), {"id": "session-foreign", "user_id": "other-user"})()),
+    ), patch.object(chat_api.message_service, "get_messages", AsyncMock()) as mock_get_messages:
+        with pytest.raises(chat_api.HTTPException) as exc:
+            await chat_api.retry_run(request=request, user_id="user-1")
+
+    assert exc.value.status_code == 404
+    mock_get_messages.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_persists_single_paper_scope_metadata_on_existing_session():
     chat_api = _load_chat_module()
 

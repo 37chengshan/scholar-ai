@@ -21,6 +21,7 @@ interface HandoffBannerData {
 }
 
 interface ChatWorkspaceLayoutProps {
+  sessionSidebar?: ReactNode;
   isZh: boolean;
   uiScope: {
     type: ScopeType | null;
@@ -71,6 +72,7 @@ interface ChatWorkspaceLayoutProps {
 }
 
 export function ChatWorkspaceLayout({
+  sessionSidebar,
   isZh,
   uiScope,
   handoffBanner,
@@ -112,6 +114,7 @@ export function ChatWorkspaceLayout({
     <div className="editorial-app-shell relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
       <WorkspaceShell
         layoutId="chat-workspace"
+        sidebar={sessionSidebar}
         main={(
           <div className="flex min-h-0 min-w-0 h-full flex-1 flex-col bg-background">
             <div className="shrink-0 border-b border-border/30 bg-background/60 backdrop-blur-sm">

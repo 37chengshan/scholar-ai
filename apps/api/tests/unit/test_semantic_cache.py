@@ -29,12 +29,11 @@ class AsyncIteratorMock:
 @pytest.fixture
 def semantic_cache():
     """Create SemanticCache instance with default settings and mocked embedding service."""
-    with patch('app.core.semantic_cache.EmbeddingService') as mock_embedding_class:
+    with patch('app.core.semantic_cache.get_embedding_service') as mock_embedding_factory:
         mock_instance = MagicMock()
-        mock_instance.generate_embedding = MagicMock(return_value=[0.1] * 768)
-        mock_embedding_class.return_value = mock_instance
+        mock_instance.encode_text = MagicMock(return_value=[0.1] * 768)
+        mock_embedding_factory.return_value = mock_instance
         cache = SemanticCache(threshold=0.95, ttl=86400)
-        # Store the mock for later use in tests
         cache._mock_embedding = mock_instance
         yield cache
 
@@ -54,10 +53,10 @@ def mock_redis():
 
 @pytest.fixture
 def mock_embedding_service():
-    """Mock EmbeddingService for testing."""
-    with patch('app.core.semantic_cache.EmbeddingService') as mock:
+    """Mock embedding factory for testing."""
+    with patch('app.core.semantic_cache.get_embedding_service') as mock:
         mock_instance = MagicMock()
-        mock_instance.generate_embedding = MagicMock(return_value=[0.1] * 768)
+        mock_instance.encode_text = MagicMock(return_value=[0.1] * 768)
         mock.return_value = mock_instance
         yield mock_instance
 
@@ -90,7 +89,7 @@ async def test_cache_hit_exact_match(semantic_cache, mock_redis):
     })
 
     # Mock embedding service to return same embedding (exact match)
-    with patch.object(semantic_cache.embedding_service, 'generate_embedding', return_value=cached_embedding):
+    with patch.object(semantic_cache.embedding_service, 'encode_text', return_value=cached_embedding):
         result = await semantic_cache.get("What is machine learning?", ["paper-1"])
 
     assert result == cached_response
@@ -116,7 +115,7 @@ async def test_cache_hit_similar_query(semantic_cache, mock_redis):
         "timestamp": 1234567890.0
     })
 
-    with patch.object(semantic_cache.embedding_service, 'generate_embedding', return_value=similar_embedding):
+    with patch.object(semantic_cache.embedding_service, 'encode_text', return_value=similar_embedding):
         result = await semantic_cache.get("Explain deep learning", ["paper-1"])
 
     # Should hit because similarity >= 0.95 (base_embedding and similar_embedding are very close)
@@ -140,7 +139,7 @@ async def test_cache_miss_dissimilar_query(semantic_cache, mock_redis):
         "timestamp": 1234567890.0
     })
 
-    with patch.object(semantic_cache.embedding_service, 'generate_embedding', return_value=query_embedding):
+    with patch.object(semantic_cache.embedding_service, 'encode_text', return_value=query_embedding):
         result = await semantic_cache.get("How to cook pasta?", ["paper-1"])
 
     # Should miss because similarity < 0.95 (orthogonal vectors)
@@ -155,7 +154,7 @@ async def test_set_stores_embedding(semantic_cache, mock_redis):
     response = {"answer": "Test answer", "sources": [], "confidence": 0.8}
     embedding = [0.1] * 768
 
-    with patch.object(semantic_cache.embedding_service, 'generate_embedding', return_value=embedding):
+    with patch.object(semantic_cache.embedding_service, 'encode_text', return_value=embedding):
         result = await semantic_cache.set("Test query", ["paper-1"], response)
 
     assert result is True
@@ -180,7 +179,7 @@ async def test_cache_entry_expiry(semantic_cache, mock_redis):
 
     response = {"answer": "Test", "sources": []}
 
-    with patch.object(semantic_cache.embedding_service, 'generate_embedding', return_value=[0.1] * 768):
+    with patch.object(semantic_cache.embedding_service, 'encode_text', return_value=[0.1] * 768):
         await semantic_cache.set("Query", ["paper-1"], response)
 
     # Verify TTL was set to 86400 seconds (passed as keyword argument)
@@ -237,7 +236,7 @@ async def test_set_with_query_type(semantic_cache, mock_redis):
 
     response = {"answer": "Test", "sources": []}
 
-    with patch.object(semantic_cache.embedding_service, 'generate_embedding', return_value=[0.1] * 768):
+    with patch.object(semantic_cache.embedding_service, 'encode_text', return_value=[0.1] * 768):
         await semantic_cache.set("Query", ["paper-1"], response, query_type="cross_paper")
 
     call_args = mock_redis.set.call_args

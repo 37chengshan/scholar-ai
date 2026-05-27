@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, AsyncIterator
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -323,7 +324,8 @@ async def test_retry_failed_task_preserves_recovery_metadata(
     install_task_service_mocks,
 ):
     client, db = authenticated_client
-    response = await client.post("/api/v1/tasks/task-failed/retry")
+    with patch("app.tasks.pdf_tasks.process_single_pdf_task.delay") as mock_delay:
+        response = await client.post("/api/v1/tasks/task-failed/retry")
 
     assert response.status_code == 200
     data = response.json()["data"]
@@ -335,6 +337,7 @@ async def test_retry_failed_task_preserves_recovery_metadata(
     }
     assert db.commits == 1
     assert db.refreshed == ["task-failed"]
+    mock_delay.assert_called_once_with("paper-456", "task-failed")
 
 
 @pytest.mark.asyncio

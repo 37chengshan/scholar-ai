@@ -78,88 +78,82 @@ class TestFetchPapersForComparison:
     @pytest.mark.asyncio
     async def test_fetch_papers_returns_papers_with_chunks(self):
         """Test successful fetch returns papers with metadata and chunks."""
-        mock_papers = [
-            {
-                "id": "paper-1",
-                "title": "Test Paper 1",
-                "authors": ["Author A"],
-                "year": 2024,
-                "abstract": "Abstract 1",
-                "status": "completed"
-            },
-            {
-                "id": "paper-2",
-                "title": "Test Paper 2",
-                "authors": ["Author B"],
-                "year": 2023,
-                "abstract": "Abstract 2",
-                "status": "completed"
-            }
+        paper_rows = [
+            MagicMock(
+                id="paper-1",
+                title="Test Paper 1",
+                authors=["Author A"],
+                year=2024,
+                abstract="Abstract 1",
+                status="completed",
+            ),
+            MagicMock(
+                id="paper-2",
+                title="Test Paper 2",
+                authors=["Author B"],
+                year=2023,
+                abstract="Abstract 2",
+                status="completed",
+            ),
         ]
-
-        mock_chunks_p1 = [
-            {"content": "Chunk 1 content", "section": "Introduction", "page": 1},
-            {"content": "Chunk 2 content", "section": "Methods", "page": 2},
+        chunk_rows_p1 = [
+            MagicMock(content="Chunk 1 content", section="Introduction", page_start=1, id="c1"),
+            MagicMock(content="Chunk 2 content", section="Methods", page_start=2, id="c2"),
         ]
-
-        mock_chunks_p2 = [
-            {"content": "Chunk 3 content", "section": "Results", "page": 3},
+        chunk_rows_p2 = [
+            MagicMock(content="Chunk 3 content", section="Results", page_start=3, id="c3"),
         ]
-
-        # Mock the database connection with sequential calls
         mock_conn = AsyncMock()
-        # First call returns papers, subsequent calls return chunks for each paper
-        mock_conn.fetch = AsyncMock(side_effect=[mock_papers, mock_chunks_p1, mock_chunks_p2])
+        mock_conn.execute = AsyncMock(
+            side_effect=[
+                MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=paper_rows)))),
+                MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=chunk_rows_p1)))),
+                MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=chunk_rows_p2)))),
+            ]
+        )
 
-        with patch('app.api.compare.get_db_connection') as mock_get_conn:
-            mock_context = MagicMock()
-            mock_context.__aenter__ = AsyncMock(return_value=mock_conn)
-            mock_context.__aexit__ = AsyncMock(return_value=None)
-            mock_get_conn.return_value = mock_context
+        result = await fetch_papers_for_comparison(
+            paper_ids=["paper-1", "paper-2"],
+            user_id="user-1",
+            db=mock_conn,
+        )
 
-            result = await fetch_papers_for_comparison(
-                paper_ids=["paper-1", "paper-2"],
-                user_id="user-1"
-            )
-
-            assert len(result) == 2
-            assert result[0]["id"] == "paper-1"
-            assert result[1]["id"] == "paper-2"
-            assert "chunks" in result[0]
-            assert len(result[0]["chunks"]) == 2
-            assert len(result[1]["chunks"]) == 1
+        assert len(result) == 2
+        assert result[0]["id"] == "paper-1"
+        assert result[1]["id"] == "paper-2"
+        assert "chunks" in result[0]
+        assert len(result[0]["chunks"]) == 2
+        assert len(result[1]["chunks"]) == 1
 
     @pytest.mark.asyncio
     async def test_fetch_papers_missing_papers_raises_404(self):
         """Test that missing paper IDs raise 404 error."""
-        mock_papers = [
-            {
-                "id": "paper-1",
-                "title": "Test Paper 1",
-                "authors": ["Author A"],
-                "year": 2024,
-                "abstract": "Abstract 1",
-                "status": "completed"
-            }
+        paper_rows = [
+            MagicMock(
+                id="paper-1",
+                title="Test Paper 1",
+                authors=["Author A"],
+                year=2024,
+                abstract="Abstract 1",
+                status="completed",
+            )
         ]
-
         mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=mock_papers)
+        mock_conn.execute = AsyncMock(
+            return_value=MagicMock(
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=paper_rows)))
+            )
+        )
 
-        with patch('app.api.compare.get_db_connection') as mock_get_conn:
-            mock_context = MagicMock()
-            mock_context.__aenter__ = AsyncMock(return_value=mock_conn)
-            mock_context.__aexit__ = AsyncMock(return_value=None)
-            mock_get_conn.return_value = mock_context
+        with pytest.raises(HTTPException) as exc_info:
+            await fetch_papers_for_comparison(
+                paper_ids=["paper-1", "paper-2"],
+                user_id="user-1",
+                db=mock_conn,
+            )
 
-            with pytest.raises(HTTPException) as exc_info:
-                await fetch_papers_for_comparison(
-                    paper_ids=["paper-1", "paper-2"],
-                    user_id="user-1"
-                )
-
-            assert exc_info.value.status_code == 404
-            assert "paper-2" in str(exc_info.value.detail)
+        assert exc_info.value.status_code == 404
+        assert "paper-2" in str(exc_info.value.detail)
 
 
 class TestGenerateMarkdownTable:
@@ -218,19 +212,22 @@ class TestAnalyzePapersWithLLM:
     """Test LLM-powered comparison analysis."""
 
     @pytest.mark.asyncio
-    @patch('app.api.compare.litellm')
-    async def test_llm_analysis_returns_structured_data(self, mock_litellm):
+    @patch('app.api.compare.get_llm_client')
+    async def test_llm_analysis_returns_structured_data(self, mock_get_llm_client):
         """Test LLM analysis returns structured comparison data."""
-        mock_response = {
-            "choices": [
-                {
-                    "message": {
-                        "content": '{"comparison_table": {"headers": ["Paper", "Method"], "rows": [["P1", "CNN"]]}, "findings": [{"paper_id": "p1", "title": "Test", "findings": {"method": "CNN"}}], "summary": "Test summary"}'
-                    }
-                }
-            ]
-        }
-        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.chat_completion = AsyncMock(
+            return_value=MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content='{"comparison_table": {"headers": ["Paper", "Method"], "rows": [["P1", "CNN"]]}, "findings": [{"paper_id": "p1", "title": "Test", "findings": {"method": "CNN"}}], "summary": "Test summary"}'
+                        )
+                    )
+                ]
+            )
+        )
+        mock_get_llm_client.return_value = mock_client
 
         papers = [
             {
@@ -250,13 +247,15 @@ class TestAnalyzePapersWithLLM:
         assert "comparison_table" in result
         assert "findings" in result
         assert "summary" in result
-        mock_litellm.acompletion.assert_called_once()
+        mock_client.chat_completion.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch('app.api.compare.litellm')
-    async def test_llm_analysis_handles_errors(self, mock_litellm):
+    @patch('app.api.compare.get_llm_client')
+    async def test_llm_analysis_handles_errors(self, mock_get_llm_client):
         """Test LLM analysis handles errors gracefully."""
-        mock_litellm.acompletion = AsyncMock(side_effect=Exception("LLM error"))
+        mock_client = MagicMock()
+        mock_client.chat_completion = AsyncMock(side_effect=Exception("LLM error"))
+        mock_get_llm_client.return_value = mock_client
 
         papers = [
             {
@@ -273,7 +272,7 @@ class TestAnalyzePapersWithLLM:
             await analyze_papers_with_llm(papers, ["method"])
 
         assert exc_info.value.status_code == 500
-        assert "Failed to generate comparison" in exc_info.value.detail
+        assert "Failed to generate comparison" in exc_info.value.detail["detail"]
 
 
 class TestCompareResponse:

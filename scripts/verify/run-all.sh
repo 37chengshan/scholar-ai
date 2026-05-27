@@ -14,13 +14,7 @@ run_stage() {
 
 run_governance() {
   cd "$ROOT_DIR"
-  bash scripts/check-runtime-hygiene.sh tracked
-  bash scripts/check-doc-governance.sh
-  bash scripts/check-structure-boundaries.sh
-  bash scripts/check-code-boundaries.sh
-  bash scripts/check-contract-gate.sh
-  bash scripts/check-fallback-expiry.sh
-  bash scripts/check-e2e-gate.sh --mode manifest
+  bash scripts/check-governance.sh
 }
 
 run_web() {

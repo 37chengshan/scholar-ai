@@ -124,6 +124,8 @@ backend.pid
 frontend.pid
 runtime/
 !apps/web/src/features/chat/runtime/
+runtime/symphony/
+data/
 artifacts/
 apps/api/artifacts/benchmarks/
 backend-python/docling-models/

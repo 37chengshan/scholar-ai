@@ -104,6 +104,12 @@ async def _sync_import_job_terminal(
         job.progress = 100
         job.completed_at = now
         job.next_action = None
+    elif terminal_status == "cancelled":
+        job.status = "cancelled"
+        job.stage = "cancelled"
+        job.progress = 0
+        job.cancelled_at = now
+        job.next_action = None
     else:
         job.status = "failed"
         job.stage = "failed"
@@ -123,8 +129,18 @@ async def _sync_import_job_terminal(
         )
         history = history_result.scalars().first()
         if history:
-            history.status = "COMPLETED" if terminal_status == "completed" else "FAILED"
-            history.error_message = None if terminal_status == "completed" else (error_message or history.error_message)
+            history.status = (
+                "COMPLETED"
+                if terminal_status == "completed"
+                else "CANCELLED"
+                if terminal_status == "cancelled"
+                else "FAILED"
+            )
+            history.error_message = (
+                None
+                if terminal_status in {"completed", "cancelled"}
+                else (error_message or history.error_message)
+            )
             history.updated_at = now
         else:
             db.add(
@@ -132,8 +148,14 @@ async def _sync_import_job_terminal(
                     user_id=job.user_id,
                     paper_id=job.paper_id,
                     filename=job.filename or job.source_ref_raw or "untitled.pdf",
-                    status="COMPLETED" if terminal_status == "completed" else "FAILED",
-                    error_message=None if terminal_status == "completed" else error_message,
+                    status=(
+                        "COMPLETED"
+                        if terminal_status == "completed"
+                        else "CANCELLED"
+                        if terminal_status == "cancelled"
+                        else "FAILED"
+                    ),
+                    error_message=None if terminal_status in {"completed", "cancelled"} else error_message,
                     created_at=now,
                     updated_at=now,
                 )
@@ -254,13 +276,21 @@ async def process_single_pdf_async(
             if existing_task:
                 task_id = existing_task.id
                 storage_key = existing_task.storage_key
+                if existing_task.status == "cancelled":
+                    await _sync_import_job_terminal(db, task_id, "cancelled")
+                    celery_task.update_state(
+                        state='REVOKED',
+                        meta={'paper_id': paper_id, 'status': 'cancelled'},
+                    )
+                    return
                 # Update status to processing
                 await db.execute(
                     text(
                         """UPDATE processing_tasks
                            SET status = :status,
                                updated_at = NOW()
-                           WHERE id = :id"""
+                           WHERE id = :id
+                             AND status <> 'cancelled'"""
                     ),
                     {"status": "processing", "id": task_id},
                 )
@@ -298,17 +328,41 @@ async def process_single_pdf_async(
                 state='PROGRESS',
                 meta={'paper_id': paper_id, 'stage': 'processing', 'progress': 10},
             )
-            success = await processor.process_pdf_task(task_id)
+            async def _on_stage_change(stage: str, progress: int, metadata: dict[str, Any]) -> None:
+                await _sync_import_job_stage(db, task_id, stage)
+
+            success = await processor.process_pdf_task(
+                task_id,
+                on_stage_change=_on_stage_change,
+            )
+
+            latest_status = await db.scalar(
+                select(ProcessingTask.status).where(ProcessingTask.id == task_id)
+            )
+            if latest_status == "cancelled":
+                await _sync_import_job_terminal(db, task_id, "cancelled")
+                celery_task.update_state(
+                    state='REVOKED',
+                    meta={'paper_id': paper_id, 'status': 'cancelled'},
+                )
+                return
 
             if success:
                 await db.execute(
-                    update(ProcessingTask).where(ProcessingTask.id == task_id).values(
+                    update(ProcessingTask)
+                    .where(
+                        ProcessingTask.id == task_id,
+                        ProcessingTask.status != 'cancelled',
+                    )
+                    .values(
                         status='completed',
                         completed_at=datetime.now(timezone.utc)
                     )
                 )
                 await db.execute(
-                    update(Paper).where(Paper.id == paper_id).values(status='completed')
+                    update(Paper)
+                    .where(Paper.id == paper_id, Paper.status != 'cancelled')
+                    .values(status='completed')
                 )
                 await db.commit()
                 await _sync_import_job_terminal(db, task_id, "completed")
@@ -330,10 +384,33 @@ async def process_single_pdf_async(
                     meta={'paper_id': paper_id, 'progress': 100}
                 )
             else:
+                latest_status = await db.scalar(
+                    select(ProcessingTask.status).where(ProcessingTask.id == task_id)
+                )
+                if latest_status == "cancelled":
+                    await _sync_import_job_terminal(db, task_id, "cancelled")
+                    celery_task.update_state(
+                        state='REVOKED',
+                        meta={'paper_id': paper_id, 'status': 'cancelled'},
+                    )
+                    return
                 raise Exception("PDF processing failed")
 
         except Exception as e:
             logger.error(f"Failed to process paper {paper_id}: {e}")
+
+            latest_status = None
+            if task_id:
+                latest_status = await db.scalar(
+                    select(ProcessingTask.status).where(ProcessingTask.id == task_id)
+                )
+            if latest_status == "cancelled":
+                await _sync_import_job_terminal(db, task_id, "cancelled")
+                celery_task.update_state(
+                    state='REVOKED',
+                    meta={'paper_id': paper_id, 'status': 'cancelled'},
+                )
+                return
 
             # Record error details (per D-08)
             # Note: error_stage and error_time fields not in current ProcessingTask model
@@ -341,20 +418,32 @@ async def process_single_pdf_async(
             error_detail = f"[stage: processing] {str(e)}"
             if task_id:
                 await db.execute(
-                    update(ProcessingTask).where(ProcessingTask.id == task_id).values(
+                    update(ProcessingTask)
+                    .where(
+                        ProcessingTask.id == task_id,
+                        ProcessingTask.status != 'cancelled',
+                    )
+                    .values(
                         error_message=error_detail,
                         status='failed'
                     )
                 )
             else:
                 await db.execute(
-                    update(ProcessingTask).where(ProcessingTask.paper_id == paper_id).values(
+                    update(ProcessingTask)
+                    .where(
+                        ProcessingTask.paper_id == paper_id,
+                        ProcessingTask.status != 'cancelled',
+                    )
+                    .values(
                         error_message=error_detail,
                         status='failed'
                     )
                 )
             await db.execute(
-                update(Paper).where(Paper.id == paper_id).values(status='failed')
+                update(Paper)
+                .where(Paper.id == paper_id, Paper.status != 'cancelled')
+                .values(status='failed')
             )
             await db.commit()
             await _sync_import_job_terminal(db, task_id, "failed", error_detail)

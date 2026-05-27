@@ -79,17 +79,22 @@ class TestExtractVersionsWithLLM:
     """Test version extraction with LLM."""
 
     @pytest.mark.asyncio
-    @patch('app.api.compare.litellm')
-    async def test_extract_yolo_versions(self, mock_litellm):
+    @patch('app.api.compare.get_llm_client')
+    async def test_extract_yolo_versions(self, mock_get_llm_client):
         """Test version extraction for YOLO papers."""
-        mock_response = {
-            "choices": [{
-                "message": {
-                    "content": '[{"paper_id": "1", "year": 2015, "version": "v1", "key_changes": "First version"}, {"paper_id": "2", "year": 2016, "version": "v2", "key_changes": "9000 classes"}, {"paper_id": "3", "year": 2018, "version": "v3", "key_changes": "Incremental improvements"}]'
-                }
-            }]
-        }
-        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.chat_completion = AsyncMock(
+            return_value=MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content='[{"paper_id": "1", "year": 2015, "version": "v1", "key_changes": "First version"}, {"paper_id": "2", "year": 2016, "version": "v2", "key_changes": "9000 classes"}, {"paper_id": "3", "year": 2018, "version": "v3", "key_changes": "Incremental improvements"}]'
+                        )
+                    )
+                ]
+            )
+        )
+        mock_get_llm_client.return_value = mock_client
 
         papers = [
             {"id": "1", "title": "YOLO: You Only Look Once", "year": 2015, "abstract": "Real-time detection"},
@@ -103,20 +108,25 @@ class TestExtractVersionsWithLLM:
         assert result[0]['version'] == 'v1'
         assert result[1]['version'] == 'v2'
         assert result[2]['version'] == 'v3'
-        mock_litellm.acompletion.assert_called_once()
+        mock_client.chat_completion.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch('app.api.compare.litellm')
-    async def test_extract_bert_variants(self, mock_litellm):
+    @patch('app.api.compare.get_llm_client')
+    async def test_extract_bert_variants(self, mock_get_llm_client):
         """Test version extraction for BERT variants."""
-        mock_response = {
-            "choices": [{
-                "message": {
-                    "content": '[{"paper_id": "1", "year": 2018, "version": "base", "key_changes": "Base model"}, {"paper_id": "2", "year": 2019, "version": "large", "key_changes": "Larger model"}]'
-                }
-            }]
-        }
-        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.chat_completion = AsyncMock(
+            return_value=MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content='[{"paper_id": "1", "year": 2018, "version": "base", "key_changes": "Base model"}, {"paper_id": "2", "year": 2019, "version": "large", "key_changes": "Larger model"}]'
+                        )
+                    )
+                ]
+            )
+        )
+        mock_get_llm_client.return_value = mock_client
 
         papers = [
             {"id": "1", "title": "BERT: Pre-training", "year": 2018, "abstract": "Base"},
@@ -127,20 +137,25 @@ class TestExtractVersionsWithLLM:
 
         assert len(result) == 2
         assert result[0]['version'] == 'base'
-        mock_litellm.acompletion.assert_called_once()
+        mock_client.chat_completion.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch('app.api.compare.litellm')
-    async def test_extract_handles_wrapped_response(self, mock_litellm):
+    @patch('app.api.compare.get_llm_client')
+    async def test_extract_handles_wrapped_response(self, mock_get_llm_client):
         """Test extraction handles object-wrapped array response."""
-        mock_response = {
-            "choices": [{
-                "message": {
-                    "content": '{"versions": [{"paper_id": "1", "year": 2020, "version": "v1", "key_changes": "Test"}]}'
-                }
-            }]
-        }
-        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.chat_completion = AsyncMock(
+            return_value=MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(
+                            content='{"versions": [{"paper_id": "1", "year": 2020, "version": "v1", "key_changes": "Test"}]}'
+                        )
+                    )
+                ]
+            )
+        )
+        mock_get_llm_client.return_value = mock_client
 
         papers = [
             {"id": "1", "title": "Test Paper", "year": 2020, "abstract": "Test"},
@@ -152,10 +167,12 @@ class TestExtractVersionsWithLLM:
         assert result[0]['version'] == 'v1'
 
     @pytest.mark.asyncio
-    @patch('app.api.compare.litellm')
-    async def test_extract_handles_llm_error(self, mock_litellm):
+    @patch('app.api.compare.get_llm_client')
+    async def test_extract_handles_llm_error(self, mock_get_llm_client):
         """Test extraction handles LLM errors."""
-        mock_litellm.acompletion = AsyncMock(side_effect=Exception("LLM error"))
+        mock_client = MagicMock()
+        mock_client.chat_completion = AsyncMock(side_effect=Exception("LLM error"))
+        mock_get_llm_client.return_value = mock_client
 
         papers = [
             {"id": "1", "title": "Test Paper", "year": 2020, "abstract": "Test"},
@@ -165,7 +182,7 @@ class TestExtractVersionsWithLLM:
             await extract_versions_with_llm(papers, "Test")
 
         assert exc_info.value.status_code == 500
-        assert "Failed to extract version information" in exc_info.value.detail
+        assert "Failed to extract version information" in exc_info.value.detail["detail"]
 
 
 class TestValidateTimelineWithCitations:
@@ -355,21 +372,19 @@ class TestDetectEvolutionTimelineEndpoint:
     """Test detect_evolution_timeline endpoint."""
 
     @pytest.mark.asyncio
-    @patch('app.api.compare.get_db_connection')
     @patch('app.api.compare.extract_versions_with_llm')
-    async def test_endpoint_success(self, mock_extract, mock_get_conn):
+    async def test_endpoint_success(self, mock_extract):
         """Test successful timeline generation."""
-        # Mock database
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[
-            {"id": "1", "title": "YOLO v1", "authors": ["A"], "year": 2015, "abstract": "Test"},
-            {"id": "2", "title": "YOLO v2", "authors": ["B"], "year": 2016, "abstract": "Test"},
-        ])
-
-        mock_context = MagicMock()
-        mock_context.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_context.__aexit__ = AsyncMock(return_value=None)
-        mock_get_conn.return_value = mock_context
+        paper_rows = [
+            MagicMock(id="1", title="YOLO v1", authors=["A"], year=2015, abstract="Test"),
+            MagicMock(id="2", title="YOLO v2", authors=["B"], year=2016, abstract="Test"),
+        ]
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            return_value=MagicMock(
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=paper_rows)))
+            )
+        )
 
         # Mock LLM extraction
         mock_extract.return_value = [
@@ -382,7 +397,7 @@ class TestDetectEvolutionTimelineEndpoint:
             method_name="YOLO"
         )
 
-        result = await detect_evolution_timeline(request, {"user_id": "user-1"})
+        result = await detect_evolution_timeline(request, db=mock_db, user_id="user-1")
 
         assert result.method == "YOLO"
         assert result.paper_count == 2
@@ -392,19 +407,17 @@ class TestDetectEvolutionTimelineEndpoint:
         assert result.summary is not None
 
     @pytest.mark.asyncio
-    @patch('app.api.compare.get_db_connection')
-    async def test_endpoint_missing_papers(self, mock_get_conn):
+    async def test_endpoint_missing_papers(self):
         """Test endpoint with missing papers returns 404."""
-        # Mock database - return only 1 paper when 2 requested
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[
-            {"id": "1", "title": "YOLO v1", "authors": ["A"], "year": 2015, "abstract": "Test"},
-        ])
-
-        mock_context = MagicMock()
-        mock_context.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_context.__aexit__ = AsyncMock(return_value=None)
-        mock_get_conn.return_value = mock_context
+        paper_rows = [
+            MagicMock(id="1", title="YOLO v1", authors=["A"], year=2015, abstract="Test"),
+        ]
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            return_value=MagicMock(
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=paper_rows)))
+            )
+        )
 
         request = EvolutionRequest(
             paper_ids=["1", "2"],
@@ -412,7 +425,7 @@ class TestDetectEvolutionTimelineEndpoint:
         )
 
         with pytest.raises(HTTPException) as exc_info:
-            await detect_evolution_timeline(request, {"user_id": "user-1"})
+            await detect_evolution_timeline(request, db=mock_db, user_id="user-1")
 
         assert exc_info.value.status_code == 404
         assert "2" in str(exc_info.value.detail)

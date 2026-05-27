@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.config import settings
 from app.schemas.upload_session import CreateUploadSessionRequest
 from app.services.upload_session_service import UploadSessionService
 
@@ -75,7 +76,7 @@ async def test_register_part_persists_chunk_and_updates_state(tmp_path: Path):
     )
 
     with (
-        patch.dict("os.environ", {"LOCAL_STORAGE_PATH": str(tmp_path)}),
+        patch.object(settings, "LOCAL_STORAGE_PATH", str(tmp_path)),
         patch.object(service, "get_session", AsyncMock(return_value=session)),
     ):
         state = await service.register_part("us_1", "u1", 1, b"12345", db)
@@ -120,7 +121,7 @@ async def test_complete_session_merges_parts_and_queues_import(tmp_path: Path):
     job = SimpleNamespace(id="imp_2")
 
     with (
-        patch.dict("os.environ", {"LOCAL_STORAGE_PATH": str(tmp_path)}),
+        patch.object(settings, "LOCAL_STORAGE_PATH", str(tmp_path)),
         patch.object(service, "get_session", AsyncMock(return_value=session)),
         patch.object(service._import_job_service, "get_job", AsyncMock(return_value=job)),
         patch.object(service._import_job_service, "set_file_info", AsyncMock()),
@@ -160,7 +161,7 @@ async def test_complete_session_is_idempotent_when_already_completed(tmp_path: P
     )
 
     with (
-        patch.dict("os.environ", {"LOCAL_STORAGE_PATH": str(tmp_path)}),
+        patch.object(settings, "LOCAL_STORAGE_PATH", str(tmp_path)),
         patch.object(service, "get_session", AsyncMock(return_value=session)),
         patch.object(service._import_job_service, "set_file_info", AsyncMock()) as mock_set_file,
         patch("app.services.upload_session_service.process_import_job") as mock_process,
@@ -199,3 +200,106 @@ async def test_create_session_rejects_queued_job_status():
                 ),
                 db,
             )
+
+
+@pytest.mark.asyncio
+async def test_create_session_rejects_non_pdf_filename():
+    service = UploadSessionService()
+    db = AsyncMock()
+
+    job = SimpleNamespace(
+        id="imp_pdf",
+        source_type="local_file",
+        status="created",
+        user_id="u1",
+        knowledge_base_id="kb1",
+    )
+
+    with patch.object(service._import_job_service, "get_job", AsyncMock(return_value=job)):
+        with pytest.raises(ValueError, match="Only PDF files are accepted"):
+            await service.create_session(
+                "imp_pdf",
+                "u1",
+                CreateUploadSessionRequest(
+                    filename="a.txt",
+                    sizeBytes=1024,
+                    chunkSize=512,
+                    sha256="abc",
+                    mimeType="application/pdf",
+                ),
+                db,
+            )
+
+
+@pytest.mark.asyncio
+async def test_create_session_rejects_oversized_payload():
+    service = UploadSessionService()
+    db = AsyncMock()
+
+    job = SimpleNamespace(
+        id="imp_pdf",
+        source_type="local_file",
+        status="created",
+        user_id="u1",
+        knowledge_base_id="kb1",
+    )
+
+    with patch.object(service._import_job_service, "get_job", AsyncMock(return_value=job)):
+        with pytest.raises(ValueError, match="File size exceeds 50MB limit"):
+            await service.create_session(
+                "imp_pdf",
+                "u1",
+                CreateUploadSessionRequest(
+                    filename="a.pdf",
+                    sizeBytes=51 * 1024 * 1024,
+                    chunkSize=512,
+                    sha256="abc",
+                    mimeType="application/pdf",
+                ),
+                db,
+            )
+
+
+@pytest.mark.asyncio
+async def test_complete_session_rejects_non_pdf_merged_content(tmp_path: Path):
+    service = UploadSessionService()
+    db = AsyncMock()
+
+    part_dir = tmp_path / "sessions" / "us_3" / "parts"
+    part_dir.mkdir(parents=True, exist_ok=True)
+    (part_dir / "1.part").write_bytes(b"not-a-pdf")
+
+    session = SimpleNamespace(
+        id="us_3",
+        import_job_id="imp_3",
+        user_id="u1",
+        knowledge_base_id="kb1",
+        filename="paper.pdf",
+        mime_type="application/pdf",
+        storage_key=None,
+        file_sha256=None,
+        size_bytes=len(b"not-a-pdf"),
+        chunk_size=len(b"not-a-pdf"),
+        total_parts=1,
+        uploaded_parts=[1],
+        uploaded_bytes=len(b"not-a-pdf"),
+        status="uploading",
+        error_message=None,
+        expires_at=None,
+        completed_at=None,
+        updated_at=None,
+    )
+    job = SimpleNamespace(id="imp_3")
+
+    with (
+        patch.object(settings, "LOCAL_STORAGE_PATH", str(tmp_path)),
+        patch.object(service, "get_session", AsyncMock(return_value=session)),
+        patch.object(service._import_job_service, "get_job", AsyncMock(return_value=job)),
+        patch.object(service._import_job_service, "set_file_info", AsyncMock()),
+        patch("app.services.upload_session_service.process_import_job") as mock_process,
+    ):
+        with pytest.raises(ValueError, match="File is not a valid PDF"):
+            await service.complete_session("us_3", "u1", db)
+
+    assert session.status == "failed"
+    mock_process.delay.assert_not_called()

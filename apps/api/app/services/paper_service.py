@@ -25,6 +25,7 @@ from app.models.paper import Paper, PaperChunk
 from app.models.reading_progress import ReadingProgress
 from app.models.task import ProcessingTask
 from app.models.upload_history import UploadHistory
+from app.core.milvus_service import get_milvus_service
 from app.repositories.paper_repository import PaperRepository
 from app.services.reading_card_service import ensure_reading_card_doc
 from app.services.storage_service import get_storage_service
@@ -666,6 +667,7 @@ class PaperService:
             raise ValueError("Paper not found")
 
         storage_key = paper.storage_key
+        get_milvus_service().delete_all_vectors_by_paper(paper_id)
         await db.delete(paper)
 
         if storage_key:
@@ -687,16 +689,36 @@ class PaperService:
         user_id: str,
         *,
         paper_ids: List[str],
-    ) -> int:
+    ) -> Dict[str, Any]:
         papers = await PaperRepository.list_user_papers_by_ids(db, user_id, paper_ids)
+        found_ids = {paper.id for paper in papers}
         storage_keys_to_delete: List[str] = []
-        deleted_count = 0
+        deleted_ids: List[str] = []
+        failures: List[Dict[str, str]] = []
         for paper in papers:
             storage_key = paper.storage_key
             if storage_key:
                 storage_keys_to_delete.append(storage_key)
-            await db.delete(paper)
-            deleted_count += 1
+            try:
+                get_milvus_service().delete_all_vectors_by_paper(paper.id)
+                await db.delete(paper)
+                deleted_ids.append(paper.id)
+            except Exception as e:
+                failures.append(
+                    {
+                        "id": paper.id,
+                        "reason": f"milvus_cleanup_failed:{type(e).__name__}",
+                    }
+                )
+
+        for paper_id in paper_ids:
+            if paper_id not in found_ids:
+                failures.append(
+                    {
+                        "id": paper_id,
+                        "reason": "not_found_or_not_owned",
+                    }
+                )
 
         if storage_keys_to_delete:
             storage_service = get_storage_service()
@@ -710,7 +732,10 @@ class PaperService:
                         error=str(e),
                     )
 
-        return deleted_count
+        return {
+            "deleted_ids": deleted_ids,
+            "failures": failures,
+        }
 
     @staticmethod
     async def batch_star_for_api(
@@ -719,12 +744,28 @@ class PaperService:
         *,
         paper_ids: List[str],
         starred: bool,
-    ) -> int:
+    ) -> Dict[str, Any]:
         papers = await PaperRepository.list_user_papers_by_ids(db, user_id, paper_ids)
+        found_ids = {paper.id for paper in papers}
+        updated_ids: List[str] = []
         for paper in papers:
             paper.starred = starred
             paper.updated_at = datetime.now(timezone.utc)
-        return len(papers)
+            updated_ids.append(paper.id)
+
+        failures = [
+            {
+                "id": paper_id,
+                "reason": "not_found_or_not_owned",
+            }
+            for paper_id in paper_ids
+            if paper_id not in found_ids
+        ]
+
+        return {
+            "updated_ids": updated_ids,
+            "failures": failures,
+        }
 
 
 __all__ = ["PaperService"]

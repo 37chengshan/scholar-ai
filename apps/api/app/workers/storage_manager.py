@@ -331,7 +331,7 @@ class StorageManager:
             "page_num": page_num,
         }
 
-    async def store(self, ctx: PipelineContext) -> PipelineContext:
+    async def store(self, ctx: PipelineContext, before_step=None) -> PipelineContext:
         """Store all extraction results in batch.
 
         Single transaction for:
@@ -346,7 +346,13 @@ class StorageManager:
         Returns:
             Updated context
         """
+        async def _check(step: str) -> None:
+            if before_step is None:
+                return
+            await before_step(step)
+
         logger.info("Starting batch storage", task_id=ctx.task_id)
+        await _check("storage_metadata")
 
         async with self.db_pool.acquire() as conn:
             # 1. Update paper metadata and IMRaD
@@ -356,14 +362,17 @@ class StorageManager:
             await self._store_notes(conn, ctx)
 
         # 3. Store all content vectors in Milvus (batched)
+        await _check("storage_vectors")
         chunk_ids = await self._store_vectors(ctx)
 
         # 4. Persist chunk rows and reading card from section-aware chunk metadata
+        await _check("storage_rows")
         async with self.db_pool.acquire() as conn:
             await self._store_chunk_rows(conn, ctx)
             await self._store_reading_card(conn, ctx)
 
         # 5. Store graph nodes in Neo4j
+        await _check("storage_graph")
         await self._store_graph_nodes(ctx, chunk_ids)
 
         logger.info(
@@ -744,7 +753,13 @@ class StorageManager:
 
         # 4. Batch insert to Milvus
         if all_contents:
-            chunk_ids = self.milvus.insert_contents_batched(all_contents)
+            self.milvus.delete_all_vectors_by_paper(ctx.paper_id)
+            chunk_ids = self.milvus.insert_contents_batched(all_contents, strict=True)
+            if text_contents and len(chunk_ids) < len(text_contents):
+                raise RuntimeError(
+                    "Milvus insert returned fewer ids than indexed text chunks "
+                    f"({len(chunk_ids)} < {len(text_contents)})"
+                )
 
             logger.info(
                 "Vectors stored in Milvus",
