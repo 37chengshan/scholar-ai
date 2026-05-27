@@ -1,217 +1,202 @@
-"""Unit tests for Qwen3VLMultimodalEmbedding service.
+"""Unit tests for the real Qwen3VLMultimodalEmbedding implementation.
 
-Tests:
-- encode_image returns 2048-dim vector for PIL.Image input
-- encode_text returns 2048-dim vector for string input
-- encode_table returns 2048-dim vector for table dict input
-- embeddings are normalized (unit vectors, COSINE distance)
+These tests bypass the global conftest mock for ``app.core.qwen3vl_service`` and
+verify the current concrete contract with a local fake embedder instead of
+trying to load model weights.
 """
 
+from __future__ import annotations
+
+import importlib
+import sys
+from pathlib import Path
+
+import numpy as np
 import pytest
 from PIL import Image
-import numpy as np
-
-from app.core.qwen3vl_service import Qwen3VLMultimodalEmbedding
 
 
-# Global service instance (load once for all tests)
-_service_instance = None
+def _load_real_qwen3vl_module():
+    """Import the real qwen3vl_service module, bypassing test-global mocks."""
+    sys.modules.pop("app.core.qwen3vl_service", None)
+    return importlib.import_module("app.core.qwen3vl_service")
 
 
-def get_test_service():
-    """Get or create test service instance (singleton)."""
-    global _service_instance
-    if _service_instance is None:
-        _service_instance = Qwen3VLMultimodalEmbedding(quantization="fp16", device="auto")
-        _service_instance.load_model()
-    return _service_instance
+class _FakeTensor:
+    def __init__(self, values):
+        self._values = values
+
+    def cpu(self):
+        return self
+
+    def tolist(self):
+        return self._values
+
+
+class _FakeEmbedder:
+    def __init__(self):
+        self.calls = []
+
+    def process(self, inputs, normalize=True):
+        self.calls.append({"inputs": inputs, "normalize": normalize})
+
+        dim = 2048
+        base = np.zeros(dim, dtype=float)
+        base[0] = 1.0
+        vectors = [base.tolist() for _ in inputs]
+        return _FakeTensor(vectors)
+
+
+@pytest.fixture
+def qwen_module():
+    return _load_real_qwen3vl_module()
+
+
+@pytest.fixture
+def service(qwen_module):
+    service = qwen_module.Qwen3VLMultimodalEmbedding(quantization="fp16", device="cpu")
+    service.embedder = _FakeEmbedder()
+    service._initialized = True
+    return service
 
 
 class TestQwen3VLMultimodalEmbedding:
-    """Tests for Qwen3VL multimodal embedding service."""
+    def test_encode_image_returns_2048_dim_vector(self, service):
+        embedding = service.encode_image(Image.new("RGB", (32, 32), color="red"))
 
-    @pytest.fixture(scope="class")
-    def service(self):
-        """Create service instance for testing (singleton, loaded once)."""
-        return get_test_service()
-
-    @pytest.fixture
-    def test_image(self):
-        """Create test PIL.Image."""
-        return Image.new("RGB", (100, 100), color="red")
-
-    @pytest.fixture
-    def test_table_data(self):
-        """Create test table data."""
-        return {
-            "caption": "Experimental Results",
-            "headers": ["Method", "Accuracy", "Speed"],
-            "rows": [
-                {"Method": "Baseline", "Accuracy": "85.2%", "Speed": "120ms"},
-                {"Method": "Proposed", "Accuracy": "92.1%", "Speed": "95ms"},
-            ]
-        }
-
-    def test_encode_image_returns_2048_dim_vector(self, service, test_image):
-        """Test 1: encode_image returns 2048-dim vector for PIL.Image input."""
-        embedding = service.encode_image(test_image)
-
-        # Verify dimension
-        assert len(embedding) == 2048
         assert isinstance(embedding, list)
+        assert len(embedding) == 2048
         assert all(isinstance(x, float) for x in embedding)
 
-    def test_encode_image_vector_is_normalized(self, service, test_image):
-        """Test 4: embeddings are normalized (unit vectors, COSINE distance)."""
-        embedding = service.encode_image(test_image)
+    def test_encode_image_vector_is_normalized(self, service):
+        embedding = service.encode_image(Image.new("RGB", (32, 32), color="red"))
 
-        # Verify normalization (unit vector)
         norm = np.linalg.norm(embedding)
-        assert 0.99 < norm < 1.01, f"Vector norm should be ~1.0, got {norm}"
+        assert 0.99 < norm < 1.01
 
     def test_encode_text_returns_2048_dim_vector(self, service):
-        """Test 2: encode_text returns 2048-dim vector for string input."""
-        text = "This is a test sentence for embedding."
-        embedding = service.encode_text(text)
+        embedding = service.encode_text("This is a test sentence for embedding.")
 
-        # Verify dimension
-        assert len(embedding) == 2048
         assert isinstance(embedding, list)
+        assert len(embedding) == 2048
         assert all(isinstance(x, float) for x in embedding)
 
     def test_encode_text_vector_is_normalized(self, service):
-        """Test 4: text embeddings are normalized."""
-        text = "Another test sentence."
-        embedding = service.encode_text(text)
+        embedding = service.encode_text("Another test sentence.")
 
-        # Verify normalization
         norm = np.linalg.norm(embedding)
-        assert 0.99 < norm < 1.01, f"Vector norm should be ~1.0, got {norm}"
+        assert 0.99 < norm < 1.01
 
-    def test_encode_table_returns_2048_dim_vector(self, service, test_table_data):
-        """Test 3: encode_table returns 2048-dim vector for table dict input."""
+    def test_encode_table_returns_2048_dim_vector(self, service):
         embedding = service.encode_table(
-            caption=test_table_data["caption"],
-            headers=test_table_data["headers"],
-            rows=test_table_data["rows"]
+            caption="Experimental Results",
+            headers=["Method", "Accuracy"],
+            rows=[{"Method": "Baseline", "Accuracy": "85.2%"}],
         )
 
-        # Verify dimension
-        assert len(embedding) == 2048
         assert isinstance(embedding, list)
+        assert len(embedding) == 2048
         assert all(isinstance(x, float) for x in embedding)
 
-    def test_encode_table_vector_is_normalized(self, service, test_table_data):
-        """Test 4: table embeddings are normalized."""
+    def test_encode_table_vector_is_normalized(self, service):
         embedding = service.encode_table(
-            caption=test_table_data["caption"],
-            headers=test_table_data["headers"],
-            rows=test_table_data["rows"]
+            caption="Experimental Results",
+            headers=["Method", "Accuracy"],
+            rows=[{"Method": "Baseline", "Accuracy": "85.2%"}],
         )
 
-        # Verify normalization
         norm = np.linalg.norm(embedding)
-        assert 0.99 < norm < 1.01, f"Vector norm should be ~1.0, got {norm}"
+        assert 0.99 < norm < 1.01
 
     def test_encode_text_batch_returns_list_of_vectors(self, service):
-        """Test batch encoding returns list of 2048-dim vectors."""
-        texts = [
-            "First test sentence.",
-            "Second test sentence.",
-            "Third test sentence."
-        ]
-        embeddings = service.encode_text(texts)
+        embeddings = service.encode_text(
+            ["First test sentence.", "Second test sentence.", "Third test sentence."]
+        )
 
-        # Verify batch output
         assert isinstance(embeddings, list)
         assert len(embeddings) == 3
-        for emb in embeddings:
-            assert len(emb) == 2048
-            norm = np.linalg.norm(emb)
-            assert 0.99 < norm < 1.01
+        assert all(len(embedding) == 2048 for embedding in embeddings)
+        assert all(0.99 < np.linalg.norm(embedding) < 1.01 for embedding in embeddings)
 
-    def test_encode_image_from_path(self, service):
-        """Test encode_image accepts file path string."""
-        # Create a temporary test image
-        import tempfile
-        import os
+    def test_encode_image_from_path(self, service, tmp_path):
+        image_path = tmp_path / "sample.png"
+        Image.new("RGB", (24, 24), color="blue").save(image_path)
 
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            test_image = Image.new("RGB", (50, 50), color="blue")
-            test_image.save(f.name)
-            temp_path = f.name
+        embedding = service.encode_image(str(image_path))
 
-        try:
-            embedding = service.encode_image(temp_path)
-            assert len(embedding) == 2048
-            norm = np.linalg.norm(embedding)
-            assert 0.99 < norm < 1.01
-        finally:
-            os.unlink(temp_path)
+        assert len(embedding) == 2048
+        assert 0.99 < np.linalg.norm(embedding) < 1.01
 
-    def test_model_path_is_local(self, service):
-        """Test that MODEL_PATH uses local path per D-01."""
-        assert service.MODEL_PATH == "./Qwen/Qwen3-VL-Embedding-2B"
+    def test_encode_image_passes_image_inputs_to_embedder(self, service):
+        image = Image.new("RGB", (16, 16), color="green")
 
-    def test_embedding_dim_is_2048(self, service):
-        """Test EMBEDDING_DIM is 2048."""
-        assert service.EMBEDDING_DIM == 2048
+        service.encode_image(image)
+
+        assert service.embedder.calls[-1]["inputs"] == [{"image": image}]
+        assert service.embedder.calls[-1]["normalize"] is True
+
+    def test_encode_text_normalizes_empty_string_to_null_placeholder(self, service):
+        service.encode_text("")
+
+        assert service.embedder.calls[-1]["inputs"] == [{"text": "NULL"}]
+
+    def test_encode_text_empty_list_returns_empty_list(self, service):
+        assert service.encode_text([]) == []
+
+    def test_encode_text_single_none_returns_empty_list(self, service):
+        assert service.encode_text(None) == []
+
+    def test_model_path_comes_from_settings(self, qwen_module):
+        assert hasattr(qwen_module.settings, "QWEN3VL_EMBEDDING_MODEL_PATH")
+        assert qwen_module.settings.QWEN3VL_EMBEDDING_MODEL_PATH
+
+    def test_embedding_dim_is_2048(self, qwen_module):
+        assert qwen_module.Qwen3VLMultimodalEmbedding.EMBEDDING_DIM == 2048
 
 
 class TestQwen3VLDeviceDetection:
-    """Tests for device auto-detection."""
-
-    def test_detect_device_auto(self):
-        """Test device detection with 'auto' parameter."""
-        service = Qwen3VLMultimodalEmbedding(device="auto")
-        # Should detect available device
+    def test_detect_device_auto(self, qwen_module):
+        service = qwen_module.Qwen3VLMultimodalEmbedding(device="auto")
         assert service.device in ["cuda", "mps", "cpu"]
 
-    def test_detect_device_cuda_if_available(self):
-        """Test CUDA detection."""
+    def test_detect_device_cuda_if_available(self, qwen_module):
         import torch
+
         if torch.cuda.is_available():
-            service = Qwen3VLMultimodalEmbedding(device="auto")
+            service = qwen_module.Qwen3VLMultimodalEmbedding(device="auto")
             assert service.device == "cuda"
 
-    def test_detect_device_mps_if_available(self):
-        """Test MPS (M1 Pro) detection."""
+    def test_detect_device_mps_if_available(self, qwen_module):
         import torch
+
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            service = Qwen3VLMultimodalEmbedding(device="auto")
+            service = qwen_module.Qwen3VLMultimodalEmbedding(device="auto")
             assert service.device == "mps"
 
 
 class TestQwen3VLTableSerialization:
-    """Tests for table serialization format per D-02."""
+    def test_table_serialization_format(self, qwen_module):
+        service = qwen_module.Qwen3VLMultimodalEmbedding(quantization="fp16")
 
-    def test_table_serialization_format(self):
-        """Test table serialization format matches D-02 specification."""
-        service = Qwen3VLMultimodalEmbedding(quantization="fp16")
-
-        # Expected format: "Table: {caption}\nColumns: {headers}\nSample data: {rows}"
-        caption = "Test Table"
-        headers = ["A", "B", "C"]
-        rows = [{"A": 1, "B": 2, "C": 3}]
-
-        serialized = service._serialize_table(caption, headers, rows)
+        serialized = service._serialize_table(
+            "Test Table",
+            ["A", "B", "C"],
+            [{"A": 1, "B": 2, "C": 3}],
+        )
 
         assert "Table: Test Table" in serialized
         assert "Columns: A, B, C" in serialized
         assert "Sample data:" in serialized
 
-    def test_table_serialization_truncates_rows(self):
-        """Test table serialization truncates to max 3 rows."""
-        service = Qwen3VLMultimodalEmbedding(quantization="fp16")
+    def test_table_serialization_truncates_rows(self, qwen_module):
+        service = qwen_module.Qwen3VLMultimodalEmbedding(quantization="fp16")
 
-        # Create 5 rows
-        rows = [
-            {"col": f"row{i}"} for i in range(5)
-        ]
+        serialized = service._serialize_table(
+            "Test",
+            ["col"],
+            [{"col": f"row{i}"} for i in range(5)],
+        )
 
-        serialized = service._serialize_table("Test", ["col"], rows)
-
-        # Should only include first 3 rows
         assert "row0" in serialized
         assert "row1" in serialized
         assert "row2" in serialized
