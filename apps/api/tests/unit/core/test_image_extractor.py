@@ -146,19 +146,12 @@ class TestImageExtractor:
         # Should return None for None bbox
         assert pixel_bbox is None
 
-    @patch('app.core.image_extractor.get_image_caption_service')
-    @patch('app.core.image_extractor.get_bge_m3_service')
-    async def test_generate_caption_and_embed_success(self, mock_bge, mock_caption):
-        """Test successful caption generation and embedding."""
-        # Mock caption service
-        mock_caption_service = AsyncMock()
-        mock_caption_service.generate_caption.return_value = "A sample figure showing data"
-        mock_caption.return_value = mock_caption_service
-
-        # Mock BGE service
-        mock_bge_service = Mock()
-        mock_bge_service.encode_text.return_value = [0.1] * 1024
-        mock_bge.return_value = mock_bge_service
+    @patch('app.core.image_extractor.get_multimodal_embedding_service')
+    async def test_generate_caption_and_embed_success(self, mock_multimodal):
+        """Test successful direct image embedding generation."""
+        mock_qwen_service = Mock()
+        mock_qwen_service.encode_image.return_value = [0.1] * 2048
+        mock_multimodal.return_value = mock_qwen_service
 
         # Create extractor
         extractor = ImageExtractor()
@@ -185,26 +178,18 @@ class TestImageExtractor:
         assert result["user_id"] == "user-456"
         assert result["page_num"] == 1
         assert result["content_type"] == "image"
-        assert result["content_data"] == "A sample figure showing data"
-        assert result["embedding"] == [0.1] * 1024
+        assert result["content_data"] == ""
+        assert result["embedding"] == [0.1] * 2048
         assert result["raw_data"]["bbox"] == {"l": 0.1, "t": 0.2, "r": 0.5, "b": 0.8}
 
-        mock_caption_service.generate_caption.assert_called_once()
-        mock_bge_service.encode_text.assert_called_once_with("A sample figure showing data")
+        mock_qwen_service.encode_image.assert_called_once_with(mock_img)
 
-    @patch('app.core.image_extractor.get_image_caption_service')
-    @patch('app.core.image_extractor.get_bge_m3_service')
-    async def test_generate_caption_and_embed_caption_failure(self, mock_bge, mock_caption):
-        """Test embedding generation when caption generation fails."""
-        # Mock caption service to fail
-        mock_caption_service = AsyncMock()
-        mock_caption_service.generate_caption.side_effect = Exception("API error")
-        mock_caption.return_value = mock_caption_service
-
-        # Mock BGE service
-        mock_bge_service = Mock()
-        mock_bge_service.encode_text.return_value = [0.1] * 1024
-        mock_bge.return_value = mock_bge_service
+    @patch('app.core.image_extractor.get_multimodal_embedding_service')
+    async def test_generate_caption_and_embed_caption_failure(self, mock_multimodal):
+        """Test fallback behavior when image encoding fails."""
+        mock_qwen_service = Mock()
+        mock_qwen_service.encode_image.side_effect = Exception("API error")
+        mock_multimodal.return_value = mock_qwen_service
 
         extractor = ImageExtractor()
         mock_img = Mock(spec=Image.Image)
@@ -216,9 +201,8 @@ class TestImageExtractor:
             user_id="user-456"
         )
 
-        # Should still return result with empty caption
         assert result["content_data"] == ""
-        assert result["embedding"] == [0.1] * 1024
+        assert result["embedding"] == [0.0] * 2048
 
     def test_crop_image(self):
         """Test image cropping with bbox."""

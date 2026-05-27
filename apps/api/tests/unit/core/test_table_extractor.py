@@ -136,19 +136,12 @@ class TestTableExtractor:
 
         assert caption == ""
 
-    @patch('app.core.table_extractor.get_table_description_service')
-    @patch('app.core.table_extractor.get_bge_m3_service')
-    async def test_generate_description_and_embed_success(self, mock_bge, mock_desc):
-        """Test successful description generation and embedding."""
-        # Mock description service
-        mock_desc_service = AsyncMock()
-        mock_desc_service.generate_description.return_value = "Table showing performance metrics"
-        mock_desc.return_value = mock_desc_service
-
-        # Mock BGE service
-        mock_bge_service = Mock()
-        mock_bge_service.encode_text.return_value = [0.2] * 1024
-        mock_bge.return_value = mock_bge_service
+    @patch('app.core.table_extractor.get_multimodal_embedding_service')
+    async def test_generate_description_and_embed_success(self, mock_multimodal):
+        """Test successful direct table embedding generation."""
+        mock_qwen_service = Mock()
+        mock_qwen_service.encode_table.return_value = [0.2] * 2048
+        mock_multimodal.return_value = mock_qwen_service
 
         # Create extractor
         extractor = TableExtractor()
@@ -173,27 +166,23 @@ class TestTableExtractor:
         assert result["user_id"] == "user-456"
         assert result["page_num"] == 1
         assert result["content_type"] == "table"
-        assert result["content_data"] == "Table showing performance metrics"
-        assert result["embedding"] == [0.2] * 1024
+        assert result["content_data"] == "Table: \nColumns: Name, Value\nSample data: [{'Name': 'A', 'Value': '10'}]"
+        assert result["embedding"] == [0.2] * 2048
         assert result["raw_data"]["headers"] == ["Name", "Value"]
         assert result["raw_data"]["row_count"] == 1
 
-        mock_desc_service.generate_description.assert_called_once()
-        mock_bge_service.encode_text.assert_called_once_with("Table showing performance metrics")
+        mock_qwen_service.encode_table.assert_called_once_with(
+            caption="",
+            headers=["Name", "Value"],
+            rows=[{"Name": "A", "Value": "10"}],
+        )
 
-    @patch('app.core.table_extractor.get_table_description_service')
-    @patch('app.core.table_extractor.get_bge_m3_service')
-    async def test_generate_description_and_embed_no_description(self, mock_bge, mock_desc):
-        """Test when description generation returns None."""
-        # Mock description service to return None
-        mock_desc_service = AsyncMock()
-        mock_desc_service.generate_description.return_value = None
-        mock_desc.return_value = mock_desc_service
-
-        # Mock BGE service
-        mock_bge_service = Mock()
-        mock_bge_service.encode_text.return_value = [0.0] * 1024
-        mock_bge.return_value = mock_bge_service
+    @patch('app.core.table_extractor.get_multimodal_embedding_service')
+    async def test_generate_description_and_embed_no_description(self, mock_multimodal):
+        """Test table serialization when markdown has no caption."""
+        mock_qwen_service = Mock()
+        mock_qwen_service.encode_table.return_value = [0.0] * 2048
+        mock_multimodal.return_value = mock_qwen_service
 
         extractor = TableExtractor()
         table_data = TableData(
@@ -209,22 +198,15 @@ class TestTableExtractor:
             user_id="user-456"
         )
 
-        # Should still return result with empty description
-        assert result["content_data"] == ""
-        assert result["embedding"] == [0.0] * 1024
+        assert result["content_data"] == "Table: \nColumns: Name, Value\nSample data: [{'Name': 'A', 'Value': '10'}]"
+        assert result["embedding"] == [0.0] * 2048
 
-    @patch('app.core.table_extractor.get_table_description_service')
-    @patch('app.core.table_extractor.get_bge_m3_service')
-    async def test_generate_description_and_embed_service_error(self, mock_bge, mock_desc):
-        """Test handling of service errors."""
-        # Mock services to raise exceptions
-        mock_desc_service = AsyncMock()
-        mock_desc_service.generate_description.side_effect = Exception("API error")
-        mock_desc.return_value = mock_desc_service
-
-        mock_bge_service = Mock()
-        mock_bge_service.encode_text.side_effect = Exception("Encoding error")
-        mock_bge.return_value = mock_bge_service
+    @patch('app.core.table_extractor.get_multimodal_embedding_service')
+    async def test_generate_description_and_embed_service_error(self, mock_multimodal):
+        """Test fallback behavior when table encoding fails."""
+        mock_qwen_service = Mock()
+        mock_qwen_service.encode_table.side_effect = Exception("Encoding error")
+        mock_multimodal.return_value = mock_qwen_service
 
         extractor = TableExtractor()
         table_data = TableData(
@@ -240,9 +222,8 @@ class TestTableExtractor:
             user_id="user-456"
         )
 
-        # Should return result with empty values
-        assert result["content_data"] == ""
-        assert result["embedding"] == [0.0] * 1024
+        assert result["content_data"] == "Table: \nColumns: Name, Value\nSample data: [{'Name': 'A', 'Value': '10'}]"
+        assert result["embedding"] == [0.0] * 2048
 
 
 class TestTableData:
