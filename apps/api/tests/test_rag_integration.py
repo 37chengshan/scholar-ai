@@ -1,19 +1,19 @@
 """Integration tests for RAG flow with Milvus.
 
-Per 13-03-PLAN D-34-D-36: Verify end-to-end functionality with 1024-dim embeddings.
+This file covers two different surfaces:
+- the deprecated compatibility shim in ``app.legacy.rag_service_deprecated``
+- the active online-first retrieval runtime contract
 """
 
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.legacy.rag_service_deprecated import retrieve_with_reranking
-from app.core.milvus_service import get_milvus_service
-from app.core.bge_m3_service import get_bge_m3_service
-from app.core.reranker_service import get_reranker_service
+from app.core.rag_runtime_profile import ACTIVE_EMBEDDING_DIMENSION
 
 
 class TestRAGIntegration:
-    """Integration tests for Milvus-based RAG with 1024-dim embeddings."""
+    """Integration tests for the deprecated Milvus-based compatibility shim."""
 
     @pytest.fixture
     def mock_services(self):
@@ -39,9 +39,9 @@ class TestRAGIntegration:
             },
         ])
 
-        # Mock BGE-M3
-        mock_bge = MagicMock()
-        mock_bge.encode_text = MagicMock(return_value=[0.1] * 1024)
+        # The deprecated shim still imports the local Qwen3VL service directly.
+        mock_embedding = MagicMock()
+        mock_embedding.encode_text = MagicMock(return_value=[0.1] * 1024)
 
         # Mock Reranker
         mock_reranker = MagicMock()
@@ -52,7 +52,7 @@ class TestRAGIntegration:
 
         return {
             "milvus": mock_milvus,
-            "bge": mock_bge,
+            "embedding": mock_embedding,
             "reranker": mock_reranker,
         }
 
@@ -60,7 +60,7 @@ class TestRAGIntegration:
     async def test_retrieve_with_reranking_flow(self, mock_services):
         """Test full RAG flow: query → Milvus → rerank."""
         with patch('app.core.milvus_service.get_milvus_service', return_value=mock_services["milvus"]), \
-             patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_services["bge"]), \
+             patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_services["embedding"]), \
              patch('app.core.reranker_service.get_reranker_service', return_value=mock_services["reranker"]):
 
             results = await retrieve_with_reranking(
@@ -71,7 +71,7 @@ class TestRAGIntegration:
                 rerank_top_n=5,
             )
 
-            # Verify Milvus was called with 1024-dim embedding
+            # The compatibility shim still passes a single query vector to Milvus.
             mock_services["milvus"].search_contents.assert_called_once()
             call_kwargs = mock_services["milvus"].search_contents.call_args[1]
             assert len(call_kwargs["embedding"]) == 1024
@@ -102,19 +102,19 @@ class TestRAGIntegration:
 
     @pytest.mark.asyncio
     async def test_embedding_dimension_1024(self, mock_services):
-        """Test BGE-M3 produces 1024-dim embeddings."""
+        """Test mocked query embedding shape stays aligned to the runtime dim."""
         # Use the mock service directly
-        bge = mock_services["bge"]
+        embedding = mock_services["embedding"]
 
-        embedding = bge.encode_text("test query")
+        vector = embedding.encode_text("test query")
 
-        assert len(embedding) == 1024
+        assert len(vector) == ACTIVE_EMBEDDING_DIMENSION
 
     @pytest.mark.asyncio
     async def test_reranking_improves_results(self, mock_services):
         """Test that reranking improves result ordering."""
         with patch('app.core.milvus_service.get_milvus_service', return_value=mock_services["milvus"]), \
-             patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_services["bge"]), \
+             patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_services["embedding"]), \
              patch('app.core.reranker_service.get_reranker_service', return_value=mock_services["reranker"]):
 
             results = await retrieve_with_reranking(
@@ -153,8 +153,8 @@ class TestRAGIntegration:
             },
         ])
 
-        mock_bge = MagicMock()
-        mock_bge.encode_text = MagicMock(return_value=[0.1] * 1024)
+        mock_embedding = MagicMock()
+        mock_embedding.encode_text = MagicMock(return_value=[0.1] * ACTIVE_EMBEDDING_DIMENSION)
 
         mock_reranker = MagicMock()
         mock_reranker.rerank = MagicMock(return_value=[
@@ -163,7 +163,7 @@ class TestRAGIntegration:
         ])
 
         with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus), \
-             patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge), \
+             patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_embedding), \
              patch('app.core.reranker_service.get_reranker_service', return_value=mock_reranker):
 
             results = await retrieve_with_reranking(
@@ -184,13 +184,13 @@ class TestRAGIntegration:
         mock_milvus = MagicMock()
         mock_milvus.search_contents = MagicMock(return_value=[])
 
-        mock_bge = MagicMock()
-        mock_bge.encode_text = MagicMock(return_value=[0.1] * 1024)
+        mock_embedding = MagicMock()
+        mock_embedding.encode_text = MagicMock(return_value=[0.1] * ACTIVE_EMBEDDING_DIMENSION)
 
         mock_reranker = MagicMock()
 
         with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus), \
-             patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge), \
+             patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_embedding), \
              patch('app.core.reranker_service.get_reranker_service', return_value=mock_reranker):
 
             results = await retrieve_with_reranking(
@@ -213,13 +213,13 @@ class TestRAGIntegration:
         mock_milvus = MagicMock()
         mock_milvus.search_contents = MagicMock(side_effect=Exception("Milvus connection error"))
 
-        mock_bge = MagicMock()
-        mock_bge.encode_text = MagicMock(return_value=[0.1] * 1024)
+        mock_embedding = MagicMock()
+        mock_embedding.encode_text = MagicMock(return_value=[0.1] * ACTIVE_EMBEDDING_DIMENSION)
 
         mock_reranker = MagicMock()
 
         with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus), \
-             patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge), \
+             patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_embedding), \
              patch('app.core.reranker_service.get_reranker_service', return_value=mock_reranker):
 
             # Should raise exception (error handling is at API layer)
@@ -232,33 +232,27 @@ class TestRAGIntegration:
 
 
 class TestEmbeddingConsistency:
-    """Test that embedding dimension is consistently 1024 throughout the pipeline."""
+    """Test the active online embedding contract stays stable."""
 
-    def test_bge_m3_dimension_is_1024(self):
-        """Test that BGE-M3 service dimension is 1024."""
-        from app.core.bge_m3_service import BGEM3Service
+    def test_runtime_profile_dimension_is_1024(self):
+        """The official online-first runtime stays on 1024-d embeddings."""
+        assert ACTIVE_EMBEDDING_DIMENSION == 1024
 
-        # Check class constant
-        assert BGEM3Service.EMBEDDING_DIM == 1024
-
-    def test_milvus_bge_dimension_is_1024(self):
-        """Test that Milvus BGE dimension constant is 1024."""
+    def test_milvus_dimension_matches_active_runtime(self):
+        """Milvus should resolve dimension from the active embedding model."""
         from app.core.milvus_service import MilvusService
 
-        # Check class constant
-        assert MilvusService.BGE_EMBEDDING_DIM == 1024
+        service = MilvusService()
+        assert service.embedding_dim == ACTIVE_EMBEDDING_DIMENSION
 
-    def test_embedding_service_dimension_is_1024(self):
-        """Test that EmbeddingService dimension is 1024."""
-        from app.core.embedding_service import EmbeddingService
+    def test_embedding_factory_dimension_is_1024(self):
+        """The configured embedding factory should report the active runtime dim."""
+        from app.core.embedding.factory import get_embedding_service
 
-        with patch('app.core.embedding_service.get_bge_m3_service') as mock_get_bge:
-            mock_bge = MagicMock()
-            mock_bge.encode_text = MagicMock(return_value=[0.1] * 1024)
-            mock_get_bge.return_value = mock_bge
+        service = get_embedding_service()
+        info = service.get_model_info()
 
-            service = EmbeddingService()
-            assert service.dimension == 1024
+        assert int(info["dimension"]) == ACTIVE_EMBEDDING_DIMENSION
 
 
 class TestMultimodalSearchIntegration:
@@ -267,37 +261,61 @@ class TestMultimodalSearchIntegration:
     @pytest.fixture
     def mock_all_services(self):
         """Mock all services for multimodal search."""
-        mock_bge = MagicMock()
-        mock_bge.encode_text = MagicMock(return_value=[0.1] * 1024)
+        mock_embedding = MagicMock()
+        mock_embedding.encode_text = MagicMock(return_value=[0.1] * ACTIVE_EMBEDDING_DIMENSION)
+        mock_embedding.is_loaded = MagicMock(return_value=True)
+        mock_embedding.get_model_info = MagicMock(return_value={
+            "name": "text-embedding-v4",
+            "provider": "dashscope_qwen",
+            "dimension": str(ACTIVE_EMBEDDING_DIMENSION),
+        })
+        mock_embedding.supports_multimodal = MagicMock(return_value=False)
 
-        mock_milvus = MagicMock()
-        mock_milvus.search_contents = MagicMock(return_value=[
-            {
-                "id": 1,
-                "paper_id": "paper-1",
-                "content_type": "text",
-                "content_data": "Test content",
-                "distance": 0.1,
-            }
-        ])
+        mock_vector_store = MagicMock()
+        mock_hit = MagicMock()
+        mock_hit.backend = "milvus"
+        mock_hit.model_dump = MagicMock(return_value={
+            "paper_id": "paper-1",
+            "source_id": "chunk-1",
+            "page_num": 1,
+            "content_type": "text",
+            "content_data": "Test content",
+            "distance": 0.1,
+            "score": 0.9,
+        })
+        mock_vector_store.search = MagicMock(return_value=[mock_hit])
+        mock_vector_store.search_sparse = MagicMock(return_value=[])
+        mock_vector_store.search_summary_index = MagicMock(return_value=[])
 
         mock_reranker = MagicMock()
         mock_reranker.rerank = MagicMock(return_value=[
             ("Test content", 0.95),
         ])
+        mock_reranker.is_loaded = MagicMock(return_value=True)
+
+        mock_provider = MagicMock()
+        mock_provider.embed_texts = MagicMock(
+            return_value=[[0.1] * ACTIVE_EMBEDDING_DIMENSION]
+        )
 
         return {
-            "bge": mock_bge,
-            "milvus": mock_milvus,
+            "embedding": mock_embedding,
+            "vector_store": mock_vector_store,
             "reranker": mock_reranker,
+            "provider": mock_provider,
         }
 
     @pytest.mark.asyncio
     async def test_multimodal_search_uses_1024_dim(self, mock_all_services):
         """Test that MultimodalSearchService uses 1024-dim embeddings."""
-        with patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_all_services["bge"]), \
-             patch('app.core.milvus_service.get_milvus_service', return_value=mock_all_services["milvus"]), \
-             patch('app.core.reranker_service.get_reranker_service', return_value=mock_all_services["reranker"]):
+        with patch('app.core.multimodal_search_service.get_embedding_service', return_value=mock_all_services["embedding"]), \
+             patch('app.core.multimodal_search_service.get_vector_store_repository', return_value=mock_all_services["vector_store"]), \
+             patch('app.core.multimodal_search_service.get_reranker_service', return_value=mock_all_services["reranker"]), \
+             patch('app.core.multimodal_search_service.create_embedding_provider', return_value=mock_all_services["provider"]), \
+             patch('app.core.multimodal_search_service.redis_db.get', new=AsyncMock(return_value=None)), \
+             patch('app.core.multimodal_search_service.redis_db.set', new=AsyncMock(return_value=None)), \
+             patch('app.core.multimodal_search_service.settings.SCIENTIFIC_TEXT_BRANCH_ENABLED', False), \
+             patch('app.core.multimodal_search_service._multimodal_search_service', None):
 
             from app.core.multimodal_search_service import get_multimodal_search_service
 
@@ -310,11 +328,13 @@ class TestMultimodalSearchIntegration:
                 use_reranker=True,
             )
 
-            # Verify BGE-M3 was called
-            mock_all_services["bge"].encode_text.assert_called()
+            # Verify the online embedding provider was used.
+            mock_all_services["provider"].embed_texts.assert_called()
 
-            # Verify Milvus was called with 1024-dim embedding
-            mock_all_services["milvus"].search_contents.assert_called()
+            # Verify vector store search received a 1024-dim query vector.
+            mock_all_services["vector_store"].search.assert_called()
+            first_call = mock_all_services["vector_store"].search.call_args_list[0]
+            assert len(first_call.kwargs["embedding"]) == ACTIVE_EMBEDDING_DIMENSION
 
             # Verify result structure
             assert "results" in result
