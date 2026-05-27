@@ -7,7 +7,7 @@ Tests the retrieve_with_reranking function which:
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch
 from app.legacy.rag_service_deprecated import retrieve_with_reranking
 
 
@@ -17,23 +17,19 @@ class TestRerankingIntegration:
     @pytest.mark.asyncio
     async def test_retrieve_with_reranking_exists(self):
         """Test 1: retrieve_with_reranking() function exists."""
-        # Check function exists
-        from app.core import rag_service
-        assert hasattr(rag_service, 'retrieve_with_reranking')
-        assert callable(getattr(rag_service, 'retrieve_with_reranking'))
+        assert callable(retrieve_with_reranking)
 
     @pytest.mark.asyncio
     @patch('app.core.reranker_service.get_reranker_service')
     @patch('app.core.milvus_service.get_milvus_service')
-    @patch('app.core.bge_m3_service.get_bge_m3_service')
+    @patch('app.core.qwen3vl_service.get_qwen3vl_service')
     async def test_retrieve_with_reranking_calls_initial_milvus_search(
-        self, mock_get_bge, mock_get_milvus, mock_get_reranker
+        self, mock_get_qwen, mock_get_milvus, mock_get_reranker
     ):
         """Test 2: Function calls initial Milvus search with top_k=20."""
-        # Setup mocks
-        mock_bge_m3 = Mock()
-        mock_bge_m3.encode_text = Mock(return_value=[0.1] * 1024)
-        mock_get_bge.return_value = mock_bge_m3
+        mock_qwen = Mock()
+        mock_qwen.encode_text = Mock(return_value=[0.1] * 2048)
+        mock_get_qwen.return_value = mock_qwen
 
         mock_milvus = Mock()
         mock_milvus.search_contents = Mock(return_value=[
@@ -60,15 +56,14 @@ class TestRerankingIntegration:
     @pytest.mark.asyncio
     @patch('app.core.reranker_service.get_reranker_service')
     @patch('app.core.milvus_service.get_milvus_service')
-    @patch('app.core.bge_m3_service.get_bge_m3_service')
+    @patch('app.core.qwen3vl_service.get_qwen3vl_service')
     async def test_retrieve_with_reranking_calls_reranker(
-        self, mock_get_bge, mock_get_milvus, mock_get_reranker
+        self, mock_get_qwen, mock_get_milvus, mock_get_reranker
     ):
         """Test 3: Function calls reranker with documents and query."""
-        # Setup mocks
-        mock_bge_m3 = Mock()
-        mock_bge_m3.encode_text = Mock(return_value=[0.1] * 1024)
-        mock_get_bge.return_value = mock_bge_m3
+        mock_qwen = Mock()
+        mock_qwen.encode_text = Mock(return_value=[0.1] * 2048)
+        mock_get_qwen.return_value = mock_qwen
         
         mock_milvus = Mock()
         mock_milvus.search_contents = Mock(return_value=[
@@ -80,18 +75,11 @@ class TestRerankingIntegration:
         # Mock reranker response
         mock_reranker = Mock()
         mock_reranked_result = [
-            Mock(index=0, relevance_score=0.95),
-            Mock(index=1, relevance_score=0.85),
+            ("doc1 text", 0.95),
+            ("doc2 text", 0.85),
         ]
         mock_reranker.rerank = Mock(return_value=mock_reranked_result)
         mock_get_reranker.return_value = mock_reranker
-
-        # Mock reranker response
-        mock_reranked_result = [
-            Mock(index=0, relevance_score=0.95),
-            Mock(index=1, relevance_score=0.85),
-        ]
-        mock_reranker.rerank = Mock(return_value=mock_reranked_result)
 
         query = "test query"
         user_id = "user123"
@@ -109,15 +97,14 @@ class TestRerankingIntegration:
     @pytest.mark.asyncio
     @patch('app.core.reranker_service.get_reranker_service')
     @patch('app.core.milvus_service.get_milvus_service')
-    @patch('app.core.bge_m3_service.get_bge_m3_service')
+    @patch('app.core.qwen3vl_service.get_qwen3vl_service')
     async def test_retrieve_with_reranking_returns_top_5_with_rerank_score(
-        self, mock_get_bge, mock_get_milvus, mock_get_reranker
+        self, mock_get_qwen, mock_get_milvus, mock_get_reranker
     ):
         """Test 4: Function returns top 5 results with rerank_score field."""
-        # Setup mocks
-        mock_bge_m3 = Mock()
-        mock_bge_m3.encode_text = Mock(return_value=[0.1] * 1024)
-        mock_get_bge.return_value = mock_bge_m3
+        mock_qwen = Mock()
+        mock_qwen.encode_text = Mock(return_value=[0.1] * 2048)
+        mock_get_qwen.return_value = mock_qwen
         
         # Create 10 initial results
         initial_results = [
@@ -136,29 +123,11 @@ class TestRerankingIntegration:
         # Mock reranker to return top 5
         mock_reranker = Mock()
         mock_reranked_result = [
-            Mock(index=i, relevance_score=0.9 - i * 0.05)
+            (f"doc{i} text", 0.9 - i * 0.05)
             for i in range(5)
         ]
         mock_reranker.rerank = Mock(return_value=mock_reranked_result)
         mock_get_reranker.return_value = mock_reranker
-        
-        # Create 10 initial results
-        initial_results = [
-            {
-                "content_data": f"doc{i} text",
-                "paper_id": f"p{i}",
-                "page_num": i,
-            }
-            for i in range(10)
-        ]
-        mock_milvus.search_contents = Mock(return_value=initial_results)
-
-        # Mock reranker to return top 5
-        mock_reranked_result = [
-            Mock(index=i, relevance_score=0.9 - i * 0.05)
-            for i in range(5)
-        ]
-        mock_reranker.rerank = Mock(return_value=mock_reranked_result)
 
         query = "test query"
         user_id = "user123"
@@ -177,15 +146,14 @@ class TestRerankingIntegration:
     @pytest.mark.asyncio
     @patch('app.core.reranker_service.get_reranker_service')
     @patch('app.core.milvus_service.get_milvus_service')
-    @patch('app.core.bge_m3_service.get_bge_m3_service')
+    @patch('app.core.qwen3vl_service.get_qwen3vl_service')
     async def test_retrieve_with_reranking_preserves_metadata(
-        self, mock_get_bge, mock_get_milvus, mock_get_reranker
+        self, mock_get_qwen, mock_get_milvus, mock_get_reranker
     ):
         """Test 5: Function preserves original result metadata (paper_id, page_num, etc.)."""
-        # Setup mocks
-        mock_bge_m3 = Mock()
-        mock_bge_m3.encode_text = Mock(return_value=[0.1] * 1024)
-        mock_get_bge.return_value = mock_bge_m3
+        mock_qwen = Mock()
+        mock_qwen.encode_text = Mock(return_value=[0.1] * 2048)
+        mock_get_qwen.return_value = mock_qwen
         
         initial_results = [
             {
@@ -209,34 +177,11 @@ class TestRerankingIntegration:
         # Mock reranker
         mock_reranker = Mock()
         mock_reranked_result = [
-            Mock(index=0, relevance_score=0.95),
-            Mock(index=1, relevance_score=0.85),
+            ("doc1 text", 0.95),
+            ("doc2 text", 0.85),
         ]
         mock_reranker.rerank = Mock(return_value=mock_reranked_result)
         mock_get_reranker.return_value = mock_reranker
-        
-        initial_results = [
-            {
-                "content_data": "doc1 text",
-                "paper_id": "paper-uuid-1",
-                "page_num": 5,
-                "section": "Results",
-            },
-            {
-                "content_data": "doc2 text",
-                "paper_id": "paper-uuid-2",
-                "page_num": 10,
-                "section": "Methods",
-            },
-        ]
-        mock_milvus.search_contents = Mock(return_value=initial_results)
-
-        # Mock reranker
-        mock_reranked_result = [
-            Mock(index=0, relevance_score=0.95),
-            Mock(index=1, relevance_score=0.85),
-        ]
-        mock_reranker.rerank = Mock(return_value=mock_reranked_result)
 
         query = "test query"
         user_id = "user123"
@@ -258,22 +203,25 @@ class TestRerankingIntegration:
     @pytest.mark.asyncio
     @patch('app.core.reranker_service.get_reranker_service')
     @patch('app.core.milvus_service.get_milvus_service')
-    @patch('app.core.bge_m3_service.get_bge_m3_service')
+    @patch('app.core.qwen3vl_service.get_qwen3vl_service')
     async def test_retrieve_with_reranking_with_paper_ids_filter(
-        self, mock_get_bge, mock_get_milvus, mock_get_reranker
+        self, mock_get_qwen, mock_get_milvus, mock_get_reranker
     ):
         """Test 6: Function supports paper_ids filtering."""
-        # Setup mocks
-        mock_bge_m3 = Mock()
-        mock_bge_m3.encode_text = Mock(return_value=[0.1] * 1024)
-        mock_get_bge.return_value = mock_bge_m3
+        mock_qwen = Mock()
+        mock_qwen.encode_text = Mock(return_value=[0.1] * 2048)
+        mock_get_qwen.return_value = mock_qwen
         
         mock_milvus = Mock()
-        mock_milvus.search_contents = Mock(return_value=[])
+        mock_milvus.search_contents = Mock(return_value=[
+            {"content_data": "doc1 text", "paper_id": "paper1"},
+            {"content_data": "doc2 text", "paper_id": "paper2"},
+            {"content_data": "doc3 text", "paper_id": "paper3"},
+        ])
         mock_get_milvus.return_value = mock_milvus
 
         mock_reranker = Mock()
-        mock_reranker.rerank = Mock(return_value=[])
+        mock_reranker.rerank = Mock(return_value=[("doc1 text", 0.91), ("doc2 text", 0.87)])
         mock_get_reranker.return_value = mock_reranker
 
         query = "test query"
@@ -281,14 +229,13 @@ class TestRerankingIntegration:
         paper_ids = ["paper1", "paper2"]
 
         # Call function with paper_ids
-        await retrieve_with_reranking(
+        results = await retrieve_with_reranking(
             query=query,
             user_id=user_id,
             paper_ids=paper_ids
         )
 
-        # Verify filter expression includes paper_ids
+        # Current contract filters after Milvus search rather than via filter_expr.
         call_args = mock_milvus.search_contents.call_args
-        filter_expr = call_args[1]['filter_expr']
-        assert 'paper_id' in filter_expr
-        assert 'paper1' in filter_expr or 'paper2' in filter_expr
+        assert call_args[1]['user_id'] == user_id
+        assert {item["paper_id"] for item in results} == {"paper1", "paper2"}
