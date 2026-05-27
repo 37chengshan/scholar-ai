@@ -36,7 +36,7 @@ class TestGetCachedResponseErrors:
             mock_redis.get = AsyncMock(side_effect=ConnectionError("Redis unavailable"))
 
             with pytest.raises(CacheError) as exc_info:
-                await get_cached_response("test query", ["paper-1"])
+                await get_cached_response("user-1", "test query", ["paper-1"])
 
             assert "Redis get failed" in str(exc_info.value)
             assert exc_info.value.__cause__ is not None
@@ -48,7 +48,7 @@ class TestGetCachedResponseErrors:
             mock_redis.get = AsyncMock(side_effect=TimeoutError("Redis timeout"))
 
             with pytest.raises(CacheError) as exc_info:
-                await get_cached_response("test query", ["paper-1"])
+                await get_cached_response("user-1", "test query", ["paper-1"])
 
             assert "Redis get failed" in str(exc_info.value)
 
@@ -63,7 +63,7 @@ class TestSetCachedResponseErrors:
             mock_redis.set = AsyncMock(side_effect=ConnectionError("Redis unavailable"))
 
             with pytest.raises(CacheError) as exc_info:
-                await set_cached_response("test query", ["paper-1"], {"answer": "test"})
+                await set_cached_response("user-1", "test query", ["paper-1"], {"answer": "test"})
 
             assert "Redis set failed" in str(exc_info.value)
             assert exc_info.value.__cause__ is not None
@@ -76,7 +76,7 @@ class TestSetCachedResponseErrors:
             unserializable = {"data": object()}
 
             with pytest.raises(CacheError):
-                await set_cached_response("test query", ["paper-1"], unserializable)
+                await set_cached_response("user-1", "test query", ["paper-1"], unserializable)
 
 
 class TestConversationSessionErrors:
@@ -89,7 +89,7 @@ class TestConversationSessionErrors:
             mock_redis.get = AsyncMock(side_effect=Exception("Redis error"))
 
             with pytest.raises(CacheError) as exc_info:
-                await get_conversation_session("session-123")
+                await get_conversation_session("session-123", "user-1")
 
             assert "Redis get conversation failed" in str(exc_info.value)
 
@@ -100,7 +100,7 @@ class TestConversationSessionErrors:
             mock_redis.set = AsyncMock(side_effect=Exception("Redis error"))
 
             with pytest.raises(CacheError) as exc_info:
-                await save_conversation_session("session-123", {"messages": []})
+                await save_conversation_session("session-123", "user-1", {"messages": []})
 
             assert "Redis set conversation failed" in str(exc_info.value)
 
@@ -116,7 +116,7 @@ class TestErrorLogging:
                 mock_redis.get = AsyncMock(side_effect=Exception("Test error"))
 
                 with pytest.raises(CacheError):
-                    await get_cached_response("test", ["paper-1"])
+                    await get_cached_response("user-1", "test", ["paper-1"])
 
                 # Verify error was logged
                 mock_logger.error.assert_called_once()
@@ -130,7 +130,7 @@ class TestErrorLogging:
                 mock_redis.set = AsyncMock(side_effect=Exception("Test error"))
 
                 with pytest.raises(CacheError):
-                    await set_cached_response("test", ["paper-1"], {"answer": "test"})
+                    await set_cached_response("user-1", "test", ["paper-1"], {"answer": "test"})
 
                 # Verify error was logged
                 mock_logger.error.assert_called_once()
