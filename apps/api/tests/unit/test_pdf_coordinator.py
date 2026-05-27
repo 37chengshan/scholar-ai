@@ -197,11 +197,13 @@ class TestPDFCoordinator:
         assert hasattr(coordinator, "_db_pool")  # Check internal field
 
     def test_singleton(self):
-        """Test singleton pattern."""
+        """Test factory returns fresh coordinator instances."""
         c1 = get_pdf_coordinator()
         c2 = get_pdf_coordinator()
 
-        assert c1 is c2
+        assert c1 is not c2
+        assert isinstance(c1, PDFCoordinator)
+        assert isinstance(c2, PDFCoordinator)
 
     def test_singleton_returns_pdf_coordinator(self):
         """Test that singleton returns PDFCoordinator instance."""
