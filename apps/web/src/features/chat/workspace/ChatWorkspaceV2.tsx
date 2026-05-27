@@ -34,6 +34,8 @@ import { toast } from "sonner";
 import { usePinnedBottom } from '@/features/chat/hooks/usePinnedBottom';
 import { useChatWorkspace } from '@/features/chat/hooks/useChatWorkspace';
 import { useChatMessagesViewModel } from '@/features/chat/hooks/useChatMessagesViewModel';
+import { SessionSidebar } from '@/features/chat/components/session-sidebar/SessionSidebar';
+import { useChatSessionController } from '@/features/chat/hooks/useChatSessionController';
 import { useChatStreaming } from '@/features/chat/hooks/useChatStreaming';
 import { useChatSend } from '@/features/chat/hooks/useChatSend';
 import { useChatScopeController } from '@/features/chat/hooks/useChatScopeController';
@@ -56,6 +58,7 @@ export function ChatWorkspaceV2() {
   const [sessionTokens, setSessionTokens] = useState(0); // 当前session的token
   const [sessionCost, setSessionCost] = useState(0); // 当前session的花费
   const [forceNewSessionForNextSend, setForceNewSessionForNextSend] = useState(false);
+  const [sessionSearchQuery, setSessionSearchQuery] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const sseServiceRef = useRef<SSEService | null>(null);
@@ -73,6 +76,7 @@ export function ChatWorkspaceV2() {
     setMode,
     setComposerDraft: setInput,
     setRightPanelOpen,
+    openDeleteConfirm,
     closeDeleteConfirm,
     setStreamingMessageId,
     setIsPinnedToBottom,
@@ -148,6 +152,15 @@ export function ChatWorkspaceV2() {
     clearCurrentSession,
     safeSessions,
   } = useChatSessionBinding(searchParams);
+  const filteredSessions = useMemo(() => {
+    const normalizedQuery = sessionSearchQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return safeSessions;
+    }
+
+    return safeSessions.filter((session) => session.title.toLowerCase().includes(normalizedQuery));
+  }, [safeSessions, sessionSearchQuery]);
+
   const { scope, scopeLoading, handleExitScope } = useChatScopeController({
     mode,
     isZh,
@@ -225,6 +238,27 @@ export function ChatWorkspaceV2() {
     streamStatus: streamState.streamStatus,
     handledNewChatRef,
     setForceNewSessionForNextSend,
+  });
+  const {
+    handleNewSession,
+    handleSwitchSession,
+    handleDeleteSession,
+  } = useChatSessionController({
+    isZh,
+    sessionToDelete,
+    createSession,
+    switchSession,
+    deleteSession,
+    resetForSessionSwitch,
+    resetRuntimeRun: runtime.resetRun,
+    resetStreamingRun: resetRun,
+    openDeleteConfirm,
+    closeDeleteConfirm,
+    setSessionSearchQuery,
+    setSessionTokens,
+    setSessionCost,
+    sendLockRef,
+    sseServiceRef,
   });
 
   const syncStreamingMessage = useChatStreamingSync({
@@ -342,6 +376,32 @@ export function ChatWorkspaceV2() {
 
   return (
     <ChatWorkspaceLayout
+      sessionSidebar={(
+        <SessionSidebar
+          sessions={filteredSessions}
+          currentSessionId={currentSession?.id ?? null}
+          loading={loading}
+          labels={{
+            terminal: t.terminal,
+            sessions: t.sessions,
+            search: t.search,
+            history: t.history,
+            newChat: t.newChat,
+            noSearchResults: isZh ? '没有匹配的会话' : 'No matching sessions',
+            messageSuffix: isZh ? '条消息' : 'messages',
+          }}
+          searchValue={sessionSearchQuery}
+          isZh={isZh}
+          onSearchChange={setSessionSearchQuery}
+          onCreateSession={() => {
+            void handleNewSession();
+          }}
+          onSwitchSession={(sessionId) => {
+            void handleSwitchSession(sessionId);
+          }}
+          onDeleteSession={handleDeleteSession}
+        />
+      )}
       isZh={isZh}
       uiScope={uiScope}
       handoffBanner={

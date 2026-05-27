@@ -278,6 +278,42 @@ describe('ChatWorkspaceV2', () => {
     expect(screen.getByText('首个 message chunk')).toBeInTheDocument();
   });
 
+  it('renders the session search sidebar when chat sessions are available', () => {
+    const sessionAlpha = {
+      id: 'session-alpha',
+      title: 'Alpha Research Notes',
+      status: 'active',
+      messageCount: 3,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const sessionBeta = {
+      id: 'session-beta',
+      title: 'Beta Experiment Log',
+      status: 'active',
+      messageCount: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    mockCurrentSession = sessionAlpha;
+    mockUseSessions.mockImplementation(() => ({
+      sessions: [sessionAlpha, sessionBeta],
+      currentSession: sessionAlpha,
+      messages: [],
+      loading: false,
+      createSession: mockCreateSession,
+      switchSession: vi.fn(async () => {}),
+      deleteSession: vi.fn(async () => true),
+      clearCurrentSession: vi.fn(),
+    }));
+
+    render(<ChatWorkspaceV2 />);
+
+    expect(screen.getByTestId('session-search-input')).toBeInTheDocument();
+    expect(screen.getAllByTestId('session-item')).toHaveLength(2);
+  });
+
   it('does not auto-bind an old session during handoff when scope exists without session id', () => {
     mockSearchParams = new URLSearchParams('handoff=1&paper_ids=paper-1,paper-2');
     mockCurrentSession = {
