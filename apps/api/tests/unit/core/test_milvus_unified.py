@@ -38,6 +38,8 @@ def mock_milvus_service():
                 mock_settings.MILVUS_HOST = "localhost"
                 mock_settings.MILVUS_PORT = 19530
                 mock_settings.MILVUS_COLLECTION_CONTENTS = "paper_contents"
+                mock_settings.EMBEDDING_MODEL = "qwen_flash"
+                mock_settings.EMBEDDING_DIMENSION = 2048
 
                 from app.core.milvus_service import MilvusService
                 service = MilvusService()
@@ -222,9 +224,7 @@ class TestUnifiedCollectionIntegration:
         """Verify collection uses 1024-dim embeddings."""
         service, mock_collection = mock_milvus_service
 
-        # Check the service has correct dim constant
-        assert service.EMBEDDING_DIM == 768  # Legacy collections
-        # The new collection should have 1024
+        assert service.embedding_dim == 1024
 
     def test_content_types_supported(self, mock_milvus_service):
         """Verify all content types are supported."""
