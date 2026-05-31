@@ -102,6 +102,16 @@ class Settings(BaseSettings):
                     "NEO4J_PASSWORD uses default value - use secure credentials"
                 )
 
+            if not self.DATABASE_URL:
+                errors.append(
+                    "DATABASE_URL is required and must not be empty"
+                )
+
+            if not self.NEO4J_PASSWORD:
+                errors.append(
+                    "NEO4J_PASSWORD is required and must not be empty"
+                )
+
             if errors:
                 raise ValueError(
                     "Environment security validation failed:\n"
@@ -114,7 +124,7 @@ class Settings(BaseSettings):
     # =========================================================================
     # Database Configuration
     # =========================================================================
-    DATABASE_URL: str = "postgresql://scholarai:scholarai123@localhost:5432/scholarai"
+    DATABASE_URL: str = ""
 
     @property
     def async_database_url(self) -> str:
@@ -158,7 +168,7 @@ class Settings(BaseSettings):
     # =========================================================================
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = "scholarai123"
+    NEO4J_PASSWORD: str = ""
 
     # =========================================================================
     # Milvus Vector Database Configuration

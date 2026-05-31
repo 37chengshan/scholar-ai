@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 from typing import Any, Dict
 
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from .shared import (
     _arxiv_rate_limiter,
@@ -24,6 +24,7 @@ from .shared import (
     get_search_cache,
     set_search_cache,
 )
+from app.middleware.auth import get_current_user
 from app.utils.logger import logger
 
 
@@ -39,6 +40,7 @@ async def search_arxiv(
     query: str,
     limit: int = Query(default=20, le=50, ge=1),
     offset: int = Query(default=0, ge=0),
+    current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Search arXiv for papers.
 
@@ -177,6 +179,7 @@ async def search_semantic_scholar(
     query: str,
     limit: int = Query(default=20, le=50, ge=1),
     offset: int = Query(default=0, ge=0),
+    current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Search Semantic Scholar for papers.
 
@@ -295,7 +298,7 @@ async def search_semantic_scholar(
 
 
 @router.get("/doi/{doi:path}")
-async def resolve_doi(doi: str):
+async def resolve_doi(doi: str, current_user: dict = Depends(get_current_user)):
     """Resolve DOI to paper metadata via CrossRef API.
 
     Args:

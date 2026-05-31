@@ -86,13 +86,18 @@ class PaperRepository:
         limit: int,
     ) -> Tuple[List[Paper], int]:
         search_term = f"%{query_text.lower()}%"
-        escaped_q = query_text.replace("'", "''")
+        author_search_prefix = f"{query_text.lower()}%"
         upload_filename_match = (
             select(UploadHistory.id)
             .where(UploadHistory.paper_id == Paper.id)
             .where(func.lower(UploadHistory.filename).like(search_term))
             .exists()
         )
+
+        authors_match = text(
+            "EXISTS (SELECT 1 FROM unnest(papers.authors) a "
+            "WHERE LOWER(a) LIKE LOWER(:author_prefix))"
+        ).bindparams(author_prefix=author_search_prefix)
 
         base_query = (
             select(Paper)
@@ -103,9 +108,7 @@ class PaperRepository:
                     func.lower(Paper.title).ilike(search_term),
                     func.lower(Paper.abstract).ilike(search_term),
                     upload_filename_match,
-                    text(
-                        f"EXISTS (SELECT 1 FROM unnest(papers.authors) a WHERE LOWER(a) LIKE LOWER('{escaped_q}%'))"
-                    ),
+                    authors_match,
                 )
             )
         )
