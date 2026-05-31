@@ -1,0 +1,227 @@
+@layer tokens {
+  :root {
+    /* ===========================
+       Base Palette (oklch)
+       Three hue families: paper (warm neutral), ink (cool neutral), accent (editorial orange)
+       =========================== */
+
+    /* Paper - warm neutral background family */
+    --paper-50:  oklch(0.985 0.005 80);
+    --paper-100: oklch(0.965 0.008 78);
+    --paper-200: oklch(0.935 0.012 75);
+    --paper-300: oklch(0.895 0.016 72);
+    --paper-400: oklch(0.835 0.018 70);
+    --paper-500: oklch(0.745 0.016 68);
+    --paper-600: oklch(0.635 0.014 66);
+    --paper-700: oklch(0.515 0.012 64);
+    --paper-800: oklch(0.385 0.010 62);
+    --paper-900: oklch(0.265 0.008 60);
+
+    /* Ink - neutral text family */
+    --ink-50:  oklch(0.975 0.002 250);
+    --ink-100: oklch(0.935 0.004 248);
+    --ink-200: oklch(0.865 0.006 245);
+    --ink-300: oklch(0.745 0.008 242);
+    --ink-400: oklch(0.615 0.010 240);
+    --ink-500: oklch(0.485 0.012 238);
+    --ink-600: oklch(0.375 0.010 236);
+    --ink-700: oklch(0.285 0.008 234);
+    --ink-800: oklch(0.205 0.006 232);
+    --ink-900: oklch(0.145 0.004 230);
+
+    /* Accent - editorial orange family */
+    --accent-50:  oklch(0.965 0.025 55);
+    --accent-100: oklch(0.925 0.055 52);
+    --accent-200: oklch(0.865 0.095 50);
+    --accent-300: oklch(0.785 0.145 48);
+    --accent-400: oklch(0.705 0.185 45);
+    --accent-500: oklch(0.625 0.205 42);
+    --accent-600: oklch(0.555 0.195 40);
+    --accent-700: oklch(0.475 0.165 38);
+    --accent-800: oklch(0.395 0.135 36);
+    --accent-900: oklch(0.315 0.105 34);
+
+    /* ===========================
+       Functional Tokens (light theme)
+       =========================== */
+
+    /* Backgrounds */
+    --color-bg:             var(--paper-50);
+    --color-surface:        oklch(1 0 0);
+    --color-surface-raised: var(--paper-100);
+    --color-surface-sunken: var(--paper-200);
+
+    /* Text */
+    --color-text:           var(--ink-900);
+    --color-text-muted:     var(--ink-500);
+    --color-text-subtle:    var(--ink-400);
+    --color-text-inverse:   oklch(0.985 0.002 250);
+
+    /* Borders */
+    --color-border:         oklch(0.885 0.006 75 / 0.6);
+    --color-border-strong:  oklch(0.785 0.008 72);
+    --color-ring:           var(--accent-500);
+    --color-rule:           oklch(0.885 0.006 75 / 0.5);
+    --color-rule-strong:    oklch(0.785 0.008 72);
+
+    /* Primary */
+    --color-primary:        var(--accent-600);
+    --color-primary-fg:     oklch(0.985 0.005 80);
+
+    /* Secondary */
+    --color-secondary:      var(--accent-400);
+    --color-secondary-fg:   oklch(0.985 0.005 80);
+
+    /* Destructive */
+    --color-destructive:       oklch(0.545 0.220 25);
+    --color-destructive-fg:    oklch(0.985 0.005 25);
+
+    /* Status */
+    --color-success:        oklch(0.625 0.175 145);
+    --color-warning:        oklch(0.785 0.155 75);
+    --color-info:           oklch(0.625 0.145 240);
+
+    /* Accent warm (editorial) */
+    --color-accent-warm:    var(--accent-600);
+
+    /* ===========================
+       Evidence Tokens
+       =========================== */
+    --color-evidence-strong:        oklch(0.625 0.175 145);
+    --color-evidence-moderate:      oklch(0.725 0.135 200);
+    --color-evidence-weak:          oklch(0.785 0.115 75);
+    --color-evidence-contradictory: oklch(0.585 0.195 25);
+    --color-evidence-unsupported:   var(--ink-400);
+
+    /* ===========================
+       Status Tokens (with bg variants)
+       =========================== */
+    --color-status-completed:    oklch(0.525 0.155 145);
+    --color-status-completed-bg: oklch(0.945 0.035 145);
+    --color-status-processing:   oklch(0.565 0.165 240);
+    --color-status-processing-bg: oklch(0.945 0.035 240);
+    --color-status-failed:       oklch(0.545 0.195 25);
+    --color-status-failed-bg:    oklch(0.955 0.035 25);
+    --color-status-pending:      var(--ink-500);
+    --color-status-pending-bg:   var(--paper-200);
+
+    /* ===========================
+       Chart Tokens
+       =========================== */
+    --color-chart-1: oklch(0.646 0.222 41.116);
+    --color-chart-2: oklch(0.6 0.118 184.704);
+    --color-chart-3: oklch(0.398 0.07 227.392);
+    --color-chart-4: oklch(0.828 0.189 84.429);
+    --color-chart-5: oklch(0.769 0.188 70.08);
+
+    /* ===========================
+       Paper Colors (legacy compat for magazine.css)
+       =========================== */
+    --color-paper-1: var(--paper-50);
+    --color-paper-2: var(--paper-100);
+    --color-paper-3: var(--paper-200);
+
+    /* ===========================
+       Category accent colors (for card accent bars)
+       =========================== */
+    --color-category-ai:  oklch(0.625 0.205 42);
+    --color-category-cv:  oklch(0.545 0.145 155);
+    --color-category-nlp: oklch(0.505 0.205 305);
+    --color-category-ml:  oklch(0.585 0.155 230);
+    --color-category-other: var(--ink-400);
+
+    /* ===========================
+       Muted / Card / Popover (Tailwind compat)
+       =========================== */
+    --color-muted:               var(--paper-200);
+    --color-muted-foreground:    var(--ink-500);
+    --color-foreground:          var(--ink-900);
+    --color-card:                oklch(1 0 0);
+    --color-card-foreground:     var(--ink-900);
+    --color-popover:             oklch(1 0 0);
+    --color-popover-foreground:  var(--ink-900);
+    --color-background:          var(--paper-50);
+    --color-accent-foreground:   var(--accent-600);
+    --color-input:               var(--paper-200);
+    --color-switch-background:   var(--paper-400);
+  }
+
+  /* ===========================
+     Dark Theme Overrides
+     =========================== */
+  .dark {
+    /* Functional tokens remap */
+    --color-bg:             oklch(0.145 0.006 60);
+    --color-surface:        oklch(0.185 0.008 60);
+    --color-surface-raised: oklch(0.225 0.010 60);
+    --color-surface-sunken: oklch(0.115 0.004 60);
+
+    --color-text:           oklch(0.935 0.004 80);
+    --color-text-muted:     oklch(0.665 0.008 75);
+    --color-text-subtle:    oklch(0.535 0.010 72);
+    --color-text-inverse:   oklch(0.145 0.006 60);
+
+    --color-border:         oklch(0.285 0.008 60 / 0.6);
+    --color-border-strong:  oklch(0.385 0.010 60);
+    --color-ring:           var(--accent-400);
+    --color-rule:           oklch(0.285 0.008 60 / 0.5);
+    --color-rule-strong:    oklch(0.385 0.010 60);
+
+    --color-primary:        var(--accent-400);
+    --color-primary-fg:     oklch(0.145 0.006 60);
+
+    --color-secondary:      var(--accent-300);
+    --color-secondary-fg:   oklch(0.145 0.006 60);
+
+    --color-destructive:    oklch(0.625 0.220 25);
+    --color-destructive-fg: oklch(0.145 0.006 25);
+
+    --color-success:   oklch(0.705 0.165 145);
+    --color-warning:   oklch(0.835 0.145 75);
+    --color-info:      oklch(0.705 0.135 240);
+
+    --color-accent-warm: var(--accent-400);
+
+    /* Evidence tokens dark */
+    --color-evidence-strong:        oklch(0.705 0.165 145);
+    --color-evidence-moderate:      oklch(0.745 0.115 200);
+    --color-evidence-weak:          oklch(0.805 0.105 75);
+    --color-evidence-contradictory: oklch(0.665 0.185 25);
+    --color-evidence-unsupported:   oklch(0.565 0.010 72);
+
+    /* Status tokens dark */
+    --color-status-completed:    oklch(0.665 0.145 145);
+    --color-status-completed-bg: oklch(0.225 0.045 145 / 0.4);
+    --color-status-processing:   oklch(0.665 0.155 240);
+    --color-status-processing-bg: oklch(0.225 0.045 240 / 0.4);
+    --color-status-failed:       oklch(0.665 0.185 25);
+    --color-status-failed-bg:    oklch(0.225 0.045 25 / 0.4);
+    --color-status-pending:      oklch(0.625 0.010 72);
+    --color-status-pending-bg:   oklch(0.225 0.008 60 / 0.4);
+
+    /* Tailwind compat tokens dark */
+    --color-muted:              oklch(0.225 0.008 60);
+    --color-muted-foreground:   oklch(0.665 0.008 75);
+    --color-foreground:         oklch(0.935 0.004 80);
+    --color-card:               oklch(0.185 0.008 60);
+    --color-card-foreground:    oklch(0.935 0.004 80);
+    --color-popover:            oklch(0.185 0.008 60);
+    --color-popover-foreground: oklch(0.935 0.004 80);
+    --color-background:         oklch(0.145 0.006 60);
+    --color-accent-foreground:  var(--accent-400);
+    --color-input:              oklch(0.265 0.008 60);
+    --color-switch-background:  oklch(0.385 0.010 60);
+
+    /* Category accent colors dark */
+    --color-category-ai:    oklch(0.725 0.185 42);
+    --color-category-cv:    oklch(0.645 0.135 155);
+    --color-category-nlp:   oklch(0.605 0.185 305);
+    --color-category-ml:    oklch(0.685 0.145 230);
+    --color-category-other: oklch(0.585 0.010 72);
+
+    /* Paper colors dark */
+    --color-paper-1: oklch(0.145 0.006 60);
+    --color-paper-2: oklch(0.185 0.008 60);
+    --color-paper-3: oklch(0.225 0.010 60);
+  }
+}

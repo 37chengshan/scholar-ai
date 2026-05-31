@@ -63,7 +63,7 @@
 | phase | owner | closeout_status | last_verified_at | truth_doc | notes |
 |---|---|---|---|---|---|
 | 0 | product-engineering | closeout-complete / all-deliverables-verified | 2026-05-31 | docs/plans/v5_0/active/phase_0/26_v5_0_phase_0_execution_plan.md | Foundation: 治理切换 + v4.x 迁移 + Audit Baseline；7 deliverable 全部完成，gate runner dry run verdict=blocked 符合预期 |
-| 1 | web-platform | not-started | - | - | 设计系统 v2 (Design Tokens + WorkspaceShell v2) |
+| 1 | web-platform | closeout-complete / wave-1-token-foundation-done | 2026-05-31 | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_design_system_v2_closeout.md | Design System v2: Token Foundation + Font Infrastructure + Tailwind v4；190 unique tokens, oklch, dark theme infra, motion system, editorial typography |
 | 2 | web-platform | not-started | - | - | WorkspaceShell v2 + Performance (动态 baseline + Lighthouse CI) |
 | 3 | web-platform | not-started | - | - | 主链精修: Search + Import + KB |
 | 4 | web-platform | not-started | - | - | 主链精修: Read + Notes |

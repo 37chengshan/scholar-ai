@@ -1,0 +1,52 @@
+@layer tokens {
+  :root {
+    /* ===========================
+       Shadow Scale (neobrutalist + soft)
+       =========================== */
+    --shadow-xs:     0 1px 2px 0 oklch(0.2 0 0 / 0.05);
+    --shadow-sm:     0 1px 3px 0 oklch(0.2 0 0 / 0.1), 0 1px 2px -1px oklch(0.2 0 0 / 0.1);
+    --shadow-md:     0 4px 6px -1px oklch(0.2 0 0 / 0.1), 0 2px 4px -2px oklch(0.2 0 0 / 0.1);
+    --shadow-lg:     0 10px 15px -3px oklch(0.2 0 0 / 0.1), 0 4px 6px -4px oklch(0.2 0 0 / 0.1);
+    --shadow-xl:     0 20px 25px -5px oklch(0.2 0 0 / 0.1), 0 8px 10px -6px oklch(0.2 0 0 / 0.1);
+    --shadow-2xl:    0 25px 50px -12px oklch(0.2 0 0 / 0.25);
+    --shadow-inset:  inset 0 2px 4px 0 oklch(0.2 0 0 / 0.05);
+
+    /* Neobrutalist paper shadows */
+    --shadow-paper:        4px 4px 0px 0px oklch(0.15 0 0);
+    --shadow-paper-hover:  6px 6px 0px 0px oklch(0.15 0 0);
+    --shadow-paper-active: 2px 2px 0px 0px oklch(0.15 0 0);
+
+    /* ===========================
+       Border Radius
+       =========================== */
+    --radius-sm:  0.375rem;
+    --radius:     0.625rem;
+    --radius-md:  0.625rem;
+    --radius-lg:  1rem;
+    --radius-xl:  1.5rem;
+    --radius-2xl: 2rem;
+    --radius-full: 9999px;
+
+    /* ===========================
+       Border Widths
+       =========================== */
+    --border-thin:   1px;
+    --border-medium: 2px;
+    --border-thick:  4px;
+  }
+
+  /* Dark theme shadow adjustments */
+  .dark {
+    --shadow-xs:     0 1px 2px 0 oklch(0 0 0 / 0.15);
+    --shadow-sm:     0 1px 3px 0 oklch(0 0 0 / 0.25), 0 1px 2px -1px oklch(0 0 0 / 0.25);
+    --shadow-md:     0 4px 6px -1px oklch(0 0 0 / 0.25), 0 2px 4px -2px oklch(0 0 0 / 0.25);
+    --shadow-lg:     0 10px 15px -3px oklch(0 0 0 / 0.3), 0 4px 6px -4px oklch(0 0 0 / 0.3);
+    --shadow-xl:     0 20px 25px -5px oklch(0 0 0 / 0.3), 0 8px 10px -6px oklch(0 0 0 / 0.3);
+    --shadow-2xl:    0 25px 50px -12px oklch(0 0 0 / 0.5);
+    --shadow-inset:  inset 0 2px 4px 0 oklch(0 0 0 / 0.15);
+
+    --shadow-paper:        4px 4px 0px 0px oklch(0.85 0 0);
+    --shadow-paper-hover:  6px 6px 0px 0px oklch(0.85 0 0);
+    --shadow-paper-active: 2px 2px 0px 0px oklch(0.85 0 0);
+  }
+}

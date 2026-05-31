@@ -1,5 +1,17 @@
 /* Main stylesheet - imports all other stylesheets */
+/* 1. Font faces (preload in HTML) */
 @import './fonts.css';
+/* 2. Token layers (must load before tailwind so @theme can resolve vars) */
+@import './tokens/color.css';
+@import './tokens/typography.css';
+@import './tokens/spacing.css';
+@import './tokens/motion.css';
+@import './tokens/elevation.css';
+/* 3. Tailwind config + utilities */
 @import './tailwind.css';
+/* 4. @theme block (references tokens) */
 @import './theme.css';
+/* 5. Global styles */
 @import './global.css';
+/* 6. Magazine-specific overrides */
+@import './magazine.css';
