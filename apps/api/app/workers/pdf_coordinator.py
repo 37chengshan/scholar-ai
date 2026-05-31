@@ -10,13 +10,13 @@ Per D-01: Complete refactor from serial to parallel architecture.
 """
 
 import asyncio
-import os
 import tempfile
 from datetime import datetime
 from typing import Optional
 
 import asyncpg
 
+from app.config import settings
 from app.workers.pipeline_context import PipelineContext, PipelineStage
 from app.workers.extraction_pipeline import ExtractionPipeline, PipelineError
 from app.workers.storage_manager import StorageManager
@@ -91,10 +91,12 @@ class PDFCoordinator:
         Lazy initialization on first use.
         """
         if not self._db_pool:
-            db_url = os.getenv(
-                "DATABASE_URL",
-                "postgresql://scholarai:scholarai123@localhost:5432/scholarai",
-            )
+            db_url = settings.DATABASE_URL
+            if not db_url:
+                raise RuntimeError(
+                    "DATABASE_URL is not configured. "
+                    "Set the DATABASE_URL environment variable before starting the service."
+                )
             self._db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=10)
 
     async def process(self, task_id: str, on_stage_change=None) -> bool:

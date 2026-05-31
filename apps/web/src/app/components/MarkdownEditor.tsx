@@ -40,7 +40,16 @@ export function MarkdownEditor({ value, onChange, placeholder, onSave }: Markdow
    * For full Markdown support, install react-markdown
    */
   const simpleMarkdownToHtml = (text: string): string => {
-    return text
+    // Escape HTML entities to prevent XSS
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Filter dangerous protocols
+    escaped = escaped.replace(/javascript:/gi, '').replace(/data:/gi, '');
+
+    return escaped
       // Headers
       .replace(/^### (.*$)/gim, '<h3 class="text-base font-semibold mt-4 mb-2">$1</h3>')
       .replace(/^## (.*$)/gim, '<h2 class="text-xl font-semibold mt-4 mb-2">$1</h2>')

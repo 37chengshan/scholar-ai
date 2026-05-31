@@ -14,6 +14,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
+import DOMPurify from 'dompurify';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Clock, 
@@ -385,7 +386,7 @@ export function NoteList({
                         {/* Content preview */}
                         <div 
                           className="text-xs text-muted-foreground line-clamp-2 mb-3 prose prose-sm editorial-reading-surface font-serif"
-                          dangerouslySetInnerHTML={{ __html: note.content }}
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(note.content) }}
                         />
 
                         {/* Meta */}
