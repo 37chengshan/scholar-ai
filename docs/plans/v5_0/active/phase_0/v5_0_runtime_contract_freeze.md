@@ -301,3 +301,53 @@ supersedes: v4_5_runtime_contract_freeze.md
 - RAPTOR-lite 内部摘要树的**构建算法和分层策略**（属于 5.0-8 内部实现）
 - Graph synthesis 的**社区检测算法选型**（属于 5.0-8 内部实现）
 - NLI 模型的**具体选型和阈值**（属于 5.0-8 内部实现）
+
+---
+
+## 9. 5.0-1 Input: Accessibility Baseline Requirements
+
+> 本节为 Phase 5.0-1（设计系统 v2）提供无障碍基线要求。所有 5.0-1 及后续 phase
+> 的前端实现必须满足以下最低标准。
+
+### 9.1 Skip-Navigation Pattern
+
+**WCAG 2.4.1 Bypass Blocks (Level A)**: 页面提供一种跳过重复内容块的机制。
+
+**实现要求**:
+
+1. `WorkspaceShell` 组件中，**第一个可聚焦元素**必须是一个 visually hidden 的
+   "Skip to content" 链接（`<a href="#main-content">`）。
+2. 该链接在获得焦点时必须变为可见（`focus:visible` 样式），位于左上角。
+3. 目标锚点 `id="main-content"` 必须设置在主内容区域的容器元素上。
+4. Tab 顺序验证：首次 Tab 必须命中 skip link，而非侧边栏导航。
+
+**实现参考**:
+
+```tsx
+// apps/web/src/components/layout/WorkspaceShell.tsx
+<a
+  href="#main-content"
+  className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2
+             focus:z-50 focus:rounded focus:bg-primary focus:px-4 focus:py-2
+             focus:text-primary-foreground focus:outline-none focus:ring-2
+             focus:ring-ring"
+>
+  Skip to content
+</a>
+```
+
+### 9.2 Contract Field Addition
+
+在本文件第 3 节（v5.0 新增字段）中追加以下 PLANNED 字段：
+
+| 字段名 | 类型 | 说明 | introduced_in |
+|---|---|---|---|
+| `a11y_skip_nav` | `boolean` | 前端是否已实现 skip-navigation pattern | phase_5.0-1 |
+
+**Phase 5.0-0 ~ 5.0-0**: 该字段不要求出现。
+**Phase 5.0-1 起**: 前端在 `WorkspaceShell` 中实现 skip link 后，该字段设为 `true`。
+
+### 9.3 5.0-9 Release Gate 关联
+
+Face E（Perf）的 Lighthouse audit 中，"Bypass Blocks" 审计项（`bypass-blocks`）
+必须为 pass。该审计项与 `a11y_min_score >= 90` 的 gate 规则协同工作。

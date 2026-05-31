@@ -60,6 +60,19 @@ def _json(p: Path) -> dict[str, Any]:
 def _glob_sorted(pat: str) -> list[Path]:
     return sorted(Path(x) for x in glob.glob(pat))
 
+def _safe_path(p: Path) -> Path:
+    """Resolve *p* and assert it stays under ``ROOT``.
+
+    Raises ``ValueError`` if the resolved path escapes the project tree.
+    """
+    resolved = p.resolve()
+    if not resolved.is_relative_to(ROOT):
+        raise ValueError(
+            f"Path {p} resolves to {resolved} which is outside ROOT={ROOT}"
+        )
+    return resolved
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -112,6 +125,47 @@ def _evaluate_face_a(audit_glob: str | None = None) -> tuple[bool, dict]:
 # -- Face B: Benchmark ------------------------------------------------------
 # matrix §2 Face B: regression|academic_fail|workflow_fail => BLOCK; rag skipped => experiment-only
 
+_DATE_KEYS = ("generated_at", "timestamp", "run_date")
+
+
+def _latest_benchmark_date(files: list[Path]) -> str | None:
+    """Return the latest ``YYYY-MM-DD`` across *files*.
+
+    For each file, try to parse a date from ``generated_at``, ``timestamp``,
+    or ``run_date`` keys in the JSON.  Fall back to the file's mtime.
+    Returns ``None`` when *files* is empty.
+    """
+    if not files:
+        return None
+    latest: datetime | None = None
+    for f in files:
+        try:
+            data = _json(f)
+        except (json.JSONDecodeError, OSError):
+            data = {}
+        dt_val: datetime | None = None
+        for key in _DATE_KEYS:
+            raw = data.get(key)
+            if raw is not None:
+                try:
+                    dt_val = datetime.fromisoformat(
+                        str(raw).replace("Z", "+00:00")
+                    )
+                    break
+                except (ValueError, TypeError):
+                    continue
+        if dt_val is None:
+            try:
+                dt_val = datetime.fromtimestamp(
+                    f.stat().st_mtime, tz=timezone.utc
+                )
+            except OSError:
+                continue
+        if latest is None or dt_val > latest:
+            latest = dt_val
+    return latest.strftime("%Y-%m-%d") if latest else None
+
+
 def _evaluate_face_b(bench_dir: str | None = None) -> tuple[bool, dict]:
     base = Path(bench_dir) if bench_dir else _BENCH_DIR
     stub: dict[str, Any] = {"academic_run_id": None, "academic_verdict": None,
@@ -138,10 +192,13 @@ def _evaluate_face_b(bench_dir: str | None = None) -> tuple[bool, dict]:
     r_ver = _json(rag[-1]).get("verdict") if rag else None
     regression = any(_json(f).get("regression_flag") is True for f in acad + wf)
 
+    # Extract last_benchmark_date from artifact timestamps.
+    benchmark_date = _latest_benchmark_date(acad + wf + rag)
+
     d: dict[str, Any] = {"academic_run_id": a_id, "academic_verdict": a_ver,
         "workflow_run_id": w_id, "workflow_verdict": w_ver,
         "rag_comparative_verdict": r_ver, "regression_flag": regression,
-        "last_benchmark_date": None}
+        "last_benchmark_date": benchmark_date}
 
     if a_ver is None:
         return _blocked("academic_artifact_missing", d)
@@ -164,14 +221,15 @@ def _evaluate_face_b(bench_dir: str | None = None) -> tuple[bool, dict]:
 
 _EXPECTED_J = 7
 
-def _evaluate_face_c() -> tuple[bool, dict]:
+def _evaluate_face_c(walkthrough_path: str | None = None) -> tuple[bool, dict]:
+    walkthrough = Path(walkthrough_path) if walkthrough_path else _WALKTHROUGH
     stub: dict[str, Any] = {"journey_passed_count": None, "journey_failed_count": None,
         "journey_skipped_count": None, "journey_details": [],
         "last_run_at": None, "playwright_report_path": None}
-    if not _WALKTHROUGH.exists():
+    if not walkthrough.exists():
         return _blocked("input_missing", stub)
 
-    data = _json(_WALKTHROUGH)
+    data = _json(walkthrough)
     p = data.get("journey_passed_count", 0)
     f = data.get("journey_failed_count", 0)
     s = data.get("journey_skipped_count", 0)
@@ -236,6 +294,7 @@ def _evaluate_face_d() -> tuple[bool, dict]:
 def _evaluate_face_e(perf_dir: str | None = None) -> tuple[bool, dict]:
     pdir = Path(perf_dir) if perf_dir else _PERF_DIR
     stub: dict[str, Any] = {"lighthouse_scores": {}, "lighthouse_min_score": None,
+        "a11y_scores": {}, "a11y_min_score": None,
         "bundle_first_screen_kb_gz": None, "bundle_total_main_routes_kb_gz": None,
         "cwv_lcp_ms": None, "cwv_inp_ms": None, "cwv_cls": None,
         "cwv_fcp_ms": None, "cwv_tbt_ms": None, "perf_snapshot_date": None}
@@ -243,6 +302,7 @@ def _evaluate_face_e(perf_dir: str | None = None) -> tuple[bool, dict]:
         return _blocked("input_missing", stub)
 
     scores: dict[str, int] = {}
+    a11y_scores: dict[str, int] = {}
     cwv = {"lcp": 0.0, "inp": 0.0, "cls": 0.0, "fcp": 0.0, "tbt": 0.0}
     snap: str | None = None
 
@@ -251,9 +311,11 @@ def _evaluate_face_e(perf_dir: str | None = None) -> tuple[bool, dict]:
         if not files:
             return _blocked(f"lighthouse_missing_{rid}", {**stub, "lighthouse_scores": scores})
         data = _json(files[-1])
-        cat = data.get("categories", {}).get("performance", {})
-        raw = cat.get("score", 0)
-        scores[rid] = int(raw * 100) if isinstance(raw, float) and raw <= 1 else int(raw)
+        cat = data.get("categories", {})
+        perf_raw = cat.get("performance", {}).get("score", 0)
+        scores[rid] = int(perf_raw * 100) if isinstance(perf_raw, float) and perf_raw <= 1 else int(perf_raw)
+        a11y_raw = cat.get("accessibility", {}).get("score", 0)
+        a11y_scores[rid] = int(a11y_raw * 100) if isinstance(a11y_raw, float) and a11y_raw <= 1 else int(a11y_raw)
         au = data.get("audits", {})
         cwv["lcp"] = max(cwv["lcp"], au.get("largest-contentful-paint", {}).get("numericValue", 0))
         cwv["inp"] = max(cwv["inp"], au.get("interactive", {}).get("numericValue", 0))
@@ -265,6 +327,7 @@ def _evaluate_face_e(perf_dir: str | None = None) -> tuple[bool, dict]:
             snap = ft
 
     mn = min(scores.values())
+    a11y_mn = min(a11y_scores.values()) if a11y_scores else 0
     # Bundle from dist/stats.html
     bf = bg = None
     sp = ROOT / "apps" / "web" / "dist" / "stats.html"
@@ -274,6 +337,7 @@ def _evaluate_face_e(perf_dir: str | None = None) -> tuple[bool, dict]:
             bf, bg = round(nums[0], 1), round(sum(nums), 1)
 
     d: dict[str, Any] = {"lighthouse_scores": scores, "lighthouse_min_score": mn,
+        "a11y_scores": a11y_scores, "a11y_min_score": a11y_mn,
         "bundle_first_screen_kb_gz": bf, "bundle_total_main_routes_kb_gz": bg,
         "cwv_lcp_ms": round(cwv["lcp"], 1), "cwv_inp_ms": round(cwv["inp"], 1),
         "cwv_cls": round(cwv["cls"], 4), "cwv_fcp_ms": round(cwv["fcp"], 1),
@@ -281,6 +345,8 @@ def _evaluate_face_e(perf_dir: str | None = None) -> tuple[bool, dict]:
 
     if mn < 90:
         return _blocked(f"lighthouse_min={mn}<90", d)
+    if a11y_mn < 90:
+        return _blocked(f"a11y_min={a11y_mn}<90", d)
     if bg is not None and bg > 500:
         return _blocked(f"bundle_total={bg}>500KB", d)
     if cwv["lcp"] >= 2500:
@@ -369,10 +435,23 @@ def main() -> int:
     ap.add_argument("--output-md", default=None, help="Markdown report path")
     args = ap.parse_args()
 
+    # Validate all user-supplied path arguments stay under ROOT.
+    try:
+        if args.audit_report:
+            args.audit_report = str(_safe_path(Path(args.audit_report)))
+        if args.benchmark_dir:
+            args.benchmark_dir = str(_safe_path(Path(args.benchmark_dir)))
+        if args.playwright_report:
+            args.playwright_report = str(_safe_path(Path(args.playwright_report)))
+        if args.perf_dir:
+            args.perf_dir = str(_safe_path(Path(args.perf_dir)))
+    except ValueError as exc:
+        ap.error(str(exc))
+
     faces: dict[str, tuple[bool, dict]] = {
         "face_a": _evaluate_face_a(args.audit_report),
         "face_b": _evaluate_face_b(args.benchmark_dir),
-        "face_c": _evaluate_face_c(),
+        "face_c": _evaluate_face_c(args.playwright_report),
         "face_d": _evaluate_face_d(),
         "face_e": _evaluate_face_e(args.perf_dir),
     }

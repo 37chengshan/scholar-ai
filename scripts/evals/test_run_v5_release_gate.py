@@ -338,3 +338,194 @@ class TestFaceD:
 class TestConstants:
     def test_v5_phase_count_is_10(self):
         assert gate._V5_PHASE_COUNT == 10
+
+
+# ---------------------------------------------------------------------------
+# _safe_path helper
+# ---------------------------------------------------------------------------
+
+class TestSafePath:
+    def test_accepts_path_under_root(self, tmp_path: Path):
+        """Paths under ROOT are accepted without error."""
+        child = tmp_path / "sub" / "file.txt"
+        child.parent.mkdir(parents=True, exist_ok=True)
+        child.touch()
+        with patch.object(gate, "ROOT", tmp_path):
+            result = gate._safe_path(child)
+        assert result == child.resolve()
+
+    def test_rejects_path_outside_root(self, tmp_path: Path):
+        """Paths that escape ROOT raise ValueError."""
+        outside = Path("/etc/passwd")
+        with patch.object(gate, "ROOT", tmp_path):
+            with pytest.raises(ValueError, match="outside ROOT"):
+                gate._safe_path(outside)
+
+    def test_rejects_dot_dot_escape(self, tmp_path: Path):
+        """Paths with ../ that escape ROOT raise ValueError."""
+        tricky = tmp_path / ".." / ".." / "etc" / "passwd"
+        with patch.object(gate, "ROOT", tmp_path):
+            with pytest.raises(ValueError, match="outside ROOT"):
+                gate._safe_path(tricky)
+
+
+# ---------------------------------------------------------------------------
+# Face C: walkthrough_path parameter wiring
+# ---------------------------------------------------------------------------
+
+class TestFaceCParam:
+    def test_playwright_report_param_wired(self, tmp_path: Path):
+        """_evaluate_face_c accepts walkthrough_path and reads from it."""
+        summary = tmp_path / "latest_summary.json"
+        summary.write_text(json.dumps({
+            "journey_passed_count": 7,
+            "journey_failed_count": 0,
+            "journey_skipped_count": 0,
+            "journey_details": [],
+            "last_run_at": "2026-05-31T10:00:00Z",
+            "playwright_report_path": "apps/web/playwright-report",
+        }))
+        passed, d = gate._evaluate_face_c(str(summary))
+        assert passed is True
+        assert d["journey_passed_count"] == 7
+
+    def test_default_path_used_when_none(self, tmp_path: Path):
+        """When walkthrough_path is None, the default _WALKTHROUGH is used."""
+        summary = tmp_path / "latest_summary.json"
+        summary.write_text(json.dumps({
+            "journey_passed_count": 7,
+            "journey_failed_count": 0,
+            "journey_skipped_count": 0,
+            "journey_details": [],
+        }))
+        with patch.object(gate, "_WALKTHROUGH", summary):
+            passed, d = gate._evaluate_face_c()
+        assert passed is True
+
+
+# ---------------------------------------------------------------------------
+# Face B: last_benchmark_date population
+# ---------------------------------------------------------------------------
+
+class TestFaceBBenchmarkDate:
+    def test_date_from_generated_at(self, tmp_path: Path):
+        """last_benchmark_date is extracted from generated_at in artifact JSON."""
+        run = tmp_path / "run_001"
+        run.mkdir()
+        acad = run / "academic_bench_001.json"
+        acad.write_text(json.dumps({
+            "run_id": "r1", "verdict": "pass",
+            "generated_at": "2026-05-30T10:00:00Z", "regression_flag": False,
+        }))
+        wf = run / "workflow_bench_001.json"
+        wf.write_text(json.dumps({
+            "run_id": "r2", "verdict": "pass",
+            "generated_at": "2026-05-30T12:00:00Z", "regression_flag": False,
+        }))
+        _, d = gate._evaluate_face_b(str(tmp_path))
+        assert d["last_benchmark_date"] == "2026-05-30"
+
+    def test_date_from_timestamp_key(self, tmp_path: Path):
+        """Falls back to 'timestamp' key when 'generated_at' is absent."""
+        run = tmp_path / "run_001"
+        run.mkdir()
+        acad = run / "academic_bench_001.json"
+        acad.write_text(json.dumps({
+            "run_id": "r1", "verdict": "pass",
+            "timestamp": "2026-04-15T08:00:00Z", "regression_flag": False,
+        }))
+        wf = run / "workflow_bench_001.json"
+        wf.write_text(json.dumps({
+            "run_id": "r2", "verdict": "pass",
+            "timestamp": "2026-04-15T09:00:00Z", "regression_flag": False,
+        }))
+        _, d = gate._evaluate_face_b(str(tmp_path))
+        assert d["last_benchmark_date"] == "2026-04-15"
+
+    def test_date_fallback_to_mtime(self, tmp_path: Path):
+        """Falls back to file mtime when no date key is present."""
+        run = tmp_path / "run_001"
+        run.mkdir()
+        acad = run / "academic_bench_001.json"
+        acad.write_text(json.dumps({
+            "run_id": "r1", "verdict": "pass", "regression_flag": False,
+        }))
+        wf = run / "workflow_bench_001.json"
+        wf.write_text(json.dumps({
+            "run_id": "r2", "verdict": "pass", "regression_flag": False,
+        }))
+        _, d = gate._evaluate_face_b(str(tmp_path))
+        # mtime-based date should be today
+        assert d["last_benchmark_date"] is not None
+        assert len(d["last_benchmark_date"]) == 10  # YYYY-MM-DD
+
+    def test_none_when_no_artifacts(self, tmp_path: Path):
+        """Returns None when no artifact files exist."""
+        run = tmp_path / "run_001"
+        run.mkdir()
+        _, d = gate._evaluate_face_b(str(tmp_path))
+        assert d["last_benchmark_date"] is None
+
+
+# ---------------------------------------------------------------------------
+# Face E: a11y score gate
+# ---------------------------------------------------------------------------
+
+def _make_lighthouse_json(perf_score: float = 0.95, a11y_score: float = 0.95,
+                          lcp: float = 1800, inp: float = 100, cls: float = 0.02,
+                          fcp: float = 1200, tbt: float = 150) -> str:
+    """Return a minimal Lighthouse JSON string."""
+    return json.dumps({
+        "categories": {
+            "performance": {"score": perf_score},
+            "accessibility": {"score": a11y_score},
+        },
+        "audits": {
+            "largest-contentful-paint": {"numericValue": lcp},
+            "interactive": {"numericValue": inp},
+            "cumulative-layout-shift": {"numericValue": cls},
+            "first-contentful-paint": {"numericValue": fcp},
+            "total-blocking-time": {"numericValue": tbt},
+        },
+        "fetchTime": "2026-05-31T10:00:00Z",
+    })
+
+
+class TestFaceEA11y:
+    def _setup_perf_dir(self, tmp_path: Path, perf: float = 0.95,
+                        a11y: float = 0.95) -> Path:
+        pdir = tmp_path / "perf"
+        pdir.mkdir()
+        for rid in gate._ROUTES:
+            f = pdir / f"lighthouse-{rid}.json"
+            f.write_text(_make_lighthouse_json(perf_score=perf, a11y_score=a11y))
+        return pdir
+
+    def test_a11y_scores_in_output(self, tmp_path: Path):
+        """Face E output includes a11y_scores and a11y_min_score."""
+        pdir = self._setup_perf_dir(tmp_path, a11y=0.92)
+        _, d = gate._evaluate_face_e(str(pdir))
+        assert "a11y_scores" in d
+        assert "a11y_min_score" in d
+        assert d["a11y_min_score"] == 92
+
+    def test_blocked_when_a11y_below_90(self, tmp_path: Path):
+        """Face E blocks when a11y_min_score < 90."""
+        pdir = self._setup_perf_dir(tmp_path, perf=0.95, a11y=0.85)
+        passed, d = gate._evaluate_face_e(str(pdir))
+        assert passed is False
+        assert "a11y_min=85<90" in d["block_reason"]
+
+    def test_pass_when_a11y_at_90(self, tmp_path: Path):
+        """Face E passes when a11y_min_score is exactly 90."""
+        pdir = self._setup_perf_dir(tmp_path, a11y=0.90)
+        passed, d = gate._evaluate_face_e(str(pdir))
+        assert passed is True
+        assert d["a11y_min_score"] == 90
+
+    def test_perf_blocked_before_a11y(self, tmp_path: Path):
+        """Performance block takes priority over a11y block (checked first)."""
+        pdir = self._setup_perf_dir(tmp_path, perf=0.80, a11y=0.85)
+        passed, d = gate._evaluate_face_e(str(pdir))
+        assert passed is False
+        assert "lighthouse_min=80<90" in d["block_reason"]

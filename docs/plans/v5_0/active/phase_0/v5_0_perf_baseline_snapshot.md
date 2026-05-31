@@ -180,3 +180,70 @@ phase 5.0-2 的第一个 deliverable 必须是 **"接入 visualizer 跑出真实
 ## 10. 关键风险一句话
 
 > 当前 Vite 配置零优化 + pdfjs-dist 进入首屏 + 无 virtualization + Google Fonts @import 阻塞,**预计未做优化前任何路由 Lighthouse 分数都不会超过 70**。phase 5.0-2 必须把这条曲线整体抬起来,不然 5.0-4/5.0-5/5.0-6 的视觉优化只会增加体积。
+
+---
+
+## 11. 5.0-2 Input: Vite Optimization Scope
+
+> 本节为 Phase 5.0-2 提供**可度量的验收标准**。5.0-2 完成后必须逐项打勾，未达标项不允许写 closeout-complete。
+
+### 11.1 manualChunks 分包策略
+
+**目标**: 将大依赖隔离为独立 chunk，避免首屏加载不需要的代码。
+
+| chunk 名 | 包含依赖 | 验收标准 |
+|---|---|---|
+| `vendor-pdf` | `pdfjs-dist`, `react-pdf` | 仅 `/read` 路由加载；首屏 entry 不含此 chunk |
+| `vendor-tiptap` | `@tiptap/*` 全部 | 仅 `/kb` (notes) 路由加载；首屏 entry 不含此 chunk |
+| `vendor-radix` | `@radix-ui/*` 全部 | 独立 chunk；gzip ≤ 80 KB |
+| `vendor-motion` | `framer-motion` / `motion` | 独立 chunk；gzip ≤ 30 KB |
+
+**全局约束**: 单个 chunk gzip 后不超过 200 KB。
+
+**实现参考**:
+
+```ts
+// apps/web/vite.config.ts
+build: {
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        'vendor-pdf': ['pdfjs-dist', 'react-pdf'],
+        'vendor-tiptap': [/* all @tiptap/* packages */],
+        'vendor-radix': [/* all @radix-ui/* packages */],
+        'vendor-motion': ['framer-motion'],
+      },
+    },
+  },
+},
+```
+
+### 11.2 字体加载策略
+
+**目标**: 消除 Google Fonts `@import` 对首屏的渲染阻塞。
+
+| 项目 | 当前状态 | 5.0-2 目标 |
+|---|---|---|
+| 字体来源 | Google Fonts CDN `@import`（阻塞） | `@fontsource/inter` 自托管 subset |
+| `font-display` | 未设置 | `swap`（FOIT → FOUT） |
+| preload | 无 | `<link rel="preload">` 仅 primary weight (400) |
+| 字体格式 | woff2 via CDN | 本地 woff2 subset（latin + latin-ext） |
+
+**验收标准**:
+1. `apps/web/src` 中无 `@import url(...fonts.googleapis.com...)` 或 `<link href="...fonts.googleapis.com...">`
+2. `@fontsource/inter` 在 `package.json` 中且 `node_modules/@fontsource/inter` 存在
+3. `font-display: swap` 在字体 CSS 中声明
+4. Lighthouse "Eliminate render-blocking resources" 不再因字体报 warning
+
+### 11.3 Bundle Visualizer 集成
+
+**目标**: 每次 `npm run build` 自动生成 chunk 分布报告，作为后续优化的数据源。
+
+| 项 | 验收标准 |
+|---|---|
+| 依赖安装 | `rollup-plugin-visualizer` 在 `devDependencies` 中 |
+| Vite 配置 | `visualizer()` plugin 已注册，`open: false`（CI 不弹浏览器） |
+| 产物路径 | `apps/web/dist/stats.html` 在每次 `npm run build` 后自动生成 |
+| CI 集成 | build 脚本不因 visualizer 报错（plugin 异常时 graceful skip） |
+
+**deferred to 5.0-2**: 本 baseline 第 4 节的 CWV 预测值均为静态估计，5.0-2 必须用真实 Lighthouse 测量替换。

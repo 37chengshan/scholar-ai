@@ -18,11 +18,26 @@ ScholarAI v5.0 是 v4.x 之后的全面重启迭代版本。它把 v4.0 残留 p
 3. v5.0 任何 phase 文档在没有对应 closeout report + walkthrough 证据前,**不允许写成 release-candidate 或 release-pass**。
 4. v5.0 在 `feat/v5-0-foundation` 等正式分支落地前,所有材料只作为版本骨架预热使用。
 
+## Phase Status
+
+| Phase | 名称 | 状态 | 完成日期 | closeout report |
+|---|---|---|---|---|
+| 5.0-0 | Foundation | done | 2026-05-31 | `reports/2026-05-31_v5_0_phase_foundation_closeout.md` |
+| 5.0-1 | Design Tokens + WorkspaceShell v2 | not-started | - | - |
+| 5.0-2 | WorkspaceShell v2 + Performance | not-started | - | - |
+| 5.0-3 | 主链精修: Search + Import + KB | not-started | - | - |
+| 5.0-4 | 主链精修: Read + Notes | not-started | - | - |
+| 5.0-5 | 主链精修: Chat + Compare | not-started | - | - |
+| 5.0-6 | 主链精修: Review + Dashboard | not-started | - | - |
+| 5.0-7 | 后端 Pipeline 稳定性 + Runtime Contract | not-started | - | - |
+| 5.0-8 | RAG SOTA: RAPTOR-lite + Graph + Verifier | not-started | - | - |
+| 5.0-9 | Release Gate (consolidated gate 最终执行) | not-started | - | - |
+
 ## First-Wave Entry Points (2026-05-31)
 
 1. `active/overview/2026-05-31_v5_0_research_decision_note.md`
 2. `active/overview/27_v5_0_overview_plan.md`
-3. `active/phase_0/README.md` (phase 0 启动占位)
+3. `active/phase_0/README.md` (phase 0 已 closeout)
 4. `search/README.md`
 5. `reports/README.md`
 6. `complete/README.md`

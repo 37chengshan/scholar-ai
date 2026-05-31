@@ -1,7 +1,7 @@
 # v5.0 Release Gate Report -- 2026-05-31
 
 ## Verdict: BLOCKED
-> gate_version: `5.0-0`  |  generated_at: `2026-05-31T09:03:13Z`
+> gate_version: `5.0-0`  |  generated_at: `2026-05-31T12:44:25Z`
 
 ## Face Results
 
@@ -56,7 +56,7 @@ Status: **BLOCK**
 - `governance`: true
 - `runtime_hygiene`: true
 - `all_phases_closeout`: false
-- `governance_check_timestamp`: "2026-05-31T09:03:13Z"
+- `governance_check_timestamp`: "2026-05-31T12:44:25Z"
 
 ## Face E -- Perf
 
@@ -64,6 +64,8 @@ Status: **BLOCK**
 
 - `lighthouse_scores`: {}
 - `lighthouse_min_score`: null
+- `a11y_scores`: {}
+- `a11y_min_score`: null
 - `bundle_first_screen_kb_gz`: null
 - `bundle_total_main_routes_kb_gz`: null
 - `cwv_lcp_ms`: null

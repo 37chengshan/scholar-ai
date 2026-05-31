@@ -256,7 +256,9 @@ gate runner 读取 4 个主路由的最新 Lighthouse JSON，并解析 `dist/sta
 | 字段名 | 类型 | 说明 |
 |---|---|---|
 | `lighthouse_scores` | object | `{route_id: score}` 各路由 Lighthouse performance 分（0–100） |
-| `lighthouse_min_score` | integer | 4 路由中最低分 |
+| `lighthouse_min_score` | integer | 4 路由中最低 performance 分 |
+| `a11y_scores` | object | `{route_id: score}` 各路由 Lighthouse accessibility 分（0–100） |
+| `a11y_min_score` | integer | 4 路由中最低 accessibility 分；来源：`categories.accessibility.score` |
 | `bundle_first_screen_kb_gz` | float | 首屏（entry chunk + critical CSS）gzip 后体积（KB） |
 | `bundle_total_main_routes_kb_gz` | float | 首屏 + 4 个主链路由总下载量 gzip 后（KB） |
 | `cwv_lcp_ms` | float | LCP（毫秒），取 4 路由最大值 |
@@ -270,12 +272,16 @@ gate runner 读取 4 个主路由的最新 Lighthouse JSON，并解析 `dist/sta
 
 ```
 PASS  ⟺  lighthouse_min_score >= 90
+        AND a11y_min_score >= 90
         AND bundle_total_main_routes_kb_gz <= 500
         AND cwv_lcp_ms < 2500
         AND cwv_inp_ms < 200
         AND cwv_cls < 0.05
 BLOCK ⟺  任意一项不满足
 ```
+
+a11y 分数读取自同一份 Lighthouse JSON 的 `categories.accessibility.score`
+字段，与 performance 分数同源。
 
 `cwv_fcp_ms` 与 `cwv_tbt_ms` 写入报告，不参与 PASS/BLOCK 判定，仅作为回归
 预警信号（超过 1500ms / 200ms 时在报告中标 ⚠️）。
@@ -326,7 +332,7 @@ gate runner 每次执行产出两份产物：
     "face_b": { "academic_run_id": "...", "academic_verdict": "pass", "workflow_run_id": "...", "workflow_verdict": "pass", "rag_comparative_verdict": "pass", "regression_flag": false, "last_benchmark_date": "...", "pass": true },
     "face_c": { "journey_passed_count": 7, "journey_failed_count": 0, "journey_skipped_count": 0, "journey_details": [...], "last_run_at": "...", "playwright_report_path": "...", "pass": true },
     "face_d": { "doc_governance": true, "plan_governance": true, "phase_tracking": true, "governance": true, "runtime_hygiene": true, "all_phases_closeout": true, "governance_check_timestamp": "...", "pass": true },
-    "face_e": { "lighthouse_scores": { "route_landing": 92, "route_kb": 91, "route_read": 90, "route_chat": 90 }, "lighthouse_min_score": 90, "bundle_first_screen_kb_gz": 76.4, "bundle_total_main_routes_kb_gz": 482.1, "cwv_lcp_ms": 2180, "cwv_inp_ms": 145, "cwv_cls": 0.03, "cwv_fcp_ms": 1320, "cwv_tbt_ms": 178, "perf_snapshot_date": "...", "pass": true }
+    "face_e": { "lighthouse_scores": { "route_landing": 92, "route_kb": 91, "route_read": 90, "route_chat": 90 }, "lighthouse_min_score": 90, "a11y_scores": { "route_landing": 95, "route_kb": 93, "route_read": 92, "route_chat": 91 }, "a11y_min_score": 91, "bundle_first_screen_kb_gz": 76.4, "bundle_total_main_routes_kb_gz": 482.1, "cwv_lcp_ms": 2180, "cwv_inp_ms": 145, "cwv_cls": 0.03, "cwv_fcp_ms": 1320, "cwv_tbt_ms": 178, "perf_snapshot_date": "...", "pass": true }
   },
   "block_reasons": [],
   "downgrade_reasons": []

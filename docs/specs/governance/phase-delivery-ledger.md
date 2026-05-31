@@ -86,6 +86,7 @@
 | DU-20260531-005 | V5.0-0-W4 | product-engineering | working-tree-v5-0-kickoff | scripts/evals/run_v5_release_gate.py | python3 scripts/evals/run_v5_release_gate.py --help | docs/specs/governance/phase-delivery-ledger.md | done | high | - | 2026-05-31 |
 | DU-20260531-006 | V5.0-0-W5 | product-engineering | working-tree-v5-0-kickoff | docs/plans/v5_0/reports/phase_0/2026-05-31_v5_0_phase_0_audit_baseline.md | bash scripts/check-doc-governance.sh | docs/specs/governance/phase-delivery-ledger.md | done | high | - | 2026-05-31 |
 | DU-20260531-007 | V5.0-0-GOVERNANCE | product-engineering | working-tree-v5-0-governance-backfill | docs/plans/PLAN_STATUS.md,docs/specs/governance/phase-delivery-ledger.md | bash scripts/check-plan-governance.sh,bash scripts/check-phase-tracking.sh,bash scripts/check-governance.sh | docs/specs/governance/phase-delivery-ledger.md | done | high | - | 2026-05-31 |
+| DU-20260531-008 | V5.0-0-VERIFY | product-engineering | working-tree-v5-0-kickoff | scripts/evals/run_v5_release_gate.py,scripts/evals/test_run_v5_release_gate.py,docs/plans/v5_0/active/phase_0/v5_0_gate_input_matrix.md,docs/plans/v5_0/active/phase_0/v5_0_perf_baseline_snapshot.md,docs/plans/v5_0/active/phase_0/v5_0_runtime_contract_freeze.md | python3 -m pytest scripts/evals/test_run_v5_release_gate.py -q (34/34 pass),bash scripts/check-doc-governance.sh,bash scripts/check-plan-governance.sh | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_foundation_closeout.md | done | medium | - | 2026-05-31 |
 
 ## Required Updates
 
