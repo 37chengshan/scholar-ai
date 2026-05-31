@@ -1,6 +1,6 @@
 ---
 owner: product-engineering
-status: draft
+status: frozen
 depends_on:
   - 27_v5_0_overview_plan.md
   - docs/plans/PLAN_STATUS.md
@@ -18,7 +18,7 @@ evidence_commits:
 # v5.0 v4.x Migration Inventory
 
 > 日期: 2026-05-31
-> 状态: draft
+> 状态: frozen
 > 上游: `docs/plans/v5_0/active/overview/27_v5_0_overview_plan.md` 第 3 节
 
 ## 0. 文档作用

@@ -1,6 +1,6 @@
 # 计划状态总览
 
-最后更新：2026-05-11
+最后更新：2026-05-31
 
 ## 使用规则
 
@@ -52,11 +52,26 @@
 | 0 | product-engineering | closeout-complete / readiness-conditional | 2026-05-02 | docs/plans/v4_0/active/phase_0/19_v4_0_phase_0_execution_plan.md | Phase 0 已完成：研究文档、执行计划、closeout 报告、Beta asset inventory 与治理台账已回填；Phase 4.0-1 允许进入研究/契约设计，但仍禁止把当前状态写成 Beta-ready 或 full-chain release-pass |
 | 1 | product-engineering | closeout-complete / first-wave-shipped | 2026-05-02 | docs/plans/v4_0/active/phase_1/20_v4_0_phase_1_execution_plan.md | A 主线第一波已完成：durable handoff、workflow shell continuity、Dashboard command center continuity 与 artifact / return-path 首批闭环已落地；Beta-ready、视觉精修与更深 workflow truth 升级仍留后续 phase |
 | 2 | product-engineering | closeout-complete / controlled-beta-ready | 2026-05-08 | docs/plans/v4_0/active/phase_2/21_v4_0_phase_2_execution_plan.md | C 主线：Beta Release Hardening；2026-05-04 的原始 closeout 已确认 `demo-ready`，随后 2026-05-08 补齐 controlled release gate：受控访问边界、真实 feedback triage queue、rollback/pause 规则均已回填到 repo truth。当前可宣称 `local controlled-beta-ready`，但仍不宣称 staging/cloud、public beta、production-ready 或 release-pass |
-| 3 | product-engineering | execution-plan-complete / code-and-evidence-required | 2026-05-08 | docs/plans/v4_0/active/phase_3/22_v4_0_phase_3_execution_plan.md | A+C 交叉：Citation-backed Review Artifacts；研究文档与执行计划都已落地，当前进入代码收口与验证证据补齐阶段，不能写成阶段完成 |
+| 3 | product-engineering | superseded-by-v5.0-3 | 2026-05-08 | docs/plans/v4_0/active/phase_3/22_v4_0_phase_3_execution_plan.md | A+C 交叉：Citation-backed Review Artifacts；artifact contract closeout 迁入 5.0-5/5.0-6/5.0-9 |
 | 4 | web-platform | closeout-complete / scope-limited | 2026-05-11 | docs/plans/v4_0/active/phase_4/23_v4_0_phase_4_execution_plan.md | 前端打磨 phase 1：Frontend Experience Craft 已完成 closeout，范围限定为 workspace shell、状态系统、typography/density 与主链页面拆分；Phase 4.0-3（artifact contract closeout）仍为 in-progress，本阶段不宣称其完成 |
-| 5 | web-platform | execution-plan-complete / implementation-in-progress | 2026-05-11 | docs/plans/v4_0/active/phase_5/24_v4_0_phase_5_execution_plan.md | 前端打磨 phase 2：Frontend Interaction Quality 首批起步切片已合并，包含 link-first navigation、非 hover-only 核心动作与 KB workspace 主动作语义化跳转；完整 walkthrough/test gate 与更广响应式收口仍待后续 wave |
+| 5 | web-platform | superseded-by-v5.0-4 | 2026-05-11 | docs/plans/v4_0/active/phase_5/24_v4_0_phase_5_execution_plan.md | 前端打磨 phase 2：interaction quality 残留迁入 5.0-1/5.0-2/5.0-4/5.0-5/5.0-9 |
 | 6 | ai-runtime | implementation-in-progress / runtime-contract-extended | 2026-05-12 | docs/plans/v4_0/active/phase_6/24_v4_0_phase_6_execution_plan.md | B 优化 phase：已从首批 evidence/recovery action contract 继续推进到统一 phase6_runtime contract，RAG / Compare / Review / agentic retrieval 现已共享 confidence、degraded、corrective、fallback 与 recovery 语义；RAPTOR-lite 深扩、review-only graph/global synthesis comparative 证据与 Phase 7 verdict 仍待后续 wave |
-| 7 | ai-platform | execution-complete / blocked | 2026-05-12 | docs/plans/v4_0/active/phase_7/25_v4_0_phase_7_execution_plan.md | B 测试 phase：Testing and Evaluation Gate 已正式落地 gate runner、首轮 gate result 与 gate report；当前真实 verdict 为 `blocked`，阻断点是 Phase 5 仍处于 implementation-in-progress、Phase 6 仍处于 runtime-contract-extended，故不得写成 `experiment-only` 或 `release-pass` |
+| 7 | ai-platform | superseded-by-v5.0-9 | 2026-05-12 | docs/plans/v4_0/active/phase_7/25_v4_0_phase_7_execution_plan.md | B 测试 phase：gate runner 升级到 5.0-9 consolidated release gate，verdict 逻辑继承 |
+
+## v5.0 方向面板
+
+| phase | owner | closeout_status | last_verified_at | truth_doc | notes |
+|---|---|---|---|---|---|
+| 0 | product-engineering | closeout-complete / all-deliverables-verified | 2026-05-31 | docs/plans/v5_0/active/phase_0/26_v5_0_phase_0_execution_plan.md | Foundation: 治理切换 + v4.x 迁移 + Audit Baseline；7 deliverable 全部完成，gate runner dry run verdict=blocked 符合预期 |
+| 1 | web-platform | not-started | - | - | 设计系统 v2 (Design Tokens + WorkspaceShell v2) |
+| 2 | web-platform | not-started | - | - | WorkspaceShell v2 + Performance (动态 baseline + Lighthouse CI) |
+| 3 | web-platform | not-started | - | - | 主链精修: Search + Import + KB |
+| 4 | web-platform | not-started | - | - | 主链精修: Read + Notes |
+| 5 | web-platform | not-started | - | - | 主链精修: Chat + Compare |
+| 6 | web-platform | not-started | - | - | 主链精修: Review + Dashboard |
+| 7 | ai-runtime | not-started | - | - | 后端 Pipeline 稳定性 + Runtime Contract 落地 |
+| 8 | ai-runtime | not-started | - | - | RAG SOTA: RAPTOR-lite + Graph + Verifier |
+| 9 | product-engineering | not-started | - | - | Release Gate (consolidated gate 最终执行) |
 
 ## 活跃计划面板
 

@@ -39,6 +39,10 @@ _GOVERNANCE_CHECKS: dict[str, tuple[str, ...]] = {
 _REQUIRED_DIMS = {"frontend", "backend", "rag", "governance", "perf"}
 _ROUTES = {"route_landing": "/", "route_kb": "/kb", "route_read": "/read", "route_chat": "/chat"}
 
+# Number of phases in v5.0 overview plan (phases 0-9).
+# Source: docs/plans/v5_0/active/overview/
+_V5_PHASE_COUNT = 10
+
 RELEASE_PASS = "release-pass"
 EXPERIMENT_ONLY = "experiment-only"
 BLOCKED = "blocked"
@@ -63,12 +67,10 @@ def _today() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 def _blocked(reason: str, d: dict) -> tuple[bool, dict]:
-    d["pass"] = False; d["block_reason"] = reason
-    return False, d
+    return False, {**d, "pass": False, "block_reason": reason}
 
 def _ok(d: dict) -> tuple[bool, dict]:
-    d["pass"] = True
-    return True, d
+    return True, {**d, "pass": True}
 
 
 # -- Face A: Audit ----------------------------------------------------------
@@ -196,10 +198,28 @@ def _run_script(cmd: tuple[str, ...]) -> bool:
         return False
 
 def _phases_closed() -> bool:
+    """Check that all v5.0 phases are closed-out in PLAN_STATUS.md.
+
+    The v5.0 panel uses bare phase numbers (| 0 |, | 1 |, ...) without a
+    ``5.0-`` prefix.  We extract the v5.0 section first to avoid false
+    matches from other panels, then look for each phase row whose status
+    contains ``done`` or ``closeout-complete`` (excluding ``not-started``).
+    """
     if not _PLAN_STATUS.exists():
         return False
     text = _read(_PLAN_STATUS)
-    return all(re.search(rf"5\.0-{n}\b.*\bdone\b", text, re.I) for n in range(10))
+    m = re.search(r"## v5\.0.*?(?=\n## |\Z)", text, re.DOTALL)
+    if not m:
+        return False
+    section = m.group(0)
+    return all(
+        re.search(
+            rf"\| {n} \|.*?(?:(?!not-started)(?:done|closeout-complete))",
+            section,
+            re.DOTALL,
+        )
+        for n in range(_V5_PHASE_COUNT)
+    )
 
 def _evaluate_face_d() -> tuple[bool, dict]:
     checks = {k: _run_script(v) for k, v in _GOVERNANCE_CHECKS.items()}

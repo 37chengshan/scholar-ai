@@ -139,7 +139,18 @@ const PROJECT_CONTEXT = `ScholarAI 是一个学术论文智能阅读系统。
 
 function phaseDir(slug) { return `docs/plans/v5_0/active/phase_${slug}` }
 function reportDir() { return 'docs/plans/v5_0/reports' }
-function today() { return new Date().toISOString().split('T')[0] }
+// 注意：Date.now() / new Date() 在 Workflow 脚本中不可用（会破坏 resume）
+// 通过 args 传入日期，或使用固定日期
+function today() {
+  try {
+    if (typeof args !== 'undefined' && args?.date) {
+      return args.date
+    }
+  } catch (e) {
+    // 忽略
+  }
+  return '2026-05-31'  // 固定日期，实际运行时通过 args.date 传入
+}
 
 /** 截断字符串，保留首尾（1M 上下文，40-59% 使用率 ≈ 400K-590K tokens） */
 function truncate(str, maxLen = 30000) {

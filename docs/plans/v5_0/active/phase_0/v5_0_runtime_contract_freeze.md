@@ -1,6 +1,6 @@
 ---
 owner: product-engineering
-status: freeze-draft
+status: frozen
 version: v5.0
 date: 2026-05-31
 depends_on:

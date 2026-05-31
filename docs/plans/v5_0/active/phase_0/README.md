@@ -33,14 +33,16 @@ Phase 5.0-0 是 v5.0 的启动期 — **Foundation & v4.x 维护态切换**。
 | migration inventory vs PLAN_STATUS | ✅ 状态一致 |
 | perf baseline 数据 spot check | ✅ 3.2MB/536KB/36MB 与实测一致 |
 
-## 已完成的治理动作
+## 治理回填状态
 
-1. PLAN_STATUS: v4.0 phase_3/5/7 已标 `superseded-by-v5.0`
-2. PLAN_STATUS: v5.0 面板已新增，phase_0 已标 `closeout-complete`
-3. PLAN_STATUS: 活跃计划面板已新增 v5.0 全部 deliverable (10 条)
-4. phase-delivery-ledger: DU-20260530-001~006 已标 `superseded`
-5. phase-delivery-ledger: DU-20260531-001~010 已新增 (v5.0 deliverable units)
-6. gate runner 已从 run_v4_phase7_gate.py 升级为 run_v5_release_gate.py
+| # | 动作 | 状态 | 说明 |
+|---|---|---|---|
+| 1 | PLAN_STATUS: v5.0 面板新增 | done | 10 条 phase 条目已写入 |
+| 2 | PLAN_STATUS: v4.0 phase_3/5/7 标 superseded | done | superseded-by-v5.0-{3,4,9} |
+| 3 | phase-delivery-ledger: v5.0 DU 条目 | done | DU-20260531-001~007 |
+| 4 | Runtime Contract status -> frozen | done | freeze-draft -> frozen |
+| 5 | Migration Inventory status -> frozen | done | draft -> frozen |
+| 6 | Gate runner regex 兼容 closeout-complete | done | 正则已扩展 |
 
 ## 当前边界
 
