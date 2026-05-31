@@ -100,6 +100,7 @@ build/
 .dockerignore
 
 # Misc
+*.backup
 *.bak
 *.cache
 .tmp_pr_body*
