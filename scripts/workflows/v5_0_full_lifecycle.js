@@ -29,8 +29,31 @@ const CODE_MODEL = 'sonnet'      // 代码生成、审查、执行
 const LIGHT_MODEL = 'haiku'      // 简单任务、文档更新、提交
 
 // 安全获取 args（workflow 运行时注入的全局变量）
-const _args = typeof args !== 'undefined' ? args : {}
-const SKIP_PHASES = _args.skipPhases || []
+// 注意：args 是 Workflow 工具注入的全局变量，如果未传入则为 undefined
+let SKIP_PHASES = []
+try {
+  // 调试：输出 args 的类型和值
+  log(`[DEBUG] args type: ${typeof args}, value: ${JSON.stringify(args)}`)
+  if (typeof args !== 'undefined' && args && args.skipPhases) {
+    SKIP_PHASES = args.skipPhases
+    log(`[DEBUG] SKIP_PHASES from args: ${JSON.stringify(SKIP_PHASES)}`)
+  } else {
+    log(`[DEBUG] args.skipPhases not found, using empty array`)
+  }
+} catch (e) {
+  log(`[DEBUG] args error: ${e.message}`)
+}
+// 也支持从环境变量读取（备用方案）
+if (SKIP_PHASES.length === 0 && typeof process !== 'undefined' && process.env?.SKIP_PHASES) {
+  try {
+    SKIP_PHASES = JSON.parse(process.env.SKIP_PHASES)
+    log(`[DEBUG] SKIP_PHASES from env: ${JSON.stringify(SKIP_PHASES)}`)
+  } catch (e) {
+    SKIP_PHASES = process.env.SKIP_PHASES.split(',')
+    log(`[DEBUG] SKIP_PHASES from env (split): ${JSON.stringify(SKIP_PHASES)}`)
+  }
+}
+log(`[DEBUG] Final SKIP_PHASES: ${JSON.stringify(SKIP_PHASES)}`)
 
 // 文档路径
 const DOCS = {
