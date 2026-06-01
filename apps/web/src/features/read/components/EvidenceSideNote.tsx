@@ -1,6 +1,8 @@
 import type { EvidenceBlockDto } from '@scholar-ai/types';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { normalizeEvidenceText } from '@/features/notes/content';
+import { useTextMeasure, useElementWidth } from '@/lib/text-layout/react';
+import { DEFAULT_TEXT_FONT } from '@/lib/text-layout/font';
 
 interface EvidenceSideNoteProps {
   source: string;
@@ -25,6 +27,17 @@ export function EvidenceSideNote({
 }: EvidenceSideNoteProps) {
   const { language } = useLanguage();
   const isZh = language === 'zh';
+  const { width: containerWidth, setElement } = useElementWidth<HTMLDivElement>(280);
+
+  // Measure 4 lines worth of height for accurate truncation
+  const fourLineHeight = useTextMeasure(
+    previewText || '',
+    containerWidth,
+    { ...DEFAULT_TEXT_FONT, size: 12, lineHeight: 18 },
+  ).lineCount > 4
+    ? 4 * 18
+    : undefined;
+
   const evidenceSectionLabel = evidence?.section_path?.trim()
     ? evidence.section_path
     : (isZh ? '正文片段' : 'Document excerpt');
@@ -34,7 +47,10 @@ export function EvidenceSideNote({
   }
 
   return (
-    <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs">
+    <div
+      ref={setElement}
+      className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs"
+    >
       <div className="font-semibold text-foreground/90">
         {isZh ? '证据侧注' : 'Evidence note'}
       </div>
@@ -52,7 +68,12 @@ export function EvidenceSideNote({
         {page}
       </div>
       {previewText ? (
-        <p className="mt-2 line-clamp-4 text-foreground/90">{normalizeEvidenceText(previewText)}</p>
+        <p
+          className="mt-2 line-clamp-4 overflow-hidden text-foreground/90"
+          style={fourLineHeight ? { maxHeight: fourLineHeight } : undefined}
+        >
+          {normalizeEvidenceText(previewText)}
+        </p>
       ) : null}
       {evidence ? (
         <button

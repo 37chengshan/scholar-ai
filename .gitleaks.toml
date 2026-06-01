@@ -1,0 +1,119 @@
+# Gitleaks configuration for ScholarAI
+# https://github.com/gitleaks/gitleaks
+
+title = "ScholarAI Gitleaks Configuration"
+
+[allowlist]
+  description = "Global Allowlist"
+
+  # Ignore test files and examples
+  paths = [
+    '''test''',
+    '''tests''',
+    '''__tests__''',
+    '''*.test.*''',
+    '''*.spec.*''',
+    '''example''',
+    '''examples''',
+    '''node_modules''',
+    '''vendor''',
+    '''dist''',
+    '''build''',
+    '''.venv''',
+    '''venv''',
+    '''__pycache__''',
+    '''*.md''',
+    '''*.txt''',
+    '''*.json''',
+    '''*.lock''',
+  ]
+
+  # Ignore known false positives
+  regexTarget = "match"
+  regexes = [
+    # Test API keys
+    '''sk-test''',
+    '''sk-ant-test''',
+    '''sk-zhipu-test''',
+    '''test-secret-key''',
+    '''test-public-key''',
+    '''test-private-key''',
+    # Placeholder values
+    '''your-.*-here''',
+    '''replace-with''',
+    '''example\.com''',
+    '''localhost''',
+    # Documentation
+    '''Bearer token''',
+    '''API key''',
+  ]
+
+[rules]
+  # API Keys
+  [[rules]]
+    id = "api-key"
+    description = "API Key"
+    regex = '''(?i)(api[_-]?key|apikey)\s*[:=]\s*['"]?([a-zA-Z0-9]{20,})['"]?'''
+    tags = ["api", "key"]
+
+  # AWS Keys
+  [[rules]]
+    id = "aws-access-key"
+    description = "AWS Access Key"
+    regex = '''(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+    tags = ["aws", "key"]
+
+  [[rules]]
+    id = "aws-secret-key"
+    description = "AWS Secret Key"
+    regex = '''(?i)aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*['"]?([a-zA-Z0-9/+=]{40})['"]?'''
+    tags = ["aws", "secret"]
+
+  # GitHub Tokens
+  [[rules]]
+    id = "github-token"
+    description = "GitHub Token"
+    regex = '''(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}'''
+    tags = ["github", "token"]
+
+  # Generic Secrets
+  [[rules]]
+    id = "generic-secret"
+    description = "Generic Secret"
+    regex = '''(?i)(secret|password|passwd|pwd|token)\s*[:=]\s*['"]?([a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]{8,})['"]?'''
+    tags = ["generic", "secret"]
+
+  # Private Keys
+  [[rules]]
+    id = "private-key"
+    description = "Private Key"
+    regex = '''-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'''
+    tags = ["private", "key"]
+
+  # JWT Tokens
+  [[rules]]
+    id = "jwt-token"
+    description = "JWT Token"
+    regex = '''eyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+'''
+    tags = ["jwt", "token"]
+
+  # Database Connection Strings
+  [[rules]]
+    id = "database-url"
+    description = "Database Connection String"
+    regex = '''(?i)(postgres|mysql|mongodb|redis):\/\/[^\s]+'''
+    tags = ["database", "connection"]
+
+  # OpenAI API Keys
+  [[rules]]
+    id = "openai-key"
+    description = "OpenAI API Key"
+    regex = '''sk-[A-Za-z0-9]{20,}'''
+    tags = ["openai", "key"]
+
+  # Anthropic API Keys
+  [[rules]]
+    id = "anthropic-key"
+    description = "Anthropic API Key"
+    regex = '''sk-ant-[A-Za-z0-9]{20,}'''
+    tags = ["anthropic", "key"]

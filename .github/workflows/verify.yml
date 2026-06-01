@@ -187,11 +187,46 @@ jobs:
           .venv/bin/python -m pytest -q tests/unit/test_services.py --maxfail=1
           .venv/bin/python -m pytest -q tests/integration/test_imports_chat_contract.py --maxfail=1
 
+  security:
+    name: Security Quick Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: pip install bandit pip-audit
+
+      - name: Run Bandit on API
+        working-directory: apps/api
+        run: |
+          bandit -r app/ -ll -ii --skip B101,B311 || true
+
+      - name: Check Python dependencies
+        working-directory: apps/api
+        run: |
+          pip-audit -r requirements.txt --strict --desc || true
+
+      - name: Run npm audit (web)
+        working-directory: apps/web
+        run: |
+          npm audit --audit-level=high || true
+
+      - name: Run npm audit (root)
+        run: |
+          npm audit --audit-level=high || true
+
   verify-summary:
     name: Verify Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [governance, web, packages, api]
+    needs: [governance, web, packages, api, security]
 
     steps:
       - name: Print summary
@@ -200,6 +235,7 @@ jobs:
           echo "web=${{ needs.web.result }}"
           echo "packages=${{ needs.packages.result }}"
           echo "api=${{ needs.api.result }}"
+          echo "security=${{ needs.security.result }}"
           if [[ "${{ needs.governance.result }}" != "success" || "${{ needs.web.result }}" != "success" || "${{ needs.packages.result }}" != "success" || "${{ needs.api.result }}" != "success" ]]; then
             echo "verify gate failed"
             exit 1

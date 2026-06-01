@@ -1,0 +1,299 @@
+# Semgrep configuration for ScholarAI
+# Custom security rules for the project
+
+rules:
+  # ─── Python Security Rules ──────────────────────────────────────────────
+
+  # SQL Injection prevention
+  - id: python-sql-injection
+    patterns:
+      - pattern: |
+          $QUERY = f"..." % ...
+          $CURSOR.execute($QUERY, ...)
+      - pattern: |
+          $QUERY = "..." + ...
+          $CURSOR.execute($QUERY, ...)
+      - pattern: |
+          $QUERY = f"...{$VAR}..."
+          $CURSOR.execute($QUERY, ...)
+    message: >
+      Possible SQL injection detected. Use parameterized queries instead of string formatting.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      owasp:
+        - A03:2021 - Injection
+      category: security
+      technology:
+        - sqlalchemy
+        - python
+
+  # Hardcoded secrets
+  - id: python-hardcoded-secrets
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $VAR = "sk-..."
+          - pattern: |
+              $VAR = "password"
+          - pattern: |
+              $VAR = "secret"
+          - pattern: |
+              API_KEY = "..."
+          - pattern: |
+              SECRET_KEY = "..."
+    message: >
+      Possible hardcoded secret detected. Use environment variables instead.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-798: Use of Hard-coded Credentials"
+      category: security
+      technology:
+        - python
+
+  # Unsafe deserialization
+  - id: python-unsafe-deserialization
+    patterns:
+      - pattern-either:
+          - pattern: pickle.loads(...)
+          - pattern: pickle.load(...)
+          - pattern: yaml.load(...)
+          - pattern: yaml.unsafe_load(...)
+    message: >
+      Unsafe deserialization detected. Use safe alternatives like yaml.safe_load().
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-502: Deserialization of Untrusted Data"
+      owasp:
+        - A08:2021 - Software and Data Integrity Failures
+      category: security
+      technology:
+        - python
+
+  # Command injection
+  - id: python-command-injection
+    patterns:
+      - pattern-either:
+          - pattern: os.system(...)
+          - pattern: os.popen(...)
+          - pattern: subprocess.call(..., shell=True)
+          - pattern: subprocess.run(..., shell=True)
+          - pattern: subprocess.Popen(..., shell=True)
+    message: >
+      Possible command injection. Use subprocess with shell=False and list arguments.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      owasp:
+        - A03:2021 - Injection
+      category: security
+      technology:
+        - python
+
+  # Path traversal
+  - id: python-path-traversal
+    patterns:
+      - pattern-either:
+          - pattern: open(... + $VAR + ...)
+          - pattern: open(f"...{$VAR}...")
+          - pattern: os.path.join(..., $VAR, ...)
+    message: >
+      Possible path traversal. Validate and sanitize file paths.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+      owasp:
+        - A01:2021 - Broken Access Control
+      category: security
+      technology:
+        - python
+
+  # ─── TypeScript/JavaScript Security Rules ──────────────────────────────
+
+  # XSS via dangerouslySetInnerHTML
+  - id: ts-react-dangerously-set-inner-html
+    patterns:
+      - pattern: |
+          dangerouslySetInnerHTML={{ __html: $EXPR }}
+    message: >
+      dangerouslySetInnerHTML detected. Ensure content is sanitized with DOMPurify or similar.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp:
+        - A03:2021 - Injection
+      category: security
+      technology:
+        - react
+        - typescript
+
+  # eval() usage
+  - id: ts-eval-usage
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+          - pattern: setTimeout($ARG, ...)
+          - pattern: setInterval($ARG, ...)
+    message: >
+      eval() or Function constructor detected. Avoid dynamic code execution.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      cwe:
+        - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+      owasp:
+        - A03:2021 - Injection
+      category: security
+      technology:
+        - javascript
+        - typescript
+
+  # Console.log in production
+  - id: ts-console-log-production
+    patterns:
+      - pattern-either:
+          - pattern: console.log(...)
+          - pattern: console.error(...)
+          - pattern: console.warn(...)
+          - pattern: console.debug(...)
+    message: >
+      Console statement detected. Remove before production deployment.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      technology:
+        - javascript
+        - typescript
+
+  # Hardcoded tokens
+  - id: ts-hardcoded-tokens
+    patterns:
+      - pattern-either:
+          - pattern: |
+              const $VAR = "sk-..."
+          - pattern: |
+              const $VAR = "Bearer ..."
+          - pattern: |
+              const TOKEN = "..."
+    message: >
+      Possible hardcoded token detected. Use environment variables.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-798: Use of Hard-coded Credentials"
+      category: security
+      technology:
+        - javascript
+        - typescript
+
+  # open redirect
+  - id: ts-open-redirect
+    patterns:
+      - pattern-either:
+          - pattern: window.location = $VAR
+          - pattern: window.location.href = $VAR
+          - pattern: location.href = $VAR
+    message: >
+      Possible open redirect. Validate URL before redirecting.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-601: URL Redirection to Untrusted Site ('Open Redirect')"
+      owasp:
+        - A01:2021 - Broken Access Control
+      category: security
+      technology:
+        - javascript
+        - typescript
+
+  # ─── FastAPI Specific Rules ──────────────────────────────────────────
+
+  # Missing authentication dependency
+  - id: python-fastapi-missing-auth
+    patterns:
+      - pattern: |
+          @router.$METHOD(...)
+          async def $FUNC(...):
+              ...
+      - pattern-not: |
+          @router.$METHOD(...)
+          async def $FUNC(..., user_id: str = CurrentUserId, ...):
+              ...
+      - pattern-not: |
+          @router.$METHOD(...)
+          async def $FUNC(..., user: User = CurrentUser, ...):
+              ...
+      - pattern-not: |
+          @router.$METHOD(...)
+          async def $FUNC(..., user: User = Depends(get_current_user), ...):
+              ...
+    message: >
+      FastAPI endpoint may be missing authentication. Add CurrentUserId or CurrentUser dependency.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-306: Missing Authentication for Critical Function"
+      owasp:
+        - A07:2021 - Identification and Authentication Failures
+      category: security
+      technology:
+        - fastapi
+        - python
+
+  # ─── General Security Rules ──────────────────────────────────────────
+
+  # Weak cryptography
+  - id: python-weak-crypto
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+          - pattern: hashlib.new("md5", ...)
+          - pattern: hashlib.new("sha1", ...)
+    message: >
+      Weak cryptographic hash detected. Use SHA-256 or stronger.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      cwe:
+        - "CWE-328: Use of Weak Hash"
+      category: security
+      technology:
+        - python
+
+  # Debug mode in production
+  - id: python-debug-mode
+    patterns:
+      - pattern-either:
+          - pattern: |
+              DEBUG = True
+          - pattern: |
+              app.debug = True
+          - pattern: |
+              debug=True
+    message: >
+      Debug mode enabled. Ensure this is disabled in production.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology:
+        - python
+        - fastapi

@@ -139,3 +139,14 @@ temp/
 
 # Worktrees
 .worktrees/
+
+# Security scan results
+*.sarif
+bandit-results.json
+pip-audit-results.json
+safety-results.json
+npm-audit-*-results.json
+snyk-*-results.json
+trivy-*-results.json
+semgrep-results.json
+.gitleaks-report.json

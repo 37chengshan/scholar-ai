@@ -80,3 +80,36 @@ jobs:
           else
             echo "skip backend pytest smoke (apps/api directory not found)"
           fi
+
+  security-baseline:
+    name: Security Baseline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: pip install bandit pip-audit
+
+      - name: Run Bandit security linter
+        if: ${{ hashFiles('apps/api/app/**/*.py') != '' }}
+        working-directory: apps/api
+        run: |
+          bandit -r app/ -ll -ii --skip B101,B311 || true
+
+      - name: Check Python dependencies
+        if: ${{ hashFiles('apps/api/requirements.txt') != '' }}
+        working-directory: apps/api
+        run: |
+          pip-audit -r requirements.txt --strict || true
+
+      - name: Run npm audit
+        if: ${{ hashFiles('apps/web/package.json') != '' }}
+        working-directory: apps/web
+        run: |
+          npm audit --audit-level=high || true

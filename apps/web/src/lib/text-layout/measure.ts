@@ -77,31 +77,22 @@ function fallbackMeasure(input: TextMeasureInput): TextMeasureResult {
 }
 
 function runPretext(input: TextMeasureInput): TextMeasureResult | null {
-  const runtime = pretextRuntime as
-    | {
-      prepare?: (...args: unknown[]) => unknown;
-      layout?: (...args: unknown[]) => { lines?: Array<{ width?: number }>; height?: number };
-    }
-    | undefined;
-  if (!runtime || !runtime.prepare || !runtime.layout) {
+  const runtime = pretextRuntime as Record<string, unknown> | undefined;
+  if (!runtime || typeof runtime.prepare !== 'function' || typeof runtime.layout !== 'function') {
     return null;
   }
 
   try {
-    const prepared = runtime.prepare(input.text, {
+    const prepared = runtime.prepare(input.text, toCanvasFont(input.font), {
       whiteSpace: input.whiteSpace || 'pre-wrap',
       wordBreak: input.wordBreak || 'normal',
-      font: toCanvasFont(input.font),
       letterSpacing: input.font.letterSpacing || 0,
-      lineHeight: input.font.lineHeight,
     });
-    const laid = runtime.layout(prepared, { width: input.width });
-    const lines = laid?.lines || [];
-    const maxLineWidth = lines.reduce((acc, line) => Math.max(acc, Number(line.width || 0)), 0);
+    const laid = runtime.layout(prepared, input.width, input.font.lineHeight);
     return {
-      lineCount: Math.max(1, lines.length),
-      height: Number(laid?.height || lines.length * input.font.lineHeight),
-      maxLineWidth,
+      lineCount: Math.max(1, laid.lineCount),
+      height: Number(laid.height || laid.lineCount * input.font.lineHeight),
+      maxLineWidth: input.width,
     };
   } catch {
     return null;

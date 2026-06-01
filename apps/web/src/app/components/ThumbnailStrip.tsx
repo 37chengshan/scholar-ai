@@ -16,7 +16,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Document, Page } from 'react-pdf';
 import { clsx } from 'clsx';
 import { useLanguage } from '../contexts/LanguageContext';
-import * as papersApi from '@/services/papersApi';
+import { getOrCreateBlobUrl } from '@/lib/pdf-blob-cache';
 import { ensurePdfWorker } from '@/app/lib/pdfWorker';
 
 ensurePdfWorker();
@@ -38,18 +38,25 @@ export function ThumbnailStrip({
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 10 });
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const blobUrlRef = useRef<string | null>(null);
   const { language } = useLanguage();
   const isZh = language === 'zh';
   const buffer = 3;
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchPdf = async () => {
       try {
-        const blob = await papersApi.downloadPdfBlob(paperId);
-        const url = URL.createObjectURL(blob);
-        setPdfBlobUrl(url);
-      } catch (err: any) {
-        console.error('ThumbnailStrip PDF fetch error:', err);
+        const url = await getOrCreateBlobUrl(paperId);
+        if (!cancelled) {
+          blobUrlRef.current = url;
+          setPdfBlobUrl(url);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          console.error('ThumbnailStrip PDF fetch error:', err);
+        }
       }
     };
 
@@ -58,9 +65,7 @@ export function ThumbnailStrip({
     }
 
     return () => {
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl);
-      }
+      cancelled = true;
     };
   }, [paperId]);
 

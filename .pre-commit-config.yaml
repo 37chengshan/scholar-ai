@@ -1,0 +1,90 @@
+# Pre-commit configuration for ScholarAI
+# Install: pip install pre-commit && pre-commit install
+
+repos:
+  # Standard hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: ['--branch', 'main', '--branch', 'develop']
+
+  # Python hooks
+  - repo: https://github.com/psf/black
+    rev: 24.3.0
+    hooks:
+      - id: black
+        language_version: python3.11
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  - repo: https://github.com/pycqa/ruff
+    rev: v0.3.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  # Security hooks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: ['-ll', '-ii', '--skip', 'B101,B311']
+        files: \.py$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
+
+  # TypeScript/JavaScript hooks
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.0.0
+    hooks:
+      - id: eslint
+        files: \.(ts|tsx|js|jsx)$
+        types: [file]
+        additional_dependencies:
+          - eslint@8.57.0
+          - '@typescript-eslint/eslint-plugin@7.0.0'
+          - '@typescript-eslint/parser@7.0.0'
+
+  # Semgrep (optional - can be slow)
+  # - repo: https://github.com/returntocorp/semgrep
+  #   rev: v1.68.0
+  #   hooks:
+  #     - id: semgrep
+  #       args: ['--config', '.semgrep.yml', '--error']
+  #       types: [python, javascript, typescript]
+
+  # Secrets detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: \.lock$|\.json$|\.md$|\.txt$
+
+# Global excludes
+exclude: |
+  (?x)(
+    ^node_modules/|
+    ^\.venv/|
+    ^venv/|
+    ^__pycache__/|
+    \.min\.js$|
+    \.min\.css$|
+    ^dist/|
+    ^build/
+  )
