@@ -167,9 +167,11 @@ async function fetchWeb(url) {
 
 function truncate(str, maxLen = 30000) {
   if (!str) return '[empty]'
-  if (str.length <= maxLen) return str
+  // 如果是对象，转为 JSON 字符串
+  const s = typeof str === 'string' ? str : JSON.stringify(str, null, 2)
+  if (s.length <= maxLen) return s
   const half = Math.floor(maxLen / 2)
-  return str.substring(0, half) + `\n\n[... 省略 ${str.length - maxLen} 字符 ...]\n\n` + str.substring(str.length - half)
+  return s.substring(0, half) + `\n\n[... 省略 ${s.length - maxLen} 字符 ...]\n\n` + s.substring(s.length - half)
 }
 
 function isTransientError(err) {
