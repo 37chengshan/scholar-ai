@@ -83,7 +83,7 @@ export function AnnotationToolbar({
           onClick={() => setColor(c.hex)}
           data-testid={`color-${c.zhName}`}
           className={clsx(
-            "w-6 h-6 rounded-sm border transition-all",
+            "w-6 h-6 rounded-sm border transition-colors",
             color === c.hex 
               ? "border-primary ring-2 ring-primary/20" 
               : "border-border hover:border-primary/50"

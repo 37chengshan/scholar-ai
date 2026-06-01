@@ -198,7 +198,7 @@ export function NotesSidebar({
                 role="button"
                 tabIndex={0}
                 className={clsx(
-                  'group w-full border-l-2 border-l-transparent px-3 py-3 text-left transition-all duration-150',
+                  'group w-full border-l-2 border-l-transparent px-3 py-3 text-left transition-colors duration-150',
                   selectedSummaryPaperId === summary.paperId
                     ? 'border-l-primary bg-primary/[0.03]'
                     : 'hover:border-l-primary/30 hover:bg-primary/[0.02]',
@@ -261,7 +261,7 @@ export function NotesSidebar({
               <div
                 key={item.note.id}
                 className={clsx(
-                  'group cursor-pointer border-l-2 border-l-transparent p-3 transition-all duration-150',
+                  'group cursor-pointer border-l-2 border-l-transparent p-3 transition-colors duration-150',
                   selectedNoteId === item.note.id
                     ? 'border-l-primary bg-primary/[0.03]'
                     : 'hover:border-l-primary/50 hover:bg-primary/[0.02]',
@@ -317,7 +317,7 @@ export function NotesSidebar({
                   <div
                     key={item.note.id}
                     className={clsx(
-                      'group cursor-pointer border-l-2 border-l-transparent p-3 transition-all duration-150',
+                      'group cursor-pointer border-l-2 border-l-transparent p-3 transition-colors duration-150',
                       selectedNoteId === item.note.id
                         ? 'border-l-primary bg-primary/[0.03]'
                         : 'hover:border-l-primary/50 hover:bg-primary/[0.02]',

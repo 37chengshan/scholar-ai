@@ -28,7 +28,7 @@ const StyledResizeHandle = ({ id }: { id: string }) => (
     id={id}
     className="relative flex w-2 items-center justify-center outline-none hover:bg-transparent data-[resize-handle-active]:bg-transparent group cursor-col-resize z-20"
   >
-    <div className="w-[1px] h-full bg-stone-200 transition-colors duration-200 ease-out group-hover:bg-orange-400 group-hover:w-[2px] group-hover:shadow-[0_0_8px_rgba(234,88,12,0.3)] data-[resize-handle-active]:bg-orange-500 data-[resize-handle-active]:w-[2px]" />
+    <div className="w-[1px] h-full bg-stone-200 transition-colors duration-200 ease-out group-hover:bg-[var(--accent-400)] group-hover:w-[2px] group-hover:shadow-[0_0_8px_rgba(234,88,12,0.3)] data-[resize-handle-active]:bg-[var(--accent-500)] data-[resize-handle-active]:w-[2px]" />
   </PanelResizeHandle>
 );
 

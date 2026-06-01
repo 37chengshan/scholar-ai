@@ -110,7 +110,7 @@ export function ProfileForm() {
               <img
                 src={profile.avatar}
                 alt="用户头像"
-                className="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-all duration-700"
+                className="w-full h-full object-cover filter grayscale group-hover:grayscale-0 transition-[filter] duration-700"
               />
             ) : (
               <div className="w-full h-full bg-muted flex items-center justify-center">

@@ -101,7 +101,7 @@ export function ToolCallCard({
       className={clsx(
         'flex items-center gap-2 px-2 py-1.5 rounded-md',
         'bg-muted/30 border border-muted/50',
-        'text-xs transition-all duration-200'
+        'text-xs transition-[color,opacity] duration-200'
       )}
     >
       <span className="flex-shrink-0">{toolConfig.icon}</span>

@@ -59,7 +59,7 @@ export function PaperListItem({
   const metaLine = [authors, venue, year].filter((item) => item && item.trim().length > 0).join(' · ');
 
   return (
-    <Card className="group border border-border/50 bg-card hover:border-primary/30 transition-all duration-200">
+    <Card className="group border border-border/50 bg-card hover:border-primary/30 transition-colors duration-200">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">

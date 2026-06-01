@@ -136,7 +136,7 @@ export function ThumbnailStrip({
               onClick={() => onPageClick(pageNum)}
               data-testid={`thumbnail-${pageNum}`}
               className={clsx(
-                'shrink-0 border-2 rounded overflow-hidden transition-all',
+                'shrink-0 border-2 rounded overflow-hidden transition-[border-color,box-shadow]',
                 currentPage === pageNum
                   ? 'border-accent shadow-md ring-2 ring-accent/20'
                   : 'border-transparent hover:border-muted-foreground'

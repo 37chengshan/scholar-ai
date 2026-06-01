@@ -23,7 +23,7 @@ export function AuthorResultCard({ author, onClick }: AuthorResultCardProps) {
   return (
     <div
       onClick={() => onClick?.(author)}
-      className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-all cursor-pointer relative overflow-hidden"
+      className="p-5 border border-border/50 bg-card rounded-sm flex flex-col gap-3 group hover:border-primary/50 hover:shadow-md transition-[border-color,box-shadow] cursor-pointer relative overflow-hidden"
     >
       <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary/0 via-primary/0 to-primary/0 group-hover:via-primary/50 transition-colors duration-500" />
 

@@ -54,7 +54,7 @@ export function UserProfile({
         to="/settings"
         onClick={onNavigate}
         title={isZh ? "打开设置" : "Open settings"}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background text-foreground/60 transition-all duration-150 hover:border-primary/25 hover:text-primary hover:bg-primary/[0.04]"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background text-foreground/60 transition-colors duration-150 hover:border-primary/25 hover:text-primary hover:bg-primary/[0.04]"
         aria-label={isZh ? "打开设置" : "Open settings"}
       >
         <Settings className="h-3.5 w-3.5" />

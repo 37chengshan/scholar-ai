@@ -66,7 +66,7 @@ export function ComposerInput({
         <div
           data-testid="chat-composer"
           className={clsx(
-            'rounded-2xl border border-border/70 bg-card shadow-sm transition-all',
+            'rounded-2xl border border-border/70 bg-card shadow-sm transition-[border-color,box-shadow]',
             'focus-within:border-primary/35 focus-within:ring-2 focus-within:ring-primary/10',
             disabled && !streaming && 'opacity-70',
           )}
@@ -153,7 +153,7 @@ export function ComposerInput({
                   title={!input.trim() ? (isZh ? '请输入问题' : 'Type a message first') : disabled ? (isZh ? '当前不可发送' : 'Cannot send right now') : undefined}
                   aria-label={isZh ? '发送消息' : 'Send message'}
                   className={clsx(
-                    'w-8 h-8 flex items-center justify-center rounded-full transition-all flex-shrink-0',
+                    'w-8 h-8 flex items-center justify-center rounded-full transition-colors flex-shrink-0',
                     input.trim() && !disabled
                       ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
                       : 'bg-muted text-muted-foreground cursor-not-allowed'

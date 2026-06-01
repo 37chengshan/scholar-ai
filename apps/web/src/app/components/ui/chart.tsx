@@ -89,37 +89,43 @@ function sanitizeCssColor(value: string | undefined): string | null {
 }
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(
-    ([, config]) => config.theme || config.color,
-  );
+  const styleRef = React.useRef<HTMLStyleElement | null>(null);
 
-  if (!colorConfig.length) {
-    return null;
-  }
+  React.useEffect(() => {
+    const colorConfig = Object.entries(config).filter(
+      ([, cfg]) => cfg.theme || cfg.color,
+    );
+    if (!colorConfig.length) return;
 
-  return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const rawColor =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color;
-    const safeColor = sanitizeCssColor(rawColor);
-    return safeColor ? `  --color-${key}: ${safeColor};` : null;
-  })
-  .join("\n")}
-}
-`,
-          )
-          .join("\n"),
-      }}
-    />
-  );
+    const css = Object.entries(THEMES)
+      .map(
+        ([theme, prefix]) =>
+          `${prefix} [data-chart=${id}] {\n${colorConfig
+            .map(([key, itemConfig]) => {
+              const rawColor =
+                itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+                itemConfig.color;
+              const safeColor = sanitizeCssColor(rawColor);
+              return safeColor ? `  --color-${key}: ${safeColor};` : null;
+            })
+            .filter(Boolean)
+            .join("\n")}\n}`,
+      )
+      .join("\n");
+
+    if (!styleRef.current) {
+      styleRef.current = document.createElement("style");
+      document.head.appendChild(styleRef.current);
+    }
+    styleRef.current.textContent = css;
+
+    return () => {
+      styleRef.current?.remove();
+      styleRef.current = null;
+    };
+  }, [id, config]);
+
+  return null;
 };
 
 const ChartTooltip = RechartsPrimitive.Tooltip;

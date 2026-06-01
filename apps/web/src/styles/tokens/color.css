@@ -114,6 +114,15 @@
     --color-chart-4: oklch(0.828 0.189 84.429);
     --color-chart-5: oklch(0.769 0.188 70.08);
 
+    /* Base aliases for @theme references (avoids circular @theme -> self) */
+    --color-destructive-base: oklch(0.545 0.220 25);
+    --color-border-base: oklch(0.885 0.006 75 / 0.6);
+    --color-chart-1-base: oklch(0.646 0.222 41.116);
+    --color-chart-2-base: oklch(0.6 0.118 184.704);
+    --color-chart-3-base: oklch(0.398 0.07 227.392);
+    --color-chart-4-base: oklch(0.828 0.189 84.429);
+    --color-chart-5-base: oklch(0.769 0.188 70.08);
+
     /* ===========================
        Paper Colors (legacy compat for magazine.css)
        =========================== */
@@ -245,5 +254,21 @@
     --color-paper-1: oklch(0.145 0.006 60);
     --color-paper-2: oklch(0.185 0.008 60);
     --color-paper-3: oklch(0.225 0.010 60);
+
+    /* Chart tokens dark (L +15-20% for dark backgrounds, H consistent) */
+    --color-chart-1: oklch(0.796 0.200 41.116);
+    --color-chart-2: oklch(0.750 0.100 184.704);
+    --color-chart-3: oklch(0.548 0.060 227.392);
+    --color-chart-4: oklch(0.928 0.160 84.429);
+    --color-chart-5: oklch(0.919 0.160 70.08);
+
+    /* Base aliases dark (for @theme inheritance) */
+    --color-destructive-base: oklch(0.625 0.220 25);
+    --color-border-base: oklch(0.285 0.008 60 / 0.6);
+    --color-chart-1-base: oklch(0.796 0.200 41.116);
+    --color-chart-2-base: oklch(0.750 0.100 184.704);
+    --color-chart-3-base: oklch(0.548 0.060 227.392);
+    --color-chart-4-base: oklch(0.928 0.160 84.429);
+    --color-chart-5-base: oklch(0.919 0.160 70.08);
   }
 }

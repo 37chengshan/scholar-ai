@@ -10,8 +10,8 @@
 
   /* Background colors */
   --color-background: var(--paper-50);
-  --color-card: oklch(1 0 0);
-  --color-popover: oklch(1 0 0);
+  --color-card: var(--color-surface);
+  --color-popover: var(--color-surface);
 
   /* Muted colors */
   --color-muted: var(--paper-200);
@@ -20,16 +20,16 @@
   --color-accent-foreground: var(--accent-600);
 
   /* Status colors */
-  --color-destructive: oklch(0.545 0.220 25);
-  --color-border: oklch(0.885 0.006 75 / 0.6);
+  --color-destructive: var(--color-destructive-base);
+  --color-border: var(--color-border-base);
   --color-ring: var(--accent-500);
 
-  /* Chart colors */
-  --color-chart-1: oklch(0.646 0.222 41.116);
-  --color-chart-2: oklch(0.6 0.118 184.704);
-  --color-chart-3: oklch(0.398 0.07 227.392);
-  --color-chart-4: oklch(0.828 0.189 84.429);
-  --color-chart-5: oklch(0.769 0.188 70.08);
+  /* Chart colors (references token layer via base aliases to avoid circular @theme) */
+  --color-chart-1: var(--color-chart-1-base);
+  --color-chart-2: var(--color-chart-2-base);
+  --color-chart-3: var(--color-chart-3-base);
+  --color-chart-4: var(--color-chart-4-base);
+  --color-chart-5: var(--color-chart-5-base);
 
   /* Font families */
   --font-serif: var(--font-serif);

@@ -115,7 +115,7 @@ export function SessionSidebar({
   }
 
   return (
-    <div className="w-[220px] border-r border-border/50 flex flex-col h-full bg-muted/20 transition-all duration-200 shrink-0">
+    <div className="w-[220px] border-r border-border/50 flex flex-col h-full bg-muted/20 transition-[width] duration-200 shrink-0">
       {/* Header */}
       <div className="border-b border-border/50 px-5 py-4 flex items-center justify-between bg-background/80 backdrop-blur-md sticky top-0 z-10">
         <h2 className="font-serif text-lg font-bold tracking-tight">Recents</h2>
@@ -149,7 +149,7 @@ export function SessionSidebar({
             onChange={(event) => onSearchChange(event.target.value)}
             aria-label={labels.search}
             data-testid="session-search-input"
-            className="w-full bg-background border border-border/50 rounded-[4px] pl-8 pr-3 py-2 text-[11px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all font-sans shadow-sm"
+            className="w-full bg-background border border-border/50 rounded-[4px] pl-8 pr-3 py-2 text-[11px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 transition-[border-color,box-shadow] font-sans shadow-sm"
           />
         </div>
       </div>
@@ -186,7 +186,7 @@ export function SessionSidebar({
                       }
                     }}
                     className={clsx(
-                      'w-full text-left px-3 py-2.5 transition-all group flex items-start gap-2.5 rounded-sm mb-0.5',
+                      'w-full text-left px-3 py-2.5 transition-colors group flex items-start gap-2.5 rounded-sm mb-0.5',
                       currentSessionId === session.id
                         ? 'bg-primary/8 text-foreground'
                         : 'hover:bg-muted/80 text-foreground/75'
@@ -207,7 +207,7 @@ export function SessionSidebar({
                       onClick={(event) => onDeleteSession(session.id, event)}
                       data-testid={`session-delete-${session.id}`}
                       type="button"
-                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 p-1 hover:bg-destructive/10 focus-visible:bg-destructive/10 transition-all flex-shrink-0 rounded-md mt-0.5"
+                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 p-1 hover:bg-destructive/10 focus-visible:bg-destructive/10 transition-opacity flex-shrink-0 rounded-md mt-0.5"
                       aria-label={isZh ? '删除会话' : 'Delete session'}
                     >
                       <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />

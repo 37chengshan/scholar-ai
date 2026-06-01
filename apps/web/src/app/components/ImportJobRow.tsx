@@ -141,7 +141,7 @@ export function ImportJobRow({
           job.sourceType === 'arxiv' && 'bg-blue-100 text-blue-600 border-blue-200',
           job.sourceType === 'pdf_url' && 'bg-purple-100 text-purple-600 border-purple-200',
           job.sourceType === 'doi' && 'bg-indigo-100 text-indigo-600 border-indigo-200',
-          job.sourceType === 'semantic_scholar' && 'bg-orange-100 text-orange-600 border-orange-200'
+          job.sourceType === 'semantic_scholar' && 'bg-[var(--accent-100)] text-[var(--accent-600)] border-[var(--accent-200)]'
         )}
       >
         {sourceLabel}

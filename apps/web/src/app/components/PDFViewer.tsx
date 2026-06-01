@@ -383,7 +383,7 @@ export function PDFViewer({
                 return (
                   <div
                     key={annotation.id}
-                    className="absolute rounded-sm transition-all"
+                    className="absolute rounded-sm transition-[top,left,width,height]"
                     style={{
                       left: `${clampPercent(x)}%`,
                       top: `${clampPercent(y)}%`,

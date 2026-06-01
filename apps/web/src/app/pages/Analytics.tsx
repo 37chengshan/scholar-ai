@@ -275,8 +275,8 @@ export function Analytics() {
                       { label: isZh ? '回答有据率' : 'Ans Supported', value: pct(m.answer_supported_rate), sub: `${isZh ? '证据扎实度' : 'Groundedness'}: ${pct(m.groundedness)}`, Icon: CheckCircle2 },
                       { label: isZh ? '延迟 P95' : 'Latency P95', value: sec(m.latency_p95), sub: `${isZh ? 'P50' : 'P50'}: ${sec(m.latency_p50)} · ${isZh ? '回退' : 'Fallback'}: ${m.fallback_used_count}`, Icon: Clock },
                     ].map(({ label, value, sub, Icon }) => (
-                      <div key={label} className="group flex flex-col gap-3 bg-card border border-border/60 p-5 shadow-sm hover:border-primary/40 transition-all relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-primary/20 to-transparent group-hover:via-primary/50 transition-all" />
+                      <div key={label} className="group flex flex-col gap-3 bg-card border border-border/60 p-5 shadow-sm hover:border-primary/40 transition-colors relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-primary/20 to-transparent group-hover:via-primary/50 transition-[opacity]" />
                         <div className="flex items-center gap-2">
                           <div className="p-2 bg-primary/10 rounded-lg"><Icon className="h-4 w-4 text-primary" /></div>
                           <span className="text-xs font-medium text-muted-foreground">{label}</span>

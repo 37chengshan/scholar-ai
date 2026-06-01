@@ -306,7 +306,7 @@ export function Landing() {
                     <InteractiveText text={feature.description} />
                   </p>
                 </div>
-                <div className="h-px w-12 bg-primary/30 mt-auto pt-4 group-hover:w-full transition-all duration-500" />
+                <div className="h-px w-12 bg-primary/30 mt-auto pt-4 group-hover:w-full transition-[width] duration-500" />
               </motion.div>
             ))}
           </div>

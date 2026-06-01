@@ -89,7 +89,7 @@ export function KnowledgeBaseListInspector({
             <button
               type="button"
               onClick={onCreate}
-              className="text-primary transition-all hover:text-primary/80 hover:underline"
+              className="text-primary transition-colors hover:text-primary/80 hover:underline"
             >
               新建
             </button>

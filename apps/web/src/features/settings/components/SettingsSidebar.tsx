@@ -44,7 +44,7 @@ export function SettingsSidebar({
               <AvatarImage
                 src={userAvatar}
                 alt={userName}
-                className="object-cover filter grayscale group-hover:grayscale-0 transition-all duration-700"
+                className="object-cover filter grayscale group-hover:grayscale-0 transition-[filter] duration-700"
               />
               <AvatarFallback className="bg-paper-2 text-lg font-semibold tracking-[0.18em] text-foreground/70">
                 {getUserInitials(userName)}

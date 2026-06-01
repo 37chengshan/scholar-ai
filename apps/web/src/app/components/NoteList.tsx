@@ -332,7 +332,7 @@ export function NoteList({
                         whileHover={{ scale: 1.01 }}
                         onClick={() => handleNoteClick(note.id)}
                         className={clsx(
-                          'border bg-card rounded-sm cursor-pointer transition-all hover:shadow-md hover:border-primary/50',
+                          'border bg-card rounded-sm cursor-pointer transition-[border-color,box-shadow] hover:shadow-md hover:border-primary/50',
                           viewMode === 'paper' 
                             ? 'p-4' 
                             : 'p-3'

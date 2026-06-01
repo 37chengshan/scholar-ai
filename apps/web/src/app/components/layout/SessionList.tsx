@@ -136,7 +136,7 @@ export function SessionList({
                   onClick={onNavigate}
                   title={session.title}
                   className={clsx(
-                    "group w-full text-left transition-all duration-150",
+                    "group w-full text-left transition-colors duration-150",
                     leftCollapsed
                       ? "flex h-10 items-center justify-center rounded-2xl border border-transparent px-0 py-0"
                       : "rounded-lg px-2.5 py-2",

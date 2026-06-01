@@ -11,7 +11,7 @@ const feedbackVariants = cva(
       status: {
         empty: "text-stone-500 bg-stone-50/50 rounded-xl border border-dashed border-stone-200",
         error: "text-red-700 bg-red-50/50 rounded-xl border border-red-100",
-        loading: "text-orange-600",
+        loading: "text-[var(--accent-600)]",
         partial: "text-amber-700 bg-amber-50 rounded-xl border border-amber-200",
       },
       size: { sm: "min-h-[120px] text-sm py-4", md: "min-h-[240px] text-base" }

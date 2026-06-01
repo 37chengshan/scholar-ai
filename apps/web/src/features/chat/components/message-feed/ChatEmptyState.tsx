@@ -46,7 +46,7 @@ export function ChatEmptyState({ isZh = true, onSuggest }: ChatEmptyStateProps) 
               <button
                 key={i}
                 onClick={() => onSuggest?.(s.text)}
-                className="group flex items-start gap-3 rounded-xl border border-border/60 bg-paper-1 px-4 py-3 text-left transition-all hover:border-primary/20 hover:bg-primary/[0.03]"
+                className="group flex items-start gap-3 rounded-xl border border-border/60 bg-paper-1 px-4 py-3 text-left transition-colors hover:border-primary/20 hover:bg-primary/[0.03]"
               >
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-border/60 bg-paper-2 transition-colors group-hover:border-primary/20 group-hover:bg-primary/[0.06]">
                   <s.icon className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />

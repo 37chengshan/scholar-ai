@@ -190,7 +190,7 @@ export function SectionTree({ imrad, onPageSelect, currentPage, isZh = true }: S
               onClick={() => onPageSelect(section.start)}
               data-testid={`section-${section.key.toLowerCase()}`}
               className={[
-                'w-full rounded-md border px-3 py-2 text-left transition-all',
+                'w-full rounded-md border px-3 py-2 text-left transition-colors',
                 isActive
                   ? 'border-primary/40 bg-primary/10 text-primary shadow-sm'
                   : 'border-transparent bg-white/70 hover:border-border hover:bg-accent/40',
