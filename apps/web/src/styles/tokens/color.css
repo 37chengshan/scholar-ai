@@ -131,6 +131,18 @@
     --color-category-other: var(--ink-400);
 
     /* ===========================
+       Sidebar Tokens (shadcn compat)
+       =========================== */
+    --sidebar-background:     var(--paper-100);
+    --sidebar-foreground:     var(--ink-900);
+    --sidebar-primary:        var(--accent-600);
+    --sidebar-primary-foreground: oklch(0.985 0.005 80);
+    --sidebar-accent:         var(--paper-200);
+    --sidebar-accent-foreground: var(--ink-900);
+    --sidebar-border:         oklch(0.885 0.006 75 / 0.6);
+    --sidebar-ring:           var(--accent-500);
+
+    /* ===========================
        Muted / Card / Popover (Tailwind compat)
        =========================== */
     --color-muted:               var(--paper-200);
@@ -218,6 +230,16 @@
     --color-category-nlp:   oklch(0.605 0.185 305);
     --color-category-ml:    oklch(0.685 0.145 230);
     --color-category-other: oklch(0.585 0.010 72);
+
+    /* Sidebar tokens dark */
+    --sidebar-background:     oklch(0.165 0.008 60);
+    --sidebar-foreground:     oklch(0.935 0.004 80);
+    --sidebar-primary:        var(--accent-400);
+    --sidebar-primary-foreground: oklch(0.145 0.006 60);
+    --sidebar-accent:         oklch(0.225 0.010 60);
+    --sidebar-accent-foreground: oklch(0.935 0.004 80);
+    --sidebar-border:         oklch(0.285 0.008 60 / 0.6);
+    --sidebar-ring:           var(--accent-400);
 
     /* Paper colors dark */
     --color-paper-1: oklch(0.145 0.006 60);

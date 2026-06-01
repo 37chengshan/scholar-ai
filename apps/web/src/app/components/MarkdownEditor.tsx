@@ -54,7 +54,7 @@ export function MarkdownEditor({ value, onChange, placeholder, onSave }: Markdow
       // Inline code
       .replace(/`(.+?)`/g, '<code class="bg-muted px-1 py-0.5 rounded font-mono text-sm">$1</code>')
       // Links
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-[#d35400] hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-primary hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
       // Lists
       .replace(/^- (.*$)/gim, '<li class="ml-4">$1</li>')
       .replace(/^\* (.*$)/gim, '<li class="ml-4">$1</li>')
@@ -63,14 +63,14 @@ export function MarkdownEditor({ value, onChange, placeholder, onSave }: Markdow
   };
 
   return (
-    <div className="h-full flex flex-col bg-white border border-[#f4ece1] rounded-sm">
+    <div className="h-full flex flex-col bg-surface border border-border rounded-sm">
       {/* Tab Bar */}
-      <div className="flex border-b border-[#f4ece1]">
+      <div className="flex border-b border-border">
         <button
           onClick={() => setShowPreview(false)}
           className={`px-4 py-2 text-sm font-semibold transition-colors ${
             !showPreview
-              ? 'text-[#d35400] border-b-2 border-[#d35400]'
+              ? 'text-primary border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -80,7 +80,7 @@ export function MarkdownEditor({ value, onChange, placeholder, onSave }: Markdow
           onClick={() => setShowPreview(true)}
           className={`px-4 py-2 text-sm font-semibold transition-colors ${
             showPreview
-              ? 'text-[#d35400] border-b-2 border-[#d35400]'
+              ? 'text-primary border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -95,7 +95,7 @@ export function MarkdownEditor({ value, onChange, placeholder, onSave }: Markdow
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={t.placeholder}
-            className="w-full h-full p-4 resize-none border-0 focus:outline-none font-mono text-base bg-white"
+            className="w-full h-full p-4 resize-none border-0 focus:outline-none font-mono text-base bg-surface"
           />
         ) : (
           <div
@@ -107,13 +107,13 @@ export function MarkdownEditor({ value, onChange, placeholder, onSave }: Markdow
 
       {/* Status Bar */}
       {onSave && (
-        <div className="flex justify-between items-center px-4 py-2 border-t border-[#f4ece1] bg-[#fdfaf6]">
+        <div className="flex justify-between items-center px-4 py-2 border-t border-border bg-surface-sunken">
           <span className="text-sm text-muted-foreground">
             {value.length} characters
           </span>
           <button
             onClick={onSave}
-            className="text-sm font-semibold text-[#d35400] hover:underline"
+            className="text-sm font-semibold text-primary hover:underline"
           >
             {t.saved}
           </button>

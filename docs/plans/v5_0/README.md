@@ -23,7 +23,7 @@ ScholarAI v5.0 是 v4.x 之后的全面重启迭代版本。它把 v4.0 残留 p
 | Phase | 名称 | 状态 | 完成日期 | closeout report |
 |---|---|---|---|---|
 | 5.0-0 | Foundation | done | 2026-05-31 | `reports/2026-05-31_v5_0_phase_foundation_closeout.md` |
-| 5.0-1 | Design Tokens + WorkspaceShell v2 | not-started | - | - |
+| 5.0-1 | Design System v2 | done | 2026-05-31 | `reports/2026-05-31_v5_0_phase_design_system_v2_closeout.md` |
 | 5.0-2 | WorkspaceShell v2 + Performance | not-started | - | - |
 | 5.0-3 | 主链精修: Search + Import + KB | not-started | - | - |
 | 5.0-4 | 主链精修: Read + Notes | not-started | - | - |

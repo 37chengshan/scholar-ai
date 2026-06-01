@@ -53,7 +53,7 @@ export function FontSizeSelector({ value, onChange }: FontSizeSelectorProps) {
         {options.map((option) => (
           <div
             key={option.value}
-            className="flex items-center space-x-2 p-3 border border-[#f4ece1] rounded-sm hover:border-[#d35400] transition-colors cursor-pointer"
+            className="flex items-center space-x-2 p-3 border border-border rounded-sm hover:border-primary transition-colors cursor-pointer"
           >
             <RadioGroupItem value={option.value} id={option.value} />
             <div className="flex-1">

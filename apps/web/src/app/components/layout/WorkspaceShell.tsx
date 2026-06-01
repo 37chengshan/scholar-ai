@@ -20,22 +20,22 @@ const StyledResizeHandle = ({ id }: { id: string }) => (
 
 export function WorkspaceShell({ sidebar, main, inspector, layoutId }: WorkspaceShellProps) {
   return (
-    <PanelGroup direction="horizontal" autoSaveId={`scholar-layout-${layoutId}`} className="h-full w-full bg-stone-50 text-stone-900">
+    <PanelGroup direction="horizontal" autoSaveId={`scholar-layout-${layoutId}`} className="h-full w-full bg-background text-foreground">
       {sidebar && (
         <>
-          <Panel defaultSize={20} minSize={15} maxSize={30} collapsible className="bg-stone-50/80">
+          <Panel defaultSize={20} minSize={15} maxSize={30} collapsible className="bg-surface-sunken/80">
             {sidebar}
           </Panel>
           <StyledResizeHandle id={`${layoutId}-handle-1`} />
         </>
       )}
-      <Panel defaultSize={sidebar && inspector ? 50 : 70} minSize={40} className="bg-white shadow-sm ring-1 ring-stone-900/5 z-10 overflow-hidden relative">
+      <Panel defaultSize={sidebar && inspector ? 50 : 70} minSize={40} className="bg-surface shadow-sm ring-1 ring-border z-10 overflow-hidden relative">
         {main}
       </Panel>
       {inspector && (
         <>
           <StyledResizeHandle id={`${layoutId}-handle-2`} />
-          <Panel defaultSize={30} minSize={20} className="bg-stone-50/80">
+          <Panel defaultSize={30} minSize={20} className="bg-surface-sunken/80">
             {inspector}
           </Panel>
         </>

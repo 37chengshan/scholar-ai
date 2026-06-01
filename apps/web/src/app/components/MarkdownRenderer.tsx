@@ -77,7 +77,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
               href={href}
               target={isExternal ? '_blank' : undefined}
               rel={isExternal ? 'noopener noreferrer' : undefined}
-              className="text-[#d35400] hover:underline transition-colors"
+              className="text-primary hover:underline transition-colors"
               {...props}
             >
               {children}

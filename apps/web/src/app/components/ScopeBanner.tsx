@@ -21,10 +21,10 @@ export function ScopeBanner({
 
   // D-04: Colors - single_paper: green, full_kb: blue, error: red
   const bgColor: Record<string, string> = {
-    single_paper: 'bg-[#22c55e]',
-    full_kb: 'bg-[#3b82f6]',
-    compare: 'bg-[#8b5cf6]',
-    error: 'bg-[#ef4444]',
+    single_paper: 'bg-[oklch(0.625_0.175_145)]',
+    full_kb: 'bg-[oklch(0.625_0.145_240)]',
+    compare: 'bg-[oklch(0.585_0.155_305)]',
+    error: 'bg-[oklch(0.545_0.220_25)]',
   };
   const bgColorValue = bgColor[type] || 'bg-gray-500';
 

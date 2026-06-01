@@ -142,7 +142,7 @@ export function ToolCallCard({ toolCall, className }: ToolCallCardProps) {
   return (
     <div
       className={clsx(
-        'overflow-hidden rounded-2xl border border-border/70 bg-[#fffdf9] shadow-sm',
+        'overflow-hidden rounded-2xl border border-border/70 bg-surface shadow-sm',
         className
       )}
     >

@@ -147,7 +147,7 @@ export function ThinkingProcess({
   return (
     <div
       className={clsx(
-        'my-2 rounded-2xl border border-primary/15 bg-[#fffaf2] px-4 py-3 shadow-sm',
+        'my-2 rounded-2xl border border-primary/15 bg-surface px-4 py-3 shadow-sm',
         className
       )}
     >

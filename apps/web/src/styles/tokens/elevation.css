@@ -16,6 +16,14 @@
     --shadow-paper-hover:  6px 6px 0px 0px oklch(0.15 0 0);
     --shadow-paper-active: 2px 2px 0px 0px oklch(0.15 0 0);
 
+    /* Component shadows (neobrutalist) */
+    --shadow-neo:            3px 3px 0px 0px var(--ink-900);
+    --shadow-neo-hover:      4px 4px 0px 0px var(--ink-900);
+    --shadow-neo-active:     1px 1px 0px 0px var(--ink-900);
+    --shadow-accent:         4px 4px 0px 0px var(--accent-500);
+    --shadow-accent-hover:   6px 6px 0px 0px var(--accent-700);
+    --shadow-focus-accent:   4px 4px 0px 0px var(--accent-500);
+
     /* ===========================
        Border Radius
        =========================== */
@@ -48,5 +56,12 @@
     --shadow-paper:        4px 4px 0px 0px oklch(0.85 0 0);
     --shadow-paper-hover:  6px 6px 0px 0px oklch(0.85 0 0);
     --shadow-paper-active: 2px 2px 0px 0px oklch(0.85 0 0);
+
+    --shadow-neo:            3px 3px 0px 0px oklch(0.85 0 0);
+    --shadow-neo-hover:      4px 4px 0px 0px oklch(0.85 0 0);
+    --shadow-neo-active:     1px 1px 0px 0px oklch(0.85 0 0);
+    --shadow-accent:         4px 4px 0px 0px var(--accent-400);
+    --shadow-accent-hover:   6px 6px 0px 0px var(--accent-300);
+    --shadow-focus-accent:   4px 4px 0px 0px var(--accent-400);
   }
 }

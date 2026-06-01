@@ -221,3 +221,23 @@ html {
     @apply font-sans;
   }
 }
+
+/* === Bento Grid Utility === */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.bento-grid > .bento-wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 640px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-grid > .bento-wide {
+    grid-column: span 1;
+  }
+}

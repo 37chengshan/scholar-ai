@@ -33,7 +33,7 @@ export function UploadInputSwitch({ onFileSelect, onOCRChange }: UploadInputSwit
       </TabsList>
 
       <TabsContent value="local" className="mt-4">
-        <div className="border-2 border-dashed border-[#f4ece1] rounded-sm p-12 text-center hover:border-[#d35400] transition-colors cursor-pointer bg-[#fdfaf6]">
+        <div className="border-2 border-dashed border-border rounded-sm p-12 text-center hover:border-primary transition-colors cursor-pointer bg-surface-sunken">
           <input
             type="file"
             multiple

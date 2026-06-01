@@ -100,8 +100,8 @@ export function NotesSidebar({
   const hasAnyContent = summaryItems.length > 0 || archivedNoteItems.length > 0 || unarchivedNoteItems.length > 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="space-y-4 border-b border-border/30 bg-gradient-to-b from-white to-slate-50/50 px-5 py-5">
+    <div className="flex h-full min-h-0 flex-col bg-surface">
+      <div className="space-y-4 border-b border-border/30 bg-gradient-to-b from-surface to-surface-sunken/50 px-5 py-5">
         <div className="flex items-center justify-between">
           <h2 className="font-serif text-xs font-semibold tracking-tight text-foreground">笔记库</h2>
           <Button variant="outline" size="sm" className="h-6 rounded-sm px-2.5 text-[9px] font-bold uppercase tracking-wider shadow-sm" onClick={onCreateNote}>

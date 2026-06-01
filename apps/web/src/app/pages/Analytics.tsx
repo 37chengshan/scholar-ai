@@ -122,7 +122,7 @@ function FamilyChart({ byFamily, isZh }: { byFamily: BenchmarkRunDetail['by_fami
           formatter={(v: number, name: string) => [`${v}%`, name === 'recall5' ? 'Recall@5' : (isZh ? '回答有据率' : 'Ans Supported')]}
         />
         <Bar dataKey="recall5" fill="hsl(var(--primary))" opacity={0.85} radius={[2, 2, 0, 0]} />
-        <Bar dataKey="supported" fill="#22c55e" opacity={0.85} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="supported" fill="oklch(0.625 0.175 145)" opacity={0.85} radius={[2, 2, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

@@ -29,7 +29,7 @@ const CODE_MODEL = 'sonnet'      // 代码生成、审查、执行
 const LIGHT_MODEL = 'haiku'      // 简单任务、文档更新、提交
 
 // 跳过已完成的阶段（硬编码，因为 args 传递不可靠）
-const SKIP_PHASES = ['5.0-0', '5.0-1']
+const SKIP_PHASES = ['5.0-0']
 log(`跳过阶段: ${SKIP_PHASES.join(', ')}`)
 
 // 文档路径

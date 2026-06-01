@@ -32,7 +32,7 @@ export function ForgotPassword() {
     successDesc: isZh ? "请检查您的邮箱，点击链接重置密码" : "Check your email and click the link to reset your password",
   };
 
-  const authCardClassName = "rounded-sm border border-[#f4ece1] shadow-none hover:shadow-none hover:translate-y-0";
+  const authCardClassName = "rounded-sm border border-border shadow-none hover:shadow-none hover:translate-y-0";
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,15 +65,15 @@ export function ForgotPassword() {
   
   if (submitted) {
     return (
-      <div className="min-h-screen bg-[#fdfaf6] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Card className={`w-full max-w-md bg-white ${authCardClassName}`}>
+          <Card className={`w-full max-w-md bg-card ${authCardClassName}`}>
             <CardHeader>
-              <CardTitle className="text-xl font-semibold text-[#d35400]">
+              <CardTitle className="text-xl font-semibold text-primary">
                 {t.successTitle}
               </CardTitle>
               <CardDescription className="text-base">
@@ -96,7 +96,7 @@ export function ForgotPassword() {
   }
   
   return (
-    <div className="min-h-screen bg-[#fdfaf6] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -114,7 +114,7 @@ export function ForgotPassword() {
           </Link>
         </Button>
         
-        <Card className={`bg-white ${authCardClassName}`}>
+        <Card className={`bg-card ${authCardClassName}`}>
           <CardHeader>
             <CardTitle className="text-2xl font-semibold font-serif tracking-tight">
               {t.title}
@@ -147,7 +147,7 @@ export function ForgotPassword() {
               
               <Button
                 type="submit"
-                className="w-full bg-[#d35400] hover:bg-[#e67e22] text-white"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                 disabled={loading}
               >
                 {loading ? t.sending : t.sendLink}
