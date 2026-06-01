@@ -64,7 +64,7 @@
 |---|---|---|---|---|---|
 | 0 | product-engineering | closeout-complete / all-deliverables-verified | 2026-05-31 | docs/plans/v5_0/active/phase_0/26_v5_0_phase_0_execution_plan.md | Foundation: 治理切换 + v4.x 迁移 + Audit Baseline；7 deliverable 全部完成，gate runner dry run verdict=blocked 符合预期 |
 | 1 | web-platform | closeout-complete / all-waves-done | 2026-05-31 | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_design_system_v2_closeout.md | Design System v2: Wave 1-5 complete; token foundation, UI primitive tokenization, dark theme activation, font hardening, magazine.css tokenization, anti-template polish, DESIGN_SYSTEM.md updated |
-| 2 | web-platform | not-started | - | - | WorkspaceShell v2 + Performance (动态 baseline + Lighthouse CI) |
+| 2 | web-platform | closeout-complete / all-tasks-done | 2026-05-31 | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_workspace_shell_v2_closeout.md | WorkspaceShell v2 + Performance: responsive 3-col/2-col/1-col layout, InspectorDrawer Radix Dialog focus-trap, dead Skeleton.tsx deleted (82 lines), Read/Compare skeletons + routes.tsx, Lighthouse CI (INP 200ms, perf 0.8, TTI 3500ms), bundle 213.59 kB gzip |
 | 3 | web-platform | not-started | - | - | 主链精修: Search + Import + KB |
 | 4 | web-platform | not-started | - | - | 主链精修: Read + Notes |
 | 5 | web-platform | not-started | - | - | 主链精修: Chat + Compare |

@@ -13,6 +13,8 @@ import {
   KnowledgeBaseSkeleton,
   AnalyticsSkeleton,
   NotesSkeleton,
+  ReadSkeleton,
+  CompareSkeleton,
 } from "./components/PageSkeletons";
 import { hasWarmAuthHint, useAuth } from "@/contexts/AuthContext";
 import { Dashboard } from "./pages/Dashboard";
@@ -160,11 +162,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "read/:id",
-        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Read /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
+        element: <RouteErrorBoundary><LazyRoute fallback={<ReadSkeleton />}><ProtectedRoute><Read /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "read",
-        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Read /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
+        element: <RouteErrorBoundary><LazyRoute fallback={<ReadSkeleton />}><ProtectedRoute><Read /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "chat",
@@ -188,7 +190,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "compare",
-        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Compare /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
+        element: <RouteErrorBoundary><LazyRoute fallback={<CompareSkeleton />}><ProtectedRoute><Compare /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
     ],
   },

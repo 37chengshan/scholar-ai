@@ -127,6 +127,79 @@ export function AnalyticsSkeleton() {
   );
 }
 
+/** Read page skeleton: document viewer with optional sidebar */
+export function ReadSkeleton() {
+  return (
+    <div className="flex h-full">
+      {/* Sidebar: document outline / TOC */}
+      <div className="hidden w-64 shrink-0 border-r border-border/50 p-4 space-y-3 md:block">
+        <Skeleton className="h-5 w-20" />
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-5 w-16 mt-4" />
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-5/6" />
+          ))}
+        </div>
+      </div>
+
+      {/* Main content: paper body */}
+      <div className="flex-1 p-6 space-y-4 max-w-3xl mx-auto">
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-4 w-1/3" />
+        <div className="space-y-3 mt-6">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-32 w-full mt-4" />
+        <div className="space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-full" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Compare page skeleton: sidebar + main panel + inspector */
+export function CompareSkeleton() {
+  return (
+    <div className="flex h-full">
+      {/* Sidebar: paper selection */}
+      <div className="w-64 shrink-0 border-r border-border/50 p-4 space-y-3">
+        <Skeleton className="h-10 w-full" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="rounded-lg border border-border/50 p-3 space-y-2">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        ))}
+      </div>
+
+      {/* Main: comparison grid */}
+      <div className="flex-1 p-4 space-y-4">
+        <Skeleton className="h-10 w-full" />
+        <div className="grid grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border/50 p-4 space-y-3">
+              <Skeleton className="h-5 w-1/2" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Notes page skeleton: note list + editor area */
 export function NotesSkeleton() {
   return (
