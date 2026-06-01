@@ -151,6 +151,20 @@ const REVIEW_DIMENSIONS = [
 // 工具函数
 // ══════════════════════════════════════════════════════════
 
+// 智能网页获取（使用 smart-web-fetch 清洗服务）
+async function fetchWeb(url) {
+  try {
+    const result = await agent(`使用 smart-web-fetch 获取网页内容：python3 ~/.claude/skills/smart-web-fetch/scripts/fetch.py "${url}"`, {
+      label: 'fetch-web',
+      model: LIGHT_MODEL
+    })
+    return result
+  } catch (e) {
+    log(`⚠️ 网页获取失败: ${e.message}`)
+    return null
+  }
+}
+
 function truncate(str, maxLen = 30000) {
   if (!str) return '[empty]'
   if (str.length <= maxLen) return str
@@ -220,6 +234,10 @@ ${ph.deps.length > 0 ? ph.deps.join(', ') : '无（起点）'}
 3. 当前代码与目标之间的差距
 4. 技术风险、依赖风险、范围风险
 5. 按子任务拆分，估计复杂度
+
+## 外部文档获取
+如果需要查阅外部文档或 API 文档，使用 smart-web-fetch：
+python3 ~/.claude/skills/smart-web-fetch/scripts/fetch.py "URL"
 
 ## 上下文
 ${CONTEXT}
