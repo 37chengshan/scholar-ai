@@ -4,7 +4,11 @@ import { toast } from 'sonner';
 
 import { Button } from '@/app/components/ui/button';
 import { useUploadWorkspace } from '@/features/uploads/hooks/useUploadWorkspace';
+import { usePipelineTracker } from '@/features/uploads/hooks/usePipelineTracker';
+import { uploadSessionApi } from '@/services/uploadSessionApi';
+import { importApi } from '@/services/importApi';
 import { UploadQueue } from './UploadQueue';
+import type { UploadQueueItem } from '@/features/uploads/state/uploadWorkspaceStore';
 
 interface UploadWorkspaceProps {
   knowledgeBaseId: string;
@@ -12,12 +16,15 @@ interface UploadWorkspaceProps {
 }
 
 export function UploadWorkspace({ knowledgeBaseId, onQueueComplete }: UploadWorkspaceProps) {
+  usePipelineTracker();
+
   const {
     items,
     isUploading,
     pendingCount,
     addFiles,
     removeItem,
+    updateItem,
     startUploadQueue,
   } = useUploadWorkspace(knowledgeBaseId);
 
@@ -65,6 +72,27 @@ export function UploadWorkspace({ knowledgeBaseId, onQueueComplete }: UploadWork
     toast.error('上传失败，请检查文件后重试');
   };
 
+  const handleCancel = useCallback(
+    async (item: UploadQueueItem) => {
+      try {
+        if (item.uploadSessionId) {
+          await uploadSessionApi.abortSession(item.uploadSessionId);
+        } else if (item.importJobId) {
+          await importApi.cancel(item.importJobId);
+        }
+        updateItem(item.id, (prev) => ({
+          ...prev,
+          status: 'cancelled',
+          error: undefined,
+        }));
+        toast.success('已取消');
+      } catch {
+        toast.error('取消失败');
+      }
+    },
+    [updateItem]
+  );
+
   return (
     <div className="space-y-4">
       <div
@@ -84,7 +112,7 @@ export function UploadWorkspace({ knowledgeBaseId, onQueueComplete }: UploadWork
         <p className="text-xs text-muted-foreground mt-3">支持 PDF 格式，默认 5MB 分片断点续传</p>
       </div>
 
-      <UploadQueue items={items} onRemove={removeItem} removable={!isUploading} />
+      <UploadQueue items={items} onRemove={removeItem} onCancel={handleCancel} removable={!isUploading} />
 
       <div className="flex justify-end">
         <Button onClick={() => void runUpload()} disabled={isUploading || pendingCount === 0}>

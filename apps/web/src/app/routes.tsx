@@ -15,6 +15,7 @@ import {
   NotesSkeleton,
   ReadSkeleton,
   CompareSkeleton,
+  UploadSkeleton,
 } from "./components/PageSkeletons";
 import { hasWarmAuthHint, useAuth } from "@/contexts/AuthContext";
 import { Dashboard } from "./pages/Dashboard";
@@ -29,6 +30,7 @@ const Settings = lazy(() => import("./pages/Settings").then(m => ({ default: m.S
 const Notes = lazy(() => import("./pages/Notes").then(m => ({ default: m.Notes })));
 const Analytics = lazy(() => import("./pages/Analytics").then(m => ({ default: m.Analytics })));
 const Compare = lazy(() => import("./pages/Compare").then(m => ({ default: m.Compare })));
+const Upload = lazy(() => import("./pages/Upload").then(m => ({ default: m.Upload })));
 
 // Auth guard component for protected routes
 // Uses AuthContext (Cookie-based auth) instead of localStorage
@@ -155,6 +157,10 @@ export const router = createBrowserRouter([
       {
         path: "knowledge-bases/:id",
         element: <RouteErrorBoundary><LazyRoute fallback={<KnowledgeBaseSkeleton />}><ProtectedRoute><KnowledgeBaseDetail /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
+      },
+      {
+        path: "knowledge-bases/:id/upload",
+        element: <RouteErrorBoundary><LazyRoute fallback={<UploadSkeleton />}><ProtectedRoute><Upload /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "search",

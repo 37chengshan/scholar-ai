@@ -65,7 +65,7 @@
 | 0 | product-engineering | closeout-complete / all-deliverables-verified | 2026-05-31 | docs/plans/v5_0/active/phase_0/26_v5_0_phase_0_execution_plan.md | Foundation: 治理切换 + v4.x 迁移 + Audit Baseline；7 deliverable 全部完成，gate runner dry run verdict=blocked 符合预期 |
 | 1 | web-platform | closeout-complete / all-waves-done | 2026-05-31 | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_design_system_v2_closeout.md | Design System v2: Wave 1-5 complete; token foundation, UI primitive tokenization, dark theme activation, font hardening, magazine.css tokenization, anti-template polish, DESIGN_SYSTEM.md updated |
 | 2 | web-platform | closeout-complete / all-tasks-done | 2026-05-31 | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_workspace_shell_v2_closeout.md | WorkspaceShell v2 + Performance: responsive 3-col/2-col/1-col layout, InspectorDrawer Radix Dialog focus-trap, dead Skeleton.tsx deleted (82 lines), Read/Compare skeletons + routes.tsx, Lighthouse CI (INP 200ms, perf 0.8, TTI 3500ms), bundle 213.59 kB gzip |
-| 3 | web-platform | not-started | - | - | 主链精修: Search + Import + KB |
+| 3 | web-platform | closeout-complete / all-upload-visualization-tasks-done | 2026-05-31 | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_upload_visualization_closeout.md | Upload Visualization: SSE pipeline progress tracking (useSSEProgress, usePipelineTracker), batch upload orchestration (useBatchUpload, BatchUploadSummary), cancel support (CancelConfirmDialog), PipelineProgressCard stepper with 7 stage groups, backend SSE error leakage fix + rate limiting; 55 frontend tests + 24 backend import tests pass |
 | 4 | web-platform | not-started | - | - | 主链精修: Read + Notes |
 | 5 | web-platform | not-started | - | - | 主链精修: Chat + Compare |
 | 6 | web-platform | not-started | - | - | 主链精修: Review + Dashboard |
@@ -135,6 +135,7 @@
 | PlanA_前端架构与交互重构 | web-platform | done | PR10,PR7_PR8 | 2026-04-18 | 9f58bb9,9a2fc2c,0b01076,43fe5c9,e02c880 | PlanA | DU-20260418-004 | PR22 | apps/web,docs | high | W0-W6 全部完成，进入维护态 |
 | PlanB_后端稳定性与RAG能力重构 | ai-runtime | done | PlanA,PR12 | 2026-04-18 | 9e0ebec,389b3b7,e5afcb0 | PlanB | DU-20260418-005 | PR23 | apps/api,docs | high | W0-W8 已完成并通过审查，进入维护态 |
 | PlanC_工程治理与交付体系重构 | ai-platform | done | PlanA,PlanB | 2026-04-18 | historical-planc-governance-20260418 | PlanC | DU-20260418-006 | this-branch | scripts,.github,docs | high | 治理脚本、门禁工作流、E2E阻断、KPI审计已落地 |
+| v5_0_phase_3_upload_visualization | web-platform,ai-runtime | done | 23_v5_0_phase_2_execution_plan | 2026-05-31 | working-tree-v5-0-phase-3-upload-visualization | V5.0-3 | DU-20260531-011,DU-20260531-012 | pending | apps/web,apps/api | high | Phase 5.0-3 Upload Visualization closeout 已完成：前端 SSE pipeline tracking (useSSEProgress/usePipelineTracker)、batch upload orchestration (useBatchUpload/BatchUploadSummary)、cancel 支持 (CancelConfirmDialog)、PipelineProgressCard 7-stage stepper；后端 SSE 错误泄漏修复 + rate limiting；55 前端测试 + 24 后端 import 测试通过 |
 
 ## 回填模板
 

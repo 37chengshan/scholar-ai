@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import CurrentUserId
+from app.middleware.rate_limit import limiter
 from app.schemas.upload_session import CreateUploadSessionRequest
 from app.services.upload_session_service import UploadSessionService
 from app.utils.problem_detail import Errors
@@ -40,15 +41,17 @@ def _raise_value_error(e: ValueError) -> None:
 
 
 @router.post("/import-jobs/{job_id}/upload-sessions", response_model=UploadSessionResponse)
+@limiter.limit("10/hour")
 async def create_upload_session(
+    request: Request,
     job_id: str,
-    request: CreateUploadSessionRequest,
+    body: CreateUploadSessionRequest,
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
     """Create or resume upload session for a local-file import job."""
     try:
-        result = await _service.create_session(job_id, user_id, request, db)
+        result = await _service.create_session(job_id, user_id, body, db)
         return UploadSessionResponse(success=True, data=result)
     except ValueError as e:
         _raise_value_error(e)
@@ -69,10 +72,11 @@ async def get_upload_session(
 
 
 @router.put("/upload-sessions/{session_id}/parts/{part_number}", response_model=UploadSessionResponse)
+@limiter.limit("100/minute")
 async def upload_part(
+    request: Request,
     session_id: str,
     part_number: int,
-    request: Request,
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):

@@ -23,6 +23,9 @@ export interface UploadQueueItem {
   error?: string;
   importJobId?: string;
   uploadSessionId?: string;
+  pipelineStage?: string;
+  pipelineProgress?: number;
+  paperId?: string;
 }
 
 interface PersistedUploadQueueItem extends Omit<UploadQueueItem, 'file'> {}

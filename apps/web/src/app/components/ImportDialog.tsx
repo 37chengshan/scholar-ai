@@ -228,6 +228,18 @@ export function ImportDialog({
                   await onImportComplete?.();
                 }}
               />
+              <div className="mt-3 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleOpenChange(false);
+                    navigate(`/knowledge-bases/${knowledgeBaseId}/upload`);
+                  }}
+                  className="text-xs text-primary hover:underline"
+                >
+                  前往上传页面查看进度
+                </button>
+              </div>
             </TabsContent>
             <TabsContent value="arxiv" className="mt-4">
               {renderExternalTab(

@@ -233,3 +233,36 @@ export function NotesSkeleton() {
     </div>
   );
 }
+
+/** Upload page skeleton: header + drop zone + queue */
+export function UploadSkeleton() {
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border/50">
+        <Skeleton className="h-8 w-8 rounded" />
+        <Skeleton className="h-5 w-24" />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 px-6 py-6">
+        <div className="max-w-2xl mx-auto space-y-6">
+          {/* Drop zone */}
+          <Skeleton className="h-48 w-full rounded-lg" />
+
+          {/* Queue items */}
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-md" />
+            ))}
+          </div>
+
+          {/* Button */}
+          <div className="flex justify-end">
+            <Skeleton className="h-9 w-32 rounded-md" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

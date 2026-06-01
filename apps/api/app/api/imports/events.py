@@ -69,14 +69,15 @@ async def stream_import_progress(
         max_stream_seconds = 7200
         stream_start = asyncio.get_event_loop().time()
 
-        while True:
-            # Check stream timeout
-            elapsed = asyncio.get_event_loop().time() - stream_start
-            if elapsed > max_stream_seconds:
-                yield f"event: error\ndata: {json.dumps({'message': 'Stream timeout exceeded'})}\n\n"
-                break
+        # Single session for the entire generator lifecycle
+        async with AsyncSessionLocal() as db:
+            while True:
+                # Check stream timeout
+                elapsed = asyncio.get_event_loop().time() - stream_start
+                if elapsed > max_stream_seconds:
+                    yield f"event: error\ndata: {json.dumps({'message': 'Stream timeout exceeded'})}\n\n"
+                    break
 
-            async with AsyncSessionLocal() as db:
                 try:
                     # Get job with ownership check
                     job = await service.get_job(job_id, user_id, db)
@@ -206,11 +207,11 @@ async def stream_import_progress(
                         error=str(e),
                         duration_ms=round((time.perf_counter() - started) * 1000, 2),
                     )
-                    yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+                    yield f"event: error\ndata: {json.dumps({'message': 'Internal stream error'})}\n\n"
                     break
 
-            # Poll interval: 2 seconds
-            await asyncio.sleep(2)
+                # Poll interval: 2 seconds
+                await asyncio.sleep(2)
 
     return StreamingResponse(
         event_generator(),
