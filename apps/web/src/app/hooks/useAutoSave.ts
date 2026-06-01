@@ -19,6 +19,7 @@ interface UseAutoSaveOptions {
   onSave: (content: any) => Promise<void>;
   debounceMs?: number;
   noteId?: string;
+  userId?: string;
 }
 
 interface UseAutoSaveReturn {
@@ -83,7 +84,9 @@ export function useAutoSave({
   onSave,
   debounceMs = 1000,
   noteId,
+  userId,
 }: UseAutoSaveOptions): UseAutoSaveReturn {
+  const draftKey = noteId && userId ? `draft_${userId}_${noteId}` : noteId ? `note_draft_${noteId}` : undefined;
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,21 +104,21 @@ export function useAutoSave({
       setStatus('saved');
       setLastSaved(new Date());
       // Clear IndexedDB draft on successful save
-      if (noteId) {
-        await removeFromIndexedDB(`note_draft_${noteId}`);
+      if (draftKey) {
+        await removeFromIndexedDB(draftKey);
       }
     } catch {
       setStatus('error');
       // Fallback to IndexedDB
-      if (noteId) {
+      if (draftKey) {
         try {
-          await saveToIndexedDB(`note_draft_${noteId}`, contentToSave);
+          await saveToIndexedDB(draftKey, contentToSave);
         } catch (dbError) {
           console.error('Failed to save to IndexedDB:', dbError);
         }
       }
     }
-  }, [onSave, noteId]);
+  }, [onSave, draftKey]);
 
   // Debounced save on content change
   useEffect(() => {
@@ -137,15 +140,15 @@ export function useAutoSave({
   // Reconnect sync: flush IndexedDB drafts when coming back online
   useEffect(() => {
     const handleOnline = async () => {
-      if (noteId) {
-        const draft = await getFromIndexedDB(`note_draft_${noteId}`);
+      if (draftKey) {
+        const draft = await getFromIndexedDB(draftKey);
         if (draft !== undefined) {
           setStatus('saving');
           try {
             await onSave(draft);
             setStatus('saved');
             setLastSaved(new Date());
-            await removeFromIndexedDB(`note_draft_${noteId}`);
+            await removeFromIndexedDB(draftKey);
           } catch {
             setStatus('error');
           }
@@ -155,7 +158,7 @@ export function useAutoSave({
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [noteId, onSave]);
+  }, [draftKey, onSave]);
 
   const retrySave = useCallback(() => {
     performSave(contentRef.current);
