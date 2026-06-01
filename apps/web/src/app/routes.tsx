@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate, useLocation } from "react-router";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, Component, type ReactNode } from "react";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { ForgotPassword } from "./pages/ForgotPassword";
@@ -7,6 +7,13 @@ import { ResetPassword } from "./pages/ResetPassword";
 import { Landing } from "./pages/Landing";
 import { Layout } from "./components/Layout";
 import { LoadingFallback } from "./components/LoadingFallback";
+import { PageErrorFallback } from "./components/PageErrorFallback";
+import {
+  SearchResultsSkeleton,
+  KnowledgeBaseSkeleton,
+  AnalyticsSkeleton,
+  NotesSkeleton,
+} from "./components/PageSkeletons";
 import { hasWarmAuthHint, useAuth } from "@/contexts/AuthContext";
 import { Dashboard } from "./pages/Dashboard";
 import { Chat } from "./pages/Chat";
@@ -58,12 +65,52 @@ export function PublicAuthRoute({ children }: { children: React.ReactNode }) {
 }
 
 // Suspense wrapper for lazy-loaded components
-function LazyRoute({ children }: { children: React.ReactNode }) {
+function LazyRoute({ children, fallback }: { children: React.ReactNode; fallback?: ReactNode }) {
   return (
-    <Suspense fallback={<LoadingFallback />}>
+    <Suspense fallback={fallback ?? <LoadingFallback />}>
       {children}
     </Suspense>
   );
+}
+
+// Route-level error boundary using PageErrorFallback
+interface RouteErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class RouteErrorBoundary extends Component<
+  { children: ReactNode },
+  RouteErrorBoundaryState
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): RouteErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Route error:", error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError && this.state.error) {
+      return (
+        <PageErrorFallback
+          error={this.state.error}
+          resetError={this.handleReset}
+        />
+      );
+    }
+    return this.props.children;
+  }
 }
 
 export const router = createBrowserRouter([
@@ -101,47 +148,47 @@ export const router = createBrowserRouter([
       },
       {
         path: "knowledge-bases",
-        element: <LazyRoute><ProtectedRoute><KnowledgeBaseList /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute fallback={<KnowledgeBaseSkeleton />}><ProtectedRoute><KnowledgeBaseList /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "knowledge-bases/:id",
-        element: <LazyRoute><ProtectedRoute><KnowledgeBaseDetail /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute fallback={<KnowledgeBaseSkeleton />}><ProtectedRoute><KnowledgeBaseDetail /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "search",
-        element: <LazyRoute><ProtectedRoute><Search /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute fallback={<SearchResultsSkeleton />}><ProtectedRoute><Search /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "read/:id",
-        element: <LazyRoute><ProtectedRoute><Read /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Read /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "read",
-        element: <LazyRoute><ProtectedRoute><Read /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Read /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "chat",
-        element: <LazyRoute><ProtectedRoute><Chat /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Chat /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "settings",
-        element: <LazyRoute><ProtectedRoute><Settings /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Settings /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "notes",
-        element: <LazyRoute><ProtectedRoute><Notes /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute fallback={<NotesSkeleton />}><ProtectedRoute><Notes /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "dashboard",
-        element: <LazyRoute><ProtectedRoute><Dashboard /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Dashboard /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "analytics",
-        element: <LazyRoute><ProtectedRoute><Analytics /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute fallback={<AnalyticsSkeleton />}><ProtectedRoute><Analytics /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
       {
         path: "compare",
-        element: <LazyRoute><ProtectedRoute><Compare /></ProtectedRoute></LazyRoute>,
+        element: <RouteErrorBoundary><LazyRoute><ProtectedRoute><Compare /></ProtectedRoute></LazyRoute></RouteErrorBoundary>,
       },
     ],
   },

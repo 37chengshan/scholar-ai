@@ -12,14 +12,11 @@
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test e2e/chat-critical.spec.ts e2e/kb-critical.spec.ts e2e/retrieval-critical.spec.ts e2e/search-pagination-stability.spec.ts e2e/chat-session-search.spec.ts",
-    "test:e2e:ci": "playwright test e2e/chat-critical.spec.ts e2e/kb-critical.spec.ts e2e/retrieval-critical.spec.ts e2e/search-pagination-stability.spec.ts e2e/chat-session-search.spec.ts --reporter=line"
+    "test:e2e:ci": "playwright test e2e/chat-critical.spec.ts e2e/kb-critical.spec.ts e2e/retrieval-critical.spec.ts e2e/search-pagination-stability.spec.ts e2e/chat-session-search.spec.ts --reporter=line",
+    "size": "size-limit"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.6",
-    "@emotion/react": "11.14.0",
-    "@emotion/styled": "11.14.1",
-    "@mui/icons-material": "7.3.5",
-    "@mui/material": "7.3.5",
     "@popperjs/core": "2.11.8",
     "@radix-ui/react-accordion": "1.2.3",
     "@radix-ui/react-alert-dialog": "1.1.6",
@@ -105,6 +102,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@size-limit/preset-app": "^12.1.0",
     "@tailwindcss/vite": "4.1.12",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -118,6 +116,8 @@
     "@vitest/ui": "^4.1.2",
     "jsdom": "^29.0.1",
     "playwright": "^1.59.1",
+    "rollup-plugin-visualizer": "^7.0.1",
+    "size-limit": "^12.1.0",
     "tailwindcss": "4.1.12",
     "typescript": "^5.4.0",
     "vite": "6.3.5",

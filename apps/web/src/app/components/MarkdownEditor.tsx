@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { simpleMarkdownToHtml } from '../../lib/markdown-utils';
 
 interface MarkdownEditorProps {
   value: string;
@@ -33,33 +34,6 @@ export function MarkdownEditor({ value, onChange, placeholder, onSave }: Markdow
     placeholder: placeholder || (isZh ? "在此输入 Markdown 笔记..." : "Write your notes in Markdown..."),
     saved: isZh ? "已保存" : "Saved",
     saving: isZh ? "保存中..." : "Saving...",
-  };
-
-  /**
-   * Simple Markdown to HTML converter
-   * For full Markdown support, install react-markdown
-   */
-  const simpleMarkdownToHtml = (text: string): string => {
-    return text
-      // Headers
-      .replace(/^### (.*$)/gim, '<h3 class="text-base font-semibold mt-4 mb-2">$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2 class="text-xl font-semibold mt-4 mb-2">$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-semibold mt-4 mb-2">$1</h1>')
-      // Bold
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      // Italic
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      // Code blocks
-      .replace(/```([\s\S]+?)```/g, '<pre class="bg-muted p-4 rounded-sm font-mono text-sm overflow-x-auto my-4"><code>$1</code></pre>')
-      // Inline code
-      .replace(/`(.+?)`/g, '<code class="bg-muted px-1 py-0.5 rounded font-mono text-sm">$1</code>')
-      // Links
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-primary hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
-      // Lists
-      .replace(/^- (.*$)/gim, '<li class="ml-4">$1</li>')
-      .replace(/^\* (.*$)/gim, '<li class="ml-4">$1</li>')
-      // Line breaks
-      .replace(/\n/g, '<br>');
   };
 
   return (

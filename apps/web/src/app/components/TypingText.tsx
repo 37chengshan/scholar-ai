@@ -10,6 +10,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
+import { simpleMarkdownToHtml } from '../../lib/markdown-utils';
 
 /**
  * TypingText props
@@ -20,44 +21,6 @@ export interface TypingTextProps {
   onComplete?: () => void;
   className?: string;
   enableMarkdown?: boolean;
-}
-
-/**
- * Simple Markdown to HTML converter
- * For full Markdown support with LaTeX, install:
- * npm install react-markdown remark-gfm remark-math rehype-katex katex
- */
-function simpleMarkdownToHtml(text: string): string {
-  return text
-    // Escape HTML entities first
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    // Headers
-    .replace(/^### (.*$)/gim, '<h3 class="text-base font-semibold mt-4 mb-2">$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2 class="text-xl font-semibold mt-4 mb-2">$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-semibold mt-4 mb-2">$1</h1>')
-    // Bold
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Code blocks
-    .replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="bg-muted p-3 rounded-sm font-mono text-xs overflow-x-auto my-3"><code>$2</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code class="bg-muted px-1.5 py-0.5 rounded font-mono text-xs">$1</code>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-primary hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
-    // Unordered lists
-    .replace(/^[\-\*] (.+)$/gim, '<li class="ml-4 list-disc">$1</li>')
-    // Ordered lists
-    .replace(/^\d+\. (.+)$/gim, '<li class="ml-4 list-decimal">$1</li>')
-    // Blockquotes
-    .replace(/^&gt; (.+)$/gim, '<blockquote class="border-l-4 border-muted-foreground/30 pl-4 italic text-muted-foreground">$1</blockquote>')
-    // Horizontal rules
-    .replace(/^---$/gim, '<hr class="my-4 border-border" />')
-    // Line breaks (preserve paragraphs)
-    .replace(/\n\n/g, '</p><p class="my-2">')
-    .replace(/\n/g, '<br>');
 }
 
 /**

@@ -11,8 +11,10 @@ import uuid
 import tempfile
 import httpx
 import asyncio
+import ipaddress
 from datetime import datetime, timezone
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 from sqlalchemy import select, update
 
@@ -21,6 +23,57 @@ from app.models import Paper, ProcessingTask
 from app.core.storage import ObjectStorage
 from app.workers.pdf_coordinator import get_pdf_coordinator
 from app.utils.logger import logger
+
+
+# -- SSRF protection --------------------------------------------------------
+
+ALLOWED_SCHEMES = {"http", "https"}
+
+# RFC 1918 + loopback + link-local + cloud metadata
+BLOCKED_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),       # loopback
+    ipaddress.ip_network("10.0.0.0/8"),         # RFC 1918
+    ipaddress.ip_network("172.16.0.0/12"),      # RFC 1918
+    ipaddress.ip_network("192.168.0.0/16"),     # RFC 1918
+    ipaddress.ip_network("169.254.0.0/16"),     # link-local / cloud metadata
+    ipaddress.ip_network("::1/128"),            # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),           # IPv6 ULA
+    ipaddress.ip_network("fe80::/10"),          # IPv6 link-local
+]
+
+
+def _validate_url_for_fetch(url: str) -> None:
+    """Validate URL is safe to fetch -- blocks SSRF vectors.
+
+    Raises ValueError with a descriptive message if the URL is rejected.
+    """
+    parsed = urlparse(url)
+
+    if parsed.scheme not in ALLOWED_SCHEMES:
+        raise ValueError(
+            f"URL scheme '{parsed.scheme}' not allowed. "
+            f"Only http and https are permitted."
+        )
+
+    if not parsed.hostname:
+        raise ValueError("URL must have a hostname.")
+
+    # Resolve hostname to IP and check against blocked ranges
+    import socket
+    try:
+        addr_info = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror:
+        raise ValueError(f"Cannot resolve hostname: {parsed.hostname}")
+
+    for family, _, _, _, sockaddr in addr_info:
+        ip = ipaddress.ip_address(sockaddr[0])
+        for network in BLOCKED_NETWORKS:
+            if ip in network:
+                raise ValueError(
+                    f"URL resolves to blocked address {ip} "
+                    f"(network {network}). Internal/private addresses are "
+                    f"not allowed."
+                )
 
 
 async def execute_upload_paper(
@@ -56,9 +109,16 @@ async def execute_upload_paper(
         if not paper_url:
             return {"success": False, "error": "paper_url is required", "data": None}
 
+        # SSRF protection: validate URL before fetching
+        try:
+            _validate_url_for_fetch(paper_url)
+        except ValueError as ve:
+            logger.warning("URL validation failed", url=paper_url, error=str(ve))
+            return {"success": False, "error": f"Invalid URL: {ve}", "data": None}
+
         logger.info("Uploading paper from URL", paper_url=paper_url, user_id=user_id)
 
-        # 1. Download PDF from external URL
+        # 1. Download PDF from external URL (redirects limited to same-scheme)
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.get(paper_url, follow_redirects=True)
             response.raise_for_status()

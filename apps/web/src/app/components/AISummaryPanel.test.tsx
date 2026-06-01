@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReadingCardDoc } from '@/features/read/readingCard';
 import { AISummaryPanel } from './AISummaryPanel';
 import { LanguageContext } from '../contexts/LanguageContext';
@@ -65,7 +65,7 @@ describe('AISummaryPanel', () => {
     expect(screen.queryByRole('heading', { name: '旧摘要' })).not.toBeInTheDocument();
   });
 
-  it('falls back to markdown summary when reading card is missing', () => {
+  it('falls back to markdown summary when reading card is missing', async () => {
     render(
       <LanguageContext.Provider value={{ language: 'zh', setLanguage: () => {} }}>
         <AISummaryPanel
@@ -75,7 +75,10 @@ describe('AISummaryPanel', () => {
       </LanguageContext.Provider>,
     );
 
-    expect(screen.getByRole('heading', { name: '标题' })).toBeInTheDocument();
+    // react-markdown is now dynamically imported; wait for Suspense to resolve
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '标题' })).toBeInTheDocument();
+    });
     expect(screen.getByText('要点一')).toBeInTheDocument();
     expect(screen.getByText('加粗内容')).toBeInTheDocument();
   });

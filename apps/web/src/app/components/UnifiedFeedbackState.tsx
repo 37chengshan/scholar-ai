@@ -20,6 +20,14 @@ const feedbackVariants = cva(
   }
 );
 
+interface FeedbackStateProps {
+  variant: 'empty' | 'loading' | 'error' | 'partial';
+  title: string;
+  description?: string;
+  action?: { label: string; onClick: () => void };
+  icon?: React.ReactNode;
+}
+
 interface UnifiedFeedbackStateProps extends VariantProps<typeof feedbackVariants> {
   title?: string;
   message?: string;
@@ -42,28 +50,65 @@ export function UnifiedFeedbackState({ status, size, title, message, action, cla
   );
 }
 
-// Backward compatibility interfaces and wrappers (temporary)
-export function UnifiedEmptyState({ title, description, actionLabel, onAction, className }: any) {
+/** Type-safe feedback state using the strict FeedbackStateProps interface. */
+export function FeedbackState({ variant, title, description, action, icon, className }: FeedbackStateProps & { className?: string }) {
+  return (
+    <UnifiedFeedbackState
+      status={variant}
+      title={title}
+      message={description}
+      action={action ? <Button onClick={action.onClick}>{action.label}</Button> : undefined}
+      className={className}
+    />
+  );
+}
+
+// Backward compatibility interfaces and wrappers
+interface UnifiedEmptyStateProps {
+  title?: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  className?: string;
+}
+
+export function UnifiedEmptyState({ title, description, actionLabel, onAction, className }: UnifiedEmptyStateProps) {
   return (
     <UnifiedFeedbackState
       status="empty"
       title={title}
       message={description}
-      action={actionLabel && onAction ? <Button onClick={onAction}>{actionLabel}</Button> : null}
+      action={actionLabel && onAction ? <Button onClick={onAction}>{actionLabel}</Button> : undefined}
       className={className}
     />
   );
 }
-export function UnifiedLoadingState({ label, fullScreen, className }: any) {
+
+interface UnifiedLoadingStateProps {
+  label?: string;
+  fullScreen?: boolean;
+  className?: string;
+}
+
+export function UnifiedLoadingState({ label, fullScreen, className }: UnifiedLoadingStateProps) {
   return <UnifiedFeedbackState status="loading" message={label} size={fullScreen ? "md" : "sm"} className={className} />;
 }
-export function UnifiedErrorState({ title, description, retryLabel, onRetry, className }: any) {
+
+interface UnifiedErrorStateProps {
+  title?: string;
+  description?: string;
+  retryLabel?: string;
+  onRetry?: () => void;
+  className?: string;
+}
+
+export function UnifiedErrorState({ title, description, retryLabel, onRetry, className }: UnifiedErrorStateProps) {
   return (
     <UnifiedFeedbackState
       status="error"
       title={title}
       message={description}
-      action={retryLabel && onRetry ? <Button variant="outline" onClick={onRetry}>{retryLabel}</Button> : null}
+      action={retryLabel && onRetry ? <Button variant="outline" onClick={onRetry}>{retryLabel}</Button> : undefined}
       className={className}
     />
   );
