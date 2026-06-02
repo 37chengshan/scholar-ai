@@ -47,6 +47,34 @@ from app.services.phase6_runtime_service import build_phase6_runtime_contract
 from app.services.truthfulness_service import get_truthfulness_service
 from app.utils.logger import logger
 
+from app.services.outline_planner import (
+    global_discovery,
+    build_outline,
+    derive_themes_from_titles,
+    is_graph_available,
+)
+from app.services.section_generator import (
+    retrieve_section_evidence,
+    write_draft,
+    candidate_to_evidence_block,
+    diversify_evidence_blocks,
+    retrieve_live_evidence_fallback,
+    synthesize_section_text,
+)
+from app.services.draft_finalizer import (
+    validate_draft,
+    finalize_draft,
+    derive_known_limitations,
+    build_graph_global_evidence,
+    merge_claim_rows,
+    build_truthfulness_summary,
+)
+from app.services.review_dto_mapper import (
+    to_review_dto as _to_review_dto,
+    to_run_summary as _to_run_summary,
+    to_run_detail as _to_run_detail,
+)
+
 _ALLOWED_ERROR_STATES = {
     "insufficient_evidence",
     "graph_unavailable",
@@ -186,13 +214,13 @@ class ReviewDraftService:
         evidence_rows: list[dict[str, Any]] = []
 
         try:
-            graph_summary, graph_error = await self._global_discovery(
-                kb=kb,
+            graph_summary, graph_error = await global_discovery(
+                kb_enable_graph=kb.enable_graph,
                 papers=selected_papers,
                 question=review_question,
                 routing=routing,
             )
-            graph_global_evidence = self._build_graph_global_evidence(
+            graph_global_evidence = build_graph_global_evidence(
                 graph_summary=graph_summary,
                 graph_error=graph_error,
                 routing=routing,
@@ -216,7 +244,7 @@ class ReviewDraftService:
                 )
             )
 
-            outline_doc = self._build_outline(
+            outline_doc = build_outline(
                 papers=selected_papers,
                 question=review_question,
                 graph_summary=graph_summary,
@@ -235,16 +263,17 @@ class ReviewDraftService:
                 )
             )
 
-            section_evidence = self._retrieve_section_evidence(
+            section_evidence = retrieve_section_evidence(
                 user_id=user_id,
                 paper_ids=source_paper_ids,
                 outline_doc=outline_doc,
                 routing=routing,
+                retrieve_evidence_fn=self._retrieve_evidence,
                 steps=steps,
                 tool_events=tool_events,
             )
 
-            draft_doc = self._write_draft(
+            draft_doc = write_draft(
                 outline_doc=outline_doc,
                 section_evidence=section_evidence,
                 routing=routing,
@@ -258,7 +287,7 @@ class ReviewDraftService:
                 )
             )
 
-            validated_doc, coverage_report = self._validate_draft(draft_doc)
+            validated_doc, coverage_report = validate_draft(draft_doc)
             steps.append(
                 self._step(
                     step_name="citation_validator",
@@ -278,7 +307,7 @@ class ReviewDraftService:
                     "graph_error": graph_error,
                 },
             )
-            final_doc, quality, error_state = self._finalize(
+            final_doc, quality, error_state = finalize_draft(
                 finalizer_input=finalizer_input,
                 graph_used=bool(graph_summary.get("graph_assist_used", False)),
                 graph_error=graph_error,
@@ -308,7 +337,7 @@ class ReviewDraftService:
                 for section in final_doc.sections
                 for paragraph in section.paragraphs
             ]
-            known_limitations = self._derive_known_limitations(
+            known_limitations = derive_known_limitations(
                 draft_doc=final_doc,
                 quality=quality,
                 error_state=error_state,
@@ -571,7 +600,7 @@ class ReviewDraftService:
                     evidence_blocks=typed_blocks,
                 )
                 refreshed_rows = self._truthfulness_report_to_claim_rows(refreshed_report)
-                merged_rows = self._merge_claim_rows(
+                merged_rows = merge_claim_rows(
                     refreshed_rows=refreshed_rows,
                     repaired_claim={
                         "claim_id": claim_id,
@@ -584,7 +613,7 @@ class ReviewDraftService:
                         "repair_hint": result["repair_hint"],
                     },
                 )
-                paragraph["truthfulness_summary"] = self._build_truthfulness_summary(
+                paragraph["truthfulness_summary"] = build_truthfulness_summary(
                     claim_rows=merged_rows,
                     verifier_backend=str(
                         refreshed_report.get("summary", {}).get("verifier_backend")
@@ -631,91 +660,7 @@ class ReviewDraftService:
 
     @staticmethod
     def to_review_dto(draft: ReviewDraft) -> ReviewDraftDto:
-        outline_payload = draft.outline_doc or {}
-        draft_payload = draft.draft_doc or {}
-        quality_payload = draft.quality or {}
-
-        safe_outline_sections = []
-        for section in outline_payload.get("sections", []) if isinstance(outline_payload, dict) else []:
-            if not isinstance(section, dict):
-                continue
-            safe_outline_sections.append(
-                _pick_keys(section, {"title", "intent", "supporting_paper_ids", "seed_evidence"})
-            )
-
-        safe_outline = {
-            "research_question": (outline_payload.get("research_question") if isinstance(outline_payload, dict) else "") or "",
-            "themes": (outline_payload.get("themes") if isinstance(outline_payload, dict) else []) or [],
-            "sections": safe_outline_sections,
-        }
-
-        safe_draft_sections = []
-        for section in draft_payload.get("sections", []) if isinstance(draft_payload, dict) else []:
-            if not isinstance(section, dict):
-                continue
-            safe_paragraphs = []
-            for paragraph in section.get("paragraphs", []) if isinstance(section.get("paragraphs"), list) else []:
-                if not isinstance(paragraph, dict):
-                    continue
-                safe_paragraphs.append(
-                    _pick_keys(
-                        paragraph,
-                        {
-                            "paragraph_id",
-                            "text",
-                            "citations",
-                            "evidence_blocks",
-                            "claim_verification",
-                            "truthfulness_summary",
-                            "benchmark_hooks",
-                            "citation_coverage_status",
-                        },
-                    )
-                )
-            safe_draft_sections.append(
-                {
-                    "heading": section.get("heading", ""),
-                    "paragraphs": safe_paragraphs,
-                    "omitted_reason": section.get("omitted_reason"),
-                }
-            )
-
-        safe_draft = {"sections": safe_draft_sections}
-        safe_quality = {
-            "citation_coverage": quality_payload.get("citation_coverage", 0.0) if isinstance(quality_payload, dict) else 0.0,
-            "unsupported_paragraph_rate": quality_payload.get("unsupported_paragraph_rate", 1.0) if isinstance(quality_payload, dict) else 1.0,
-            "graph_assist_used": bool(quality_payload.get("graph_assist_used", False)) if isinstance(quality_payload, dict) else False,
-            "fallback_used": bool(quality_payload.get("fallback_used", False)) if isinstance(quality_payload, dict) else False,
-            "execution_mode": quality_payload.get("execution_mode", "global_review") if isinstance(quality_payload, dict) else "global_review",
-            "kernel_profile": quality_payload.get("kernel_profile", "global_kernel") if isinstance(quality_payload, dict) else "global_kernel",
-            "storm_lite_used": bool(quality_payload.get("storm_lite_used", False)) if isinstance(quality_payload, dict) else False,
-            "adaptive_routing_used": bool(quality_payload.get("adaptive_routing_used", False)) if isinstance(quality_payload, dict) else False,
-            "truthfulness_backend": quality_payload.get("truthfulness_backend", "rarr_cove_scifact_lite") if isinstance(quality_payload, dict) else "rarr_cove_scifact_lite",
-            "benchmark_hooks": quality_payload.get("benchmark_hooks", {}) if isinstance(quality_payload, dict) else {},
-        }
-        known_limitations = ReviewDraftService._derive_known_limitations(
-            draft_doc=DraftDoc.model_validate(safe_draft),
-            quality=ReviewQuality.model_validate(safe_quality),
-            error_state=(draft.error_state if draft.error_state in _ALLOWED_ERROR_STATES else None),
-            graph_error="graph_unavailable" if draft.error_state == "graph_unavailable" else None,
-        )
-
-        return ReviewDraftDto(
-            id=draft.id,
-            knowledgeBaseId=draft.knowledge_base_id,
-            title=draft.title,
-            status=draft.status,  # type: ignore[arg-type]
-            sourcePaperIds=draft.source_paper_ids or [],
-            outlineDoc=OutlineDoc.model_validate(safe_outline),
-            draftDoc=DraftDoc.model_validate(safe_draft),
-            quality=ReviewQuality.model_validate(safe_quality),
-            knownLimitations=known_limitations,
-            traceId=draft.trace_id or "",
-            runId=draft.run_id or "",
-            errorState=(draft.error_state if draft.error_state in _ALLOWED_ERROR_STATES else None),
-            createdAt=draft.created_at.isoformat() if draft.created_at else "",
-            updatedAt=draft.updated_at.isoformat() if draft.updated_at else "",
-        )
+        return _to_review_dto(draft)
 
     # -----------------------------
     # Internal helpers
@@ -795,674 +740,6 @@ class ReviewDraftService:
         await self.db.flush()
         return draft
 
-    async def _global_discovery(
-        self,
-        *,
-        kb: KnowledgeBase,
-        papers: list[Paper],
-        question: str,
-        routing: PhaseIRoutingDecision,
-    ) -> tuple[dict[str, Any], Optional[str]]:
-        # Graph assist is enabled only when KB config turns it on and Neo4j is healthy.
-        graph_assist_used = False
-        graph_error: Optional[str] = None
-        if kb.enable_graph:
-            graph_assist_used = await self._is_graph_available()
-            if not graph_assist_used:
-                graph_error = "graph_unavailable"
-
-        themes = self._derive_themes_from_titles([p.title for p in papers])
-        candidate_papers = [p.id for p in papers]
-        return {
-            "query_family": "survey",
-            "graph_assist_used": graph_assist_used,
-            "themes": themes,
-            "candidate_papers": candidate_papers,
-            "section_seeds": [
-                {
-                    "title": "Research Landscape",
-                    "intent": f"Map the literature landscape for: {question}",
-                    "perspective": "landscape",
-                    "retrieval_mode": routing.execution_mode,
-                },
-                {
-                    "title": "Method Trends",
-                    "intent": "Compare methods, assumptions, and design patterns across papers",
-                    "perspective": "methods",
-                    "retrieval_mode": routing.execution_mode,
-                },
-                {
-                    "title": "Conflicting Evidence",
-                    "intent": "Surface disagreement, boundary conditions, and contradictory findings",
-                    "perspective": "conflicts",
-                    "retrieval_mode": routing.execution_mode,
-                },
-                {
-                    "title": "Limitations and Gaps",
-                    "intent": "Summarize weaknesses, missing evidence, and open research gaps",
-                    "perspective": "gaps",
-                    "retrieval_mode": routing.execution_mode,
-                },
-            ],
-            "storm_lite_used": routing.review_strategy == "storm_lite",
-        }, graph_error
-
-    async def _is_graph_available(self) -> bool:
-        neo4j = Neo4jService()
-        try:
-            async with neo4j.driver.session() as session:
-                await session.run("RETURN 1")
-            return True
-        except Exception:
-            return False
-        finally:
-            await neo4j.close()
-
-    @staticmethod
-    def _derive_themes_from_titles(titles: list[str]) -> list[str]:
-        tokens: dict[str, int] = {}
-        for title in titles:
-            for token in title.lower().replace(":", " ").replace("-", " ").split():
-                clean = token.strip(".,()[]{}")
-                if len(clean) < 4:
-                    continue
-                if clean in {"with", "from", "that", "this", "using", "study", "toward", "towards"}:
-                    continue
-                tokens[clean] = tokens.get(clean, 0) + 1
-        ordered = sorted(tokens.items(), key=lambda kv: kv[1], reverse=True)
-        return [word for word, _ in ordered[:6]]
-
-    def _build_outline(
-        self,
-        *,
-        papers: list[Paper],
-        question: str,
-        graph_summary: dict[str, Any],
-        routing: PhaseIRoutingDecision,
-    ) -> OutlineDoc:
-        seeds = graph_summary.get("section_seeds") or []
-        themes = graph_summary.get("themes") or []
-        paper_ids = [p.id for p in papers]
-        sections = []
-        for seed in seeds:
-            sections.append(
-                OutlineSection(
-                    title=seed.get("title", "Section"),
-                    intent=seed.get("intent", "Synthesize evidence"),
-                    perspective=seed.get("perspective", "synthesis"),
-                    retrieval_mode=seed.get("retrieval_mode", routing.execution_mode),
-                    supporting_paper_ids=paper_ids,
-                    seed_evidence=[],
-                )
-            )
-        return OutlineDoc(
-            research_question=question,
-            themes=themes,
-            sections=sections,
-        )
-
-    def _retrieve_section_evidence(
-        self,
-        *,
-        user_id: str,
-        paper_ids: list[str],
-        outline_doc: OutlineDoc,
-        routing: PhaseIRoutingDecision,
-        steps: list[dict[str, Any]],
-        tool_events: list[dict[str, Any]],
-    ) -> list[EvidenceRetrieverOutput]:
-        outputs: list[EvidenceRetrieverOutput] = []
-        for section in outline_doc.sections:
-            tool_event_id = uuid4().hex
-            tool_events.append(
-                {
-                    "event_id": tool_event_id,
-                    "tool_name": "hybrid_retriever",
-                    "event_type": "call",
-                    "args": {
-                        "query_family": "survey",
-                        "paper_ids": paper_ids,
-                        "section_title": section.title,
-                        "kernel_scope": routing.kernel_scope,
-                        "review_strategy": routing.review_strategy,
-                    },
-                    "status": "running",
-                }
-            )
-
-            query = (
-                f"Research question: {outline_doc.research_question}. "
-                f"Section: {section.title}. Intent: {section.intent}. "
-                f"Perspective: {section.perspective}. Themes: {', '.join(outline_doc.themes[:4])}."
-            )
-            top_k = 8 if routing.retrieval_depth == "deep" else 6
-            try:
-                pack = self._retrieve_evidence(
-                    query=query,
-                    user_id=user_id,
-                    paper_scope=paper_ids,
-                    query_family="survey",
-                    stage="rule",
-                    top_k=top_k,
-                )
-                blocks = [self._candidate_to_evidence_block(c) for c in pack.candidates[:top_k]]
-                blocks = self._diversify_evidence_blocks(blocks=blocks, limit=top_k)
-                if not blocks and paper_ids:
-                    blocks = self._retrieve_live_evidence_fallback(
-                        query=query,
-                        user_id=user_id,
-                        paper_ids=paper_ids,
-                        top_k=top_k,
-                    )
-                tool_events.append(
-                    {
-                        "event_id": tool_event_id,
-                        "tool_name": "hybrid_retriever",
-                        "event_type": "result",
-                        "result": {
-                            "candidate_count": len(pack.candidates),
-                            "paper_coverage_count": int(pack.diagnostics.get("paper_coverage_count", 0.0)),
-                            "live_fallback_used": bool(blocks) and len(pack.candidates) == 0,
-                            "section_retrieval_mode": section.retrieval_mode,
-                        },
-                        "status": "success",
-                    }
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Review evidence retrieval degraded",
-                    section_title=section.title,
-                    query=query,
-                    error=str(exc),
-                )
-                blocks = []
-                tool_events.append(
-                    {
-                        "event_id": tool_event_id,
-                        "tool_name": "hybrid_retriever",
-                        "event_type": "result",
-                        "result": {
-                            "candidate_count": 0,
-                            "paper_coverage_count": 0,
-                            "error": str(exc),
-                        },
-                        "status": "error",
-                    }
-                )
-
-            outputs.append(
-                EvidenceRetrieverOutput(
-                    section_title=section.title,
-                    evidence_bundles=blocks,
-                )
-            )
-
-        steps.append(
-            self._step(
-                step_name="evidence_retriever",
-                input_schema_name="EvidenceRetrieverInput",
-                output_schema_name="EvidenceRetrieverOutput",
-                status="completed",
-            )
-        )
-        return outputs
-
-    def _retrieve_live_evidence_fallback(
-        self,
-        *,
-        query: str,
-        user_id: str,
-        paper_ids: list[str],
-        top_k: int = 6,
-    ) -> list[EvidenceBlock]:
-        """Fallback to the live Milvus paper contents collection for fresh imports.
-
-        The review pipeline's primary retriever is artifact-backed and can miss
-        newly imported papers that have not been materialized into the static
-        artifact index yet. For paper-scoped review generation we can safely
-        fall back to the live per-user Milvus collection.
-        """
-        if not paper_ids:
-            return []
-
-        query_embedding = get_embedding_service().encode_text(query)
-        constraints = SearchConstraints(
-            user_id=user_id,
-            paper_ids=paper_ids,
-            content_types=["text"],
-            min_quality_score=0.25,
-        )
-        hits = get_milvus_service().search_contents_v2(
-            embedding=query_embedding,
-            top_k=top_k,
-            constraints=constraints,
-        )
-
-        blocks: list[EvidenceBlock] = []
-        for hit in hits:
-            paper_id = str(hit.get("paper_id") or "")
-            source_chunk_id = str(hit.get("id") or "")
-            if not paper_id or not source_chunk_id:
-                continue
-
-            page_num = hit.get("page_num")
-            section_path = hit.get("section")
-            text = str(hit.get("text") or hit.get("content") or "").strip()
-            if not text:
-                continue
-
-            score = float(hit.get("score") or 0.0)
-            blocks.append(
-                EvidenceBlock(
-                    evidence_id=source_chunk_id,
-                    source_type="paper",
-                    paper_id=paper_id,
-                    source_chunk_id=source_chunk_id,
-                    page_num=page_num if isinstance(page_num, int) else None,
-                    section_path=str(section_path or "") or None,
-                    content_type=str(hit.get("content_type") or "text"),
-                    text=text,
-                    quote_text=text[:600],
-                    score=score,
-                    rerank_score=score,
-                    support_status=(
-                        "supported"
-                        if score >= 0.7
-                        else "weakly_supported"
-                        if score >= 0.4
-                        else "unsupported"
-                    ),
-                    citation_jump_url=build_citation_jump_url(
-                        paper_id=paper_id,
-                        source_chunk_id=source_chunk_id,
-                        page_num=page_num if isinstance(page_num, int) else None,
-                    ),
-                )
-            )
-        return blocks
-
-    @staticmethod
-    def _diversify_evidence_blocks(*, blocks: list[EvidenceBlock], limit: int) -> list[EvidenceBlock]:
-        diversified: list[EvidenceBlock] = []
-        seen_per_paper: dict[str, int] = {}
-        for block in blocks:
-            paper_id = block.paper_id or "unknown-paper"
-            if seen_per_paper.get(paper_id, 0) >= 2:
-                continue
-            diversified.append(block)
-            seen_per_paper[paper_id] = seen_per_paper.get(paper_id, 0) + 1
-            if len(diversified) >= limit:
-                break
-        return diversified
-
-    @staticmethod
-    def _synthesize_section_text(
-        *,
-        question: str,
-        section: OutlineSection,
-        evidence_blocks: list[EvidenceBlock],
-    ) -> str:
-        if not evidence_blocks:
-            return ""
-        paper_examples: list[str] = []
-        seen_papers: set[str] = set()
-        for block in evidence_blocks:
-            if block.paper_id in seen_papers:
-                continue
-            seen_papers.add(block.paper_id)
-            snippet = (block.text or block.quote_text or "").strip().replace("\n", " ")
-            if snippet:
-                paper_examples.append(f"{block.paper_id}: {snippet[:180]}")
-            if len(paper_examples) >= 3:
-                break
-        lead = (
-            f"For {question}, the {section.title.lower()} perspective suggests that "
-            f"the literature can be organized around {section.intent.lower()}."
-        )
-        examples = " ".join(paper_examples)
-        tail = (
-            " This STORM-lite section keeps only evidence-backed synthesis and preserves"
-            " explicit cross-paper coverage."
-        )
-        return f"{lead} {examples}{tail}".strip()
-
-    def _write_draft(
-        self,
-        *,
-        outline_doc: OutlineDoc,
-        section_evidence: list[EvidenceRetrieverOutput],
-        routing: PhaseIRoutingDecision,
-    ) -> DraftDoc:
-        sections: list[DraftSection] = []
-        for section, section_bundle in zip(outline_doc.sections, section_evidence):
-            if not section_bundle.evidence_bundles:
-                sections.append(
-                    DraftSection(
-                        heading=section.title,
-                        paragraphs=[],
-                        omitted_reason="insufficient_evidence",
-                    )
-                )
-                continue
-
-            top_blocks = section_bundle.evidence_bundles[:3]
-            citation_rows = [
-                {
-                    "paper_id": block.paper_id,
-                    "source_chunk_id": block.source_chunk_id,
-                    "page_num": block.page_num,
-                    "section_path": block.section_path,
-                    "content_type": block.content_type,
-                    "citation_jump_url": block.citation_jump_url,
-                }
-                for block in top_blocks
-            ]
-            text = self._synthesize_section_text(
-                question=outline_doc.research_question,
-                section=section,
-                evidence_blocks=top_blocks,
-            )
-            if not text:
-                text = "Evidence found but no extractable text snippet."
-
-            truthfulness_report = get_truthfulness_service().evaluate_text(
-                text=text,
-                evidence_blocks=top_blocks,
-            )
-
-            paragraph = DraftParagraph(
-                paragraph_id=uuid4().hex[:12],
-                text=text,
-                citations=citation_rows,
-                evidence_blocks=top_blocks,
-                claim_verification=self._build_claim_verification(text=text, evidence_blocks=top_blocks),
-                truthfulness_summary=truthfulness_report.get("summary", {}),
-                benchmark_hooks={
-                    "task_family": routing.task_family,
-                    "execution_mode": routing.execution_mode,
-                    "section_title": section.title,
-                    "review_strategy": routing.review_strategy,
-                    "truthfulness_report_summary": truthfulness_report.get("summary", {}),
-                    "retrieval_plane_policy": routing.retrieval_plane_policy,
-                    "degraded_conditions": [],
-                },
-                citation_coverage_status="covered",
-            )
-            sections.append(
-                DraftSection(
-                    heading=section.title,
-                    paragraphs=[paragraph],
-                )
-            )
-        return DraftDoc(sections=sections)
-
-    @staticmethod
-    def _build_claim_verification(*, text: str, evidence_blocks: list[EvidenceBlock]) -> list[dict[str, Any]]:
-        report = get_truthfulness_service().evaluate_text(text=text, evidence_blocks=evidence_blocks)
-        return ReviewDraftService._truthfulness_report_to_claim_rows(report)
-
-    @staticmethod
-    def _truthfulness_report_to_claim_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        for item in report.get("results", []):
-            support_status = item["support_level"]
-            results.append(
-                {
-                    "claim_id": item["claim_id"],
-                    "claim_text": item["text"],
-                    "claim_type": item["claim_type"],
-                    "support_status": support_status,
-                    "support_score": item["support_score"],
-                    "supporting_evidence_ids": item["evidence_ids"],
-                    "repairable": support_status != "supported",
-                    "repair_hint": item["reason"],
-                    "recovery_actions": build_claim_recovery_actions(
-                        claim_id=item["claim_id"],
-                        support_status=support_status,
-                        repair_hint=item.get("reason"),
-                        supporting_evidence_ids=item.get("evidence_ids"),
-                        scope="review",
-                    ),
-                }
-            )
-        return results
-
-    @staticmethod
-    def _merge_claim_rows(
-        *,
-        refreshed_rows: list[dict[str, Any]],
-        repaired_claim: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        merged_rows: list[dict[str, Any]] = []
-        repaired_claim_id = str(repaired_claim.get("claim_id") or "")
-        replaced = False
-
-        for row in refreshed_rows:
-            if str(row.get("claim_id") or "") == repaired_claim_id:
-                merged_rows.append(repaired_claim)
-                replaced = True
-            else:
-                merged_rows.append(row)
-
-        if not replaced:
-            merged_rows.append(repaired_claim)
-        return merged_rows
-
-    @staticmethod
-    def _build_truthfulness_summary(
-        *,
-        claim_rows: list[dict[str, Any]],
-        verifier_backend: str,
-    ) -> dict[str, Any]:
-        total_claims = len(claim_rows)
-        supported_claims = sum(1 for row in claim_rows if row.get("support_status") == "supported")
-        weakly_supported_claims = sum(
-            1 for row in claim_rows if row.get("support_status") == "weakly_supported"
-        )
-        partially_supported_claims = sum(
-            1 for row in claim_rows if row.get("support_status") == "partially_supported"
-        )
-        unsupported_claims = sum(1 for row in claim_rows if row.get("support_status") == "unsupported")
-
-        if total_claims == 0:
-            answer_mode = "abstain"
-        elif unsupported_claims > 0 or supported_claims == 0:
-            answer_mode = "abstain"
-        elif supported_claims == total_claims:
-            answer_mode = "full"
-        else:
-            answer_mode = "partial"
-
-        return {
-            "total_claims": total_claims,
-            "supported_claims": supported_claims,
-            "weakly_supported_claims": weakly_supported_claims,
-            "partially_supported_claims": partially_supported_claims,
-            "unsupported_claims": unsupported_claims,
-            "answer_mode": answer_mode,
-            "verifier_backend": verifier_backend,
-        }
-
-    def _validate_draft(self, draft_doc: DraftDoc) -> tuple[DraftDoc, list[CitationValidatorOutput]]:
-        validated_sections: list[DraftSection] = []
-        coverage_report: list[CitationValidatorOutput] = []
-
-        for section in draft_doc.sections:
-            kept: list[DraftParagraph] = []
-            for paragraph in section.paragraphs:
-                has_citations = len(paragraph.citations) > 0
-                has_evidence = len(paragraph.evidence_blocks) > 0
-                if has_citations and has_evidence:
-                    paragraph.citation_coverage_status = "covered"
-                    kept.append(paragraph)
-                    coverage_report.append(CitationValidatorOutput(coverage_status="covered", issues=[]))
-                else:
-                    coverage_report.append(CitationValidatorOutput(coverage_status="insufficient", issues=["missing citation or evidence"]))
-
-            if not kept:
-                validated_sections.append(
-                    DraftSection(
-                        heading=section.heading,
-                        paragraphs=[],
-                        omitted_reason=section.omitted_reason or "insufficient_evidence",
-                    )
-                )
-            else:
-                validated_sections.append(
-                    DraftSection(
-                        heading=section.heading,
-                        paragraphs=kept,
-                        omitted_reason=None,
-                    )
-                )
-
-        return DraftDoc(sections=validated_sections), coverage_report
-
-    def _finalize(
-        self,
-        *,
-        finalizer_input: DraftFinalizerInput,
-        graph_used: bool,
-        graph_error: Optional[str],
-        routing: PhaseIRoutingDecision,
-    ) -> tuple[DraftDoc, ReviewQuality, Optional[str]]:
-        draft_doc = finalizer_input.draft_doc
-        total = 0
-        covered = 0
-        omitted_sections = 0
-        for section in draft_doc.sections:
-            if section.omitted_reason:
-                omitted_sections += 1
-            for p in section.paragraphs:
-                total += 1
-                if p.citation_coverage_status == "covered":
-                    covered += 1
-
-        citation_coverage = covered / max(total, 1)
-        unsupported_rate = (total - covered) / max(total, 1)
-
-        fallback_used = graph_error is not None
-        error_state: Optional[str] = None
-
-        if total == 0:
-            error_state = "insufficient_evidence"
-        elif omitted_sections > 0:
-            error_state = "partial_draft"
-        if graph_error == "graph_unavailable" and error_state is None:
-            error_state = "partial_draft"
-
-        graph_summary = finalizer_input.run_metadata.get("graph_summary") if isinstance(finalizer_input.run_metadata, dict) else {}
-        graph_global_evidence = self._build_graph_global_evidence(
-            graph_summary=graph_summary if isinstance(graph_summary, dict) else {},
-            graph_error=graph_error,
-            routing=routing,
-        )
-        resolved_execution_mode = "local_evidence" if graph_error == "graph_unavailable" else routing.execution_mode
-
-        truthfulness_summary = {
-            "unsupported_claim_rate": round(unsupported_rate, 4),
-            "citation_coverage": round(citation_coverage, 4),
-            "verifier_backend": routing.verification_backend,
-            "answer_mode": "abstain" if total == 0 else ("partial" if error_state == "partial_draft" else "full"),
-            "unsupported_claims": total - covered,
-        }
-        recovery_actions = (
-            [{"action": "retry", "reason": error_state}] if error_state
-            else []
-        )
-        phase6_runtime = build_phase6_runtime_contract(
-            answer_mode=truthfulness_summary["answer_mode"],
-            degraded_conditions=[graph_error] if graph_error else ([error_state] if error_state else []),
-            recovery_actions=recovery_actions,
-            truthfulness_summary=truthfulness_summary,
-            retrieval_evaluator=None,
-            retrieval_diagnostics=None,
-            iterative_actions=None,
-            fallback_used=fallback_used,
-            fallback_events=[graph_error] if graph_error else [],
-            recovery_entry={
-                "task_family": routing.task_family,
-                "entry_type": "review",
-            },
-            graph_summary=graph_summary if isinstance(graph_summary, dict) else None,
-        )
-
-        quality = ReviewQuality(
-            citation_coverage=citation_coverage,
-            unsupported_paragraph_rate=unsupported_rate,
-            graph_assist_used=graph_used,
-            fallback_used=fallback_used,
-            execution_mode=resolved_execution_mode,
-            kernel_profile=routing.kernel_scope,
-            storm_lite_used=routing.review_strategy == "storm_lite",
-            adaptive_routing_used=routing.retrieval_plane_policy.get("routing_policy") == "adaptive_depth",
-            truthfulness_backend=routing.verification_backend,
-            benchmark_hooks={
-                "task_family": routing.task_family,
-                "execution_mode": resolved_execution_mode,
-                "truthfulness_report_summary": truthfulness_summary,
-                "retrieval_plane_policy": routing.retrieval_plane_policy,
-                "degraded_conditions": [graph_error] if graph_error else [],
-                "graph_global_evidence": graph_global_evidence,
-                "phase6_runtime": {
-                    **phase6_runtime,
-                    "recovery_actions": recovery_actions,
-                },
-            },
-        )
-        return draft_doc, quality, error_state
-
-    @staticmethod
-    def _derive_known_limitations(
-        *,
-        draft_doc: DraftDoc,
-        quality: ReviewQuality,
-        error_state: Optional[str],
-        graph_error: Optional[str],
-    ) -> list[str]:
-        limitations: list[str] = []
-        if quality.citation_coverage < 1.0:
-            limitations.append("部分段落仍需要更强证据支撑")
-        if quality.unsupported_paragraph_rate > 0.0:
-            limitations.append("存在未完全支撑的论断，需要继续修复")
-        if error_state == "partial_draft":
-            limitations.append("当前草稿为部分完成状态，不能视为全文闭环")
-        if error_state == "insufficient_evidence":
-            limitations.append("可用证据不足，部分章节被省略")
-        if graph_error == "graph_unavailable":
-            limitations.append("图增强不可用，已降级为 local-only 生成")
-        if not limitations and any(section.omitted_reason for section in draft_doc.sections):
-            limitations.append("存在被省略的章节，需要继续补充证据")
-        if not limitations:
-            limitations.append("当前草稿无显著已知限制")
-        return limitations
-
-    @staticmethod
-    def _build_graph_global_evidence(
-        *,
-        graph_summary: dict[str, Any] | None,
-        graph_error: Optional[str],
-        routing: PhaseIRoutingDecision,
-    ) -> dict[str, Any]:
-        payload = graph_summary or {}
-        section_seeds = [seed for seed in (payload.get("section_seeds") or []) if isinstance(seed, dict)]
-        resolved_execution_mode = "local_evidence" if graph_error == "graph_unavailable" else routing.execution_mode
-
-        def _dedupe(values: list[str]) -> list[str]:
-            return list(dict.fromkeys(value for value in values if value))
-
-        return {
-            "graph_assist_used": bool(payload.get("graph_assist_used", False)),
-            "graph_error": graph_error,
-            "themes": _dedupe([str(item).strip() for item in (payload.get("themes") or [])]),
-            "candidate_papers": _dedupe([str(item).strip() for item in (payload.get("candidate_papers") or [])]),
-            "section_seed_titles": _dedupe([str(seed.get("title") or "").strip() for seed in section_seeds]),
-            "section_seed_perspectives": _dedupe([str(seed.get("perspective") or "").strip() for seed in section_seeds]),
-            "comparative_section_count": len(section_seeds),
-            "storm_lite_used": bool(payload.get("storm_lite_used", False)),
-            "execution_mode": resolved_execution_mode,
-        }
-
     @staticmethod
     def _step(
         *,
@@ -1484,62 +761,9 @@ class ReviewDraftService:
         }
 
     @staticmethod
-    def _candidate_to_evidence_block(cand: EvidenceCandidate) -> EvidenceBlock:
-        payload = get_evidence_source_payload(cand.source_chunk_id) or {}
-        citation_jump_url = payload.get("citation_jump_url") or build_citation_jump_url(
-            paper_id=cand.paper_id,
-            source_chunk_id=cand.source_chunk_id,
-            page_num=payload.get("page_num"),
-        )
-        text = str(payload.get("content") or payload.get("anchor_text") or cand.anchor_text or "")
-
-        return EvidenceBlock(
-            evidence_id=cand.source_chunk_id,
-            source_type="paper",
-            paper_id=cand.paper_id,
-            source_chunk_id=cand.source_chunk_id,
-            page_num=payload.get("page_num"),
-            section_path=payload.get("section_path") or cand.section_id,
-            content_type=cand.content_type,
-            text=text,
-            score=cand.rrf_score,
-            rerank_score=cand.rerank_score,
-            support_status=(
-                "supported" if cand.rerank_score >= 0.7 else "weakly_supported" if cand.rerank_score >= 0.4 else "unsupported"
-            ),
-            citation_jump_url=citation_jump_url,
-        )
-
-    @staticmethod
     def to_run_summary(run: ReviewRun) -> dict[str, Any]:
-        return {
-            "id": run.id,
-            "knowledgeBaseId": run.knowledge_base_id,
-            "reviewDraftId": run.review_draft_id,
-            "status": run.status,
-            "scope": run.scope,
-            "traceId": run.trace_id or "",
-            "errorState": run.error_state,
-            "updatedAt": run.updated_at.isoformat() if run.updated_at else "",
-            "createdAt": run.created_at.isoformat() if run.created_at else "",
-        }
+        return _to_run_summary(run)
 
     @staticmethod
     def to_run_detail(run: ReviewRun) -> dict[str, Any]:
-        return {
-            "id": run.id,
-            "knowledgeBaseId": run.knowledge_base_id,
-            "reviewDraftId": run.review_draft_id,
-            "status": run.status,
-            "scope": run.scope,
-            "inputPayload": run.input_payload or {},
-            "steps": run.steps or [],
-            "toolEvents": run.tool_events or [],
-            "artifacts": run.artifacts or [],
-            "evidence": run.evidence or [],
-            "recoveryActions": run.recovery_actions or [],
-            "traceId": run.trace_id or "",
-            "errorState": run.error_state,
-            "updatedAt": run.updated_at.isoformat() if run.updated_at else "",
-            "createdAt": run.created_at.isoformat() if run.created_at else "",
-        }
+        return _to_run_detail(run)

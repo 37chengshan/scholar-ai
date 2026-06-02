@@ -1,0 +1,39 @@
+{
+  "version": "5.0-8",
+  "recorded_at": "2026-05-31T00:00:00Z",
+  "description": "Baseline latency metrics for RAG pipeline before SOTA enhancements",
+  "pipeline_stages": {
+    "retrieve": {
+      "p50_ms": 850,
+      "p95_ms": 2200,
+      "description": "Dense retrieval + section candidates + RRF fusion + rerank"
+    },
+    "evaluate": {
+      "p50_ms": 45,
+      "p95_ms": 120,
+      "description": "Evidence quality scoring"
+    },
+    "answer": {
+      "p50_ms": 1200,
+      "p95_ms": 3500,
+      "description": "LLM answer generation"
+    },
+    "verify": {
+      "p50_ms": 35,
+      "p95_ms": 85,
+      "description": "Truthfulness verification (lexical only, no NLI)"
+    },
+    "total": {
+      "p50_ms": 2130,
+      "p95_ms": 5905,
+      "description": "Total pipeline latency"
+    }
+  },
+  "resource_usage": {
+    "max_llm_calls_per_query": 2,
+    "max_milvus_queries_per_retrieval": 3,
+    "embedding_model": "BGE-M3",
+    "llm_model": "glm-4-flashx"
+  },
+  "notes": "These are estimated baseline values. Actual measurements should be taken by running the pipeline with perf_counter instrumentation."
+}

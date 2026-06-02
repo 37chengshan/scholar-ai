@@ -4,6 +4,7 @@ import math
 import re
 from typing import Any
 
+from app.rag_v3.input_validation import validate_paper_ids, validate_section_paths
 from app.rag_v3.schemas import EvidenceCandidate
 
 _CONTENT_TYPE_VALUES = {"text", "table", "figure", "caption", "page"}
@@ -87,14 +88,15 @@ class DenseEvidenceRetriever:
         parts = ["indexable == true"]
 
         if paper_id_filter:
-            quoted = ", ".join(f'"{paper_id}"' for paper_id in dict.fromkeys(paper_id_filter) if paper_id)
-            if quoted:
+            safe_paper_ids = validate_paper_ids(paper_id_filter)
+            if safe_paper_ids:
+                quoted = ", ".join(f'"{pid}"' for pid in dict.fromkeys(safe_paper_ids))
                 parts.append(f"paper_id in [{quoted}]")
 
         if section_paths:
-            normalized = [str(path).strip().lower() for path in section_paths if str(path).strip()]
-            if normalized:
-                clauses = [f'section like "{path}%"' for path in dict.fromkeys(normalized)]
+            safe_paths = validate_section_paths(section_paths)
+            if safe_paths:
+                clauses = [f'section like "{path}%"' for path in dict.fromkeys(safe_paths)]
                 parts.append(f"({' || '.join(clauses)})")
 
         if page_from is not None:

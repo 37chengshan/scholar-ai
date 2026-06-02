@@ -67,6 +67,32 @@ class SectionSummaryIndex:
         scored.sort(key=lambda x: x[1], reverse=True)
         return [self._records[sid] for sid, _ in scored[:max(1, top_k)]]
 
+    def search_for_papers(
+        self, paper_ids: set[str], query: str, top_k_per_paper: int = 5
+    ) -> dict[str, list[SectionSummaryArtifact]]:
+        """Batch search for sections across multiple papers.
+
+        More efficient than calling search_for_paper in a loop (avoids
+        repeated tokenization and scoring of the same query).
+        """
+        if not paper_ids:
+            return {}
+
+        query_tokens = _tokenize(query)
+        # Score all records once, grouped by paper_id
+        scored_by_paper: dict[str, list[tuple[str, float]]] = {pid: [] for pid in paper_ids}
+        for sid, art in self._records.items():
+            if art.paper_id not in scored_by_paper:
+                continue
+            score = _tf_idf_score(query_tokens, self._doc_tokens.get(sid, []))
+            scored_by_paper[art.paper_id].append((sid, score))
+
+        result: dict[str, list[SectionSummaryArtifact]] = {}
+        for pid, scored in scored_by_paper.items():
+            scored.sort(key=lambda x: x[1], reverse=True)
+            result[pid] = [self._records[sid] for sid, _ in scored[:max(1, top_k_per_paper)]]
+        return result
+
     def get(self, section_id: str) -> SectionSummaryArtifact | None:
         return self._records.get(section_id)
 
