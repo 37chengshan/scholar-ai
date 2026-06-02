@@ -47,7 +47,7 @@ export interface ChatMessage {
   reasoningBuffer?: string;
   toolTimeline?: unknown;
   answerContract?: unknown;
-  streamStatus?: 'idle' | 'streaming' | 'completed' | 'error' | 'cancelled';
+  streamStatus?: 'idle' | 'connecting' | 'streaming' | 'completed' | 'error' | 'cancelled' | 'retrying';
   tokensUsed?: number | null;
   responseType?: string;
   created_at: string;

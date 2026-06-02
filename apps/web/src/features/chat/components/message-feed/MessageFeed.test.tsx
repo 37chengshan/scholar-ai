@@ -1,6 +1,7 @@
 import { createRef } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialState } from '@/app/hooks/useChatStream';
 import { MessageFeed } from './MessageFeed';
@@ -12,6 +13,15 @@ vi.mock('@/features/chat/hooks/useEvidenceNavigation', () => ({
     saveEvidence: vi.fn(),
   }),
 }));
+
+vi.mock('@/app/components/MarkdownRenderer', () => ({
+  MarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div>,
+}));
+
+/** Render helper that wraps in MemoryRouter for CitationPanel's useNavigate */
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 function asRenderMessage(message: Partial<ChatRenderMessage>): ChatRenderMessage {
   return {
@@ -39,7 +49,7 @@ function asRenderMessage(message: Partial<ChatRenderMessage>): ChatRenderMessage
 
 describe('MessageFeed', () => {
   it('renders empty state', () => {
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[]}
         streamState={createInitialState()}
@@ -60,7 +70,7 @@ describe('MessageFeed', () => {
     const user = userEvent.setup();
     const onStop = vi.fn();
 
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -92,7 +102,7 @@ describe('MessageFeed', () => {
   });
 
   it('renders streaming assistant content directly without typing animation lag', () => {
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -138,7 +148,7 @@ describe('MessageFeed', () => {
       ],
     };
 
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -168,7 +178,7 @@ describe('MessageFeed', () => {
   });
 
   it('shows stop button only for streaming assistant message', () => {
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -204,7 +214,7 @@ describe('MessageFeed', () => {
       streamStatus: 'completed' as const,
     };
 
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -260,7 +270,7 @@ describe('MessageFeed', () => {
       ],
     };
 
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -308,7 +318,7 @@ describe('MessageFeed', () => {
       ],
     };
 
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -346,7 +356,7 @@ describe('MessageFeed', () => {
   });
 
   it('shows stop button only for active assistant stream message', () => {
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -385,7 +395,7 @@ describe('MessageFeed', () => {
   });
 
   it('keeps assistant copy action visible without hover-only reveal', () => {
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({
@@ -412,7 +422,7 @@ describe('MessageFeed', () => {
   });
 
   it('normalizes abstain boilerplate copy for zh assistant messages', () => {
-    render(
+    renderWithRouter(
       <MessageFeed
         renderMessages={[
           asRenderMessage({

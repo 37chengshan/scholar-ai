@@ -1,6 +1,11 @@
-import { ChevronDown, Loader2, Send, Square } from 'lucide-react';
+import { ChevronDown, Loader2, Send, Square, Eye, Edit3 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
+import { useComposerShortcuts } from './useComposerShortcuts';
+import { SlashCommandDropdown } from './SlashCommandDropdown';
+import { MarkdownPreview } from './MarkdownPreview';
+
+const MAX_INPUT_LENGTH = 10000;
 
 interface ComposerInputCopy {
   mode: string;
@@ -51,14 +56,43 @@ export function ComposerInput({
   onStop,
 }: ComposerInputProps) {
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const modeOptions = isZh ? MODE_OPTIONS_ZH : MODE_OPTIONS_EN;
   const currentMode = modeOptions.find(o => o.value === mode) ?? modeOptions[0];
   const menuRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const {
+    handleKeyDown: handleShortcutKeyDown,
+    slashMenuOpen,
+    slashMenuIndex,
+    slashCommands,
+    selectSlashCommand,
+    closeSlashMenu,
+  } = useComposerShortcuts({
+    input,
+    onInputChange,
+    onCancel: streaming ? onStop : undefined,
+  });
 
   const handleModeSelect = (val: 'auto' | 'rag' | 'agent') => {
     onModeChange(val);
     setModeMenuOpen(false);
   };
+
+  const handleKeyDownCombined = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Let shortcuts handle first; if not consumed, fall through to parent
+    handleShortcutKeyDown(event);
+    if (!event.defaultPrevented) {
+      onKeyDown(event);
+    }
+  }, [handleShortcutKeyDown, onKeyDown]);
+
+  const handleInputChange = useCallback((value: string) => {
+    if (value.length <= MAX_INPUT_LENGTH) {
+      onInputChange(value);
+    }
+  }, [onInputChange]);
 
   return (
     <div className="border-t border-border/50 bg-background/85 px-4 pb-4 pt-2 backdrop-blur-md">
@@ -72,26 +106,59 @@ export function ComposerInput({
           )}
         >
           {/* Textarea area */}
-          <div className="flex items-end gap-2 px-4 pt-3 pb-2">
-            <textarea
-              value={input}
-              onChange={(event) => onInputChange(event.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={placeholder}
-              className="min-h-[2.75rem] max-h-[11.25rem] flex-1 resize-none bg-transparent text-[var(--font-sm)] leading-relaxed outline-none placeholder:text-muted-foreground"
-              rows={1}
-              disabled={disabled && !streaming}
-              onInput={(event) => {
-                const target = event.target as HTMLTextAreaElement;
-                target.style.height = 'auto';
-                target.style.height = `${Math.min(target.scrollHeight, 180)}px`;
-              }}
+          <div className="relative flex items-end gap-2 px-4 pt-3 pb-2">
+            {previewMode ? (
+              <MarkdownPreview content={input} isZh={isZh} />
+            ) : (
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(event) => handleInputChange(event.target.value)}
+                onKeyDown={handleKeyDownCombined}
+                placeholder={placeholder}
+                maxLength={MAX_INPUT_LENGTH}
+                className="min-h-[2.75rem] max-h-[12.5rem] flex-1 resize-none bg-transparent text-[var(--font-sm)] leading-relaxed outline-none placeholder:text-muted-foreground"
+                rows={1}
+                disabled={disabled && !streaming}
+                onInput={(event) => {
+                  const target = event.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
+                }}
+              />
+            )}
+            <SlashCommandDropdown
+              open={slashMenuOpen}
+              commands={slashCommands}
+              selectedIndex={slashMenuIndex}
+              isZh={isZh}
+              onSelect={selectSlashCommand}
+              onClose={closeSlashMenu}
+              anchorRef={textareaRef}
             />
           </div>
 
           {/* Bottom bar: mode + actions */}
           <div className="flex items-center justify-between px-3 pb-2.5">
-            {/* Left: mode selector */}
+            {/* Left: mode selector + preview toggle */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPreviewMode(v => !v)}
+                disabled={!input.trim()}
+                className={clsx(
+                  'flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+                  previewMode
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  !input.trim() && 'opacity-40 cursor-not-allowed',
+                )}
+                title={previewMode ? (isZh ? '编辑模式' : 'Edit mode') : (isZh ? '预览 Markdown' : 'Preview Markdown')}
+              >
+                {previewMode ? <Edit3 className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                {previewMode ? (isZh ? '编辑' : 'Edit') : (isZh ? '预览' : 'Preview')}
+              </button>
+            </div>
             <div className="flex items-center gap-1">
               <div className="relative" ref={menuRef}>
                 <button
@@ -135,8 +202,18 @@ export function ComposerInput({
               </div>
             </div>
 
-            {/* Right: send/stop button */}
+            {/* Right: char count + send/stop button */}
             <div className="flex items-center gap-2">
+              {input.length > 0 && (
+                <span className={clsx(
+                  'text-[10px] tabular-nums',
+                  input.length > MAX_INPUT_LENGTH * 0.9
+                    ? 'text-amber-500'
+                    : 'text-muted-foreground',
+                )}>
+                  {input.length.toLocaleString()}/{MAX_INPUT_LENGTH.toLocaleString()}
+                </span>
+              )}
               <span className="text-[10px] text-muted-foreground hidden sm:inline">{labels.sendKeyHint}</span>
               {streaming && onStop ? (
                 <button
