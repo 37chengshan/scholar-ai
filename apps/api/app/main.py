@@ -34,6 +34,8 @@ from typing import Optional, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy import select
 
 # API Routes - Wave 1-3 routers
 from app.api import (
@@ -88,7 +90,6 @@ from app.utils.preflight import run_preflight
 # Middleware
 from app.middleware.cors import get_cors_config
 from app.middleware.observability import ObservabilityMiddleware
-from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.error_handler import setup_error_handlers
 
 
@@ -270,11 +271,8 @@ app = FastAPI(
 # Middleware Registration
 # ============================================================================
 
-# Observability middleware (first - binds request context)
+# Observability middleware (first - binds request context, logs requests)
 app.add_middleware(ObservabilityMiddleware)
-
-# Request logging middleware
-app.add_middleware(RequestLoggingMiddleware)
 
 # CORS middleware (use unified config)
 app.add_middleware(CORSMiddleware, **get_cors_config())
@@ -387,4 +385,106 @@ async def root():
         "redoc": "/redoc",
         "health": "/health",
         "status": "running",
+    }
+
+
+# ============================================================================
+# Metrics Endpoint - Prometheus format
+# ============================================================================
+
+try:
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        CollectorRegistry,
+        Counter,
+        Histogram,
+        generate_latest,
+    )
+
+    _METRICS_REGISTRY = CollectorRegistry()
+
+    http_requests_total = Counter(
+        "http_requests_total",
+        "Total HTTP requests",
+        ["method", "status", "endpoint"],
+        registry=_METRICS_REGISTRY,
+    )
+
+    http_request_duration_seconds = Histogram(
+        "http_request_duration_seconds",
+        "HTTP request duration in seconds",
+        ["method", "endpoint"],
+        buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+        registry=_METRICS_REGISTRY,
+    )
+
+    _PROMETHEUS_AVAILABLE = True
+except ImportError:
+    _PROMETHEUS_AVAILABLE = False
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    if not _PROMETHEUS_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "prometheus_client not installed"},
+        )
+    return Response(
+        content=generate_latest(_METRICS_REGISTRY),
+        media_type=CONTENT_TYPE_LATEST,
+    )
+
+
+# ============================================================================
+# Enhanced Health Check - Dependency status
+# ============================================================================
+
+
+@app.get("/health/deps")
+async def health_deps():
+    """Check core dependency connectivity: PG, Redis, Neo4j."""
+    from app.core.database import redis_db
+
+    deps = {}
+
+    # PostgreSQL check
+    try:
+        from app.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(select(1))
+        deps["pg"] = "ok"
+    except Exception as exc:
+        deps["pg"] = f"error: {exc}"
+
+    # Redis check
+    try:
+        redis_client = redis_db.client
+        if redis_client:
+            await redis_client.ping()
+            deps["redis"] = "ok"
+        else:
+            deps["redis"] = "unavailable"
+    except Exception as exc:
+        deps["redis"] = f"error: {exc}"
+
+    # Neo4j check
+    try:
+        from app.core.database import neo4j_db
+
+        if neo4j_db.driver:
+            async with neo4j_db.driver.session() as session:
+                await session.run("RETURN 1")
+            deps["neo4j"] = "ok"
+        else:
+            deps["neo4j"] = "unavailable"
+    except Exception as exc:
+        deps["neo4j"] = f"error: {exc}"
+
+    all_ok = all(v == "ok" for v in deps.values())
+    return {
+        "status": "healthy" if all_ok else "degraded",
+        "dependencies": deps,
     }

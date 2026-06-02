@@ -190,13 +190,21 @@ class UploadSessionService:
         final_path = self._local_storage_root() / final_storage_key
         final_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(final_path, "wb") as out_file:
+        # Atomic write: write to temp file, fsync, then rename
+        tmp_path = final_path.with_suffix(final_path.suffix + ".tmp")
+        with open(tmp_path, "wb") as out_file:
             for part_number in range(1, session.total_parts + 1):
                 part_path = self._part_path(session.id, part_number)
                 if not part_path.exists():
+                    # Clean up temp file on failure
+                    tmp_path.unlink(missing_ok=True)
                     raise ValueError(f"Missing upload part file: {part_number}")
                 with open(part_path, "rb") as in_file:
                     out_file.write(in_file.read())
+            out_file.flush()
+            os.fsync(out_file.fileno())
+
+        os.rename(str(tmp_path), str(final_path))
 
         computed_sha256 = self._compute_sha256(final_path)
         if session.file_sha256 and computed_sha256 != session.file_sha256:

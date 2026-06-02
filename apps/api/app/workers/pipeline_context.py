@@ -59,7 +59,12 @@ class PipelineContext:
     storage_key: str
 
     # Per Review Fix #8: trace_id for full-pipeline tracing
-    trace_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    # Accept external trace_id to maintain correlation across HTTP → worker boundary
+    trace_id: str = field(default="")
+
+    def __post_init__(self):
+        if not self.trace_id:
+            self.trace_id = str(uuid.uuid4())
 
     # Stage results (populated during processing)
     local_path: Optional[str] = None

@@ -39,7 +39,8 @@ class ProblemDetail:
 
     def __post_init__(self):
         if self.request_id is None:
-            self.request_id = str(uuid.uuid4())
+            from app.core.observability.context import get_trace_id
+            self.request_id = get_trace_id() or str(uuid.uuid4())
         if self.timestamp is None:
             self.timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
