@@ -31,7 +31,7 @@ ScholarAI v5.0 是 v4.x 之后的全面重启迭代版本。它把 v4.0 残留 p
 | 5.0-6 | 主链精修: Chat Polish (Core) | done | 2026-05-31 | `reports/2026-05-31_v5_0_phase_chat_polish_closeout.md` |
 | 5.0-7 | 后端 Pipeline 稳定性 + Runtime Contract | done | 2026-05-31 | `reports/2026-05-31_v5_0_phase_backend_pipeline_closeout.md` |
 | 5.0-8 | RAG SOTA: RAPTOR-lite + Graph + Verifier | done | 2026-05-31 | `reports/2026-05-31_v5_0_phase_rag_sota_closeout.md` |
-| 5.0-9 | Release Gate (consolidated gate 最终执行) | not-started | - | - |
+| 5.0-9 | Release Gate (consolidated gate 最终执行) | done | 2026-06-02 | `reports/2026-06-02_v5_0_phase_9_release_gate_closeout.md` |
 
 ## First-Wave Entry Points (2026-05-31)
 

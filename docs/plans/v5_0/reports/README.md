@@ -18,7 +18,8 @@ reports/
 │   └── 2026-05-31_v5_0_phase_1_review_dim_E_arch.md     (架构集成)
 ├── phase_2/          ← (待)
 ├── ...
-└── phase_9/          ← (待) Release Gate + Closeout
+└── phase_9/          ← Phase 5.0-9 Release Gate
+    └── 2026-06-02_v5_0_phase_9_release_gate_closeout.md
 ```
 
 ## 命名约定

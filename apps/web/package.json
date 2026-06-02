@@ -13,6 +13,7 @@
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test e2e/chat-critical.spec.ts e2e/kb-critical.spec.ts e2e/retrieval-critical.spec.ts e2e/search-pagination-stability.spec.ts e2e/chat-session-search.spec.ts",
     "test:e2e:ci": "playwright test e2e/chat-critical.spec.ts e2e/kb-critical.spec.ts e2e/retrieval-critical.spec.ts e2e/search-pagination-stability.spec.ts e2e/chat-session-search.spec.ts --reporter=line",
+    "test:e2e:journeys": "playwright test journey-j --reporter=json",
     "size": "size-limit"
   },
   "dependencies": {

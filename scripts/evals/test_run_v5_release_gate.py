@@ -491,6 +491,93 @@ def _make_lighthouse_json(perf_score: float = 0.95, a11y_score: float = 0.95,
     })
 
 
+# ---------------------------------------------------------------------------
+# Gate version constant
+# ---------------------------------------------------------------------------
+
+class TestGateVersion:
+    def test_gate_version_is_5_0_9(self):
+        assert gate._GATE_VERSION == "5.0-9"
+
+
+# ---------------------------------------------------------------------------
+# Output path traversal (CRITICAL security fix)
+# ---------------------------------------------------------------------------
+
+class TestOutputPathTraversal:
+    """--output-json and --output-md must reject paths outside ROOT."""
+
+    def test_output_json_rejects_outside_root(self, tmp_path: Path):
+        """_safe_path rejects paths outside ROOT for --output-json."""
+        outside = tmp_path / "outside" / "result.json"
+        outside.parent.mkdir(parents=True, exist_ok=True)
+        with patch.object(gate, "ROOT", tmp_path / "project"):
+            with pytest.raises(ValueError, match="outside ROOT"):
+                gate._safe_path(outside)
+
+    def test_output_md_rejects_outside_root(self, tmp_path: Path):
+        """_safe_path rejects paths outside ROOT for --output-md."""
+        outside = tmp_path / "outside" / "report.md"
+        outside.parent.mkdir(parents=True, exist_ok=True)
+        with patch.object(gate, "ROOT", tmp_path / "project"):
+            with pytest.raises(ValueError, match="outside ROOT"):
+                gate._safe_path(outside)
+
+    def test_output_json_accepts_under_root(self, tmp_path: Path):
+        """_safe_path accepts paths under ROOT."""
+        child = tmp_path / "artifacts" / "result.json"
+        child.parent.mkdir(parents=True, exist_ok=True)
+        with patch.object(gate, "ROOT", tmp_path):
+            result = gate._safe_path(child)
+        assert result == child.resolve()
+
+    def test_dot_dot_escape_rejected_for_output(self, tmp_path: Path):
+        """_safe_path rejects ../../../ escape attempts for output paths."""
+        project = tmp_path / "project"
+        project.mkdir()
+        tricky = project / ".." / ".." / "etc" / "passwd"
+        with patch.object(gate, "ROOT", project):
+            with pytest.raises(ValueError, match="outside ROOT"):
+                gate._safe_path(tricky)
+
+
+# ---------------------------------------------------------------------------
+# Face E: a11y score gate
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# --skip-phase-closeout flag
+# ---------------------------------------------------------------------------
+
+class TestSkipPhaseCloseout:
+    def test_skip_phase_closeout_forces_true(self, tmp_path: Path):
+        """--skip-phase-closeout makes all_phases_closeout=True regardless."""
+        p = tmp_path / "PLAN_STATUS.md"
+        p.write_text(_PLAN_STATUS_TEMPLATE)  # Only phase 0 closed
+        with (
+            patch.object(gate, "_PLAN_STATUS", p),
+            patch.object(gate, "_run_script", return_value=True),
+        ):
+            passed, d = gate._evaluate_face_d(skip_phase_closeout=True)
+        # Should pass because phase closeout is skipped
+        assert d["all_phases_closeout"] is True
+
+    def test_skip_false_uses_real_check(self, tmp_path: Path):
+        """skip_phase_closeout=False still checks real PLAN_STATUS."""
+        p = tmp_path / "PLAN_STATUS.md"
+        p.write_text(_PLAN_STATUS_TEMPLATE)
+        with (
+            patch.object(gate, "_PLAN_STATUS", p),
+            patch.object(gate, "_run_script", return_value=True),
+        ):
+            passed, d = gate._evaluate_face_d(skip_phase_closeout=False)
+        assert d["all_phases_closeout"] is False
+
+
+# ---------------------------------------------------------------------------
+# Face E: a11y score gate
+# ---------------------------------------------------------------------------
+
 class TestFaceEA11y:
     def _setup_perf_dir(self, tmp_path: Path, perf: float = 0.95,
                         a11y: float = 0.95) -> Path:

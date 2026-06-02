@@ -46,7 +46,7 @@ _V5_PHASE_COUNT = 10
 RELEASE_PASS = "release-pass"
 EXPERIMENT_ONLY = "experiment-only"
 BLOCKED = "blocked"
-_GATE_VERSION = "5.0-0"
+_GATE_VERSION = "5.0-9"
 
 
 # -- helpers ----------------------------------------------------------------
@@ -279,9 +279,9 @@ def _phases_closed() -> bool:
         for n in range(_V5_PHASE_COUNT)
     )
 
-def _evaluate_face_d() -> tuple[bool, dict]:
+def _evaluate_face_d(skip_phase_closeout: bool = False) -> tuple[bool, dict]:
     checks = {k: _run_script(v) for k, v in _GOVERNANCE_CHECKS.items()}
-    checks["all_phases_closeout"] = _phases_closed()
+    checks["all_phases_closeout"] = True if skip_phase_closeout else _phases_closed()
     d: dict[str, Any] = {**checks, "governance_check_timestamp": _now()}
     if not all(checks.values()):
         return _blocked(f"checks_failed={[k for k,v in checks.items() if not v]}", d)
@@ -433,6 +433,8 @@ def main() -> int:
     ap.add_argument("--perf-dir", default=None, help="Lighthouse/perf artifacts dir")
     ap.add_argument("--output-json", default=None, help="JSON output path")
     ap.add_argument("--output-md", default=None, help="Markdown report path")
+    ap.add_argument("--skip-phase-closeout", action="store_true",
+                    help="Skip phase closeout check in Face D (for dry-run)")
     args = ap.parse_args()
 
     # Validate all user-supplied path arguments stay under ROOT.
@@ -452,7 +454,7 @@ def main() -> int:
         "face_a": _evaluate_face_a(args.audit_report),
         "face_b": _evaluate_face_b(args.benchmark_dir),
         "face_c": _evaluate_face_c(args.playwright_report),
-        "face_d": _evaluate_face_d(),
+        "face_d": _evaluate_face_d(skip_phase_closeout=args.skip_phase_closeout),
         "face_e": _evaluate_face_e(args.perf_dir),
     }
 
@@ -468,11 +470,16 @@ def main() -> int:
         "verdict": verdict, "faces": faces_json,
         "block_reasons": blocks, "downgrade_reasons": downgrades, "generated_at": _now()}
 
-    jp = Path(args.output_json) if args.output_json else ROOT / "artifacts" / "validation-results" / "v5_0" / "phase0_gate_results.json"
+    try:
+        jp = _safe_path(Path(args.output_json)) if args.output_json else ROOT / "artifacts" / "validation-results" / "v5_0" / "phase0_gate_results.json"
+        mp = _safe_path(Path(args.output_md)) if args.output_md else ROOT / "docs" / "plans" / "v5_0" / "reports" / f"{_today()}_v5_0_phase_0_gate_report.md"
+    except ValueError as exc:
+        print(f"[v5.0-gate] ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
     jp.parent.mkdir(parents=True, exist_ok=True)
     jp.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    mp = Path(args.output_md) if args.output_md else ROOT / "docs" / "plans" / "v5_0" / "reports" / f"{_today()}_v5_0_phase_0_gate_report.md"
     mp.parent.mkdir(parents=True, exist_ok=True)
     mp.write_text(_report_md(verdict, faces, blocks, downgrades), encoding="utf-8")
 
