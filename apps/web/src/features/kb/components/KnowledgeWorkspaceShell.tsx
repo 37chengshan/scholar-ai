@@ -239,49 +239,49 @@ export function KnowledgeWorkspaceShell() {
               <Tabs value={activeTab} onValueChange={syncTab} className="flex min-h-0 flex-1 flex-col">
                 <div className="border-b border-border/80 px-5">
                   <TabsList className="flex h-auto w-full flex-wrap justify-start gap-0 bg-transparent p-0">
-                    <TabsTrigger value="papers" onClick={() => syncTab('papers')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                    <TabsTrigger value="papers" onClick={() => syncTab('papers')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-colors outline-none border-b-4 rounded-none bg-transparent ${
                       activeTab === 'papers'
                         ? 'border-primary text-foreground bg-transparent'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
                     }`}>
                       <span className="flex items-center justify-center gap-2"><Library className="w-4 h-4" /> 论文列表</span>
                     </TabsTrigger>
-                    <TabsTrigger value="import-status" onClick={() => syncTab('import-status')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                    <TabsTrigger value="import-status" onClick={() => syncTab('import-status')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-colors outline-none border-b-4 rounded-none bg-transparent ${
                       activeTab === 'import-status'
                         ? 'border-primary text-foreground bg-transparent'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
                     }`}>
                       <span className="flex items-center justify-center gap-2"><Clock3 className="w-4 h-4" /> 导入状态</span>
                     </TabsTrigger>
-                    <TabsTrigger value="uploads" onClick={() => syncTab('uploads')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                    <TabsTrigger value="uploads" onClick={() => syncTab('uploads')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-colors outline-none border-b-4 rounded-none bg-transparent ${
                       activeTab === 'uploads'
                         ? 'border-primary text-foreground bg-transparent'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
                     }`}>
                       <span className="flex items-center justify-center gap-2"><UploadCloud className="w-4 h-4" /> 上传工作台</span>
                     </TabsTrigger>
-                    <TabsTrigger value="search" onClick={() => syncTab('search')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                    <TabsTrigger value="search" onClick={() => syncTab('search')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-colors outline-none border-b-4 rounded-none bg-transparent ${
                       activeTab === 'search'
                         ? 'border-primary text-foreground bg-transparent'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
                     }`}>
                       <span className="flex items-center justify-center gap-2"><Search className="w-4 h-4" /> 知识库检索</span>
                     </TabsTrigger>
-                    <TabsTrigger value="runs" onClick={() => syncTab('runs')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                    <TabsTrigger value="runs" onClick={() => syncTab('runs')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-colors outline-none border-b-4 rounded-none bg-transparent ${
                       activeTab === 'runs'
                         ? 'border-primary text-foreground bg-transparent'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
                     }`}>
                       <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> 运行记录</span>
                     </TabsTrigger>
-                    <TabsTrigger value="review" onClick={() => syncTab('review')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                    <TabsTrigger value="review" onClick={() => syncTab('review')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-colors outline-none border-b-4 rounded-none bg-transparent ${
                       activeTab === 'review'
                         ? 'border-primary text-foreground bg-transparent'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'
                     }`}>
                       <span className="flex items-center justify-center gap-2"><MessageSquare className="w-4 h-4" /> 综述草稿</span>
                     </TabsTrigger>
-                    <TabsTrigger value="chat" onClick={() => syncTab('chat')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-all outline-none border-b-4 rounded-none bg-transparent ${
+                    <TabsTrigger value="chat" onClick={() => syncTab('chat')} className={`flex-1 sm:flex-none px-6 py-4 font-bold uppercase tracking-widest text-sm transition-colors outline-none border-b-4 rounded-none bg-transparent ${
                       activeTab === 'chat'
                         ? 'border-primary text-foreground bg-transparent'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/[0.04]'

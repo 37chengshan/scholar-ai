@@ -7,15 +7,30 @@
  * - Static display after summary available
  *
  * Requirements: D-06 (AI summary tab in left navigation)
+ *
+ * react-markdown is dynamically imported to keep it out of the main bundle.
  */
 
+import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import type { EvidenceBlockDto } from '@scholar-ai/types';
 import type { ReadingCardDoc, ReadingCardSlot } from '@/features/read/readingCard';
 import { ScrollArea } from './ui/scroll-area';
 import { useLanguage } from '../contexts/LanguageContext';
+
+// Dynamic import of react-markdown (only used in legacy summary path)
+const LegacyMarkdown = lazy(() =>
+  import('react-markdown').then((mod) => {
+    // Also load remark-gfm alongside
+    return import('remark-gfm').then((gfm) => ({
+      default: ({ content }: { content: string }) => {
+        const ReactMarkdown = mod.default;
+        const remarkGfm = gfm.default;
+        return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>;
+      },
+    }));
+  })
+);
 
 interface AISummaryPanelProps {
   paperId: string;
@@ -157,9 +172,9 @@ export function AISummaryPanel({
               {isZh ? '当前摘要卡片暂不可用，已回退为阅读笔记摘要。' : 'Missing readingCardDoc, falling back to legacy reading notes'}
             </div>
             <div className="prose prose-sm max-w-none text-[15px] leading-relaxed prose-headings:font-serif prose-headings:text-foreground prose-p:text-foreground/90 prose-strong:text-foreground prose-li:my-1 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-[0.85em] editorial-reading-surface font-serif">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {summary!}
-              </ReactMarkdown>
+              <Suspense fallback={<div className="text-sm text-muted-foreground animate-pulse">Loading...</div>}>
+                <LegacyMarkdown content={summary!} />
+              </Suspense>
             </div>
           </div>
         ) : (

@@ -1,10 +1,8 @@
 /**
  * Chat Page - Placeholder Message + message_id Binding + SSE Event Handling
  *
- * LEGACY FREEZE (PR10):
- * - This component is in migration mode.
- * - Do not add new business logic here.
- * - New state/workflow changes must land in features/chat/hooks and workspace store.
+ * Thin orchestration layer: all business logic lives in extracted hooks
+ * and the workspace store. New logic must not be added here directly.
  *
  * Main chat interface with:
  * - Placeholder message mechanism (HARD RULE 0.2)
@@ -112,10 +110,10 @@ export function ChatWorkspaceV2() {
   const streamApi = useChatStreaming({
     throttleMs: 100,
     onPhaseChange: (phase, label) => {
-      console.debug("[Chat] Phase changed:", phase, label);
+      if (import.meta.env.DEV) console.debug("[Chat] Phase changed:", phase, label);
     },
     onComplete: () => {
-      console.debug("[Chat] Stream complete");
+      if (import.meta.env.DEV) console.debug("[Chat] Stream complete");
     },
     onError: (error) => {
       toast.error(isZh ? `错误: ${error.message}` : `Error: ${error.message}`);

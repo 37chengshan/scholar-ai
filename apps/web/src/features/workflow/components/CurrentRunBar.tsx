@@ -17,7 +17,7 @@ export function CurrentRunBar() {
 
   if (!run) {
     return (
-      <div className="rounded-2xl border border-dashed border-border/80 bg-[#fffdf9] px-4 py-3 text-xs text-muted-foreground">
+      <div className="rounded-2xl border border-dashed border-border/80 bg-surface px-4 py-3 text-xs text-muted-foreground">
         {isZh ? '当前没有活动运行。可从对话、检索导入或资源库操作开始。' : 'No active run. Start from Chat, Search import, or Library actions.'}
       </div>
     );
@@ -26,7 +26,7 @@ export function CurrentRunBar() {
   const badge = resolveStatusBadge(run.status);
 
   return (
-    <div className="rounded-2xl border border-border/70 bg-[#fffdf9] px-4 py-3 shadow-sm">
+    <div className="rounded-2xl border border-border/70 bg-surface px-4 py-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-[0.12em] ${badgeClassByTone[badge.tone]}`}>
           {badge.label}

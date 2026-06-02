@@ -14,12 +14,12 @@ Usage:
 """
 
 from typing import Optional
-from uuid import uuid4
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 
 from app.core.database import redis_db
+from app.core.observability.context import get_trace_id
 from app.services.auth_service import User, get_user_by_id
 from app.utils.security import verify_token
 from app.utils.problem_detail import ProblemDetail, ErrorTypes
@@ -90,7 +90,7 @@ async def get_current_user(
     Raises:
         HTTPException: If not authenticated or token invalid
     """
-    request_id = str(uuid4())
+    request_id = getattr(request.state, "trace_id", None) or get_trace_id() or ""
     instance = str(request.url.path)
 
     # Priority 1: Cookie (most secure)

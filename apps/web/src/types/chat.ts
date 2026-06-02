@@ -26,9 +26,9 @@ export type AgentPhase =
 
 /**
  * Stream status for message state machine
- * Per HARD RULE 0.3: idle → streaming → completed/error/cancelled
+ * Per HARD RULE 0.3: idle → connecting → streaming → completed/error/cancelled/retrying
  */
-export type StreamStatus = 'idle' | 'streaming' | 'completed' | 'error' | 'cancelled';
+export type StreamStatus = 'idle' | 'connecting' | 'streaming' | 'completed' | 'error' | 'cancelled' | 'retrying';
 
 /**
  * Status of a tool call execution

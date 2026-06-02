@@ -10,7 +10,7 @@ body {
   font-size: var(--base-font-size);
   background: var(--color-background);
   color: var(--color-foreground);
-  line-height: 1.55;
+  line-height: var(--leading-normal);
 }
 
 /* Smooth scroll behavior for the entire application */
@@ -32,7 +32,7 @@ html {
 ::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--color-foreground) 20%, transparent);
   border-radius: 4px;
-  transition: background 0.3s ease;
+  transition: background var(--duration-normal) var(--ease-standard);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -45,10 +45,8 @@ html {
   scrollbar-color: color-mix(in srgb, var(--color-foreground) 20%, transparent) color-mix(in srgb, var(--color-rule) 55%, transparent);
 }
 
-/* Smooth transition defaults for all elements */
-* {
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* Note: Global * transition-timing-function removed (caused INP regression) */
+/* Use motion token intent vars on specific elements instead */
 
 /* Better focus styles for accessibility */
 *:focus-visible {
@@ -83,7 +81,7 @@ html {
 }
 
 .animate-fade-in {
-  animation: fadeIn 220ms ease-out;
+  animation: fadeIn var(--duration-fade-in) var(--ease-decelerate);
 }
 
 /* Slide up animation */
@@ -99,7 +97,7 @@ html {
 }
 
 .animate-slide-up {
-  animation: slideUp 260ms ease-out;
+  animation: slideUp var(--duration-slide-up) var(--ease-decelerate);
 }
 
 /* Skeleton loading animation */
@@ -113,7 +111,7 @@ html {
 }
 
 .skeleton {
-  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  animation: skeleton-pulse var(--duration-skeleton) ease-in-out infinite;
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--color-foreground) 8%, transparent) 0%,
@@ -129,7 +127,7 @@ html {
     min-height: 44px;
     min-width: 44px;
   }
-  
+
   /* Remove hover effects on touch devices */
   .hover-effect {
     transition: none;
@@ -141,7 +139,7 @@ html {
   .no-print {
     display: none !important;
   }
-  
+
   body {
     background: white;
   }
@@ -150,39 +148,42 @@ html {
 /* Development mode indicator styling */
 .dev-badge {
   position: fixed;
-  bottom: 1rem;
-  right: 1rem;
+  bottom: var(--space-4);
+  right: var(--space-4);
   z-index: 9999;
   background: color-mix(in srgb, var(--color-primary) 90%, black);
   color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
   pointer-events: none;
 }
 
+/* Reduced motion: handled by tokens/motion.css duration overrides */
+/* Additional global reduced-motion safeguards */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 1ms !important;
+    animation-duration: 0ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
+    transition-duration: 0ms !important;
     scroll-behavior: auto !important;
   }
 }
+
 @layer components {
-.editorial-app-shell {
+  .editorial-app-shell {
     font-family: var(--font-sans);
     color: var(--color-foreground);
   }
 
   .editorial-reading-surface {
     font-family: var(--font-serif) !important;
-    line-height: 1.72;
-    letter-spacing: 0;
+    line-height: var(--leading-relaxed);
+    letter-spacing: var(--tracking-normal);
   }
 
   .editorial-reading-surface h1,
@@ -192,17 +193,17 @@ html {
   .editorial-reading-surface h5,
   .editorial-reading-surface h6 {
     font-family: var(--font-serif) !important;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-tight);
   }
-  
+
   .editorial-reading-surface p,
   .editorial-reading-surface li,
   .editorial-reading-surface blockquote,
   .editorial-reading-surface .markdown-body {
     font-family: var(--font-serif) !important;
     color: var(--color-foreground);
-    line-height: 1.8;
+    line-height: var(--leading-zh);
   }
 
   .editorial-display {
@@ -211,11 +212,32 @@ html {
 
   .editorial-ui {
     font-family: var(--font-sans) !important;
-    letter-spacing: 0;
+    letter-spacing: var(--tracking-normal);
   }
 }
+
 @layer base {
   body {
     @apply font-sans;
+  }
+}
+
+/* === Bento Grid Utility === */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.bento-grid > .bento-wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 640px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-grid > .bento-wide {
+    grid-column: span 1;
   }
 }

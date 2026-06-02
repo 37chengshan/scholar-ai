@@ -4,3 +4,6 @@
 
 /* Animation utilities */
 @import 'tw-animate-css';
+
+/* Dark mode variant via class strategy */
+@custom-variant dark (&:where(.dark *));

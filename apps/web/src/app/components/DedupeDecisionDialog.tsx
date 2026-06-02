@@ -72,7 +72,7 @@ const DECISION_OPTIONS: Array<{
     label: '强制新建',
     description: '忽略匹配，创建全新的论文实体',
     icon: FilePlus,
-    color: 'text-orange-600',
+    color: 'text-[var(--accent-600)]',
   },
   {
     id: 'cancel',

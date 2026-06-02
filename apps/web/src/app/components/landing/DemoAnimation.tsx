@@ -51,15 +51,15 @@ export function DemoAnimation() {
   }, [stage, typedText, fullQuery]);
 
   return (
-    <div className="relative w-full max-w-4xl mx-auto rounded-2xl shadow-2xl overflow-hidden border border-border/50 bg-[#Fdfaf6] aspect-[16/10] md:aspect-[16/9]">
+    <div className="relative w-full max-w-4xl mx-auto rounded-2xl shadow-2xl overflow-hidden border border-border/50 bg-surface aspect-[16/10] md:aspect-[16/9]">
       {/* Top Bar simulating browser/app header */}
-      <div className="h-12 border-b border-border bg-[#F4ECE1] flex items-center px-4 gap-2">
+      <div className="h-12 border-b border-border bg-surface-sunken flex items-center px-4 gap-2">
         <div className="flex gap-1.5">
           <div className="w-3 h-3 rounded-full bg-red-400/80" />
           <div className="w-3 h-3 rounded-full bg-amber-400/80" />
           <div className="w-3 h-3 rounded-full bg-green-400/80" />
         </div>
-        <div className="flex-1 mx-4 h-6 bg-[#fdfaf6] rounded flex items-center justify-center opacity-60">
+        <div className="flex-1 mx-4 h-6 bg-surface rounded flex items-center justify-center opacity-60">
           <span className="text-[10px] uppercase tracking-widest text-foreground/50 font-serif">ScholarAI Workspace</span>
         </div>
       </div>

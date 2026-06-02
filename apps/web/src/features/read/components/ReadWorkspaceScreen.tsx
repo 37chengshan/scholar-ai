@@ -1,17 +1,65 @@
+import { useState, useCallback } from 'react';
 import { FileText } from 'lucide-react';
 
 import type { EvidenceBlockDto } from '@scholar-ai/types';
 
 import { Button } from '@/app/components/ui/button';
 import { navigateToSafeTarget } from '@/lib/navigation';
+import * as annotationsApi from '@/services/annotationsApi';
+import { FloatingAnnotationToolbar } from '@/features/read/components/FloatingAnnotationToolbar';
+import { useReadKeyboard } from '@/features/read/hooks/useReadKeyboard';
 import { ReadAssistantPanel } from '@/features/read/components/ReadAssistantPanel';
 import { ReadTopToolbar } from '@/features/read/components/ReadTopToolbar';
 import { ReadWorkspace } from '@/features/read/components/ReadWorkspace';
 import { createEmptyEditorDocument } from '@/features/notes/ownership';
 import { useReadWorkspaceScreen } from '@/features/read/hooks/useReadWorkspaceScreen';
+import { toast } from 'sonner';
 
 export function ReadWorkspaceScreen() {
   const workspace = useReadWorkspaceScreen();
+  const [selectionDOMRect, setSelectionDOMRect] = useState<DOMRect | null>(null);
+
+  const handleFloatingHighlight = useCallback(
+    async (color: string) => {
+      if (!workspace.id || !workspace.selectedText || !workspace.selectionPosition) return;
+      try {
+        await annotationsApi.create({
+          paperId: workspace.id,
+          type: 'highlight',
+          pageNumber: workspace.currentPage,
+          position: workspace.selectionPosition,
+          color,
+          content: workspace.selectedText,
+        });
+        await workspace.handleAnnotationCreated();
+        workspace.setRightTab('notes');
+        setSelectionDOMRect(null);
+      } catch {
+        toast.error(workspace.isZh ? '添加高亮失败' : 'Failed to add highlight');
+      }
+    },
+    [workspace],
+  );
+
+  const handleDismissFloating = useCallback(() => {
+    setSelectionDOMRect(null);
+    workspace.setSelectedText('');
+    workspace.setSelectionPosition(null);
+  }, [workspace]);
+
+  useReadKeyboard({
+    goToPage: workspace.goToPage,
+    currentPage: workspace.currentPage,
+    totalPages: workspace.totalPages,
+    setScale: workspace.setScale,
+    scale: workspace.scale,
+    setRightTab: workspace.setRightTab,
+    setIsPanelOpen: workspace.setIsPanelOpen,
+    toggleFullscreen: workspace.toggleFullscreen,
+    isFullscreen: workspace.isFullscreen,
+    dismissFloating: handleDismissFloating,
+  });
+
   const {
     id,
     navigate,
@@ -187,6 +235,15 @@ export function ReadWorkspaceScreen() {
         onTogglePanel={() => setIsPanelOpen(!isPanelOpen)}
       />
 
+      {selectionDOMRect && selectedText ? (
+        <FloatingAnnotationToolbar
+          selectionRect={selectionDOMRect}
+          onHighlight={(color) => void handleFloatingHighlight(color)}
+          onDismiss={handleDismissFloating}
+          isZh={isZh}
+        />
+      ) : null}
+
       <ReadWorkspace
         id={id}
         isZh={isZh}
@@ -206,6 +263,7 @@ export function ReadWorkspaceScreen() {
         onTextSelection={(selection) => {
           setSelectedText(selection?.text || '');
           setSelectionPosition(selection?.position || null);
+          setSelectionDOMRect(selection?.rect || null);
         }}
         onPanelOpenChange={setIsPanelOpen}
         onSetRightTab={setRightTab}

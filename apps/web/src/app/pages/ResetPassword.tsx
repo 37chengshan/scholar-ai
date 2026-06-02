@@ -42,7 +42,7 @@ export function ResetPassword() {
     passwordTooShort: isZh ? "密码至少需要8个字符" : "Password must be at least 8 characters",
   };
 
-  const authCardClassName = "rounded-sm border border-[#f4ece1] shadow-none hover:shadow-none hover:translate-y-0";
+  const authCardClassName = "rounded-sm border border-border shadow-none hover:shadow-none hover:translate-y-0";
   
   useEffect(() => {
     if (!token) {
@@ -80,16 +80,16 @@ export function ResetPassword() {
   
   if (success) {
     return (
-      <div className="min-h-screen bg-[#fdfaf6] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Card className={`w-full max-w-md bg-white ${authCardClassName}`}>
+          <Card className={`w-full max-w-md bg-card ${authCardClassName}`}>
             <CardHeader className="text-center">
-              <CheckCircle className="w-16 h-16 text-[#d35400] mx-auto mb-4" />
-              <CardTitle className="text-xl font-semibold text-[#d35400]">
+              <CheckCircle className="w-16 h-16 text-primary mx-auto mb-4" />
+              <CardTitle className="text-xl font-semibold text-primary">
                 {t.successTitle}
               </CardTitle>
               <CardDescription className="text-base">
@@ -99,7 +99,7 @@ export function ResetPassword() {
             <CardContent>
               <Button
                 asChild
-                className="w-full bg-[#d35400] hover:bg-[#e67e22] text-white"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 <Link to="/login">{t.goToLogin}</Link>
               </Button>
@@ -111,7 +111,7 @@ export function ResetPassword() {
   }
   
   return (
-    <div className="min-h-screen bg-[#fdfaf6] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -129,7 +129,7 @@ export function ResetPassword() {
           </Link>
         </Button>
         
-        <Card className={`bg-white ${authCardClassName}`}>
+        <Card className={`bg-card ${authCardClassName}`}>
           <CardHeader>
             <CardTitle className="text-2xl font-semibold font-serif tracking-tight">
               {t.title}
@@ -180,7 +180,7 @@ export function ResetPassword() {
               
               <Button
                 type="submit"
-                className="w-full bg-[#d35400] hover:bg-[#e67e22] text-white"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                 disabled={loading}
               >
                 {loading ? t.resetting : t.resetButton}

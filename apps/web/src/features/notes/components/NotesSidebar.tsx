@@ -100,8 +100,8 @@ export function NotesSidebar({
   const hasAnyContent = summaryItems.length > 0 || archivedNoteItems.length > 0 || unarchivedNoteItems.length > 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="space-y-4 border-b border-border/30 bg-gradient-to-b from-white to-slate-50/50 px-5 py-5">
+    <div className="flex h-full min-h-0 flex-col bg-surface">
+      <div className="space-y-4 border-b border-border/30 bg-gradient-to-b from-surface to-surface-sunken/50 px-5 py-5">
         <div className="flex items-center justify-between">
           <h2 className="font-serif text-xs font-semibold tracking-tight text-foreground">笔记库</h2>
           <Button variant="outline" size="sm" className="h-6 rounded-sm px-2.5 text-[9px] font-bold uppercase tracking-wider shadow-sm" onClick={onCreateNote}>
@@ -198,7 +198,7 @@ export function NotesSidebar({
                 role="button"
                 tabIndex={0}
                 className={clsx(
-                  'group w-full border-l-2 border-l-transparent px-3 py-3 text-left transition-all duration-150',
+                  'group w-full border-l-2 border-l-transparent px-3 py-3 text-left transition-colors duration-150',
                   selectedSummaryPaperId === summary.paperId
                     ? 'border-l-primary bg-primary/[0.03]'
                     : 'hover:border-l-primary/30 hover:bg-primary/[0.02]',
@@ -261,7 +261,7 @@ export function NotesSidebar({
               <div
                 key={item.note.id}
                 className={clsx(
-                  'group cursor-pointer border-l-2 border-l-transparent p-3 transition-all duration-150',
+                  'group cursor-pointer border-l-2 border-l-transparent p-3 transition-colors duration-150',
                   selectedNoteId === item.note.id
                     ? 'border-l-primary bg-primary/[0.03]'
                     : 'hover:border-l-primary/50 hover:bg-primary/[0.02]',
@@ -317,7 +317,7 @@ export function NotesSidebar({
                   <div
                     key={item.note.id}
                     className={clsx(
-                      'group cursor-pointer border-l-2 border-l-transparent p-3 transition-all duration-150',
+                      'group cursor-pointer border-l-2 border-l-transparent p-3 transition-colors duration-150',
                       selectedNoteId === item.note.id
                         ? 'border-l-primary bg-primary/[0.03]'
                         : 'hover:border-l-primary/50 hover:bg-primary/[0.02]',

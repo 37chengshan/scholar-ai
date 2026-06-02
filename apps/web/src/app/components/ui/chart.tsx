@@ -69,37 +69,63 @@ function ChartContainer({
   );
 }
 
-const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(
-    ([, config]) => config.theme || config.color,
-  );
+/**
+ * Allowlist regex for CSS color values.
+ * Accepts hex (#rgb, #rrggbb), named colors, rgb/rgba, hsl/hsla,
+ * oklch, oklab, var(--token), and transparent/currentColor.
+ * Blocks any value containing {, }, ;, ( outside function context,
+ * or other CSS injection vectors.
+ */
+const SAFE_COLOR_RE =
+  /^(?:#[0-9a-fA-F]{3,8}|(?:rgb|hsl|oklch|oklab|lab|lch|color)\s*\([^)]*\)|var\(--[\w-]+\)|transparent|currentColor|[a-zA-Z]+)$/;
 
-  if (!colorConfig.length) {
-    return null;
-  }
-
-  return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
-  })
-  .join("\n")}
+function sanitizeCssColor(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  // Block obvious injection characters
+  if (/[{};\\]/.test(trimmed)) return null;
+  if (SAFE_COLOR_RE.test(trimmed)) return trimmed;
+  return null;
 }
-`,
-          )
-          .join("\n"),
-      }}
-    />
-  );
+
+const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
+  const styleRef = React.useRef<HTMLStyleElement | null>(null);
+
+  React.useEffect(() => {
+    const colorConfig = Object.entries(config).filter(
+      ([, cfg]) => cfg.theme || cfg.color,
+    );
+    if (!colorConfig.length) return;
+
+    const css = Object.entries(THEMES)
+      .map(
+        ([theme, prefix]) =>
+          `${prefix} [data-chart=${id}] {\n${colorConfig
+            .map(([key, itemConfig]) => {
+              const rawColor =
+                itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+                itemConfig.color;
+              const safeColor = sanitizeCssColor(rawColor);
+              return safeColor ? `  --color-${key}: ${safeColor};` : null;
+            })
+            .filter(Boolean)
+            .join("\n")}\n}`,
+      )
+      .join("\n");
+
+    if (!styleRef.current) {
+      styleRef.current = document.createElement("style");
+      document.head.appendChild(styleRef.current);
+    }
+    styleRef.current.textContent = css;
+
+    return () => {
+      styleRef.current?.remove();
+      styleRef.current = null;
+    };
+  }, [id, config]);
+
+  return null;
 };
 
 const ChartTooltip = RechartsPrimitive.Tooltip;

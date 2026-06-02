@@ -6,9 +6,15 @@ Phase 1 design:
   Level 1: Section-level TF-IDF index → within candidate papers
   Level 2: Dense Milvus search → final evidence candidates
            - If paper IDs found in query, apply Milvus paper_id filter
-  Fusion: RRF across dense + section signals
+  Level 3 (optional): RAPTOR tree-level search for multi-granularity retrieval
+  Fusion: RRF across dense + section + tree signals
 """
 from __future__ import annotations
+
+import os
+import time
+
+import structlog
 
 from app.rag_v3.evaluation.retrieval_evaluator import evaluate_evidence_pack
 from app.rag_v3.fusion.candidate_balancer import balance_candidates
@@ -20,6 +26,12 @@ from app.rag_v3.planner.query_plan import apply_retrieval_depth_override, build_
 from app.rag_v3.rerank.qwen3vl_rerank_adapter import rerank_candidates
 from app.rag_v3.retrieval.dense_evidence_retriever import DenseEvidenceRetriever, extract_paper_ids_from_query
 from app.rag_v3.schemas import EvidenceCandidate, EvidencePack
+
+logger = structlog.get_logger()
+
+# Feature flag for RAPTOR tree-level search
+RAPTOR_ENABLED = os.getenv("RAPTOR_ENABLED", "false").lower() in {"true", "1", "yes"}
+RAPTOR_SEARCH_TIMEOUT_MS = 200
 
 _RETRIEVAL_DEPTH_RANK = {
     "shallow": 1.0,
@@ -37,10 +49,14 @@ class HierarchicalRetriever:
         paper_index: PaperSummaryIndex | None = None,
         section_index: SectionSummaryIndex | None = None,
         dense_retriever: DenseEvidenceRetriever | None = None,
+        raptor_tree_index: Any | None = None,
+        embedding_provider: Any | None = None,
     ) -> None:
         self._paper_index = paper_index or PaperSummaryIndex()
         self._section_index = section_index or SectionSummaryIndex()
         self._dense_retriever = dense_retriever or DenseEvidenceRetriever()
+        self._raptor_tree_index = raptor_tree_index
+        self._embedding_provider = embedding_provider
         self._query_counter = 0
 
     def retrieve_evidence(
@@ -55,6 +71,7 @@ class HierarchicalRetriever:
         page_from: int | None = None,
         page_to: int | None = None,
         content_types: list[str] | None = None,
+        user_id: str = "",
     ) -> EvidencePack:
         plan = build_query_plan(query=query, query_family=query_family)
         plan = apply_retrieval_depth_override(plan, retrieval_depth)
@@ -132,6 +149,15 @@ class HierarchicalRetriever:
             "dense": dense_candidates,
             "section": section_candidates,
         }
+
+        # Level 3 (optional): RAPTOR tree-level search
+        tree_candidates = self._retrieve_tree_candidates(
+            query=query,
+            paper_ids=effective_paper_ids,
+            user_id=user_id,
+        )
+        if tree_candidates:
+            source_candidates["tree"] = tree_candidates
 
         fused = rrf_fuse(source_candidates)
         balanced = balance_candidates(
@@ -222,20 +248,25 @@ class HierarchicalRetriever:
         dense_candidates: list[EvidenceCandidate],
         section_top_k_per_paper: int,
     ) -> list[EvidenceCandidate]:
-        """Generate section-level candidates anchored to the identified paper set."""
+        """Generate section-level candidates anchored to the identified paper set.
+
+        Uses batch search to avoid N+1 per-paper queries.
+        """
         if not paper_ids and not dense_candidates:
             return []
 
         dense_paper_ids = {c.paper_id for c in dense_candidates[:20] if c.paper_id}
         all_paper_ids = paper_ids | dense_paper_ids
 
+        # Batch search: single pass over all papers instead of per-paper loop
+        sections_by_paper = self._section_index.search_for_papers(
+            all_paper_ids,
+            query=query,
+            top_k_per_paper=section_top_k_per_paper,
+        )
+
         section_candidates: list[EvidenceCandidate] = []
-        for pid in all_paper_ids:
-            sections = self._section_index.search_for_paper(
-                pid,
-                query=query,
-                top_k=section_top_k_per_paper,
-            )
+        for pid, sections in sections_by_paper.items():
             for sec in sections:
                 for chunk_id in sec.source_chunk_ids[:3]:
                     section_candidates.append(
@@ -249,6 +280,64 @@ class HierarchicalRetriever:
                         )
                     )
         return section_candidates
+
+    def _retrieve_tree_candidates(
+        self,
+        *,
+        query: str,
+        paper_ids: list[str] | None,
+        user_id: str = "",
+    ) -> list[EvidenceCandidate]:
+        """Retrieve RAPTOR tree-level candidates for multi-granularity search.
+
+        Returns empty list if RAPTOR is disabled, tree index is not configured,
+        or search times out.
+        """
+        if not RAPTOR_ENABLED:
+            return []
+        if not self._raptor_tree_index or not self._embedding_provider:
+            return []
+        if not user_id:
+            logger.debug("RAPTOR tree search skipped: user_id is required for tenant isolation")
+            return []
+
+        try:
+            start = time.monotonic()
+            query_embedding = self._embedding_provider.embed_texts([query])[0]
+            hits = self._raptor_tree_index.search(
+                query_embedding=query_embedding,
+                user_id=user_id,
+                paper_ids=paper_ids,
+                top_k=10,
+            )
+
+            elapsed_ms = (time.monotonic() - start) * 1000
+            if elapsed_ms > RAPTOR_SEARCH_TIMEOUT_MS:
+                logger.warning(
+                    "RAPTOR tree search exceeded timeout",
+                    elapsed_ms=round(elapsed_ms, 1),
+                    timeout_ms=RAPTOR_SEARCH_TIMEOUT_MS,
+                )
+                return []
+
+            candidates = []
+            for hit in hits:
+                candidates.append(
+                    EvidenceCandidate(
+                        source_chunk_id=hit.get("node_id", ""),
+                        paper_id=hit.get("paper_id", ""),
+                        section_id=f"raptor-L{hit.get('level', 0)}",
+                        content_type="text",
+                        anchor_text=hit.get("text", "")[:300],
+                        candidate_sources=["raptor_tree"],
+                        dense_score=float(hit.get("score", 0.0)),
+                    )
+                )
+            return candidates
+
+        except Exception as exc:
+            logger.debug("RAPTOR tree search failed, degrading to chunk-only", error=str(exc))
+            return []
 
     @staticmethod
     def _compute_paper_hit_rate(candidates: list[EvidenceCandidate]) -> float:
@@ -268,10 +357,11 @@ class HierarchicalRetriever:
 _default_retriever = HierarchicalRetriever()
 
 
-def retrieve_evidence(query: str, query_family: str, stage: str, top_k: int = 10) -> EvidencePack:
+def retrieve_evidence(query: str, query_family: str, stage: str, top_k: int = 10, user_id: str = "") -> EvidencePack:
     return _default_retriever.retrieve_evidence(
         query=query,
         query_family=query_family,
         stage=stage,
         top_k=top_k,
+        user_id=user_id,
     )

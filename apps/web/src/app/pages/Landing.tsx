@@ -306,7 +306,7 @@ export function Landing() {
                     <InteractiveText text={feature.description} />
                   </p>
                 </div>
-                <div className="h-px w-12 bg-primary/30 mt-auto pt-4 group-hover:w-full transition-all duration-500" />
+                <div className="h-px w-12 bg-primary/30 mt-auto pt-4 group-hover:w-full transition-[width] duration-500" />
               </motion.div>
             ))}
           </div>
@@ -318,7 +318,7 @@ export function Landing() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.6 }}
-          className="scroll-mt-32 py-24 px-8 lg:px-16 bg-[#F4ECE1]/50 border-y border-border/50"
+          className="scroll-mt-32 py-24 px-8 lg:px-16 bg-surface-sunken/50 border-y border-border/50"
         >
           <div className="max-w-7xl mx-auto">
             <motion.div

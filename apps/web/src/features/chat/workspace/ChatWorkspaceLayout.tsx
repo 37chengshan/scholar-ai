@@ -68,6 +68,7 @@ interface ChatWorkspaceLayoutProps {
     placeholder: string;
     verify: string;
   };
+  onVisibleRangeChange?: (startIndex: number, stopIndex: number) => void;
 }
 
 export function ChatWorkspaceLayout({

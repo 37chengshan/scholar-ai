@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 
 import type { Note } from '@/services/notesApi';
-import { NotesEditor } from '@/app/components/NotesEditor';
+import { ScholarAIEditor } from '@/features/notes/editor';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -108,7 +108,7 @@ export function NotesMainPanel({
               noteTitle={buildNoteDisplayTitle(selectedNote, paperTitleMap)}
               noteId={selectedNote.id}
             />
-            <NotesEditor
+            <ScholarAIEditor
               content={editorContent}
               onChange={onEditorChange}
               placeholder="开始写笔记... 使用 [[pdf:paperId:page:5]] 引用论文"
@@ -145,8 +145,8 @@ export function NotesMainPanel({
             <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
               系统摘要
             </p>
-            <NotesEditor
-              content={normalizeEditorDocument(selectedSummary.readingNotes)}
+            <ScholarAIEditor
+              content={normalizeEditorDocument(selectedSummary.readingNotes) as any}
               onChange={() => {}}
               readOnly
               hideToolbar

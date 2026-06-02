@@ -18,13 +18,14 @@ from typing import Any, Dict, List, Optional
 
 from app.config import settings
 
-from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, status, File, Form, UploadFile
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import CurrentUserId
+from app.middleware.rate_limit import limiter
 from app.models.knowledge_base import KnowledgeBase
 from app.models.import_batch import ImportBatch
 from app.models.import_job import ImportJob
@@ -99,9 +100,11 @@ class BatchFileManifestItem(BaseModel):
 
 
 @router.post("/knowledge-bases/{kb_id}/imports/batch", response_model=KBResponse)
+@limiter.limit("5/hour")
 async def create_batch_import(
+    request: Request,
     kb_id: str,
-    request: BatchImportRequest,
+    body: BatchImportRequest,
     user_id: str = CurrentUserId,
     db: AsyncSession = Depends(get_db),
 ):
@@ -111,7 +114,7 @@ async def create_batch_import(
 
     Args:
         kb_id: Knowledge base ID
-        request: Batch import request with items and options
+        body: Batch import request with items and options
         user_id: Current user ID
         db: Database session
 
@@ -134,7 +137,7 @@ async def create_batch_import(
             )
 
         # Limit batch size
-        if len(request.items) > 50:
+        if len(body.items) > 50:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("Maximum 50 items per batch"),
@@ -148,7 +151,7 @@ async def create_batch_import(
             user_id=user_id,
             knowledge_base_id=kb_id,
             status="created",
-            total_items=len(request.items),
+            total_items=len(body.items),
             completed_items=0,
             failed_items=0,
             cancelled_items=0,
@@ -161,7 +164,7 @@ async def create_batch_import(
         service = ImportJobService()
         items_response: List[Dict[str, Any]] = []
 
-        for item in request.items:
+        for item in body.items:
             # Extract source_ref_raw from payload
             if item.sourceType == "local_file":
                 source_ref_raw = item.payload.get("filename", "unnamed.pdf")
@@ -174,7 +177,7 @@ async def create_batch_import(
                 kb_id=kb_id,
                 source_type=item.sourceType,
                 source_ref_raw=source_ref_raw,
-                options=request.options or {},
+                options=body.options or {},
                 batch_id=batch_id,  # Link to batch
                 db=db,
                 auto_commit=False,
@@ -193,7 +196,7 @@ async def create_batch_import(
             "Batch import created",
             batch_id=batch_id,
             kb_id=kb_id,
-            total_items=len(request.items),
+            total_items=len(body.items),
         )
 
         return KBResponse(
@@ -201,7 +204,7 @@ async def create_batch_import(
             data={
                 "batchJobId": batch_id,
                 "status": "created",
-                "totalItems": len(request.items),
+                "totalItems": len(body.items),
                 "items": items_response,
             },
         )
@@ -224,7 +227,9 @@ async def create_batch_import(
 
 
 @router.post("/import-batches/{batch_id}/files", response_model=KBResponse)
+@limiter.limit("5/hour")
 async def upload_batch_local_files(
+    request: Request,
     batch_id: str,
     manifest: str = Form(...),
     files: List[UploadFile] = File(...),

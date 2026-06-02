@@ -1,9 +1,12 @@
+import { useMemo, useState } from 'react';
+
 import type { Annotation } from '@/services/annotationsApi';
+import * as annotationsApi from '@/services/annotationsApi';
 import type { EvidenceBlockDto } from '@scholar-ai/types';
 import type { ReadingCardDoc } from '@/features/read/readingCard';
 
 import { AISummaryPanel } from '@/app/components/AISummaryPanel';
-import { AnnotationToolbar } from '@/app/components/AnnotationToolbar';
+import { measureEvidenceBlock } from '@/lib/text-layout/evidence';
 import { NotesEditor } from '@/app/components/NotesEditor';
 import { Button } from '@/app/components/ui/button';
 import {
@@ -12,11 +15,11 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/app/components/ui/tabs';
-import { createEmptyEditorDocument } from '@/features/notes/ownership';
 import { EvidenceSideNote } from '@/features/read/components/EvidenceSideNote';
 import { SourceChunkHighlight } from '@/features/read/components/SourceChunkHighlight';
 import { navigateToSafeTarget } from '@/lib/navigation';
-import { FileText } from 'lucide-react';
+import { clsx } from 'clsx';
+import { FileText, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 type ReadRightTab = 'notes' | 'annotations' | 'summary';
@@ -89,6 +92,30 @@ export function ReadAssistantPanel({
   onInsertCurrentPageReference,
   onJumpAnnotationPage,
 }: ReadAssistantPanelProps) {
+  const [colorFilter, setColorFilter] = useState<string | null>(null);
+
+  // Pre-calculate evidence block height to prevent layout shift
+  const evidenceMinHeight = useMemo(() => {
+    if (!activeEvidence?.text) return undefined;
+    const { height } = measureEvidenceBlock(activeEvidence, 280);
+    return height;
+  }, [activeEvidence]);
+
+  const filteredAnnotations = colorFilter
+    ? annotations.filter((a) => a.color === colorFilter)
+    : annotations;
+
+  const uniqueColors = Array.from(new Set(annotations.map((a) => a.color).filter(Boolean)));
+
+  const handleDeleteAnnotation = async (annotationId: string) => {
+    try {
+      await annotationsApi.deleteAnnotation(annotationId);
+      await onAnnotationCreated();
+    } catch {
+      toast.error(isZh ? '删除批注失败' : 'Failed to delete annotation');
+    }
+  };
+
   return (
     <Tabs
       value={rightTab}
@@ -103,7 +130,10 @@ export function ReadAssistantPanel({
           {isZh ? '笔记 / 批注 / 摘要' : 'Notes / Annotations / Summary'}
         </div>
         {hasHighlight ? (
-          <div className="mt-3 space-y-2">
+          <div
+            className="mt-3 space-y-2"
+            style={evidenceMinHeight ? { minHeight: evidenceMinHeight } : undefined}
+          >
             <SourceChunkHighlight sourceChunkId={highlightedSourceChunkId} />
             <EvidenceSideNote
               source={source}
@@ -133,24 +163,49 @@ export function ReadAssistantPanel({
 
       <TabsContent value="annotations" className="mt-0 flex-1 overflow-hidden">
         <div className="flex h-full flex-col">
-          <AnnotationToolbar
-            paperId={id}
-            pageNumber={currentPage}
-            onAnnotationCreated={onAnnotationCreated}
-            selectedText={selectedText}
-            selectionPosition={selectionPosition}
-          />
+          {uniqueColors.length > 1 ? (
+            <div className="flex items-center gap-1.5 border-b border-border/40 px-3 py-2">
+              <span className="text-[10px] text-muted-foreground">
+                {isZh ? '筛选:' : 'Filter:'}
+              </span>
+              <button
+                onClick={() => setColorFilter(null)}
+                className={clsx(
+                  'rounded-sm px-1.5 py-0.5 text-[10px] transition-colors',
+                  !colorFilter
+                    ? 'bg-foreground/10 font-medium text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {isZh ? '全部' : 'All'}
+              </button>
+              {uniqueColors.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColorFilter(colorFilter === c ? null : c ?? null)}
+                  className={clsx(
+                    'h-4 w-4 rounded-sm border transition-all',
+                    colorFilter === c
+                      ? 'border-foreground/40 ring-1 ring-foreground/20 scale-110'
+                      : 'border-border/40 hover:border-foreground/30',
+                  )}
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+            </div>
+          ) : null}
           <div className="flex-1 overflow-auto p-3">
-            {annotations.length === 0 ? (
+            {filteredAnnotations.length === 0 ? (
               <p className="py-8 text-center text-xs text-muted-foreground">
                 {isZh ? '暂无批注' : 'No annotations yet'}
               </p>
             ) : (
               <div className="space-y-2">
-                {annotations.map((annotation) => (
+                {filteredAnnotations.map((annotation) => (
                   <div
                     key={annotation.id}
-                    className="cursor-pointer rounded-2xl border border-border/60 bg-background p-3 text-xs transition-colors hover:bg-amber-50/50"
+                    className="group relative cursor-pointer rounded-2xl border border-border/60 bg-background p-3 text-xs transition-colors hover:bg-amber-50/50"
                     onClick={() => {
                       onJumpAnnotationPage(annotation.pageNumber);
                       onSetRightTab('annotations');
@@ -164,6 +219,16 @@ export function ReadAssistantPanel({
                       {isZh ? '第' : 'Page'} {annotation.pageNumber}
                     </p>
                     {annotation.content ? <p className="mt-1 text-foreground">{annotation.content}</p> : null}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDeleteAnnotation(annotation.id);
+                      }}
+                      className="absolute right-2 top-2 rounded p-1 text-muted-foreground/50 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                      aria-label={isZh ? '删除批注' : 'Delete annotation'}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
                   </div>
                 ))}
               </div>

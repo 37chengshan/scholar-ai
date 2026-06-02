@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
+trace_id_var: ContextVar[str | None] = ContextVar("trace_id", default=None)
 run_id_var: ContextVar[str | None] = ContextVar("run_id", default=None)
 session_id_var: ContextVar[str | None] = ContextVar("session_id", default=None)
 message_id_var: ContextVar[str | None] = ContextVar("message_id", default=None)
@@ -19,6 +20,7 @@ route_var: ContextVar[str | None] = ContextVar("route", default=None)
 
 _CONTEXT_VARS = {
     "request_id": request_id_var,
+    "trace_id": trace_id_var,
     "run_id": run_id_var,
     "session_id": session_id_var,
     "message_id": message_id_var,
@@ -31,12 +33,18 @@ _CONTEXT_VARS = {
 }
 
 
+def get_trace_id() -> str | None:
+    """Return the current trace_id from context, falling back to request_id."""
+    return trace_id_var.get() or request_id_var.get()
+
+
 def set_request_context(
     request_id: str,
     route: str | None = None,
     user_id: str | None = None,
 ) -> None:
     request_id_var.set(request_id)
+    trace_id_var.set(request_id)
     route_var.set(route)
     user_id_var.set(user_id)
 

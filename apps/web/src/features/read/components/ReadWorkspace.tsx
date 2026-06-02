@@ -21,7 +21,7 @@ interface ReadWorkspaceProps {
   assistantPanelContent: React.ReactNode;
   onPageSelect: (page: number, reason: 'toolbar' | 'thumbnail' | 'section' | 'citation' | 'annotation' | 'url') => void;
   onNumPagesChange: (numPages: number) => void;
-  onTextSelection: (selection: { text: string; position: { x: number; y: number; width: number; height: number } } | null) => void;
+  onTextSelection: (selection: { text: string; position: { x: number; y: number; width: number; height: number }; rect?: DOMRect } | null) => void;
   onPanelOpenChange: (value: boolean) => void;
   onSetRightTab: (tab: 'notes' | 'annotations' | 'summary') => void;
 }

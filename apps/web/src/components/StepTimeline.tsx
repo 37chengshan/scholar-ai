@@ -65,7 +65,7 @@ export function StepTimeline({ steps, currentStep }: StepTimelineProps) {
             className={clsx(
               'flex items-start gap-3 px-3 py-2 rounded-md',
               'border border-muted/50 bg-muted/20',
-              'transition-all duration-200',
+              'transition-colors duration-200',
               isCurrent && 'bg-muted/40 border-muted current active highlight',
               isRunning && 'animate-pulse running-step'
             )}

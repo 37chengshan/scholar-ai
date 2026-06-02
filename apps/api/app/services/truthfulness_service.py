@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from app.core.claim_extractor import get_claim_extractor
 from app.core.claim_schema import AnswerClaim, ClaimSupportLevel
 from app.core.claim_verifier import get_claim_verifier
 from app.rag_v3.schemas import EvidenceBlock
+
+NLI_ENABLED = os.getenv("NLI_ENABLED", "false").lower() in {"true", "1", "yes"}
 
 
 class TruthfulnessService:
@@ -32,6 +35,37 @@ class TruthfulnessService:
             if fallback_report is not None:
                 return fallback_report
         return self.evaluate_claims(claims=claims, evidence_blocks=evidence_blocks or [])
+
+    async def evaluate_claims_async(
+        self,
+        *,
+        claims: list[AnswerClaim],
+        evidence_blocks: list[EvidenceBlock] | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate claims using unified verifier (supports NLI when enabled)."""
+        if NLI_ENABLED:
+            from app.core.unified_verifier import get_unified_verifier
+            report = await get_unified_verifier().verify_claims(
+                claims=claims,
+                evidence_blocks=evidence_blocks or [],
+            )
+        else:
+            sources = [self._block_to_source(block) for block in (evidence_blocks or [])]
+            results = get_claim_verifier().verify(claims, sources)
+            report = get_claim_verifier().build_report(results)
+
+        report["answerMode"] = self._answer_mode_from_report(report)
+        report["summary"] = {
+            "total_claims": report["totalClaims"],
+            "supported_claims": report["supportedClaimCount"],
+            "weakly_supported_claims": report["weaklySupportedClaimCount"],
+            "partially_supported_claims": report["partiallySupportedClaimCount"],
+            "unsupported_claims": report["unsupportedClaimCount"],
+            "unsupported_claim_rate": report["unsupportedClaimRate"],
+            "answer_mode": report["answerMode"],
+            "verifier_backend": report.get("verifierBackend", "lexical_overlap"),
+        }
+        return report
 
     def evaluate_claims(
         self,

@@ -8,7 +8,7 @@ export function RecoverableTasksPanel() {
   const isZh = language === 'zh';
 
   return (
-    <section className="rounded-2xl border border-border/70 bg-[#fffdf9] p-4 shadow-sm">
+    <section className="rounded-2xl border border-border/70 bg-surface p-4 shadow-sm">
       <h3 className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground font-serif tracking-tight">
         {isZh ? '可恢复任务' : resolveWorkflowCopy('recoverable')}
       </h3>

@@ -165,14 +165,15 @@ describe('CompareCard', () => {
     expect(screen.getByText('Paper Beta')).toBeTruthy();
   });
 
-  it('renders dimension headers', () => {
+  it('renders dimension labels', () => {
     render(
       <MemoryRouter>
         <CompareCard contract={makeContract(makeMatrix())} isZh={false} />
       </MemoryRouter>,
     );
-    expect(screen.getByText('Method')).toBeTruthy();
-    expect(screen.getByText('Results')).toBeTruthy();
+    // Card-based layout shows dimension labels per cell
+    expect(screen.getAllByText('Method').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Results').length).toBeGreaterThan(0);
   });
 
   it('renders not_enough_evidence cells as "–"', () => {

@@ -92,7 +92,7 @@ export function renderContentWithCitations(
     parts.push(
       <sup
         key={`cite-${match.index}`}
-        className="inline-flex items-center justify-center -translate-y-1 mx-0.5 text-[0.65rem] font-bold text-orange-500 hover:text-orange-600 transition-colors cursor-pointer mag-citation"
+        className="inline-flex items-center justify-center -translate-y-1 mx-0.5 text-[0.65rem] font-bold text-[var(--accent-500)] hover:text-[var(--accent-600)] transition-colors cursor-pointer mag-citation"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();

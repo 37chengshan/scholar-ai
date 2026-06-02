@@ -12,6 +12,8 @@ Internally they now delegate to create_import_job_from_uploaded_file() so that
 all uploads go through the canonical ImportJob-first pipeline.
 """
 
+import os
+
 import aiofiles
 
 from fastapi import APIRouter, Depends, Request, UploadFile, File, status
@@ -27,6 +29,7 @@ from app.services.import_file_service import (
     create_import_job_from_uploaded_file,
     read_uploaded_pdf,
 )
+from app.middleware.rate_limit import limiter
 from app.utils.problem_detail import ErrorTypes
 
 from .paper_shared import (
@@ -46,6 +49,7 @@ router = APIRouter()
 @router.post(
     "/webhook", response_model=PaperCreateResponse, status_code=status.HTTP_200_OK
 )
+@limiter.limit("30/minute")
 async def upload_webhook(
     request: Request,
     body: WebhookRequest,
@@ -114,6 +118,7 @@ async def upload_webhook(
 @router.post(
     "/upload", response_model=PaperCreateResponse, status_code=status.HTTP_202_ACCEPTED
 )
+@limiter.limit("30/minute")
 async def direct_upload(
     request: Request,
     file: UploadFile = File(...),
@@ -181,6 +186,7 @@ class LocalUploadResponse(BaseModel):
     response_model=LocalUploadResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit("10/minute")
 async def upload_to_local_storage(
     request: Request,
     storage_key: str,
@@ -231,25 +237,49 @@ async def upload_to_local_storage(
             instance=instance,
         )
 
-    content = await file.read()
-    file_size = len(content)
-
     max_size = 50 * 1024 * 1024
-    if file_size > max_size:
-        raise create_error_response(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            error_type=ErrorTypes.FILE_TOO_LARGE,
-            title="File Too Large",
-            detail="File size exceeds 50MB limit",
-            instance=instance,
-        )
+    chunk_size = 1024 * 1024  # 1MB
 
-    if not content.startswith(b"%PDF-"):
+    # Step 1: Validate PDF magic header (first 5 bytes)
+    magic = await file.read(5)
+    if magic != b"%PDF-":
         raise create_error_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             error_type=ErrorTypes.INVALID_FILE_FORMAT,
             title="Invalid File Format",
             detail="File is not a valid PDF",
+            instance=instance,
+        )
+
+    # Step 2: Stream remaining content with size guard
+    content_parts = [magic]
+    total_size = len(magic)
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > max_size:
+            raise create_error_response(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                error_type=ErrorTypes.FILE_TOO_LARGE,
+                title="File Too Large",
+                detail="File size exceeds 50MB limit",
+                instance=instance,
+            )
+        content_parts.append(chunk)
+
+    content = b"".join(content_parts)
+    file_size = len(content)
+
+    # Step 3: Validate PDF tail marker (%%EOF in last 1024 bytes)
+    tail = content[-1024:] if len(content) > 1024 else content
+    if b"%%EOF" not in tail:
+        raise create_error_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_type=ErrorTypes.INVALID_FILE_FORMAT,
+            title="Invalid File Format",
+            detail="PDF file is truncated (missing %%EOF marker)",
             instance=instance,
         )
 

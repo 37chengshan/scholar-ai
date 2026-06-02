@@ -1,6 +1,7 @@
 import { RouterProvider } from "react-router";
 import { router } from "./routes";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { Toaster as SonnerToaster } from "sonner";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -11,12 +12,14 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <SonnerToaster position="top-right" richColors duration={3000} />
-        <LanguageProvider>
-          <AuthProvider>
-            <RouterProvider router={router} />
-          </AuthProvider>
-        </LanguageProvider>
+        <ThemeProvider>
+          <SonnerToaster position="top-right" richColors duration={3000} />
+          <LanguageProvider>
+            <AuthProvider>
+              <RouterProvider router={router} />
+            </AuthProvider>
+          </LanguageProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

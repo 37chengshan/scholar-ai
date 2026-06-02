@@ -76,7 +76,7 @@ if _SLOWAPI_AVAILABLE:
         headers_enabled=True,
         default_limits=[f"{settings.RATE_LIMIT_DEFAULT_PER_HOUR}/hour"],
         enabled=settings.RATE_LIMIT_ENABLED,
-        swallow_errors=True,  # Don't block requests if Redis is unavailable
+        swallow_errors=False,  # Fail-closed: reject requests if Redis is unavailable
     )
 else:
     limiter = NoopLimiter(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,9 @@ def validate_pdf_content(filename: str, content: bytes) -> None:
         raise ValueError("File size exceeds 50MB limit")
     if not content.startswith(b"%PDF-"):
         raise ValueError("File is not a valid PDF")
+    tail = content[-1024:] if len(content) > 1024 else content
+    if b"%%EOF" not in tail:
+        raise ValueError("PDF file is truncated (missing %%EOF marker)")
 
 
 async def read_uploaded_pdf(file: UploadFile) -> tuple[bytes, str]:
@@ -56,12 +60,14 @@ async def read_uploaded_pdf(file: UploadFile) -> tuple[bytes, str]:
 
 
 async def save_content_to_storage_key(storage_key: str, content: bytes) -> Path:
-    """Persist uploaded bytes to the local storage root."""
+    """Persist uploaded bytes to the local storage root with fsync."""
     file_path = local_storage_root() / storage_key
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     async with aiofiles.open(file_path, "wb") as output_file:
         await output_file.write(content)
+        await output_file.flush()
+        os.fsync(output_file._file.fileno())
 
     return file_path
 

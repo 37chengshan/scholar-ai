@@ -1,5 +1,6 @@
 import { Monitor } from 'lucide-react';
 import { FontSizeSelector } from '@/app/components/FontSizeSelector';
+import { ThemeSelector } from '@/features/settings/components/ThemeSelector';
 
 interface DisplaySectionProps {
   fontSize: 'small' | 'medium' | 'large' | 'extra-large';
@@ -25,7 +26,8 @@ export function DisplaySection({ fontSize, setFontSize, isZh }: DisplaySectionPr
         </div>
       </div>
 
-      <div className="p-6">
+      <div className="p-6 flex flex-col gap-6">
+        <ThemeSelector isZh={isZh} />
         <FontSizeSelector value={fontSize} onChange={setFontSize} />
       </div>
     </div>

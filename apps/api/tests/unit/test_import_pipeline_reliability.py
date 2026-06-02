@@ -12,7 +12,7 @@ from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import UploadFile
+from fastapi import Request, UploadFile
 
 from app.api.imports.batches import upload_batch_local_files
 from app.api.imports.dedupe import DedupeDecisionRequest, submit_dedupe_decision
@@ -136,6 +136,7 @@ async def test_upload_batch_local_files_allows_partial_success():
         patch("app.workers.import_worker.process_import_job.delay") as mock_delay,
     ):
         response = await upload_batch_local_files(
+            request=MagicMock(spec=Request),
             batch_id=batch.id,
             manifest=manifest,
             files=files,
@@ -204,6 +205,7 @@ async def test_upload_batch_local_files_marks_job_failed_when_enqueue_fails():
         ),
     ):
         response = await upload_batch_local_files(
+            request=MagicMock(spec=Request),
             batch_id=batch.id,
             manifest=manifest,
             files=files,

@@ -33,11 +33,11 @@ export function WorkflowShell() {
 
   return (
     <>
-      <section className="border-b border-border/60 bg-[#f8f2e8]/82 px-4 py-3 backdrop-blur-md lg:px-6">
+      <section className="border-b border-border/60 bg-surface-sunken/82 px-4 py-3 backdrop-blur-md lg:px-6">
         <div className="flex w-full flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-border/70 bg-[#fffdf9] shadow-sm">
+              <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-border/70 bg-surface shadow-sm">
                 <PanelsTopLeft className="h-4 w-4 text-primary" />
               </div>
               <div className="min-w-0">
@@ -45,7 +45,7 @@ export function WorkflowShell() {
                   <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground font-serif tracking-tight">
                     {isZh ? '研究状态' : 'Research Status'}
                   </h2>
-                  <span className="inline-flex items-center rounded-full border border-border/70 bg-[#fffdf9] px-2 py-0.5 text-[10px] font-semibold text-foreground/75">
+                  <span className="inline-flex items-center rounded-full border border-border/70 bg-surface px-2 py-0.5 text-[10px] font-semibold text-foreground/75">
                     {statusLabel}
                   </span>
                 </div>
@@ -60,13 +60,13 @@ export function WorkflowShell() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => workflowActions.setArtifactsDrawer(true)}
-                className="rounded-full border border-border/70 bg-[#fffdf9] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/75 transition-colors hover:bg-background"
+                className="rounded-full border border-border/70 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/75 transition-colors hover:bg-background"
               >
                 {isZh ? '产物' : 'Outputs'}
               </button>
               <button
                 onClick={() => workflowActions.setTimelineDrawer(true)}
-                className="rounded-full border border-border/70 bg-[#fffdf9] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/75 transition-colors hover:bg-background"
+                className="rounded-full border border-border/70 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/75 transition-colors hover:bg-background"
               >
                 {isZh ? '活动' : 'Recent Activity'}
               </button>
@@ -94,7 +94,7 @@ export function WorkflowShell() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-border/80 bg-[#fffdf9]/80 px-4 py-2.5 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-border/80 bg-surface/80 px-4 py-2.5 text-xs text-muted-foreground">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
               <span>
                 {hasWorkflowDetails

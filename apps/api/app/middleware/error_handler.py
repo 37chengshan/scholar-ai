@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError, HTTPException
 from app.utils.problem_detail import ProblemDetail, ErrorTypes
 from app.utils.logger import logger
-import uuid
+from app.core.observability.context import get_trace_id
 from typing import Optional
 
 
@@ -62,7 +62,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     Returns:
         JSONResponse with RFC 7807 ProblemDetail
     """
-    request_id = str(uuid.uuid4())
+    request_id = getattr(request.state, "trace_id", None) or get_trace_id()
 
     # Extract error details from HTTPException
     error_detail = exc.detail
@@ -127,7 +127,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     Returns:
         JSONResponse with RFC 7807 ProblemDetail
     """
-    request_id = str(uuid.uuid4())
+    request_id = getattr(request.state, "trace_id", None) or get_trace_id()
 
     logger.error(
         f"Unhandled exception: {exc}",

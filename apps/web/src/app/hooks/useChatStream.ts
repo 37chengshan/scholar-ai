@@ -452,13 +452,13 @@ export function useChatStream(
    */
   const scheduleFlush = useCallback(() => {
     if (throttleTimerRef.current) {
-      console.debug('[useChatStream] scheduleFlush: timer already active, skipping');
+      if (import.meta.env.DEV) console.debug('[useChatStream] scheduleFlush: timer already active, skipping');
       return; // Already scheduled
     }
 
-    console.debug('[useChatStream] scheduleFlush: setting timer for', throttleMs, 'ms');
+    if (import.meta.env.DEV) console.debug('[useChatStream] scheduleFlush: setting timer for', throttleMs, 'ms');
     throttleTimerRef.current = setTimeout(() => {
-      console.debug('[useChatStream] FLUSH TIMER EXECUTING');
+      if (import.meta.env.DEV) console.debug('[useChatStream] FLUSH TIMER EXECUTING');
       // Flush both buffers
       if (reasoningRef.current) {
         dispatch({ type: 'REASONING_CHUNK', delta: reasoningRef.current });
@@ -486,7 +486,7 @@ export function useChatStream(
 
       if (action.type === 'MESSAGE_CHUNK') {
         contentRef.current += action.delta;
-        console.debug('[useChatStream] MESSAGE_CHUNK buffered');
+        if (import.meta.env.DEV) console.debug('[useChatStream] MESSAGE_CHUNK buffered');
         scheduleFlush();
         return;
       }
@@ -622,7 +622,7 @@ export function useChatStream(
         case 'message':
           // message events go to content buffer (use delta field for streaming)
           const msgContent = (data.delta as string) || (data.content as string) || '';
-          console.debug('[useChatStream] message event, delta:', msgContent.substring(0, 50));
+          if (import.meta.env.DEV) console.debug('[useChatStream] message event, delta:', msgContent.substring(0, 50));
           if (msgContent) {
             bufferedDispatch({ type: 'MESSAGE_CHUNK', delta: msgContent });
           }
@@ -653,7 +653,7 @@ export function useChatStream(
 
         case 'routing_decision':
           // Routing decision - just log, no state change needed
-          console.debug('[useChatStream] Routing decision:', data);
+          if (import.meta.env.DEV) console.debug('[useChatStream] Routing decision:', data);
           break;
 
         case 'citation':

@@ -38,6 +38,15 @@ Return a JSON object with these keys:
 - venues: list of {{name: str, type: str}}
   * Publication venues (conferences, journals, workshops)
   * Example: [{{"name": "CVPR", "type": "conference"}}]
+- claims: list of {{text: str, context: str, confidence: str}}
+  * Key claims or assertions made in the paper
+  * Example: [{{"text": "Our method outperforms all baselines", "context": "Table 3 shows...", "confidence": "high"}}]
+- results: list of {{text: str, context: str, metric: str}}
+  * Key experimental results or findings
+  * Example: [{{"text": "95.2% accuracy on CIFAR-10", "context": "achieved using...", "metric": "accuracy"}}]
+- limitations: list of {{text: str, context: str}}
+  * Acknowledged limitations or weaknesses
+  * Example: [{{"text": "Does not scale to large datasets", "context": "Due to memory constraints..."}}]
 
 Rules:
 1. Include only explicitly mentioned entities
@@ -160,7 +169,7 @@ class EntityExtractor:
 
         # Ensure all keys exist and are lists
         result = {}
-        for key in ["methods", "datasets", "metrics", "venues"]:
+        for key in ["methods", "datasets", "metrics", "venues", "claims", "results", "limitations"]:
             value = data.get(key, [])
             if not isinstance(value, list):
                 logger.warning(f"Entity key {key} is not a list, using empty list")
@@ -338,7 +347,7 @@ class EntityAligner:
             return False
 
     async def align_entities_batch(self, entities: List[Dict]) -> List[str]:
-        """Align multiple entities in batch.
+        """Align multiple entities in batch using parallel execution.
 
         Args:
             entities: List of {name, type} dicts
@@ -346,11 +355,16 @@ class EntityAligner:
         Returns:
             List of aligned entity IDs
         """
-        results = []
-        for entity in entities:
-            entity_id = await self.align_entity(entity["name"], entity["type"])
-            results.append(entity_id)
-        return results
+        import asyncio
+        tasks = [
+            self.align_entity(entity["name"], entity["type"])
+            for entity in entities
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return [
+            result if not isinstance(result, Exception) else None
+            for result in results
+        ]
 
     async def close(self):
         """Close Neo4j connection."""

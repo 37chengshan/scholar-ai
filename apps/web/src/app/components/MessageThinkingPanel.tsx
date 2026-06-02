@@ -150,7 +150,7 @@ function getPhaseColor(phase: AgentPhase): string {
   const colors: Record<AgentPhase, string> = {
     analyze: 'text-blue-500',
     plan: 'text-purple-500',
-    execute: 'text-[#d35400]',
+    execute: 'text-primary',
     synthesize: 'text-green-500',
     respond: 'text-slate-500',
   };
@@ -415,7 +415,7 @@ export function MessageThinkingPanel({
   return (
     <div
       className={clsx(
-        'border-l-2 border-[#8b5cf6]/30 pl-4 py-2 my-2 bg-purple-50/50 rounded-r-lg',
+        'border-l-2 border-[oklch(0.585_0.155_305)]/30 pl-4 py-2 my-2 bg-[oklch(0.585_0.155_305)]/5 rounded-r-lg',
         className
       )}
     >

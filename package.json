@@ -15,6 +15,11 @@
     "verify:post-migration": "bash scripts/check-runtime-hygiene.sh tracked && bash scripts/check-governance.sh && bash scripts/verify-all-phases.sh && cd apps/web && npm run type-check && cd ../.. && cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1",
     "type-check:web": "cd apps/web && npm run type-check",
     "test:api:smoke": "cd apps/api && pytest -q tests/unit/test_services.py --maxfail=1",
-    "release:gate": "bash scripts/release/run-v2-gate.sh"
+    "release:gate": "bash scripts/release/run-v2-gate.sh",
+    "security:scan": "bash scripts/security/run-security-scan.sh",
+    "security:scan:python": "bash scripts/security/run-security-scan.sh --python-only",
+    "security:scan:node": "bash scripts/security/run-security-scan.sh --node-only",
+    "security:scan:all": "bash scripts/security/run-security-scan.sh --all",
+    "security:semgrep": "bash scripts/security/run-security-scan.sh --semgrep"
   }
 }

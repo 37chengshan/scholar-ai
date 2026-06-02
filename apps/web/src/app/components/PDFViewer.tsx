@@ -15,10 +15,10 @@ import { useState, useRef, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import * as papersApi from '@/services/papersApi';
 import type { Annotation } from '@/services/annotationsApi';
 import { toast } from 'sonner';
 import { ensurePdfWorker } from '@/app/lib/pdfWorker';
+import { getOrCreateBlobUrl, revokeBlobUrl } from '@/lib/pdf-blob-cache';
 import { useLanguage } from '../contexts/LanguageContext';
 
 ensurePdfWorker();
@@ -30,7 +30,7 @@ interface PDFViewerProps {
   onNumPagesChange?: (numPages: number) => void;
   initialPage?: number;
   annotations?: Annotation[];
-  onTextSelection?: (selection: { text: string; position: { x: number; y: number; width: number; height: number } } | null) => void;
+  onTextSelection?: (selection: { text: string; position: { x: number; y: number; width: number; height: number }; rect?: DOMRect } | null) => void;
   activeAnnotationId?: string | null;
   highlightSnippet?: string;
   scale?: number;
@@ -87,27 +87,33 @@ export function PDFViewer({
   const normalizedHighlightSnippet = normalizeTextForMatch(highlightSnippet || '');
 
   useEffect(() => {
-    let objectUrl: string | null = null;
+    let cancelled = false;
 
     const fetchPdf = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
-        const blob = await papersApi.downloadPdfBlob(paperId);
-        objectUrl = URL.createObjectURL(blob);
-        setPdfBlobUrl(objectUrl);
-      } catch (err: any) {
-        console.error('PDF fetch error:', err);
-        const errorMsg = err.response?.status === 401 
-          ? '请先登录后查看论文' 
-          : err.response?.status === 404 
-            ? 'PDF 文件未找到' 
+        const url = await getOrCreateBlobUrl(paperId);
+        if (!cancelled) {
+          setPdfBlobUrl(url);
+        }
+      } catch (err: unknown) {
+        if (cancelled) {
+          return;
+        }
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        const errorMsg = status === 401
+          ? '请先登录后查看论文'
+          : status === 404
+            ? 'PDF 文件未找到'
             : '加载 PDF 失败';
         setError(errorMsg);
         toast.error(errorMsg);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
@@ -116,9 +122,7 @@ export function PDFViewer({
     }
 
     return () => {
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
+      cancelled = true;
     };
   }, [paperId]);
 
@@ -275,6 +279,7 @@ export function PDFViewer({
     const selectionPayload = {
       text: selectedText,
       position,
+      rect,
     };
     setDraftSelection(selectionPayload);
     onTextSelection?.(selectionPayload);
@@ -383,7 +388,7 @@ export function PDFViewer({
                 return (
                   <div
                     key={annotation.id}
-                    className="absolute rounded-sm transition-all"
+                    className="absolute rounded-sm transition-[top,left,width,height]"
                     style={{
                       left: `${clampPercent(x)}%`,
                       top: `${clampPercent(y)}%`,

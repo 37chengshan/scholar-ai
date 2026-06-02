@@ -207,9 +207,45 @@ jobs:
         run: |
           black --check app/
 
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          pip install bandit pip-audit safety
+
+      - name: Run Bandit security linter
+        working-directory: apps/api
+        run: |
+          bandit -r app/ -ll -ii --skip B101,B311 --format json --output bandit-results.json || true
+          bandit -r app/ -ll -ii --skip B101,B311 || true
+
+      - name: Run pip-audit
+        working-directory: apps/api
+        run: |
+          pip-audit -r requirements.txt || true
+
+      - name: Upload security results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-results
+          path: apps/api/bandit-results.json
+          retention-days: 7
+
   build:
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [test, lint, security]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

@@ -9,7 +9,7 @@ export function ActiveScopeBanner() {
   const isZh = language === 'zh';
 
   return (
-    <div className="rounded-2xl border border-border/70 bg-[#fffdf9] px-4 py-3 shadow-sm">
+    <div className="rounded-2xl border border-border/70 bg-surface px-4 py-3 shadow-sm">
       <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
         {isZh ? '当前工作区' : 'Current Workspace'}
       </div>

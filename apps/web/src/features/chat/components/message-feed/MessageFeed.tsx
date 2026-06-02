@@ -1,6 +1,6 @@
 import { Bot, Copy, Loader2, Square, User, ArrowDown, Check } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ChatStreamState } from '@/app/hooks/useChatStream';
 import type { ThinkingStep } from '@/app/components/ThinkingProcess';
 import { renderContentWithCitations } from '@/app/components/CitationsPanel';
@@ -18,6 +18,8 @@ import { EvidencePanel } from '@/features/chat/components/evidence/EvidencePanel
 import { CompareCard } from '@/features/chat/components/CompareCard';
 import { normalizeAnswerDisplayCopy } from '@/features/chat/lib/answerCopy';
 import { MarkdownRenderer } from '@/app/components/MarkdownRenderer';
+import { VirtualizedMessageList, VIRTUALIZATION_THRESHOLD } from './VirtualizedMessageList';
+import { useMessageKeyboardNav } from '@/features/chat/hooks/useMessageKeyboardNav';
 
 interface MessageFeedCopy {
   noMessages: string;
@@ -43,6 +45,8 @@ interface MessageFeedProps {
   errorStage?: string;
   recoverable?: boolean;
   partialAnswerAvailable?: boolean;
+  /** Called when virtualized list's visible range changes (for pinned-bottom tracking) */
+  onVisibleRangeChange?: (startIndex: number, stopIndex: number) => void;
 }
 
 const safeToolTimeline = (timeline?: ToolTimelineItem[]) => (timeline || []).filter(Boolean);
@@ -125,6 +129,199 @@ function AssistantEvidenceSection({ message, isZh, onCitationClick }: {
   );
 }
 
+/**
+ * Renders a single assistant message (extracted for reuse in both
+ * fast-path .map() and VirtualizedMessageList).
+ */
+function renderAssistantMessage(
+  message: ChatRenderMessage,
+  index: number,
+  renderMessages: ChatRenderMessage[],
+  currentMessageId: string,
+  streamState: ChatStreamState,
+  thinkingSteps: ThinkingStep[],
+  labels: MessageFeedCopy,
+  isZh: boolean,
+  measuredHeights: Record<string, number>,
+  onCitationClick: (citation: CitationItem | undefined) => void,
+  onStop: () => void,
+  formatTime: (date: string) => string,
+) {
+  const isStreaming = message.isStreaming;
+  const isPlaceholder = message.isPlaceholder || message.id === currentMessageId;
+  const isAssistant = true;
+  const normalizedDisplayContent = normalizeAnswerDisplayCopy(
+    message.displayContent,
+    message.answerContract?.answer_mode ?? null,
+    isZh,
+  );
+  const isActiveStreamMessage = isStreaming && isPlaceholder;
+  const messageReasoning = isActiveStreamMessage
+    ? (message.displayReasoning || streamState.reasoningBuffer)
+    : (message.displayReasoning || '');
+  const messageToolTimeline = isActiveStreamMessage
+    ? safeToolTimeline(message.displayToolTimeline.length > 0 ? message.displayToolTimeline : streamState.toolTimeline)
+    : safeToolTimeline(message.displayToolTimeline);
+  const localCitations = safeCitations(message.displayCitations);
+  const messageCitations = localCitations.length > 0
+    ? localCitations
+    : (isActiveStreamMessage ? safeCitations(streamState.citations) : []);
+  const reasoningVisible = getReasoningVisible(isAssistant, messageReasoning, undefined);
+  const toolTimelineVisible = getToolTimelineVisible(isAssistant, messageToolTimeline, undefined);
+  const showStreamingMeta = isActiveStreamMessage && (reasoningVisible || toolTimelineVisible);
+  const messageReasoningSteps = messageReasoning
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => ({ type: 'thinking' as const, content: line }));
+  const tokenCount = message.tokensUsed;
+  const costValue = message.cost ?? 0;
+
+  const prevMessage = index > 0 ? renderMessages[index - 1] : null;
+  const roleChanged = !prevMessage || prevMessage.role !== message.role;
+
+  return (
+    <div
+      className={clsx('group', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
+      style={{ minHeight: measuredHeights[message.id] ? `${measuredHeights[message.id]}px` : undefined }}
+    >
+      {roleChanged && (
+        <div className="flex items-center gap-2 mb-2">
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Bot className="h-3.5 w-3.5" />
+          </div>
+          <span className="text-xs font-semibold text-foreground/80">ScholarAI</span>
+        </div>
+      )}
+
+      <div className="pl-9">
+        <ReasoningPanel
+          visible={reasoningVisible && !isStreaming}
+          steps={messageReasoningSteps.length > 0 ? messageReasoningSteps : thinkingSteps}
+          durationSeconds={((streamState.endedAt || Date.now()) - (streamState.startedAt || Date.now())) / 1000}
+          isThinking={isStreaming && reasoningVisible}
+          isZh={isZh}
+        />
+
+        <ToolTimelinePanel
+          visible={toolTimelineVisible && !isStreaming}
+          timeline={messageToolTimeline}
+          isZh={isZh}
+        />
+
+        {showStreamingMeta && (
+          <div className="mb-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+            {reasoningVisible && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2.5 py-0.5 bg-muted/30">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {labels.thinking}
+              </span>
+            )}
+            {toolTimelineVisible && (
+              <>
+                <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2.5 py-0.5 bg-muted/30">
+                  {isZh ? '工具调用' : 'Tools'}
+                </span>
+                <span className="sr-only">{isZh ? '工具调用进行中' : 'Tool activity in progress'}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="text-sm leading-relaxed text-foreground/90">
+          {messageCitations.length > 0 && normalizedDisplayContent ? (
+            renderContentWithCitations(normalizedDisplayContent, (citationIndex) => {
+              onCitationClick(messageCitations[citationIndex]);
+            })
+          ) : normalizedDisplayContent ? (
+            <div className="max-w-prose">
+              <MarkdownRenderer content={normalizedDisplayContent} />
+              {isStreaming && (
+                <span className="ml-0.5 inline-block h-4 w-[2px] animate-[pulse_1s_ease-in-out_infinite] bg-primary/60 align-middle" aria-hidden="true" />
+              )}
+            </div>
+          ) : isStreaming ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {labels.thinking}
+            </div>
+          ) : null}
+        </div>
+
+        {isActiveStreamMessage && (
+          <button
+            type="button"
+            onClick={onStop}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          >
+            <Square className="w-3 h-3" />
+            {labels.stop}
+          </button>
+        )}
+
+        <CitationPanel
+          visible={messageCitations.length > 0 || isStreaming}
+          citations={safeCitations(messageCitations)}
+        />
+
+        {!isStreaming && (
+          <AssistantEvidenceSection
+            message={message}
+            isZh={isZh}
+            onCitationClick={onCitationClick}
+          />
+        )}
+
+        {!isStreaming && normalizedDisplayContent && (
+          <div className="mt-2 flex items-center gap-2">
+            <CopyButton text={normalizedDisplayContent} isZh={isZh} />
+            {tokenCount !== undefined && tokenCount > 0 && (
+              <span
+                className="text-[10px] text-muted-foreground"
+                title={costValue > 0 ? `Token: ${tokenCount.toLocaleString()} · ¥${costValue.toFixed(4)}` : undefined}
+              >
+                {isZh ? `${tokenCount.toLocaleString()} tokens` : `${tokenCount.toLocaleString()} tokens`}
+                {costValue > 0 && ` · ¥${costValue.toFixed(4)}`}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Renders a single user message.
+ */
+function renderUserMessage(
+  message: ChatRenderMessage,
+  index: number,
+  renderMessages: ChatRenderMessage[],
+  measuredHeights: Record<string, number>,
+  formatTime: (date: string) => string,
+) {
+  const prevMessage = index > 0 ? renderMessages[index - 1] : null;
+  const roleChanged = !prevMessage || prevMessage.role !== message.role;
+
+  return (
+    <div
+      className={clsx('flex justify-end', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
+      style={{ minHeight: measuredHeights[message.id] ? `${measuredHeights[message.id]}px` : undefined }}
+    >
+      <div className="max-w-[min(75%,42rem)]">
+        <div className="rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-2.5 shadow-sm">
+          <div className="text-sm leading-relaxed font-medium whitespace-pre-wrap">
+            {message.displayContent}
+          </div>
+        </div>
+        <div className="text-right mt-0.5">
+          <span className="text-[10px] text-muted-foreground">{formatTime(message.created_at)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MessageFeed({
   renderMessages,
   streamState,
@@ -142,188 +339,144 @@ export function MessageFeed({
   errorStage,
   recoverable,
   partialAnswerAvailable,
+  onVisibleRangeChange,
 }: MessageFeedProps) {
   const measuredHeights = useMeasuredMessages(renderMessages);
+  const useVirtualization = renderMessages.length >= VIRTUALIZATION_THRESHOLD;
+  const [containerHeight, setContainerHeight] = useState(0);
+  const containerRefInternal = useRef<HTMLDivElement>(null);
+  const containerRef = scrollContainerRef ?? containerRefInternal;
+
+  // j/k keyboard navigation between messages
+  const { focusedIndex } = useMessageKeyboardNav({
+    messageCount: renderMessages.length,
+    containerRef,
+    enabled: renderMessages.length > 0,
+  });
+
+  // Measure container height for virtualization
+  useEffect(() => {
+    if (!useVirtualization) {
+      return;
+    }
+    const el = containerRef.current;
+    if (!el) {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(el);
+    setContainerHeight(el.clientHeight);
+
+    return () => observer.disconnect();
+  }, [useVirtualization, containerRef]);
+
+  // Track visible range for pinned-bottom detection in virtualization mode
+  const [visibleRange, setVisibleRange] = useState({ startIndex: 0, stopIndex: 0 });
+  const handleItemsRendered = useCallback((props: {
+    overscanStartIndex: number;
+    overscanStopIndex: number;
+    visibleStartIndex: number;
+    visibleStopIndex: number;
+  }) => {
+    setVisibleRange({ startIndex: props.visibleStartIndex, stopIndex: props.visibleStopIndex });
+    onVisibleRangeChange?.(props.visibleStartIndex, props.visibleStopIndex);
+  }, [onVisibleRangeChange]);
+
+  // "New messages" floating button state
+  const isAtBottom = visibleRange.stopIndex >= renderMessages.length - 1;
+  const showNewMessagesButton = useVirtualization && !isAtBottom && renderMessages.length > 0;
+
+  // Stable renderItem callback for virtualization
+  const renderItemForVirtualization = useCallback(
+    (message: ChatRenderMessage, index: number) => {
+      if (message.role === 'assistant') {
+        return renderAssistantMessage(
+          message, index, renderMessages, currentMessageId, streamState,
+          thinkingSteps, labels, isZh, measuredHeights, onCitationClick, onStop, formatTime,
+        );
+      }
+      return renderUserMessage(message, index, renderMessages, measuredHeights, formatTime);
+    },
+    [renderMessages, currentMessageId, streamState, thinkingSteps, labels, isZh, measuredHeights, onCitationClick, onStop, formatTime],
+  );
 
   return (
-    <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+    <div
+      ref={containerRef}
+      className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+      role="log"
+      aria-live="polite"
+      aria-label={isZh ? '对话消息' : 'Chat messages'}
+    >
       {renderMessages.length === 0 ? (
         <ChatEmptyState isZh={isZh} onSuggest={onSuggest} />
+      ) : useVirtualization && containerHeight > 0 ? (
+        <VirtualizedMessageList
+          renderMessages={renderMessages}
+          measuredHeights={measuredHeights}
+          height={containerHeight}
+          renderItem={renderItemForVirtualization}
+          onItemsRendered={handleItemsRendered}
+          streamingMessageIndex={
+            renderMessages.findIndex(
+              (m) => m.isStreaming && (m.isPlaceholder || m.id === currentMessageId),
+            )
+          }
+        />
       ) : (
         <div data-testid="chat-message-list" className="chat-message-list flex flex-col px-4 py-8 sm:px-6">
           {renderMessages.map((message, index) => {
-              const isStreaming = message.isStreaming;
-              const isPlaceholder = message.isPlaceholder || message.id === currentMessageId;
-              const isAssistant = message.role === 'assistant';
-              const normalizedDisplayContent = isAssistant
-                ? normalizeAnswerDisplayCopy(
-                    message.displayContent,
-                    message.answerContract?.answer_mode ?? null,
-                    isZh,
-                  )
-                : message.displayContent;
-              const isActiveStreamMessage = isAssistant && isStreaming && isPlaceholder;
-              const messageReasoning = isActiveStreamMessage
-                ? (message.displayReasoning || streamState.reasoningBuffer)
-                : (message.displayReasoning || '');
-              const messageToolTimeline = isActiveStreamMessage
-                ? safeToolTimeline(message.displayToolTimeline.length > 0 ? message.displayToolTimeline : streamState.toolTimeline)
-                : safeToolTimeline(message.displayToolTimeline);
-              const localCitations = safeCitations(message.displayCitations);
-              const messageCitations = localCitations.length > 0
-                ? localCitations
-                : (isActiveStreamMessage ? safeCitations(streamState.citations) : []);
-              const reasoningVisible = getReasoningVisible(isAssistant, messageReasoning, undefined);
-              const toolTimelineVisible = getToolTimelineVisible(isAssistant, messageToolTimeline, undefined);
-              const showStreamingMeta = isActiveStreamMessage && (reasoningVisible || toolTimelineVisible);
-              const messageReasoningSteps = messageReasoning
-                .split('\n')
-                .filter(Boolean)
-                .map((line) => ({ type: 'thinking' as const, content: line }));
-              const tokenCount = message.tokensUsed;
-              const costValue = message.cost ?? 0;
-
-              // Spacing: tighter for consecutive same-role messages
-              const prevMessage = index > 0 ? renderMessages[index - 1] : null;
-              const roleChanged = !prevMessage || prevMessage.role !== message.role;
-
-              if (isAssistant) {
-                // ─── AI Message: no bubble, left brand indicator ───
-                return (
-                  <div
-                    key={message.id}
-                    className={clsx('group', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
-                    style={{ minHeight: measuredHeights[message.id] ? `${measuredHeights[message.id]}px` : undefined }}
-                  >
-                    {/* Avatar + role label row - only on role change */}
-                    {roleChanged && (
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <Bot className="h-3.5 w-3.5" />
-                        </div>
-                        <span className="text-xs font-semibold text-foreground/80">ScholarAI</span>
-                      </div>
-                    )}
-
-                    <div className="pl-9">
-                      <ReasoningPanel
-                        visible={reasoningVisible && !isStreaming}
-                        steps={messageReasoningSteps.length > 0 ? messageReasoningSteps : thinkingSteps}
-                        durationSeconds={((streamState.endedAt || Date.now()) - (streamState.startedAt || Date.now())) / 1000}
-                      />
-
-                      <ToolTimelinePanel
-                        visible={toolTimelineVisible && !isStreaming}
-                        timeline={messageToolTimeline}
-                      />
-
-                      {showStreamingMeta && (
-                        <div className="mb-2 flex items-center gap-2 text-[11px] text-muted-foreground">
-                          {reasoningVisible && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2.5 py-0.5 bg-muted/30">
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              {labels.thinking}
-                            </span>
-                          )}
-                          {toolTimelineVisible && (
-                            <>
-                              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2.5 py-0.5 bg-muted/30">
-                                {isZh ? '工具调用' : 'Tools'}
-                              </span>
-                              <span className="sr-only">{isZh ? '工具调用进行中' : 'Tool activity in progress'}</span>
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Content - no bubble wrapper */}
-                      <div className="text-sm leading-relaxed text-foreground/90">
-                        {messageCitations.length > 0 && normalizedDisplayContent ? (
-                          renderContentWithCitations(normalizedDisplayContent, (citationIndex) => {
-                            onCitationClick(messageCitations[citationIndex]);
-                          })
-                        ) : normalizedDisplayContent ? (
-                          <div className="max-w-prose">
-                            <MarkdownRenderer content={normalizedDisplayContent} />
-                            {isStreaming && (
-                              <span className="ml-0.5 inline-block h-4 w-[2px] animate-[pulse_1s_ease-in-out_infinite] bg-primary/60 align-middle" aria-hidden="true" />
-                            )}
-                          </div>
-                        ) : isStreaming ? (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            {labels.thinking}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {isActiveStreamMessage && (
-                        <button
-                          type="button"
-                          onClick={onStop}
-                          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                        >
-                          <Square className="w-3 h-3" />
-                          {labels.stop}
-                        </button>
-                      )}
-
-                      <CitationPanel
-                        visible={messageCitations.length > 0 || isStreaming}
-                        citations={safeCitations(messageCitations)}
-                      />
-
-                      {!isStreaming && (
-                        <AssistantEvidenceSection
-                          message={message}
-                          isZh={isZh}
-                          onCitationClick={onCitationClick}
-                        />
-                      )}
-
-                      {/* Action bar: copy, token info */}
-                      {!isStreaming && normalizedDisplayContent && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <CopyButton text={normalizedDisplayContent} isZh={isZh} />
-                          {tokenCount !== undefined && tokenCount > 0 && (
-                            <span
-                              className="text-[10px] text-muted-foreground"
-                              title={costValue > 0 ? `Token: ${tokenCount.toLocaleString()} · ¥${costValue.toFixed(4)}` : undefined}
-                            >
-                              {isZh ? `${tokenCount.toLocaleString()} tokens` : `${tokenCount.toLocaleString()} tokens`}
-                              {costValue > 0 && ` · ¥${costValue.toFixed(4)}`}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
-              // ─── User Message: compact pill bubble, right-aligned ───
+            const a11yLabel = `${message.role === 'assistant' ? 'ScholarAI' : 'User'}: ${message.displayContent?.slice(0, 80) ?? ''}`;
+            if (message.role === 'assistant') {
               return (
                 <div
                   key={message.id}
-                  className={clsx('flex justify-end', roleChanged ? 'mt-6' : 'mt-2', index === 0 && 'mt-0')}
-                  style={{ minHeight: measuredHeights[message.id] ? `${measuredHeights[message.id]}px` : undefined }}
+                  data-message-id={message.id}
+                  role="article"
+                  aria-label={a11yLabel}
+                  tabIndex={0}
                 >
-                  <div className="max-w-[min(75%,42rem)]">
-                    <div className="rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-2.5 shadow-sm">
-                      <div className="text-sm leading-relaxed font-medium whitespace-pre-wrap">
-                        {message.displayContent}
-                      </div>
-                    </div>
-                    <div className="text-right mt-0.5">
-                      <span className="text-[10px] text-muted-foreground">{formatTime(message.created_at)}</span>
-                    </div>
-                  </div>
+                  {renderAssistantMessage(
+                    message, index, renderMessages, currentMessageId, streamState,
+                    thinkingSteps, labels, isZh, measuredHeights, onCitationClick, onStop, formatTime,
+                  )}
                 </div>
               );
-            })}
+            }
+            return (
+              <div
+                key={message.id}
+                data-message-id={message.id}
+                role="article"
+                aria-label={a11yLabel}
+                tabIndex={0}
+              >
+                {renderUserMessage(message, index, renderMessages, measuredHeights, formatTime)}
+              </div>
+            );
+          })}
 
           <div ref={messagesEndRef} />
         </div>
+      )}
+
+      {showNewMessagesButton && (
+        <button
+          type="button"
+          onClick={() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className="sticky bottom-4 left-1/2 z-10 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-md transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          aria-label={isZh ? '查看新消息' : 'New messages'}
+        >
+          <ArrowDown className="w-3 h-3" />
+          {isZh ? '新消息' : 'New messages'}
+        </button>
       )}
 
       {streamState.error && (

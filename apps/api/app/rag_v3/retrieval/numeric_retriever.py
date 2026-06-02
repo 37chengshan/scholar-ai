@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import structlog
+
 from app.rag_v3.schemas import EvidenceCandidate
+
+logger = structlog.get_logger()
 
 
 class NumericRetriever:
     def retrieve(self, query: str, top_k: int) -> list[EvidenceCandidate]:
+        logger.warning("STUB RETRIEVER CALLED: NumericRetriever returning fabricated data")
         _ = query
         return [
             EvidenceCandidate(

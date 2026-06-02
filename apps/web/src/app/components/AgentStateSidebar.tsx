@@ -777,7 +777,7 @@ export function AgentStateSidebar({
             </div>
             {/* Tools Called */}
             <div className="flex items-center gap-2 bg-muted/20 rounded-lg p-2">
-              <Wrench className="w-3 h-3 text-orange-500" />
+              <Wrench className="w-3 h-3 text-[var(--accent-500)]" />
               <div>
                 <div className="text-xs text-muted-foreground">
                   {t.toolsCalled}

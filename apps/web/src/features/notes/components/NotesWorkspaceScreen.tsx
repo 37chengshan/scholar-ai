@@ -9,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
+import { useAuth } from '@/contexts/AuthContext';
 import { NotesHeader } from '@/features/notes/components/NotesHeader';
 import { NotesMainPanel } from '@/features/notes/components/NotesMainPanel';
 import { NotesSaveIndicator } from '@/features/notes/components/NotesSaveIndicator';
@@ -16,13 +17,14 @@ import { NotesSidebar } from '@/features/notes/components/NotesSidebar';
 import { useNotesWorkspace } from '@/features/notes/hooks/useNotesWorkspace';
 
 export function NotesWorkspaceScreen() {
+  const { user } = useAuth();
   const {
     headerProps,
     sidebarProps,
     mainPanelProps,
     saveIndicatorProps,
     deleteDialogProps,
-  } = useNotesWorkspace();
+  } = useNotesWorkspace(user?.id);
 
   return (
     <div className="editorial-app-shell relative min-h-screen bg-background">
