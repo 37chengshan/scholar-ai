@@ -55,6 +55,7 @@ export function ImportDialog({
   const [resolveLoading, setResolveLoading] = useState(false);
   const [resolvedPreview, setResolvedPreview] = useState<SourceResolution | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const externalInputId = `import-source-${activeTab}`;
 
   const handleResolveSource = async () => {
     if (!externalInput.trim()) {
@@ -86,8 +87,8 @@ export function ImportDialog({
       } else {
         setResolveError('解析请求失败');
       }
-    } catch (err: any) {
-      setResolveError(err.message || '网络错误');
+    } catch (err: unknown) {
+      setResolveError(err instanceof Error ? err.message : '网络错误');
     } finally {
       setResolveLoading(false);
     }
@@ -124,8 +125,8 @@ export function ImportDialog({
       handleOpenChange(false);
       navigate(`/knowledge-bases/${knowledgeBaseId}`);
       await onImportComplete?.();
-    } catch (err: any) {
-      toast.error(err.message || '导入失败');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : '导入失败');
     } finally {
       setIsImporting(false);
     }
@@ -144,8 +145,9 @@ export function ImportDialog({
   const renderExternalTab = (placeholder: string, helper: string) => (
     <div className="space-y-4">
       <div>
-        <label className="text-sm font-medium text-foreground">来源信息</label>
+        <label htmlFor={externalInputId} className="text-sm font-medium text-foreground">来源信息</label>
         <Input
+          id={externalInputId}
           type="text"
           placeholder={placeholder}
           value={externalInput}
@@ -153,7 +155,7 @@ export function ImportDialog({
           className="mt-2"
           disabled={isImporting}
         />
-        <p className="text-xs text-muted-foreground mt-2">{helper}</p>
+        <p id={`${externalInputId}-helper`} className="text-xs text-muted-foreground mt-2">{helper}</p>
       </div>
 
       <Button

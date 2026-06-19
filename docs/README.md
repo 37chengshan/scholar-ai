@@ -4,14 +4,14 @@
 
 ## Current Focus
 
-当前讨论中的新主线草案是 `v4.0`，尚未定稿。阅读顺序统一如下：
+当前执行主线是 `v6.0`。阅读顺序统一如下：
 
-1. `docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md`
-2. `docs/plans/PLAN_STATUS.md`
-3. `docs/plans/v4_0/active/phase_0/19_v4_0_phase_0_execution_plan.md`
-4. `docs/plans/v4_0/search/2026-05-02_v4_0_research_decision_note.md`
+1. `docs/plans/v6_0/README.md`
+2. `docs/plans/v6_0/reports/2026-06-20_v6_0_multidimensional_audit.md`
+3. `docs/plans/PLAN_STATUS.md`
+4. `docs/specs/design/frontend/DESIGN_SYSTEM.md`
 
-在用户确认前，`v4.0` 文档只作为讨论草案；已验证实现基线仍需同时参考 `v3.0` strict close-out 状态。v3.0 中未验证的 gate 不能直接视为完成。
+v5.x 计划与研究材料作为 v6.0 输入证据保留;当前状态以真实代码、验证命令与 v6.0 audit report 为准。
 
 ## Structure
 

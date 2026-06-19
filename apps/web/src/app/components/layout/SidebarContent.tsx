@@ -174,7 +174,7 @@ export function SidebarContent({
                 <>
                   <item.icon className={clsx("h-3.5 w-3.5 shrink-0", isActive ? "text-primary" : "text-foreground/55 group-hover:text-foreground/75")} />
                   {!leftCollapsed ? (
-                    <div className={clsx("text-[var(--font-xs)] font-semibold tracking-[0.04em]", isActive ? "text-foreground" : "text-foreground/82")}>
+                    <div className={clsx("text-[var(--text-xs)] font-semibold tracking-[0.04em]", isActive ? "text-foreground" : "text-foreground/82")}>
                       {isZh ? item.labelZh : item.labelEn}
                     </div>
                   ) : null}
@@ -214,7 +214,7 @@ export function SidebarContent({
                       <>
                         <item.icon className={clsx("h-3.5 w-3.5 shrink-0", isActive ? "text-primary" : "text-foreground/55 group-hover:text-foreground/75")} />
                         {!leftCollapsed ? (
-                          <div className={clsx("text-[var(--font-xs)] font-semibold tracking-[0.04em]", isActive ? "text-foreground" : "text-foreground/82")}>
+                          <div className={clsx("text-[var(--text-xs)] font-semibold tracking-[0.04em]", isActive ? "text-foreground" : "text-foreground/82")}>
                             {isZh ? item.labelZh : item.labelEn}
                           </div>
                         ) : null}

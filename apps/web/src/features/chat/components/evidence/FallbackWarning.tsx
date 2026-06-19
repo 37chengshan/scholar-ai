@@ -9,7 +9,7 @@ export function FallbackWarning({ visible, reason }: FallbackWarningProps) {
   }
 
   return (
-    <div className="mt-2 rounded-md border border-amber-500/45 bg-amber-500/12 px-2.5 py-2 text-[11px] text-amber-800">
+    <div className="mt-2 rounded-md border border-[var(--color-warning)]/45 bg-[var(--color-warning)]/12 px-2.5 py-2 text-[11px] text-[var(--color-warning)]">
       fallback active{reason ? ` (${reason})` : ''}
     </div>
   );

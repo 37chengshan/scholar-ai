@@ -26,7 +26,7 @@ export function KnowledgeWorkspaceInspector({
   onNavigate,
 }: KnowledgeWorkspaceInspectorProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col bg-stone-50/75">
+    <div className="flex h-full min-h-0 flex-col bg-muted/30">
       <div className="border-b border-border/50 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -61,10 +61,10 @@ export function KnowledgeWorkspaceInspector({
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                     item.priority === 'blocked'
-                      ? 'bg-rose-500/10 text-rose-700'
+                      ? 'bg-destructive/10 text-destructive'
                       : item.priority === 'active'
-                        ? 'bg-blue-500/10 text-blue-700'
-                        : 'bg-emerald-500/10 text-emerald-700'
+                        ? 'bg-[var(--color-info)]/10 text-[var(--color-info)]'
+                        : 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
                   }`}
                 >
                   {item.statusLabel}

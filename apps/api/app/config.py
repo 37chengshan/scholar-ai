@@ -11,12 +11,14 @@ Usage:
     async_url = settings.async_database_url
 """
 
+import json
 import os
 from typing import Dict, Literal
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -60,6 +62,7 @@ class Settings(BaseSettings):
         env_file=(str(API_ROOT / ".env"),),
         case_sensitive=True,
         extra="ignore",
+        env_parse_none_str="None",
     )
 
     # =========================================================================
@@ -180,7 +183,7 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION_CONTENTS_V2: str = "paper_contents_v2"
-    RUNTIME_MODE: str = getattr(os.environ, "RUNTIME_MODE", "online")
+    RUNTIME_MODE: str = os.getenv("RUNTIME_MODE", "online")
     EMBEDDING_PROVIDER: str = "dashscope_qwen"
     EMBEDDING_VARIANT: str = "2b"
     RERANKER_PROVIDER: str = "dashscope_qwen"
@@ -223,6 +226,21 @@ class Settings(BaseSettings):
     # CORS Configuration
     # =========================================================================
     ALLOWED_HOSTS: List[str] = ["*"]
+
+    @field_validator("ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def parse_allowed_hosts(cls, v):
+        """Parse ALLOWED_HOSTS from string or list."""
+        if isinstance(v, str):
+            # Try JSON parse first
+            if v.startswith("["):
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass
+            # Fall back to comma-separated
+            return [h.strip() for h in v.split(",") if h.strip()]
+        return v
 
     # =========================================================================
     # File Upload Configuration

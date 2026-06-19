@@ -45,6 +45,11 @@ def wrap_evidence(text: str) -> str:
     return f"<evidence>{sanitized}</evidence>"
 
 
+def clean_display_evidence_text(text: str, *, title: str | None = None) -> str:
+    """Public alias for _clean_display_evidence_text."""
+    return _clean_display_evidence_text(text, title=title)
+
+
 def _clean_display_evidence_text(text: str, *, title: str | None = None) -> str:
     cleaned = str(text or "").replace("\r\n", "\n").strip()
     if not cleaned:
@@ -67,6 +72,11 @@ def _clean_display_evidence_text(text: str, *, title: str | None = None) -> str:
 
     collapsed = re.sub(r"\s+", " ", " ".join(lines)).strip()
     return collapsed
+
+
+def build_summary_display_text(summary_record: dict[str, Any]) -> str:
+    """Public alias for _build_summary_display_text."""
+    return _build_summary_display_text(summary_record)
 
 
 def _build_summary_display_text(summary_record: dict[str, Any]) -> str:

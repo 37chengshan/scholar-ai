@@ -9,16 +9,9 @@ logger = structlog.get_logger()
 
 class SparseEvidenceRetriever:
     def retrieve(self, query: str, top_k: int) -> list[EvidenceCandidate]:
-        logger.warning("STUB RETRIEVER CALLED: SparseEvidenceRetriever returning fabricated data")
-        _ = query
-        return [
-            EvidenceCandidate(
-                source_chunk_id=f"lexical-{idx:04d}",
-                paper_id=f"p-{(idx % 5) + 1:03d}",
-                section_id=f"s-{(idx % 7) + 1:03d}",
-                content_type="text",
-                candidate_sources=["lexical"],
-                lexical_score=max(0.0, 1.0 - (idx / max(top_k, 1))),
-            )
-            for idx in range(1, max(top_k, 1) + 1)
-        ]
+        logger.info(
+            "SparseEvidenceRetriever unavailable; returning empty lexical channel",
+            query_preview=query[:80],
+            requested_top_k=top_k,
+        )
+        return []

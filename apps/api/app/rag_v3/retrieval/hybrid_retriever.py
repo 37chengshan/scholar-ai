@@ -2,7 +2,7 @@
 
 Pipeline:
   1. Per-paper dense retrieval (enforces per-paper evidence budget)
-  2. Sparse / keyword retrieval (existing SparseEvidenceRetriever)
+  2. Optional sparse / keyword retrieval (empty until a real index is wired)
   3. RRF fusion across dense + sparse signals
   4. Rerank with rerank_score / pre_rerank_rank / post_rerank_rank trace
   5. Return balanced EvidencePack with rerank trace written to diagnostics
@@ -55,10 +55,10 @@ class HybridRetriever:
     Parameters
     ----------
     dense_retriever:
-        DenseEvidenceRetriever instance.  If None, a stub is used (unit-test
-        mode: returns empty list).
+        DenseEvidenceRetriever instance.
     sparse_retriever:
-        SparseEvidenceRetriever instance.  Defaults to the existing stub.
+        SparseEvidenceRetriever instance. Defaults to a safe empty lexical
+        channel; it must never fabricate evidence.
     per_paper_budget:
         Maximum candidates collected per paper from the dense phase before
         fusion.  Prevents high-recall papers from crowding the matrix.
@@ -148,6 +148,7 @@ class HybridRetriever:
         diagnostics: dict[str, float] = {
             "dense_candidates_total": float(len(all_dense)),
             "sparse_candidates_total": float(len(sparse_candidates)),
+            "sparse_channel_available": 1.0 if sparse_candidates else 0.0,
             "fused_before_rerank": float(len(pre_rerank)),
             "paper_coverage_count": float(paper_coverage),
             "missing_paper_count": float(len(missing_papers)),

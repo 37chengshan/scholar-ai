@@ -55,6 +55,10 @@ export function Layout() {
 
   return (
     <div className="relative flex h-dvh overflow-hidden bg-background text-foreground antialiased">
+      <a href="#main-content" className="skip-link">
+        {isZh ? "跳到主要内容" : "Skip to main content"}
+      </a>
+
       {/* Desktop sidebar */}
       <aside className={clsx(
         "hidden shrink-0 border-r-2 border-border/70 bg-gradient-to-b from-muted/40 to-background shadow-2xl transition-[width] duration-200 md:block",
@@ -84,7 +88,7 @@ export function Layout() {
           </Link>
         </div>
 
-        <main className="relative min-h-0 flex-1 overflow-hidden pt-16 md:pt-0">
+        <main id="main-content" tabIndex={-1} className="relative min-h-0 flex-1 overflow-hidden pt-16 md:pt-0">
           <Outlet />
         </main>
       </div>

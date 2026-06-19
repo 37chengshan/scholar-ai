@@ -2,9 +2,9 @@ import type { CompareCellDto, CompareMatrixDto, EvidenceBlockDto } from '@schola
 
 function SupportBadge({ status }: { status: CompareCellDto['support_status'] }) {
   const colorMap: Record<string, string> = {
-    supported: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
-    partially_supported: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
-    unsupported: 'bg-red-500/10 text-red-700 border-red-500/20',
+    supported: 'bg-[var(--color-success)]/10 text-[var(--color-success)] border-[var(--color-success)]/20',
+    partially_supported: 'bg-[var(--color-warning)]/10 text-[var(--color-warning)] border-[var(--color-warning)]/20',
+    unsupported: 'bg-destructive/10 text-destructive border-destructive/20',
     not_enough_evidence: 'bg-muted/60 text-muted-foreground border-border/50',
   };
   const labelMap: Record<string, string> = {
