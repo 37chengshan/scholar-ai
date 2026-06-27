@@ -20,7 +20,7 @@ class TestMultimodalIndexerImports:
 
     def test_has_qwen3vl_service_attribute(self):
         """Test that MultimodalIndexer has qwen3vl_service attribute."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_qwen3vl.return_value = Mock()
                 mock_milvus.return_value = Mock()
@@ -32,7 +32,7 @@ class TestMultimodalIndexerImports:
 
     def test_no_caption_service_attribute(self):
         """Test that MultimodalIndexer does NOT have caption_service attribute."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_qwen3vl.return_value = Mock()
                 mock_milvus.return_value = Mock()
@@ -43,7 +43,7 @@ class TestMultimodalIndexerImports:
 
     def test_no_description_service_attribute(self):
         """Test that MultimodalIndexer does NOT have description_service attribute."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_qwen3vl.return_value = Mock()
                 mock_milvus.return_value = Mock()
@@ -54,7 +54,7 @@ class TestMultimodalIndexerImports:
 
     def test_no_bge_m3_service_attribute(self):
         """Test that MultimodalIndexer does NOT have bge_m3 attribute."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_qwen3vl.return_value = Mock()
                 mock_milvus.return_value = Mock()
@@ -65,7 +65,7 @@ class TestMultimodalIndexerImports:
 
     def test_uses_paper_contents_v2_collection(self):
         """Test that MultimodalIndexer uses paper_contents_v2 collection."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_qwen3vl.return_value = Mock()
                 mock_milvus.return_value = Mock()
@@ -84,7 +84,7 @@ class TestImageProcessingRefactor:
 
     def test_image_embedding_dimension(self):
         """Test that image embedding is 2048-dim."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_service = Mock()
                 mock_service.encode_image.return_value = [0.1] * 2048
@@ -102,7 +102,7 @@ class TestImageProcessingRefactor:
 
     def test_image_processing_no_caption_service_call(self):
         """Test that image processing does NOT call ImageCaptionService."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_service = Mock()
                 mock_service.encode_image.return_value = [0.1] * 2048
@@ -121,7 +121,7 @@ class TestTableProcessingRefactor:
 
     def test_table_embedding_dimension(self):
         """Test that table embedding is 2048-dim."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_service = Mock()
                 mock_service.encode_table.return_value = [0.1] * 2048
@@ -140,7 +140,7 @@ class TestTableProcessingRefactor:
 
     def test_table_processing_no_description_service_call(self):
         """Test that table processing does NOT call TableDescriptionService."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_service = Mock()
                 mock_service.encode_table.return_value = [0.1] * 2048
@@ -158,7 +158,7 @@ class TestCollectionName:
 
     def test_milvus_insert_uses_v2_collection(self):
         """Test that Milvus insert uses paper_contents_v2."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_qwen3vl.return_value = Mock()
                 mock_milvus_instance = Mock()
@@ -179,7 +179,7 @@ class TestIntegrationFlow:
     @pytest.mark.asyncio
     async def test_image_flow_single_stage(self):
         """Test that image processing flow is single-stage (no caption service)."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_qwen3vl_service = Mock()
                 mock_qwen3vl_service.encode_image.return_value = [0.5] * 2048
@@ -209,7 +209,7 @@ class TestIntegrationFlow:
     @pytest.mark.asyncio
     async def test_table_flow_single_stage(self):
         """Test that table processing flow is single-stage (no description service)."""
-        with patch('app.core.multimodal_indexer.get_qwen3vl_service') as mock_qwen3vl:
+        with patch('app.core.multimodal_indexer.get_multimodal_embedding_service') as mock_qwen3vl:
             with patch('app.core.multimodal_indexer.get_milvus_service') as mock_milvus:
                 mock_qwen3vl_service = Mock()
                 mock_qwen3vl_service.encode_table.return_value = [0.3] * 2048

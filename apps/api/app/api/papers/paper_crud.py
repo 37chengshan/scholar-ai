@@ -388,13 +388,18 @@ async def batch_delete_papers(
         paper_ids=paper_ids,
     )
 
+    deleted_ids = deleted_count["deleted_ids"]
+    failures = deleted_count["failures"]
+
     return BatchDeleteResponse(
         success=True,
         data=BatchDeleteData(
-            deletedCount=deleted_count,
+            deletedCount=len(deleted_ids),
             requestedCount=requested_count,
-            failedIds=[],  # Service returns count only; per-item errors tracked in future
-            message=f"Successfully deleted {deleted_count} of {requested_count} papers",
+            deletedIds=deleted_ids,
+            failedIds=[failure["id"] for failure in failures],
+            failures=failures,
+            message=f"Successfully deleted {len(deleted_ids)} of {requested_count} papers",
         ),
     )
 
@@ -413,21 +418,25 @@ async def batch_star_papers(
     starred = body.starred
     requested_count = len(paper_ids)
 
-    updated_count = await PaperService.batch_star_for_api(
+    update_result = await PaperService.batch_star_for_api(
         db,
         user_id,
         paper_ids=paper_ids,
         starred=starred,
     )
+    updated_ids = update_result["updated_ids"]
+    failures = update_result["failures"]
 
     return BatchStarResponse(
         success=True,
         data=BatchStarData(
-            updatedCount=updated_count,
+            updatedCount=len(updated_ids),
             requestedCount=requested_count,
-            failedIds=[],  # Service returns count only; per-item errors tracked in future
+            updatedIds=updated_ids,
+            failedIds=[failure["id"] for failure in failures],
+            failures=failures,
             starred=starred,
-            message=f"Successfully updated starred status for {updated_count} papers",
+            message=f"Successfully updated starred status for {len(updated_ids)} papers",
         ),
     )
 

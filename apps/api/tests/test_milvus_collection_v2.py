@@ -1,11 +1,7 @@
-"""Tests for Milvus paper_contents_v2 collection creation.
-
-Test collection creation with 2048 dimensions, index creation,
-and drop_collection method per D-08, D-09.
-"""
+"""Tests for current Milvus paper_contents_v2 collection behavior."""
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 from pymilvus import CollectionSchema, FieldSchema, DataType
 
 from app.core.milvus_service import MilvusService, get_milvus_service
@@ -22,41 +18,17 @@ def mock_collection():
     return mock_coll
 
 
-@pytest.fixture
-def mock_connections():
-    """Mock Milvus connections module."""
-    with patch('app.core.milvus_service.connections') as mock_conn:
-        mock_conn.has_collection = MagicMock(return_value=False)
-        mock_conn.connect = MagicMock()
-        mock_conn.disconnect = MagicMock()
-        yield mock_conn
-
-
-@pytest.fixture
-def milvus_service(mock_connections, mock_collection):
-    """Create MilvusService instance with mocked dependencies."""
-    service = MilvusService()
-    service._connected = True
-
-    # Mock Collection constructor
-    with patch('app.core.milvus_service.Collection', return_value=mock_collection):
-        service._collection_mock = mock_collection
-        yield service
-
-
 class TestCreateCollectionV2:
     """Test create_collection_v2 method per D-09."""
 
     @patch('app.core.milvus_service.Collection')
-    @patch('app.core.milvus_service.connections')
-    def test_create_collection_v2_creates_paper_contents_v2(self, mock_conn, mock_collection_cls):
-        """Test 1: create_collection_v2() creates paper_contents_v2 with 2048 dimensions."""
+    def test_create_collection_v2_creates_paper_contents_v2(self, mock_collection_cls):
+        """Test create_collection_v2() creates paper_contents_v2 with active embedding dimension."""
         # Setup
         mock_collection = MagicMock()
         mock_collection.create_index = MagicMock()
         mock_collection.load = MagicMock()
         mock_collection_cls.return_value = mock_collection
-        mock_conn.has_collection = MagicMock(return_value=False)
 
         service = MilvusService()
         service._connected = True
@@ -76,23 +48,21 @@ class TestCreateCollectionV2:
         schema = call_args[0][1]
         assert isinstance(schema, CollectionSchema)
 
-        # Verify schema has 8 fields
+        # Verify schema matches current expanded contents-v2 contract.
         fields = schema.fields
-        assert len(fields) == 8
+        assert len(fields) == 16
 
-        # Verify embedding field has 2048 dimensions
+        # Verify embedding field follows the active runtime dimension.
         embedding_field = next(f for f in fields if f.name == "embedding")
         assert embedding_field.dtype == DataType.FLOAT_VECTOR
-        assert embedding_field.params['dim'] == 2048
+        assert embedding_field.params['dim'] == service.embedding_dim == 1024
 
     @patch('app.core.milvus_service.Collection')
-    @patch('app.core.milvus_service.connections')
-    def test_create_collection_v2_schema_fields(self, mock_conn, mock_collection_cls):
-        """Test 2: Verify all schema fields per D-09."""
+    def test_create_collection_v2_schema_fields(self, mock_collection_cls):
+        """Test current schema fields per D-09."""
         # Setup
         mock_collection = MagicMock()
         mock_collection_cls.return_value = mock_collection
-        mock_conn.has_collection = MagicMock(return_value=False)
 
         service = MilvusService()
         service._connected = True
@@ -108,12 +78,14 @@ class TestCreateCollectionV2:
         # Verify all required fields
         field_names = [f.name for f in fields]
         expected_fields = [
-            'id', 'paper_id', 'user_id', 'page_num',
-            'content_type', 'content_data', 'raw_data', 'embedding'
+            'id', 'paper_id', 'user_id', 'page_num', 'content_type', 'section',
+            'quality_score', 'word_count', 'has_equations', 'has_figures',
+            'extraction_version', 'content_data', 'raw_data', 'embedding',
+            'indexable', 'embedding_status',
         ]
         assert set(field_names) == set(expected_fields)
 
-        # Verify field types per D-09
+        # Verify key field types per current schema.
         id_field = next(f for f in fields if f.name == 'id')
         assert id_field.dtype == DataType.INT64
         assert id_field.is_primary
@@ -121,36 +93,41 @@ class TestCreateCollectionV2:
 
         paper_id_field = next(f for f in fields if f.name == 'paper_id')
         assert paper_id_field.dtype == DataType.VARCHAR
-        assert paper_id_field.params['max_length'] == 36
+        assert paper_id_field.params['max_length'] == 64
 
         user_id_field = next(f for f in fields if f.name == 'user_id')
         assert user_id_field.dtype == DataType.VARCHAR
-        assert user_id_field.params['max_length'] == 36
+        assert user_id_field.params['max_length'] == 64
 
         page_num_field = next(f for f in fields if f.name == 'page_num')
         assert page_num_field.dtype == DataType.INT64
 
         content_type_field = next(f for f in fields if f.name == 'content_type')
         assert content_type_field.dtype == DataType.VARCHAR
-        assert content_type_field.params['max_length'] == 20
+        assert content_type_field.params['max_length'] == 32
 
         content_data_field = next(f for f in fields if f.name == 'content_data')
         assert content_data_field.dtype == DataType.VARCHAR
-        assert content_data_field.params['max_length'] == 8000
+        assert content_data_field.params['max_length'] == 32000
 
         raw_data_field = next(f for f in fields if f.name == 'raw_data')
         assert raw_data_field.dtype == DataType.JSON
 
+        indexable_field = next(f for f in fields if f.name == 'indexable')
+        assert indexable_field.dtype == DataType.BOOL
+
+        embedding_status_field = next(f for f in fields if f.name == 'embedding_status')
+        assert embedding_status_field.dtype == DataType.VARCHAR
+        assert embedding_status_field.params['max_length'] == 32
+
     @patch('app.core.milvus_service.Collection')
-    @patch('app.core.milvus_service.connections')
-    def test_create_collection_v2_creates_ivf_flat_index(self, mock_conn, mock_collection_cls):
-        """Test 3: Verify IVF_FLAT index creation per RESEARCH.md 2.2."""
+    def test_create_collection_v2_creates_ivf_flat_index(self, mock_collection_cls):
+        """Test IVF_FLAT index creation per current contract."""
         # Setup
         mock_collection = MagicMock()
         mock_collection.create_index = MagicMock()
         mock_collection.load = MagicMock()
         mock_collection_cls.return_value = mock_collection
-        mock_conn.has_collection = MagicMock(return_value=False)
 
         service = MilvusService()
         service._connected = True
@@ -182,48 +159,51 @@ class TestDropCollection:
     """Test drop_collection method per D-08."""
 
     @patch('app.core.milvus_service.Collection')
-    @patch('app.core.milvus_service.connections')
-    def test_drop_collection_succeeds_if_collection_exists(self, mock_conn, mock_collection_cls):
-        """Test 4: drop_collection("paper_contents") succeeds if collection exists."""
+    @patch('app.core.milvus_service.utility.has_collection')
+    def test_drop_collection_succeeds_if_collection_exists(self, mock_has_collection, mock_collection_cls):
+        """drop_collection() drops an existing collection."""
         # Setup - collection exists
         mock_collection = MagicMock()
         mock_collection.drop = MagicMock()
         mock_collection_cls.return_value = mock_collection
-        mock_conn.has_collection = MagicMock(return_value=True)
+        mock_has_collection.return_value = True
 
         service = MilvusService()
         service._connected = True
 
         # Execute
-        service.drop_collection("paper_contents")
+        with patch.object(service, "connect") as mock_connect:
+            service.drop_collection("paper_contents")
 
         # Verify Collection was instantiated with collection name
         mock_collection_cls.assert_called_once_with("paper_contents", using=service._alias)
+        mock_connect.assert_called_once()
 
         # Verify drop was called
         mock_collection.drop.assert_called_once()
 
-    @patch('app.core.milvus_service.connections')
-    def test_drop_collection_skips_if_collection_not_exists(self, mock_conn):
-        """Test 5: drop_collection skips if collection does not exist."""
+    @patch('app.core.milvus_service.utility.has_collection')
+    def test_drop_collection_skips_if_collection_not_exists(self, mock_has_collection):
+        """drop_collection() skips if the collection does not exist."""
         # Setup - collection does not exist
-        mock_conn.has_collection = MagicMock(return_value=False)
+        mock_has_collection.return_value = False
 
         service = MilvusService()
         service._connected = True
 
         # Execute
-        service.drop_collection("nonexistent_collection")
+        with patch.object(service, "connect") as mock_connect:
+            service.drop_collection("nonexistent_collection")
 
-        # Verify has_collection was called
-        mock_conn.has_collection.assert_called_once_with("nonexistent_collection", using=service._alias)
+        mock_has_collection.assert_called_once_with("nonexistent_collection", using=service._alias)
+        mock_connect.assert_called_once()
 
-    @patch('app.core.milvus_service.connections')
+    @patch('app.core.milvus_service.utility.has_collection')
     @pytest.mark.skip(reason="structlog logs not captured by pytest caplog fixture - log emission verified in test output")
-    def test_drop_collection_logs_warning_if_not_exists(self, mock_conn, caplog):
-        """Test 6: drop_collection logs warning if collection does not exist."""
+    def test_drop_collection_logs_warning_if_not_exists(self, mock_has_collection, caplog):
+        """drop_collection logs warning if collection does not exist."""
         # Setup
-        mock_conn.has_collection = MagicMock(return_value=False)
+        mock_has_collection.return_value = False
 
         service = MilvusService()
         service._connected = True
@@ -241,58 +221,67 @@ class TestDropCollection:
 class TestHasCollection:
     """Test has_collection wrapper."""
 
-    @patch('app.core.milvus_service.connections')
-    def test_has_collection_returns_true_after_creation(self, mock_conn):
-        """Test 7: has_collection("paper_contents_v2") returns True after creation."""
+    @patch('app.core.milvus_service.utility.has_collection')
+    def test_has_collection_returns_true_after_creation(self, mock_has_collection):
+        """has_collection("paper_contents_v2") returns True after creation."""
         # Setup - simulate collection created
-        mock_conn.has_collection = MagicMock(return_value=True)
+        mock_has_collection.return_value = True
 
         service = MilvusService()
         service._connected = True
 
         # Execute
-        result = service.has_collection("paper_contents_v2")
+        with patch.object(service, "connect") as mock_connect:
+            result = service.has_collection("paper_contents_v2")
 
         # Verify
         assert result is True
-        mock_conn.has_collection.assert_called_once_with("paper_contents_v2", using=service._alias)
+        mock_has_collection.assert_called_once_with("paper_contents_v2", using=service._alias)
+        mock_connect.assert_called_once()
 
-    @patch('app.core.milvus_service.connections')
-    def test_has_collection_returns_false_if_not_exists(self, mock_conn):
-        """Test 8: has_collection returns False if collection does not exist."""
+    @patch('app.core.milvus_service.utility.has_collection')
+    def test_has_collection_returns_false_if_not_exists(self, mock_has_collection):
+        """has_collection returns False if collection does not exist."""
         # Setup
-        mock_conn.has_collection = MagicMock(return_value=False)
+        mock_has_collection.return_value = False
 
         service = MilvusService()
         service._connected = True
 
         # Execute
-        result = service.has_collection("nonexistent")
+        with patch.object(service, "connect") as mock_connect:
+            result = service.has_collection("nonexistent")
 
         # Verify
         assert result is False
+        mock_has_collection.assert_called_once_with("nonexistent", using=service._alias)
+        mock_connect.assert_called_once()
 
 
 class TestIntegration:
     """Integration tests for collection lifecycle."""
 
     @patch('app.core.milvus_service.Collection')
-    @patch('app.core.milvus_service.connections')
+    @patch('app.core.milvus_service.utility.has_collection')
     @patch('app.core.milvus_service.connections.connect')
     def test_create_v2_and_drop_old_collection_workflow(
-        self, mock_connect, mock_conn, mock_collection_cls
+        self, mock_connect, mock_has_collection, mock_collection_cls
     ):
-        """Test 9: End-to-end workflow: create v2, drop old collection."""
+        """End-to-end workflow: initialize v2, drop old collection."""
         # Setup mocks
-        # Create separate mocks for v2 collection and old collection
+        # Create separate mocks for v2 collection, summary collection, and old collection.
         v2_collection = MagicMock()
         v2_collection.create_index = MagicMock()
         v2_collection.load = MagicMock()
+
+        summary_collection = MagicMock()
+        summary_collection.create_index = MagicMock()
+        summary_collection.load = MagicMock()
         
         old_collection = MagicMock()
         old_collection.drop = MagicMock()
         
-        mock_collection_cls.side_effect = [v2_collection, old_collection]
+        mock_collection_cls.side_effect = [v2_collection, summary_collection, old_collection]
         
         # Collection existence checks
         # First call: checking for paper_contents_v2 (doesn't exist) -> create
@@ -303,9 +292,11 @@ class TestIntegration:
                 return False  # Doesn't exist, will create
             elif name == "paper_contents":
                 return True  # Exists, will drop
+            elif name == service.SUMMARY_COLLECTION_NAME:
+                return False
             return False
         
-        mock_conn.has_collection = MagicMock(side_effect=has_collection_side_effect)
+        mock_has_collection.side_effect = has_collection_side_effect
 
         service = MilvusService()
 
@@ -320,6 +311,10 @@ class TestIntegration:
         
         # Verify v2 was loaded
         v2_collection.load.assert_called_once()
+
+        # Verify summary collection was created during bootstrap.
+        summary_collection.create_index.assert_called_once()
+        summary_collection.load.assert_called_once()
         
         # Verify old collection dropped
         old_collection.drop.assert_called_once()

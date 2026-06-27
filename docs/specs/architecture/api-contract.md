@@ -176,11 +176,36 @@ Chat stream 请求体契约（冻结）：
 
 - 字段语义：
   - `mode`：`auto | rag | agent`，默认 `auto`。
-  - `scope.type`：`paper | knowledge_base | general`。
+  - `scope.type`：`paper | knowledge_base | compare | general`。
   - `scope.paper_id` 仅在 `scope.type=paper` 时有效。
   - `scope.knowledge_base_id` 仅在 `scope.type=knowledge_base` 时有效。
+  - `scope.paper_ids[]` 仅在 `scope.type=compare` 时有效。
   - `context`：可选扩展上下文，保持向后兼容。
   - `context.paper_ids[]`：v2.0 冻结后的 canonical 多论文 follow-up scope。当前端从 Compare 页面“Continue in Chat”跳转时，后端必须在 `mode=auto|rag` 下把它下推为真实 retrieval `paper_scope`，不得忽略或改写成未文档化的 scope 类型。
+  - `scope.knowledge_base_id` / `kb_id` 一旦出现，后端必须将其解析为真实 retrieval `paper_scope`，解析真源固定为 `Paper.knowledge_base_id`，并允许补充合并 `KnowledgeBasePaper` 关联；禁止只把知识库 ID 记录进 diagnostics 而不下推检索约束。
+
+Chat blocking 请求体契约（Phase 4.5 canonical AnswerContract path）：
+
+- 路径：`POST /api/v1/chat`
+- 用途：返回阻塞式 `AnswerContract`，与 `chat/stream` 共享同一 RAG 主链与 scope 语义。
+- 请求体与 `POST /api/v1/chat/stream` 对齐：`session_id?`、`message`、`mode`、`scope?`、`context?`。
+- 成功响应：标准 `success + data` envelope，其中 `data` 至少包含：
+  - `response_type`
+  - `answer_mode`
+  - `answer`
+  - `claims[]`
+  - `citations[]`
+  - `evidence_blocks[]`
+  - `quality{}`
+  - `trace_id`
+  - `run_id`
+  - `retrieval_trace_id`
+  - `truthfulness_summary{}`
+  - `degraded_conditions[]`
+- 共享作用域约束：
+  - `scope.type=knowledge_base` 时，必须按上文 KB scope 规则解析真实 retrieval `paper_scope`。
+  - `scope.type=compare` 或 `context.paper_ids[]` 存在时，必须把多论文集合下推为真实 retrieval `paper_scope`。
+  - `handoff_evidence` 若存在于 `context`，只允许作为检索补充证据，不得替代 `citations[]` / `evidence_blocks[]` 正式输出。
 
 Session messages 契约（冻结）：
 
@@ -248,6 +273,7 @@ RAG 检索与规划字段补充（Phase 1 + 2）：
 
 RAG 回答验证与图检索字段补充（Phase 3 + 4）：
 
+- `POST /api/v1/queries/query`（兼容 legacy `RAGQueryResponse` 的 blocking query route）现已统一走 shared `build_answer_contract_payload()` / `AnswerContract` 主路径计算，再适配回 `RAGQueryResponse`；命中缓存时必须优先复用 `answer_contract_payload + query_plan`，保证与首次计算同构。
 - `POST /api/v1/rag/query` 的 `RAGQueryResponse` 在保留既有字段基础上新增可选字段：
   - `claimVerification`：claim 级验证报告，至少包含 `totalClaims`、`supportedClaimCount`、`weaklySupportedClaimCount`、`unsupportedClaimCount`、`unsupportedClaimRate`、`results[]`。
   - `supportedClaimCount`、`unsupportedClaimCount`：回答级 claim 支持统计。
@@ -406,9 +432,21 @@ Search API 契约补充：
   - `data.trace` 为可选调试字段，仅在显式开启检索追踪时返回，至少包含 `trace_id`、`planner_queries[]`、`metadata_filters`、`weights` 与结果级分数快照
 
 - `POST /api/v1/search/evidence`：v3 分层证据搜索接口
-  - 请求体：`query`、`query_family`、`top_k`
+  - 请求体：
+    - 必填：`query`
+    - 可选：`query_family`、`top_k`
+    - 作用域：`paper_id`、`kb_id`
+    - 过滤器：`section_paths[]`、`page_from`、`page_to`、`content_types[]`
   - 响应字段：`paper_results[]`、`section_matches[]`、`evidence_matches[]`、`relation_matches[]`
   - 同步返回：`answer_mode`、`retrieval_trace_id`、`quality`，用于前端 Evidence-first 结果面板
+  - 共享作用域约束：
+    - `paper_id` 存在时，仅允许在该论文内检索。
+    - `kb_id` 存在时，必须沿用 `chat` 共享主链的 KB scope 解析规则，把知识库成员下推成真实 retrieval `paper_scope`；禁止只返回 `kb_id` 诊断信息而不收窄候选池。
+
+- `POST /api/v1/knowledge-bases/{kb_id}/query`：知识库问答兼容入口
+  - 请求体：`query`、`topK`
+  - 成功响应：标准 `success + data` envelope，`data` 至少包含 `answer`、`citations[]`、`sources[]`、`confidence`
+  - 空知识库语义：当 KB 当前无可问答论文时，允许返回空 `citations[]` / `sources[]` 与 `confidence=0.0`，但必须给出明确的用户可读提示，不得伪造回答
 
 Evidence/Notes 扩展契约补充（v3.4-v3.5）：
 
@@ -451,6 +489,8 @@ Chat v3 Done 事件契约补充（Frontend Evidence UI）：
 - compare / review / rag 共享同一 claim truthfulness substrate；若返回 claim 级校验结果，字段语义必须与 `truthfulness_report.results[]` 对齐，不允许各服务私有命名漂移。
 - compare / review / rag / agentic retrieval 若暴露 `phase6_runtime`，则必须共享同一字段集合与取值语义；不得在某条链上重命名 `confidence_level`、`degraded_reasons`、`recovery_outcome` 或 `next_step_entry`。
   - `evidence_blocks[]` / `citations[]` 必须可回跳到 Read 页，不得返回 synthetic lexical placeholder 作为生产证据
+ - `truthfulness_summary{}`、`degraded_conditions[]`、`recovery_actions[]` 允许作为顶层 AnswerContract 字段返回，语义必须与 `chat` / `rag` 主链保持一致
+ - `quality.fallback_used` 与 `quality.fallback_reason` 必须诚实反映 compare 主链的退化状态；存在 `degraded_conditions[]`、unsupported claims 或 `answer_mode in {partial, abstain}` 时不得伪装成 full-success
 
 Plan C 契约治理约束：
 

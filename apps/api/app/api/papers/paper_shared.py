@@ -117,9 +117,17 @@ class BatchDeleteData(BaseModel):
 
     deletedCount: int = Field(description="Number of papers successfully deleted")
     requestedCount: int = Field(description="Total number of papers requested for deletion")
+    deletedIds: list[str] = Field(
+        default_factory=list,
+        description="IDs of papers successfully deleted",
+    )
     failedIds: list[str] = Field(
         default_factory=list,
-        description="IDs of papers that failed to delete"
+        description="Legacy list of paper IDs that failed to delete",
+    )
+    failures: list["BatchFailureData"] = Field(
+        default_factory=list,
+        description="Per-paper failures with machine-readable reasons",
     )
     message: str
 
@@ -136,12 +144,27 @@ class BatchStarData(BaseModel):
 
     updatedCount: int = Field(description="Number of papers successfully updated")
     requestedCount: int = Field(description="Total number of papers requested")
+    updatedIds: list[str] = Field(
+        default_factory=list,
+        description="IDs of papers successfully updated",
+    )
     failedIds: list[str] = Field(
         default_factory=list,
-        description="IDs of papers that failed to update"
+        description="Legacy list of paper IDs that failed to update",
+    )
+    failures: list["BatchFailureData"] = Field(
+        default_factory=list,
+        description="Per-paper failures with machine-readable reasons",
     )
     starred: bool = Field(description="Starred status applied")
     message: str
+
+
+class BatchFailureData(BaseModel):
+    """Per-item failure data for batch operations."""
+
+    id: str
+    reason: str
 
 
 class MessageResponse(BaseModel):

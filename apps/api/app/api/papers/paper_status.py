@@ -4,7 +4,8 @@ Split from papers.py per D-11: 按 CRUD/业务域/外部集成划分.
 
 Endpoints:
 - GET /api/v1/papers/{id}/status - Get processing status
-- PATCH /api/v1/papers/{id}/starred - Toggle starred
+- POST /api/v1/papers/{id}/star - Canonical starred toggle
+- PATCH /api/v1/papers/{id}/starred - Legacy starred toggle alias
 - GET /api/v1/papers/{id}/download - Download PDF
 - GET /api/v1/papers/{id}/chunks - Get paper chunks
 - POST /api/v1/papers/{id}/regenerate-chunks - Regenerate chunks
@@ -25,6 +26,8 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models import Paper, ProcessingTask, PaperChunk
 from app.services.auth_service import User
+from app.services.paper_service import PaperService
+from app.core.milvus_service import get_milvus_service
 from app.services.reading_card_service import ensure_reading_card_doc
 from app.utils.problem_detail import ErrorTypes
 from app.config import settings
@@ -140,26 +143,25 @@ async def get_paper_status(
     }
 
 
-@router.patch("/{paper_id}/starred", response_model=PaperResponse)
-async def toggle_starred(
+async def _set_starred_status(
     request: Request,
     paper_id: str,
     body: StarredRequest,
     current_user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    """Toggle paper starred status."""
+    """Set paper starred status using the canonical paper service path."""
     instance = str(request.url.path)
     user_id = current_user.id
 
-    existing_query = select(Paper).where(
-        Paper.id == paper_id,
-        Paper.user_id == user_id,
-    )
-    existing_result = await db.execute(existing_query)
-    paper = existing_result.scalar_one_or_none()
-
-    if not paper:
+    try:
+        paper = await PaperService.toggle_star(
+            db,
+            paper_id=paper_id,
+            user_id=user_id,
+            starred=body.starred,
+        )
+    except ValueError:
         raise create_error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             error_type=ErrorTypes.NOT_FOUND,
@@ -168,11 +170,43 @@ async def toggle_starred(
             instance=instance,
         )
 
-    paper.starred = body.starred
-    paper.updated_at = datetime.now(timezone.utc)
-    await db.refresh(paper)
-
     return PaperResponse(success=True, data=format_paper_response(paper))
+
+
+@router.post("/{paper_id}/star", response_model=PaperResponse)
+async def set_starred_status(
+    request: Request,
+    paper_id: str,
+    body: StarredRequest,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Canonical starred toggle route."""
+    return await _set_starred_status(
+        request=request,
+        paper_id=paper_id,
+        body=body,
+        current_user=current_user,
+        db=db,
+    )
+
+
+@router.patch("/{paper_id}/starred", response_model=PaperResponse)
+async def toggle_starred(
+    request: Request,
+    paper_id: str,
+    body: StarredRequest,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Legacy starred toggle alias kept for backward compatibility."""
+    return await _set_starred_status(
+        request=request,
+        paper_id=paper_id,
+        body=body,
+        current_user=current_user,
+        db=db,
+    )
 
 
 @router.get("/{paper_id}/download")
@@ -320,6 +354,7 @@ async def regenerate_chunks(
     existing_task = existing_task_result.scalar_one_or_none()
 
     now = datetime.now(timezone.utc)
+    get_milvus_service().delete_all_vectors_by_paper(paper_id)
 
     if existing_task:
         existing_task.status = "pending"

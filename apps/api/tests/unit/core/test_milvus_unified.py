@@ -38,6 +38,8 @@ def mock_milvus_service():
                 mock_settings.MILVUS_HOST = "localhost"
                 mock_settings.MILVUS_PORT = 19530
                 mock_settings.MILVUS_COLLECTION_CONTENTS = "paper_contents"
+                mock_settings.EMBEDDING_MODEL = "qwen_flash"
+                mock_settings.EMBEDDING_DIMENSION = 2048
 
                 from app.core.milvus_service import MilvusService
                 service = MilvusService()
@@ -195,10 +197,24 @@ class TestPaperContentsCollection:
         mock_col_instance = MagicMock()
         mock_collection.return_value = mock_col_instance
 
-        service.delete_by_paper_contents("paper-123")
+        with patch.object(service, "has_collection", return_value=True):
+            service.delete_by_paper_contents("paper-123")
 
         # Verify delete was called
         mock_col_instance.delete.assert_called_once()
+
+    def test_delete_all_vectors_by_paper_includes_summary_collection(self, mock_milvus_service):
+        """Delete-all helper should clear contents, summaries, images, and tables."""
+        service, mock_collection = mock_milvus_service
+
+        mock_col_instance = MagicMock()
+        mock_collection.return_value = mock_col_instance
+
+        with patch.object(service, "has_collection", return_value=True):
+            service.delete_all_vectors_by_paper("paper-123")
+
+        assert mock_collection.call_count == 4
+        assert mock_col_instance.delete.call_count == 4
 
 
 class TestUnifiedCollectionIntegration:
@@ -208,9 +224,7 @@ class TestUnifiedCollectionIntegration:
         """Verify collection uses 1024-dim embeddings."""
         service, mock_collection = mock_milvus_service
 
-        # Check the service has correct dim constant
-        assert service.EMBEDDING_DIM == 768  # Legacy collections
-        # The new collection should have 1024
+        assert service.embedding_dim == 1024
 
     def test_content_types_supported(self, mock_milvus_service):
         """Verify all content types are supported."""

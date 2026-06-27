@@ -44,6 +44,23 @@ def _serialize_chunk_source(chunk: PaperChunk) -> dict[str, Any]:
     }
 
 
+async def _paper_is_visible_to_user(
+    db: AsyncSession,
+    *,
+    paper_id: str | None,
+    user_id: str,
+) -> bool:
+    normalized_paper_id = str(paper_id or "").strip()
+    if not normalized_paper_id:
+        return False
+    result = await db.execute(
+        select(Paper.id)
+        .where(Paper.id == normalized_paper_id, Paper.user_id == user_id)
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
 async def resolve_evidence_source(
     db: AsyncSession,
     *,
@@ -61,4 +78,11 @@ async def resolve_evidence_source(
         chunk, _ = row
         return _serialize_chunk_source(chunk)
 
-    return get_evidence_source_payload(source_chunk_id)
+    payload = get_evidence_source_payload(source_chunk_id)
+    if payload and await _paper_is_visible_to_user(
+        db,
+        paper_id=payload.get("paper_id"),
+        user_id=user_id,
+    ):
+        return payload
+    return None

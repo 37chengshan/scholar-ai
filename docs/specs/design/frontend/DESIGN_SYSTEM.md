@@ -362,6 +362,7 @@ ScholarAI 当前前端是一条连续研究链，而不是一组互不相干的�
 - 以 section reveal、dialog enter、tab content enter 为主
 - 不要滥用漂浮、弹跳、连续脉冲
 - 所有动效都服务于层级感与状态反馈
+- Chat composer 允许在流式回复期间使用轻量边框 beam 作为状态反馈，但必须保持在现有 token 色系内，并在 `prefers-reduced-motion` 下自动降级为静态边框
 
 规则：
 

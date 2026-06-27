@@ -151,16 +151,14 @@ class TestIntentClassifierClarification:
         """Test clarification when top intents have close confidence"""
         classifier = IntentClassifier(use_llm=False)
 
-        # Mock close confidence results
         mock_results = [
-            {"intent": "question", "confidence": 0.5, "source": "rules"},
-            {"intent": "method", "confidence": 0.48, "source": "rules"},
+            {"intent": "compare", "confidence": 0.5, "source": "rules"},
+            {"intent": "references", "confidence": 0.48, "source": "rules"},
             {"intent": "summary", "confidence": 0.3, "source": "rules"},
         ]
 
         result = classifier._check_clarification(mock_results, mock_results[0])
 
-        # Should need clarification (difference < CLARIFICATION_THRESHOLD)
         assert result["needs_clarification"] is True
         assert len(result["suggested_intents"]) >= 2
 

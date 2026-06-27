@@ -1,10 +1,10 @@
-"""Tests for RAG service with Milvus and 1024-dim embeddings.
+"""Tests for deprecated RAG compatibility shims on the current runtime path.
 
 Per 13-03-PLAN:
-- Test 1: retrieve_with_reranking uses 1024-dim BGE-M3 embedding
+- Test 1: retrieve_with_reranking uses the current Qwen embedding path
 - Test 2: retrieve_with_reranking calls Milvus.search_contents
 - Test 3: retrieve_with_reranking applies reranking
-- Test 4: RAGService.query uses MultimodalSearchService
+- Test 4: RAGService.query uses Milvus directly
 """
 
 import pytest
@@ -17,10 +17,10 @@ from app.legacy.rag_service_deprecated import retrieve_with_reranking, RAGServic
 # Fixtures
 
 @pytest.fixture
-def mock_bge_m3_service():
-    """Mock BGEM3Service for 1024-dim embeddings."""
+def mock_qwen3vl_service():
+    """Mock Qwen3VL embedding service for deprecated compatibility path."""
     mock = Mock()
-    mock.encode_text = Mock(return_value=[0.1] * 1024)
+    mock.encode_text = Mock(return_value=[0.1] * 2048)
     return mock
 
 
@@ -84,15 +84,15 @@ def mock_multimodal_search_service():
 # Tests
 
 class TestRetrieveWithReranking1024Dim:
-    """Test retrieve_with_reranking with 1024-dim embeddings."""
+    """Test retrieve_with_reranking against the current deprecated runtime path."""
 
     @pytest.mark.asyncio
-    async def test_retrieve_uses_1024_dim_embedding(self, mock_bge_m3_service, mock_milvus_service, mock_reranker_service):
-        """Test 1: retrieve_with_reranking uses 1024-dim BGE-M3 embedding."""
-        with patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge_m3_service):
+    async def test_retrieve_uses_current_qwen_embedding(self, mock_qwen3vl_service, mock_milvus_service, mock_reranker_service):
+        """Test 1: retrieve_with_reranking uses the current Qwen embedding path."""
+        with patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_qwen3vl_service):
             with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus_service):
                 with patch('app.core.reranker_service.get_reranker_service', return_value=mock_reranker_service):
-                    results = await retrieve_with_reranking(
+                    await retrieve_with_reranking(
                         query="What is machine learning?",
                         user_id="test-user",
                         paper_ids=["paper-1"],
@@ -100,24 +100,21 @@ class TestRetrieveWithReranking1024Dim:
                         rerank_top_n=5,
                     )
 
-                    # Verify BGE-M3 encode_text was called
-                    mock_bge_m3_service.encode_text.assert_called_once_with("What is machine learning?")
+                    mock_qwen3vl_service.encode_text.assert_called_once_with("What is machine learning?")
 
-                    # Get the embedding passed to Milvus
                     call_kwargs = mock_milvus_service.search_contents.call_args[1]
                     embedding = call_kwargs["embedding"]
 
-                    # Verify embedding is 1024-dim
-                    assert len(embedding) == 1024
+                    assert len(embedding) == 2048
                     assert isinstance(embedding, list)
 
     @pytest.mark.asyncio
-    async def test_retrieve_calls_milvus_search_contents(self, mock_bge_m3_service, mock_milvus_service, mock_reranker_service):
+    async def test_retrieve_calls_milvus_search_contents(self, mock_qwen3vl_service, mock_milvus_service, mock_reranker_service):
         """Test 2: retrieve_with_reranking calls Milvus.search_contents."""
-        with patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge_m3_service):
+        with patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_qwen3vl_service):
             with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus_service):
                 with patch('app.core.reranker_service.get_reranker_service', return_value=mock_reranker_service):
-                    results = await retrieve_with_reranking(
+                    await retrieve_with_reranking(
                         query="What is machine learning?",
                         user_id="test-user",
                         paper_ids=["paper-1"],
@@ -135,9 +132,9 @@ class TestRetrieveWithReranking1024Dim:
                     assert call_kwargs["top_k"] == 20
 
     @pytest.mark.asyncio
-    async def test_retrieve_applies_reranking(self, mock_bge_m3_service, mock_milvus_service, mock_reranker_service):
+    async def test_retrieve_applies_reranking(self, mock_qwen3vl_service, mock_milvus_service, mock_reranker_service):
         """Test 3: retrieve_with_reranking applies reranking."""
-        with patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge_m3_service):
+        with patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_qwen3vl_service):
             with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus_service):
                 with patch('app.core.reranker_service.get_reranker_service', return_value=mock_reranker_service):
                     results = await retrieve_with_reranking(
@@ -163,7 +160,7 @@ class TestRetrieveWithReranking1024Dim:
                         assert "rerank_score" in result
 
     @pytest.mark.asyncio
-    async def test_retrieve_filters_by_paper_ids(self, mock_bge_m3_service, mock_milvus_service, mock_reranker_service):
+    async def test_retrieve_filters_by_paper_ids(self, mock_qwen3vl_service, mock_milvus_service, mock_reranker_service):
         """Test that retrieve_with_reranking filters by paper_ids."""
         # Mock Milvus to return results from multiple papers
         mock_milvus_service.search_contents = Mock(return_value=[
@@ -181,7 +178,7 @@ class TestRetrieveWithReranking1024Dim:
             },
         ])
 
-        with patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge_m3_service):
+        with patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_qwen3vl_service):
             with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus_service):
                 with patch('app.core.reranker_service.get_reranker_service', return_value=mock_reranker_service):
                     # Filter to only paper-1
@@ -198,11 +195,11 @@ class TestRetrieveWithReranking1024Dim:
                         assert result.get("paper_id") == "paper-1"
 
     @pytest.mark.asyncio
-    async def test_retrieve_empty_results(self, mock_bge_m3_service, mock_milvus_service, mock_reranker_service):
+    async def test_retrieve_empty_results(self, mock_qwen3vl_service, mock_milvus_service, mock_reranker_service):
         """Test retrieve_with_reranking with empty Milvus results."""
         mock_milvus_service.search_contents = Mock(return_value=[])
 
-        with patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge_m3_service):
+        with patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_qwen3vl_service):
             with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus_service):
                 with patch('app.core.reranker_service.get_reranker_service', return_value=mock_reranker_service):
                     results = await retrieve_with_reranking(
@@ -234,7 +231,7 @@ class TestRAGServiceDeprecated:
         assert "MultimodalSearchService" in docstring
 
     @pytest.mark.asyncio
-    async def test_rag_service_query_deprecated(self, mock_bge_m3_service, mock_milvus_service):
+    async def test_rag_service_query_deprecated(self, mock_qwen3vl_service, mock_milvus_service):
         """Test 4: RAGService.query uses Milvus directly."""
         # Mock semantic cache to avoid Redis dependency
         mock_cache = AsyncMock()
@@ -242,7 +239,7 @@ class TestRAGServiceDeprecated:
         mock_cache.set = AsyncMock()
 
         with patch('app.core.semantic_cache.SemanticCache', return_value=mock_cache):
-            with patch('app.core.bge_m3_service.get_bge_m3_service', return_value=mock_bge_m3_service):
+            with patch('app.core.qwen3vl_service.get_qwen3vl_service', return_value=mock_qwen3vl_service):
                 with patch('app.core.milvus_service.get_milvus_service', return_value=mock_milvus_service):
                     import warnings
 

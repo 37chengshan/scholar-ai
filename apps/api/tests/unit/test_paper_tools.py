@@ -10,6 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.tools.paper_tools import execute_upload_paper, execute_delete_paper
 
 
+def _mock_session_factory(session):
+    factory = MagicMock()
+    factory.return_value.__aenter__.return_value = session
+    factory.return_value.__aexit__.return_value = False
+    return factory
+
+
 @pytest.mark.asyncio
 class TestUploadPaper:
     """Tests for upload_paper tool."""
@@ -28,9 +35,9 @@ class TestUploadPaper:
         }
         
         with patch("httpx.AsyncClient") as mock_client, \
-             patch("app.core.storage.ObjectStorage") as mock_storage, \
-             patch("app.tools.paper_tools.get_db_connection") as mock_db, \
-             patch("app.workers.pdf_coordinator.get_pdf_coordinator") as mock_coordinator, \
+             patch("app.tools.paper_tools.ObjectStorage") as mock_storage, \
+             patch("app.tools.paper_tools.AsyncSessionLocal") as mock_db, \
+             patch("app.tools.paper_tools.get_pdf_coordinator") as mock_coordinator, \
              patch("asyncio.create_task"):
             
             # Mock HTTP response
@@ -49,12 +56,10 @@ class TestUploadPaper:
             mock_storage_instance.upload_file = AsyncMock()
             mock_storage.return_value = mock_storage_instance
             
-            # Mock database
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock()
-            mock_db.return_value.__aenter__.return_value = mock_conn
+            mock_conn = MagicMock()
+            mock_conn.commit = AsyncMock()
+            mock_db.side_effect = _mock_session_factory(mock_conn)
             
-            # Mock coordinator
             mock_coord_instance = MagicMock()
             mock_coordinator.return_value = mock_coord_instance
             
@@ -78,9 +83,9 @@ class TestUploadPaper:
         }
         
         with patch("httpx.AsyncClient") as mock_client, \
-             patch("app.core.storage.ObjectStorage") as mock_storage, \
-             patch("app.tools.paper_tools.get_db_connection") as mock_db, \
-             patch("app.workers.pdf_coordinator.get_pdf_coordinator") as mock_coordinator, \
+             patch("app.tools.paper_tools.ObjectStorage") as mock_storage, \
+             patch("app.tools.paper_tools.AsyncSessionLocal") as mock_db, \
+             patch("app.tools.paper_tools.get_pdf_coordinator") as mock_coordinator, \
              patch("asyncio.create_task"):
             
             # Mock HTTP response
@@ -99,12 +104,10 @@ class TestUploadPaper:
             mock_storage_instance.upload_file = AsyncMock()
             mock_storage.return_value = mock_storage_instance
             
-            # Mock database
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock()
-            mock_db.return_value.__aenter__.return_value = mock_conn
+            mock_conn = MagicMock()
+            mock_conn.commit = AsyncMock()
+            mock_db.side_effect = _mock_session_factory(mock_conn)
             
-            # Mock coordinator
             mock_coord_instance = MagicMock()
             mock_coordinator.return_value = mock_coord_instance
             
@@ -143,8 +146,8 @@ class TestUploadPaper:
         }
         
         with patch("httpx.AsyncClient") as mock_client, \
-             patch("app.core.storage.ObjectStorage") as mock_storage, \
-             patch("app.tools.paper_tools.get_db_connection") as mock_db:
+             patch("app.tools.paper_tools.ObjectStorage") as mock_storage, \
+             patch("app.tools.paper_tools.AsyncSessionLocal") as mock_db:
             
             # Mock HTTP response
             mock_response = MagicMock()
@@ -162,8 +165,10 @@ class TestUploadPaper:
             mock_storage_instance.upload_file = AsyncMock()
             mock_storage.return_value = mock_storage_instance
             
-            # Mock database error
-            mock_db.return_value.__aenter__.side_effect = Exception("DB error")
+            session_factory = MagicMock()
+            session_factory.return_value.__aenter__.side_effect = Exception("DB error")
+            session_factory.return_value.__aexit__.return_value = False
+            mock_db.side_effect = session_factory
             
             result = await execute_upload_paper(params, user_id="user-123")
             
@@ -197,9 +202,9 @@ class TestUploadPaper:
         }
         
         with patch("httpx.AsyncClient") as mock_client, \
-             patch("app.core.storage.ObjectStorage") as mock_storage, \
-             patch("app.tools.paper_tools.get_db_connection") as mock_db, \
-             patch("app.workers.pdf_coordinator.get_pdf_coordinator") as mock_coordinator, \
+             patch("app.tools.paper_tools.ObjectStorage") as mock_storage, \
+             patch("app.tools.paper_tools.AsyncSessionLocal") as mock_db, \
+             patch("app.tools.paper_tools.get_pdf_coordinator") as mock_coordinator, \
              patch("asyncio.create_task"):
             
             # Mock HTTP response
@@ -218,12 +223,10 @@ class TestUploadPaper:
             mock_storage_instance.upload_file = AsyncMock()
             mock_storage.return_value = mock_storage_instance
             
-            # Mock database
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock()
-            mock_db.return_value.__aenter__.return_value = mock_conn
+            mock_conn = MagicMock()
+            mock_conn.commit = AsyncMock()
+            mock_db.side_effect = _mock_session_factory(mock_conn)
             
-            # Mock coordinator
             mock_coord_instance = MagicMock()
             mock_coordinator.return_value = mock_coord_instance
             
@@ -240,10 +243,11 @@ class TestDeletePaper:
         """Test successful paper deletion."""
         params = {"paper_id": "paper-123"}
         
-        with patch("app.tools.paper_tools.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock(return_value="UPDATE 1")
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        with patch("app.tools.paper_tools.AsyncSessionLocal") as mock_db:
+            mock_conn = MagicMock()
+            mock_conn.execute = AsyncMock(return_value=MagicMock(rowcount=1))
+            mock_conn.commit = AsyncMock()
+            mock_db.side_effect = _mock_session_factory(mock_conn)
             
             result = await execute_delete_paper(params, user_id="user-123")
             
@@ -254,10 +258,11 @@ class TestDeletePaper:
         """Test deleting non-existent paper."""
         params = {"paper_id": "non-existent"}
         
-        with patch("app.tools.paper_tools.get_db_connection") as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.execute = AsyncMock(return_value="UPDATE 0")
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        with patch("app.tools.paper_tools.AsyncSessionLocal") as mock_db:
+            mock_conn = MagicMock()
+            mock_conn.execute = AsyncMock(return_value=MagicMock(rowcount=0))
+            mock_conn.commit = AsyncMock()
+            mock_db.side_effect = _mock_session_factory(mock_conn)
             
             result = await execute_delete_paper(params, user_id="user-123")
             

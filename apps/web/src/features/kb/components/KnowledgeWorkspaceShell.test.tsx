@@ -5,6 +5,7 @@ import { KnowledgeWorkspaceShell } from './KnowledgeWorkspaceShell';
 
 const mockNavigate = vi.fn();
 const mockSetSearchParams = vi.fn();
+const mockUseImportJobsPolling = vi.fn();
 let mockSearchParams = new URLSearchParams();
 
 vi.mock('react-router', async () => {
@@ -45,6 +46,10 @@ vi.mock('@/services/kbReviewApi', () => ({
   },
 }));
 
+vi.mock('@/features/kb/hooks/useImportJobsPolling', () => ({
+  useImportJobsPolling: (args: unknown) => mockUseImportJobsPolling(args),
+}));
+
 vi.mock('@/features/kb/components/KnowledgeImportPanel', () => ({
   KnowledgeImportPanel: ({ onJobComplete }: { onJobComplete: () => void }) => (
     <button type="button" onClick={onJobComplete}>
@@ -77,6 +82,7 @@ import { kbReviewApi } from '@/services/kbReviewApi';
 describe('KnowledgeWorkspaceShell', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseImportJobsPolling.mockReset();
     mockSearchParams = new URLSearchParams();
     vi.mocked(kbApi.get).mockResolvedValue({
       id: 'kb-1',
@@ -202,6 +208,23 @@ describe('KnowledgeWorkspaceShell', () => {
 
     await user.click(screen.getByRole('tab', { name: /运行记录/i }));
     expect(screen.getAllByText(/run-1/i).length).toBeGreaterThan(0);
+  });
+
+  it('keeps import polling enabled for queued jobs', async () => {
+    vi.mocked(importApi.list).mockResolvedValueOnce({
+      success: true,
+      data: {
+        jobs: [{ importJobId: 'job-queued', status: 'queued', dedupe: {} }],
+      },
+    } as any);
+
+    render(<KnowledgeWorkspaceShell />);
+
+    await waitFor(() => {
+      expect(mockUseImportJobsPolling).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: true })
+      );
+    });
   });
 
   it('opens review tab with runId when a KB run is clicked', async () => {

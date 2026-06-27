@@ -83,7 +83,7 @@ async def test_save_evidence_note_persists_canonical_source_chunk_id(mocker):
     # Ensure the persisted ORM note also carried canonical data before formatting.
     persisted_note = saved_notes[0]
     assert isinstance(persisted_note, Note)
-    assert persisted_note.linked_evidence[0]["source_chunk_id"] == "chunk-fixed-1"
+    assert persisted_note.linked_evidence[0]["source_chunk_id"] == "466045819771397202"
 
 
 @pytest.mark.asyncio

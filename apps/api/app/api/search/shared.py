@@ -151,6 +151,7 @@ class SearchResponse(BaseModel):
 
     success: bool = True
     data: Dict[str, Any]
+    meta: Optional[Dict[str, Any]] = None
 
 
 # =============================================================================

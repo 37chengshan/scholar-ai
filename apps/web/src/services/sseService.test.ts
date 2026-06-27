@@ -96,6 +96,43 @@ describe('SSEService', () => {
     expect(startStreamingSpy).toHaveBeenCalledWith(false);
   });
 
+  it('preserves run and compare contract fields on done events', () => {
+    const onEnvelope = vi.fn();
+    const onError = vi.fn();
+    const onDone = vi.fn();
+
+    (service as any).currentHandlers = { onEnvelope, onError, onDone };
+    (service as any).abortController = new AbortController();
+    (service as any).isDisconnecting = false;
+
+    (service as any).handleEvent(
+      'done',
+      JSON.stringify({
+        message_id: 'm3',
+        finish_reason: 'stop',
+        run_id: 'run-1',
+        trace_id: 'trace-1',
+        compare_matrix: {
+          mode: 'compare',
+          rows: [{ paper_id: 'paper-1' }],
+        },
+      })
+    );
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finish_reason: 'stop',
+        run_id: 'run-1',
+        trace_id: 'trace-1',
+        compare_matrix: expect.objectContaining({
+          mode: 'compare',
+        }),
+      })
+    );
+  });
+
   it('increments reconnect attempts across reconnect chain', () => {
     vi.useFakeTimers();
 

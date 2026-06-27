@@ -10,6 +10,7 @@ def test_search_uses_v3_retriever() -> None:
     assert "@router.post(\"/evidence\")" in content
     assert "def search_evidence_v3" in content
     assert "build_answer_contract_payload(" in content
+    assert "SearchResponse(" in content
     assert "paper_results" in content
     assert "section_matches" in content
     assert "evidence_matches" in content

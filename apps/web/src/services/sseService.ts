@@ -198,6 +198,7 @@ export interface DoneEventData {
   citations?: unknown[];
   evidence_blocks?: unknown[];
   quality?: Record<string, unknown>;
+  compare_matrix?: Record<string, unknown>;
   retrieval_trace_id?: string;
   /** WP5: per-run and per-request correlation IDs */
   run_id?: string;
@@ -550,7 +551,10 @@ export class SSEService {
           citations: (payload as any)?.citations,
           evidence_blocks: (payload as any)?.evidence_blocks,
           quality: (payload as any)?.quality,
+          compare_matrix: (payload as any)?.compare_matrix,
           retrieval_trace_id: (payload as any)?.retrieval_trace_id,
+          run_id: (payload as any)?.run_id,
+          trace_id: (payload as any)?.trace_id,
           error_state: (payload as any)?.error_state,
           trace: (payload as any)?.trace,
         };

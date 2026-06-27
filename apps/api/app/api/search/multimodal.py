@@ -108,7 +108,7 @@ async def multimodal_search(
 
         if request.enable_clustering and result["results"]:
             try:
-                clusters = cluster_pages(result["results"])
+                clusters = await cluster_pages(result["results"])
 
                 cluster_list = [
                     ClusterResult(

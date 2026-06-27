@@ -10,12 +10,12 @@ Per Plan 04-02 Task 3: 5 integration tests for enhanced service.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.multimodal_search_service import (
     MultimodalSearchService,
-    get_multimodal_search_service,
 )
+from app.core.rag_runtime_profile import ACTIVE_EMBEDDING_DIMENSION
 from app.models.retrieval import RetrievedChunk
 
 
@@ -27,12 +27,20 @@ class TestEnhancedMultimodalSearchService:
         """Mock dependent services."""
         with patch("app.core.multimodal_search_service.get_embedding_service") as mock_embedding, \
              patch("app.core.multimodal_search_service.get_vector_store_repository") as mock_vector_store, \
-             patch("app.core.multimodal_search_service.get_reranker_service") as mock_reranker:
+             patch("app.core.multimodal_search_service.get_reranker_service") as mock_reranker, \
+             patch("app.core.multimodal_search_service.create_embedding_provider") as mock_provider_factory, \
+             patch("app.core.multimodal_search_service.redis_db.get", new=AsyncMock(return_value=None)), \
+             patch("app.core.multimodal_search_service.redis_db.set", new=AsyncMock(return_value=None)), \
+             patch("app.core.multimodal_search_service.settings.SCIENTIFIC_TEXT_BRANCH_ENABLED", False):
 
             # Setup embedding mock
             embedding_instance = MagicMock()
             embedding_instance.is_loaded.return_value = True
-            embedding_instance.encode_text.return_value = [0.1] * 2048
+            embedding_instance.get_model_info.return_value = {
+                "name": "text-embedding-v4",
+                "provider": "dashscope_qwen",
+                "dimension": str(ACTIVE_EMBEDDING_DIMENSION),
+            }
             mock_embedding.return_value = embedding_instance
 
             # Setup vector store repository mock
@@ -47,6 +55,8 @@ class TestEnhancedMultimodalSearchService:
                 )
                 for i in range(5)
             ]
+            vector_store_instance.search_sparse.return_value = []
+            vector_store_instance.search_summary_index.return_value = []
             mock_vector_store.return_value = vector_store_instance
 
             # Setup ReRanker mock
@@ -59,10 +69,17 @@ class TestEnhancedMultimodalSearchService:
             ]
             mock_reranker.return_value = reranker_instance
 
+            provider_instance = MagicMock()
+            provider_instance.embed_texts.return_value = [
+                [0.1] * ACTIVE_EMBEDDING_DIMENSION
+            ]
+            mock_provider_factory.return_value = provider_instance
+
             yield {
                 "embedding": embedding_instance,
                 "vector_store": vector_store_instance,
                 "reranker": reranker_instance,
+                "provider": provider_instance,
             }
 
     @pytest.mark.asyncio
@@ -189,9 +206,10 @@ class TestEnhancedMultimodalSearchService:
         assert "expanded_query" in result
         assert "OR object detection" in result["expanded_query"] or "YOLO" in result["expanded_query"]
 
-        # BGE service should receive expanded query
-        # Verify encode_text was called with expanded query
-        mock_services["embedding"].encode_text.assert_called()
+        # Online embedding provider should receive the expanded query.
+        mock_services["provider"].embed_texts.assert_called()
+        planned_query = mock_services["provider"].embed_texts.call_args_list[0].args[0][0]
+        assert planned_query == result["expanded_query"]
 
     @pytest.mark.asyncio
     async def test_metadata_filtering_filters_results(self, mock_services):
@@ -225,9 +243,10 @@ class TestEnhancedMultimodalSearchService:
         """
         service = MultimodalSearchService()
 
-        # Track call order
         call_order = []
-        mock_services["embedding"].encode_text.side_effect = lambda q: call_order.append("encode") or [0.1] * 2048
+        mock_services["provider"].embed_texts.side_effect = (
+            lambda queries: call_order.append("embed") or [[0.1] * ACTIVE_EMBEDDING_DIMENSION]
+        )
 
         result = await service.search(
             query="YOLOv3和YOLOv4的区别",
@@ -241,3 +260,4 @@ class TestEnhancedMultimodalSearchService:
         # Verify structure has intent field
         assert "intent" in result
         assert result["query_intent"] in ["question", "compare", "summary", "evolution"]
+        assert call_order

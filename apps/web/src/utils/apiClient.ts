@@ -231,7 +231,22 @@ apiClient.interceptors.response.use(
     // Backend returns { success: boolean, data: T } format
     // Extract data for easier consumption in services
     if (response.data?.success && response.data?.data !== undefined) {
-      response.data = response.data.data;
+      const envelope = response.data;
+      const unwrapped = envelope.data;
+
+      if (
+        envelope.meta !== undefined &&
+        unwrapped !== null &&
+        typeof unwrapped === 'object' &&
+        !Array.isArray(unwrapped)
+      ) {
+        response.data = {
+          ...unwrapped,
+          meta: envelope.meta,
+        };
+      } else {
+        response.data = unwrapped;
+      }
     }
 
     // Log successful responses in development

@@ -13,8 +13,8 @@ def storage_manager():
     with (
         patch("app.workers.storage_manager.Neo4jService", return_value=MagicMock()),
         patch("app.workers.storage_manager.NotesGenerator", return_value=MagicMock()),
-        patch("app.workers.storage_manager.DoclingParser", return_value=MagicMock()),
-        patch("app.workers.storage_manager.get_qwen3vl_service", return_value=MagicMock()),
+        patch("app.workers.storage_manager.get_docling_parser", return_value=MagicMock()),
+        patch("app.workers.storage_manager.get_embedding_service", return_value=MagicMock()),
     ):
         return StorageManager(MagicMock())
 
@@ -33,11 +33,15 @@ def make_ctx(title: str | None) -> PipelineContext:
 
 
 @pytest.mark.asyncio
-async def test_store_paper_metadata_preserves_trusted_import_title(storage_manager: StorageManager):
+async def test_store_paper_metadata_preserves_trusted_import_title(
+    storage_manager: StorageManager,
+):
     conn = AsyncMock()
     conn.fetchval = AsyncMock(return_value="Attention Is All You Need")
 
-    ctx = make_ctx("Provided proper attribution is provided, Google hereby grants permission to")
+    ctx = make_ctx(
+        "Provided proper attribution is provided, Google hereby grants permission to"
+    )
 
     await storage_manager._store_paper_metadata(conn, ctx)
 
@@ -49,7 +53,9 @@ async def test_store_paper_metadata_preserves_trusted_import_title(storage_manag
 
 
 @pytest.mark.asyncio
-async def test_store_paper_metadata_replaces_filename_placeholder(storage_manager: StorageManager):
+async def test_store_paper_metadata_replaces_filename_placeholder(
+    storage_manager: StorageManager,
+):
     conn = AsyncMock()
     conn.fetchval = AsyncMock(side_effect=["attention-is-all-you-need.pdf", None])
 

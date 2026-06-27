@@ -152,7 +152,7 @@ class TestCreateEnhancedMultimodalEmbedding:
 class TestMultimodalIndexerInit:
     """Test MultimodalIndexer initialization."""
 
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     def test_init_creates_extractors(self, mock_storage, mock_milvus, mock_qwen):
@@ -166,7 +166,7 @@ class TestMultimodalIndexerInit:
         assert indexer.image_extractor is not None
         assert indexer.table_extractor is not None
 
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     def test_init_uses_factory(self, mock_storage, mock_milvus, mock_qwen):
@@ -180,7 +180,7 @@ class TestMultimodalIndexerInit:
         mock_qwen.assert_called_once()
         mock_milvus.assert_called_once()
 
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     def test_embedding_dim_2048(self, mock_storage, mock_milvus, mock_qwen):
@@ -193,7 +193,7 @@ class TestMultimodalIndexerInit:
         
         assert indexer.EMBEDDING_DIM == 2048
 
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     def test_collection_name_v2(self, mock_storage, mock_milvus, mock_qwen):
@@ -214,7 +214,7 @@ class TestMultimodalIndexerIndexPaper:
     @pytest.mark.asyncio
     @patch('app.core.multimodal_indexer.MultimodalIndexer._index_images')
     @patch('app.core.multimodal_indexer.MultimodalIndexer._index_tables')
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     async def test_index_paper_success(
@@ -246,7 +246,7 @@ class TestMultimodalIndexerIndexPaper:
     @pytest.mark.asyncio
     @patch('app.core.multimodal_indexer.MultimodalIndexer._index_images')
     @patch('app.core.multimodal_indexer.MultimodalIndexer._index_tables')
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     async def test_index_paper_with_partial_failures(
@@ -283,7 +283,7 @@ class TestMultimodalIndexerIndexPaper:
 
     @pytest.mark.asyncio
     @patch('app.core.multimodal_indexer.MultimodalIndexer._index_images')
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     async def test_index_paper_exception_handling(
@@ -314,7 +314,7 @@ class TestMultimodalIndexerImageIndexing:
     """Test image indexing."""
 
     @pytest.mark.asyncio
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     async def test_index_images_with_pil_images(self, mock_storage, mock_milvus, mock_qwen):
@@ -334,7 +334,7 @@ class TestMultimodalIndexerImageIndexing:
         indexer = MultimodalIndexer()
 
     @pytest.mark.asyncio
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     async def test_index_images_2048_dim_embedding(self, mock_storage, mock_milvus, mock_qwen):
@@ -360,7 +360,7 @@ class TestMultimodalIndexerTableIndexing:
     """Test table indexing."""
 
     @pytest.mark.asyncio
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     async def test_index_tables_2048_dim_embedding(self, mock_storage, mock_milvus, mock_qwen):
@@ -392,7 +392,7 @@ class TestMultimodalIndexerIntegration:
     @pytest.mark.asyncio
     @patch('app.core.multimodal_indexer.ImageExtractor')
     @patch('app.core.multimodal_indexer.TableExtractor')
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     async def test_full_workflow(
@@ -452,7 +452,7 @@ class TestMultimodalIndexerIntegration:
         assert result["tables_indexed"] >= 0
 
     @pytest.mark.asyncio
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     async def test_milvus_connection_failure_handling(
@@ -475,7 +475,7 @@ class TestMultimodalIndexerIntegration:
 class TestMultimodalIndexerFactoryUsage:
     """Test that indexer uses factory pattern."""
 
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     def test_uses_qwen3vl_factory(self, mock_storage, mock_milvus, mock_qwen):
@@ -489,7 +489,7 @@ class TestMultimodalIndexerFactoryUsage:
         mock_qwen.assert_called_once()
         assert indexer.qwen3vl_service is not None
 
-    @patch('app.core.multimodal_indexer.get_qwen3vl_service')
+    @patch('app.core.multimodal_indexer.get_multimodal_embedding_service')
     @patch('app.core.multimodal_indexer.get_milvus_service')
     @patch('app.core.multimodal_indexer.ObjectStorage')
     def test_uses_milvus_singleton(self, mock_storage, mock_milvus, mock_qwen):

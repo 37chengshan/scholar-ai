@@ -54,5 +54,6 @@ def test_prune_unsupported_claims_appends_notice_when_support_low():
 
     pruned, report = verifier.prune_unsupported_claims(answer, sources)
 
-    assert report["support_score"] < 0.45
+    assert report["surface_sentence_coverage"] < 0.45
+    assert report["unsupported_sentence_count"] >= 1
     assert "Evidence Notice" in pruned

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeBaseDetail } from './KnowledgeBaseDetail';
@@ -148,13 +148,25 @@ describe('KnowledgeBaseDetail', () => {
       expect(screen.getByText('Paper One')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: /知识库检索/i }));
-    await user.type(screen.getByPlaceholderText(/输入您的问题/i), 'test query');
-    await user.click(screen.getByRole('button', { name: /^检索$/i }));
+    const searchTab = screen.getByRole('tab', { name: /知识库检索/i });
+    await user.click(searchTab);
+    await waitFor(() => {
+      expect(searchTab).toHaveAttribute('data-state', 'active');
+    });
+
+    const searchPanel = screen.getByRole('tabpanel');
+    const searchInput = within(searchPanel).getByPlaceholderText('输入您的问题...') as HTMLInputElement;
+    fireEvent.change(searchInput, { target: { value: 'test query' } });
+    const searchButton = within(searchPanel).getByRole('button', { name: /^检索$/i });
+    await waitFor(() => {
+      expect(searchButton).not.toHaveAttribute('disabled');
+    });
+    await user.click(searchButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Important result snippet/i)).toBeInTheDocument();
-      expect(screen.getByText(/Paper One/i)).toBeInTheDocument();
+      expect(within(searchPanel).getByText(/检索到 1 个相关片段/i)).toBeInTheDocument();
+      expect(within(searchPanel).getByText(/Important result snippet/i)).toBeInTheDocument();
+      expect(within(searchPanel).getByText(/Paper One/i)).toBeInTheDocument();
     });
   });
 

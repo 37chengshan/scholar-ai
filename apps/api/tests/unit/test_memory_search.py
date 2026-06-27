@@ -1,96 +1,139 @@
-"""Unit tests for MemorySearch service.
+"""Unit tests for MemorySearch against the current SQLAlchemy + Milvus contract."""
 
-Tests vector-based memory retrieval and storage:
-- Search memories using vector similarity
-- Store memories with embeddings
-- Filter by memory types
-
-Per D-11, D-12: Long-term memory with vector retrieval.
-"""
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from app.core.memory_search import MemorySearch, Memory
+
+from app.core.memory_search import Memory, MemorySearch
+
+
+class _SessionContext:
+    def __init__(self, session):
+        self._session = session
+
+    async def __aenter__(self):
+        return self._session
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
 
 
 class TestMemorySearchBasic:
-    """Test basic MemorySearch functionality."""
-
     @pytest.mark.asyncio
     async def test_search_memories_returns_results(self):
-        """Test 1: search_memories() returns top-k relevant memories"""
-        mock_embedding = MagicMock()
-        mock_embedding.encode = AsyncMock(return_value=[0.1] * 1024)
+        embedding_service = MagicMock()
+        embedding_service.encode_text.return_value = [0.1] * 1024
 
-        mock_milvus = MagicMock()
-        mock_milvus.search = AsyncMock(return_value=[{"id": "mem-1", "distance": 0.95}])
-        mock_milvus.connect = AsyncMock()
+        milvus_service = MagicMock()
+        milvus_service.search = AsyncMock(
+            return_value=[{"id": "mem-1", "distance": 0.95}]
+        )
 
-        mock_row = {"id": "mem-1", "content": "Test", "memory_type": "preference", "metadata": None, "created_at": "2026-04-08"}
-        mock_conn = MagicMock()
-        mock_conn.fetch = AsyncMock(return_value=[mock_row])
+        memory_row = SimpleNamespace(
+            id="mem-1",
+            content="Test memory",
+            memory_type="preference",
+            extra_data={"topic": "rag"},
+            created_at="2026-04-08T00:00:00Z",
+        )
+        result_proxy = MagicMock()
+        result_proxy.scalars.return_value.all.return_value = [memory_row]
 
-        memory_search = MemorySearch(embedding_service=mock_embedding, milvus_service=mock_milvus)
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=result_proxy)
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
 
-        with patch("app.core.memory_search.get_db_connection") as mock_db:
-            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-            mock_db.return_value.__aexit__ = AsyncMock()
-            results = await memory_search.search_memories(query="test", user_id="user-123", top_k=2)
-            assert len(results) == 1
+        with patch(
+            "app.core.memory_search.AsyncSessionLocal",
+            return_value=_SessionContext(session),
+        ):
+            memory_search = MemorySearch(
+                embedding_service=embedding_service,
+                milvus_service=milvus_service,
+            )
+            results = await memory_search.search_memories(
+                query="test",
+                user_id="user-123",
+                top_k=2,
+            )
+
+        assert len(results) == 1
+        assert results[0].id == "mem-1"
+        assert results[0].content == "Test memory"
+        assert results[0].similarity == 0.95
+        milvus_service.search.assert_awaited_once()
+        embedding_service.encode_text.assert_called_once_with("test")
 
     @pytest.mark.asyncio
     async def test_search_memories_filters_by_type(self):
-        """Test 2: search_memories() filters by memory_types"""
-        mock_embedding = MagicMock()
-        mock_embedding.encode = AsyncMock(return_value=[0.1] * 1024)
+        embedding_service = MagicMock()
+        embedding_service.encode_text.return_value = [0.1] * 1024
 
-        mock_milvus = MagicMock()
-        mock_milvus.search = AsyncMock(return_value=[])
-        mock_milvus.connect = AsyncMock()
+        milvus_service = MagicMock()
+        milvus_service.search = AsyncMock(return_value=[])
 
-        memory_search = MemorySearch(embedding_service=mock_embedding, milvus_service=mock_milvus)
+        memory_search = MemorySearch(
+            embedding_service=embedding_service,
+            milvus_service=milvus_service,
+        )
 
-        with patch("app.core.memory_search.get_db_connection") as mock_db:
-            mock_conn = MagicMock()
-            mock_conn.fetch = AsyncMock(return_value=[])
-            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-            mock_db.return_value.__aexit__ = AsyncMock()
-            await memory_search.search_memories(query="test", user_id="user-123", top_k=5, memory_types=["preference"])
-            call_args = mock_milvus.search.call_args
-            filter_expr = call_args[1]["filter_expr"]
-            assert "memory_type in" in filter_expr
+        results = await memory_search.search_memories(
+            query="test",
+            user_id="user-123",
+            top_k=5,
+            memory_types=["preference"],
+        )
+
+        assert results == []
+        filter_expr = milvus_service.search.await_args.kwargs["filter_expr"]
+        assert 'user_id == "user-123"' in filter_expr
+        assert 'memory_type in ["preference"]' in filter_expr
 
 
 class TestMemorySearchStorage:
-    """Test memory storage functionality."""
-
     @pytest.mark.asyncio
     async def test_store_memory_returns_id(self):
-        """Test 4: store_memory() returns memory ID"""
-        mock_embedding = MagicMock()
-        mock_embedding.encode = AsyncMock(return_value=[0.1] * 1024)
+        embedding_service = MagicMock()
+        embedding_service.encode_text.return_value = [0.1] * 1024
 
-        mock_milvus = MagicMock()
-        mock_milvus.insert = AsyncMock()
-        mock_milvus.connect = AsyncMock()
+        milvus_service = MagicMock()
+        milvus_service.insert = AsyncMock()
 
-        mock_conn = MagicMock()
-        mock_conn.fetchrow = AsyncMock(return_value={"id": "new-mem-id"})
+        session = MagicMock()
+        session.add = MagicMock()
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
 
-        memory_search = MemorySearch(embedding_service=mock_embedding, milvus_service=mock_milvus)
+        async def _refresh(instance):
+            instance.id = "new-mem-id"
 
-        with patch("app.core.memory_search.get_db_connection") as mock_db:
-            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-            mock_db.return_value.__aexit__ = AsyncMock()
-            memory_id = await memory_search.store_memory(user_id="user-123", content="Test", memory_type="preference")
-            assert memory_id == "new-mem-id"
+        session.refresh.side_effect = _refresh
+
+        with patch(
+            "app.core.memory_search.AsyncSessionLocal",
+            return_value=_SessionContext(session),
+        ):
+            memory_search = MemorySearch(
+                embedding_service=embedding_service,
+                milvus_service=milvus_service,
+            )
+            memory_id = await memory_search.store_memory(
+                user_id="user-123",
+                content="Test",
+                memory_type="preference",
+            )
+
+        assert memory_id == "new-mem-id"
+        session.add.assert_called_once()
+        session.commit.assert_awaited_once()
+        milvus_service.insert.assert_awaited_once()
+        assert milvus_service.insert.await_args.kwargs["data"][0]["id"] == "new-mem-id"
 
 
 class TestMemoryDataclass:
-    """Test Memory dataclass."""
-
     def test_memory_creation(self):
-        """Test Memory dataclass instantiation"""
         memory = Memory(id="mem-123", content="Test content", memory_type="preference")
         assert memory.id == "mem-123"
         assert memory.similarity == 0.0

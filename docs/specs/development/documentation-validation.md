@@ -35,6 +35,7 @@
   - Open Questions
 - 关键交叉引用必须存在（例如 PR 流程与测试策略互链）。
 - 治理关键文档集中的 markdown 本地链接必须可解析到真实路径。
+- 若存在 `WORKFLOW.md`、`.codex/skills/`、`scripts/symphony/` 等编排入口，文档必须把它们标注为非 canonical 覆盖层，并回链到 `AGENTS.md`、`pr-process`、`testing-strategy`。
 
 文档书写约束：
 
@@ -64,7 +65,7 @@
 
 CI：
 
-- .github/workflows/governance-baseline.yml
+- .github/workflows/governance.yml
 
 抽样复核：
 

@@ -1,17 +1,8 @@
-"""Unit tests for Context Manager.
-
-Tests the hierarchical context management system for Agent conversations.
-
-Test Categories:
-- Context building from session messages
-- Important message identification
-- Secondary message compression
-- Token counting
-"""
+"""Unit tests for the current Context Manager implementation."""
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import List, Dict, Any
 
 from app.core.context_manager import ContextManager, Context, Message
 
@@ -20,12 +11,11 @@ class TestMessage:
     """Test Message dataclass."""
 
     def test_message_creation(self):
-        """Test creating a message."""
         msg = Message(
             role="user",
             content="Hello",
             metadata={"intent": "question"},
-            is_important=True
+            is_important=True,
         )
 
         assert msg.role == "user"
@@ -34,7 +24,6 @@ class TestMessage:
         assert msg.is_important is True
 
     def test_message_defaults(self):
-        """Test message with default values."""
         msg = Message(role="assistant", content="Hi there")
 
         assert msg.role == "assistant"
@@ -47,14 +36,13 @@ class TestContext:
     """Test Context dataclass."""
 
     def test_context_creation(self):
-        """Test creating a context."""
         ctx = Context(
             objective="Help user understand paper",
             important_messages=[],
             secondary_messages=[],
             tool_history=[],
             environment={"user_id": "test-user"},
-            working_memory={}
+            working_memory={},
         )
 
         assert ctx.objective == "Help user understand paper"
@@ -66,55 +54,47 @@ class TestContextManager:
 
     @pytest.fixture
     def context_manager(self):
-        """Create a ContextManager instance."""
         return ContextManager()
 
     def test_is_important_message_user(self, context_manager):
-        """Test that user messages are identified as important."""
         msg = Message(role="user", content="What is machine learning?")
 
         assert context_manager.is_important_message(msg) is True
 
     def test_is_important_message_system(self, context_manager):
-        """Test that system messages are identified as important."""
         msg = Message(role="system", content="You are a helpful assistant.")
 
         assert context_manager.is_important_message(msg) is True
 
     def test_is_important_message_with_decision_point(self, context_manager):
-        """Test that messages with decision points are important."""
         msg = Message(
             role="assistant",
             content="Should I proceed?",
-            metadata={"is_decision_point": True}
+            metadata={"is_decision_point": True},
         )
 
         assert context_manager.is_important_message(msg) is True
 
     def test_is_important_message_with_citations(self, context_manager):
-        """Test that messages with citations are important."""
         msg = Message(
             role="assistant",
             content="According to the paper...",
-            metadata={"has_citations": True}
+            metadata={"has_citations": True},
         )
 
         assert context_manager.is_important_message(msg) is True
 
     def test_is_important_message_tool_result(self, context_manager):
-        """Test that tool results are NOT important (secondary)."""
         msg = Message(role="tool", content="Tool execution result")
 
         assert context_manager.is_important_message(msg) is False
 
     def test_count_tokens(self, context_manager):
-        """Test 4: Token counting works."""
         messages = [
             Message(role="user", content="This is a test message"),
-            Message(role="assistant", content="This is a response")
+            Message(role="assistant", content="This is a response"),
         ]
 
-        # Simple estimation: 1 token ≈ 4 characters
         total_chars = sum(len(m.content) for m in messages)
         expected_tokens = total_chars // 4
 
@@ -124,56 +104,94 @@ class TestContextManager:
 
     @pytest.mark.asyncio
     async def test_build_context_from_session(self, context_manager):
-        """Test 1: Context built from session messages."""
         session_id = "test-session-123"
+        user_id = "test-user-123"
 
-        # Mock database
-        mock_messages = [
-            {"role": "user", "content": "Hello", "metadata": None},
-            {"role": "assistant", "content": "Hi there", "metadata": None}
+        rows = [
+            SimpleNamespace(
+                role="user",
+                content="Hello",
+                tool_params=None,
+                created_at=1,
+            ),
+            SimpleNamespace(
+                role="assistant",
+                content="Hi there",
+                tool_params=None,
+                created_at=2,
+            ),
         ]
 
-        with patch('app.core.database.get_db_connection') as mock_db:
-            mock_conn = AsyncMock()
-            mock_conn.fetch = AsyncMock(return_value=mock_messages)
-            mock_db.return_value.__aenter__.return_value = mock_conn
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = rows
+        mock_db = AsyncMock()
+        mock_db.execute.return_value = mock_result
+        mock_session_factory = MagicMock()
+        mock_session_factory.return_value.__aenter__.return_value = mock_db
+        mock_session_factory.return_value.__aexit__.return_value = False
 
-            # Mock Redis functions
-            with patch('app.utils.cache.get_conversation_session', new_callable=AsyncMock) as mock_get_session:
-                mock_get_session.return_value = None
+        with patch(
+            "app.core.context_manager.AsyncSessionLocal",
+            mock_session_factory,
+        ), patch.object(
+            context_manager,
+            "get_user_preferences",
+            AsyncMock(return_value={"language": "zh-CN"}),
+        ):
+            context = await context_manager.build_context(session_id, user_id)
 
-                context = await context_manager.build_context(session_id)
+        assert context is not None
+        assert isinstance(context, Context)
+        assert context.environment == {
+            "session_id": session_id,
+            "user_id": user_id,
+        }
+        assert context.objective == "Hello"
+        assert [msg.content for msg in context.important_messages] == ["Hello"]
+        assert [msg.content for msg in context.secondary_messages] == ["Hi there"]
+        assert len(context.recent_messages) == 2
 
-                assert context is not None
-                assert isinstance(context, Context)
+    @pytest.mark.asyncio
+    async def test_build_context_returns_empty_context_on_db_error(self, context_manager):
+        mock_db = AsyncMock()
+        mock_db.execute.side_effect = RuntimeError("db offline")
+        mock_session_factory = MagicMock()
+        mock_session_factory.return_value.__aenter__.return_value = mock_db
+        mock_session_factory.return_value.__aexit__.return_value = False
+
+        with patch("app.core.context_manager.AsyncSessionLocal", mock_session_factory):
+            context = await context_manager.build_context("broken-session", "user-1")
+
+        assert context.important_messages == []
+        assert context.secondary_messages == []
+        assert context.environment == {
+            "session_id": "broken-session",
+            "user_id": "user-1",
+        }
 
     @pytest.mark.asyncio
     async def test_compress_secondary_messages(self, context_manager):
-        """Test 3: Secondary messages compressed when token limit approached."""
-        # Create many secondary messages
         messages = [
             Message(role="tool", content=f"Tool result {i}")
             for i in range(10)
         ]
 
-        # Mock LLM summarization
-        with patch('litellm.acompletion') as mock_llm:
-            mock_response = MagicMock()
-            mock_response.choices = [MagicMock()]
-            mock_response.choices[0].message.content = "Summary of tool results"
-            mock_llm.return_value = mock_response
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Summary of tool results"
+        mock_client = AsyncMock()
+        mock_client.chat_completion.return_value = mock_response
 
+        with patch("app.core.context_manager.get_llm_client", return_value=mock_client):
             compressed = await context_manager.compress_secondary_messages(messages)
 
-            # Should return a summary message
-            assert len(compressed) == 1
-            assert compressed[0].role == "system"
-            assert "Summary" in compressed[0].content or "历史执行摘要" in compressed[0].content
+        assert len(compressed) == 1
+        assert compressed[0].role == "system"
+        assert "Summary" in compressed[0].content or "历史执行摘要" in compressed[0].content
+        mock_client.chat_completion.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_compress_small_message_list(self, context_manager):
-        """Test that small message lists are not compressed."""
-        # Create only 3 messages (below threshold)
         messages = [
             Message(role="tool", content=f"Result {i}")
             for i in range(3)
@@ -186,6 +204,5 @@ class TestContextManager:
         assert compressed == messages
 
     def test_max_context_tokens_constant(self, context_manager):
-        """Test that MAX_CONTEXT_TOKENS is defined."""
-        assert hasattr(context_manager, 'MAX_CONTEXT_TOKENS')
+        assert hasattr(context_manager, "MAX_CONTEXT_TOKENS")
         assert context_manager.MAX_CONTEXT_TOKENS == 8000

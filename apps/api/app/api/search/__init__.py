@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.deps import CurrentUserId
 from app.rag_v3.main_path_service import build_answer_contract_payload
 
 from app.core.multimodal_search_service import get_multimodal_search_service
@@ -61,6 +62,7 @@ class V3SearchRequest(BaseModel):
 	query_family: str = "fact"
 	top_k: int = Field(default=10, ge=1, le=50)
 	paper_id: str | None = None
+	kb_id: str | None = None
 	section_paths: list[str] | None = None
 	page_from: int | None = None
 	page_to: int | None = None
@@ -68,11 +70,12 @@ class V3SearchRequest(BaseModel):
 
 
 @router.post("/evidence")
-async def search_evidence_v3(request: V3SearchRequest):
+async def search_evidence_v3(request: V3SearchRequest, user_id: str = CurrentUserId):
 	try:
 		payload = await build_answer_contract_payload(
 			query=request.query,
-			user_id="search-system",
+			user_id=user_id,
+			kb_id=request.kb_id,
 			paper_scope=[request.paper_id] if request.paper_id else None,
 			query_family=request.query_family,
 			stage="rule",
@@ -88,28 +91,34 @@ async def search_evidence_v3(request: V3SearchRequest):
 		papers = sorted({c.get("paper_id") for c in citations if c.get("paper_id")})
 		sections = sorted({c.get("section_path") for c in citations if c.get("section_path")})
 
-		return {
-			"paper_results": papers,
-			"section_matches": sections,
-			"evidence_matches": evidence,
-			"relation_matches": [],
-			"answer_mode": payload.get("answer_mode"),
-			"retrieval_trace_id": payload.get("retrieval_trace_id") or payload.get("trace_id"),
-			"quality": payload.get("quality", {}),
-		}
-	except Exception as exc:
-		return {
-			"paper_results": [],
-			"section_matches": [],
-			"evidence_matches": [],
-			"relation_matches": [],
-			"answer_mode": "abstain",
-			"retrieval_trace_id": None,
-			"quality": {
-				"error": "search_evidence_unavailable",
-				"message": str(exc),
+		return SearchResponse(
+			success=True,
+			data={
+				"paper_results": papers,
+				"section_matches": sections,
+				"evidence_matches": evidence,
+				"relation_matches": [],
+				"answer_mode": payload.get("answer_mode"),
+				"retrieval_trace_id": payload.get("retrieval_trace_id") or payload.get("trace_id"),
+				"quality": payload.get("quality", {}),
 			},
-		}
+		)
+	except Exception as exc:
+		return SearchResponse(
+			success=True,
+			data={
+				"paper_results": [],
+				"section_matches": [],
+				"evidence_matches": [],
+				"relation_matches": [],
+				"answer_mode": "abstain",
+				"retrieval_trace_id": None,
+				"quality": {
+					"error": "search_evidence_unavailable",
+					"message": str(exc),
+				},
+			},
+		)
 
 
 def _extract_data(result: Any) -> Dict[str, Any]:

@@ -249,7 +249,7 @@ class TestEmbeddingObjectPool:
             mock_service.load_model = Mock()
             MockService.return_value = mock_service
             
-            with patch('app.core.config.settings') as mock_settings:
+            with patch('app.config.settings') as mock_settings:
                 mock_settings.EMBEDDING_QUANTIZATION = "int4"
                 mock_settings.EMBEDDING_DEVICE = "auto"
                 
@@ -272,7 +272,7 @@ class TestEmbeddingObjectPool:
             mock_service.load_model = Mock()
             MockService.return_value = mock_service
             
-            with patch('app.core.config.settings'):
+            with patch('app.config.settings'):
                 async with pool as service:
                     assert service is not None
                     assert service == mock_service
@@ -287,7 +287,7 @@ class TestEmbeddingObjectPool:
             mock_service.load_model = Mock()
             MockService.return_value = mock_service
             
-            with patch('app.core.config.settings'):
+            with patch('app.config.settings'):
                 async with pool as service:
                     pass
                 

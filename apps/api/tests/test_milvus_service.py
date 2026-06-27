@@ -8,7 +8,6 @@ from app.core.milvus_service import (
     MilvusService,
     get_milvus_service,
     retry_with_backoff,
-    _truncate_varchar,
 )
 
 
@@ -80,12 +79,10 @@ class TestMilvusService:
         assert service.pool_size == 20
         assert service.timeout == 30
 
-    def test_embedding_dim_constants(self):
-        """Test embedding dimension constants."""
-        # SigLIP for image/table (768-dim)
-        assert MilvusService.EMBEDDING_DIM == 768
-        # BGE-M3 for text (1024-dim) per D-34
-        assert MilvusService.BGE_EMBEDDING_DIM == 1024
+    def test_embedding_dim_tracks_active_runtime(self):
+        """Test embedding dimension resolves from the active runtime model."""
+        service = MilvusService()
+        assert service.embedding_dim == 1024
 
     @patch("app.core.milvus_service.connections")
     def test_connect(self, mock_connections):
@@ -139,15 +136,6 @@ class TestMilvusService:
         service2 = get_milvus_service()
         assert service1 is service2
 
-
-def test_truncate_varchar_leaves_margin_under_schema_limit():
-    text = "x" * 9000
-
-    truncated = _truncate_varchar(text, 8000, reserve=128)
-
-    assert len(truncated) == 7872
-
-
 def test_insert_summaries_batched_truncates_all_string_fields():
     service = MilvusService()
     service._connected = True
@@ -156,6 +144,24 @@ def test_insert_summaries_batched_truncates_all_string_fields():
     mock_result = MagicMock()
     mock_result.primary_keys = [1]
     mock_collection.insert.return_value = mock_result
+    mock_field_names = [
+        "paper_id",
+        "user_id",
+        "summary_type",
+        "section_name",
+        "source_chunk_id",
+        "content_data",
+        "embedding",
+    ]
+    mock_collection.schema.fields = []
+    for field_name in mock_field_names:
+        field = MagicMock()
+        field.name = field_name
+        if field_name == "embedding":
+            field.params = {"dim": service.embedding_dim}
+        else:
+            field.params = {}
+        mock_collection.schema.fields.append(field)
 
     with patch.object(service, "has_collection", return_value=True):
         with patch("app.core.milvus_service.Collection", return_value=mock_collection):
@@ -174,8 +180,8 @@ def test_insert_summaries_batched_truncates_all_string_fields():
             )
 
     inserted = mock_collection.insert.call_args.args[0][0]
-    assert len(inserted["paper_id"]) <= 60
-    assert len(inserted["user_id"]) <= 60
-    assert len(inserted["summary_type"]) <= 30
-    assert len(inserted["section_name"]) <= 192
-    assert len(inserted["content_data"]) <= 7872
+    assert len(inserted["paper_id"]) == 100
+    assert len(inserted["user_id"]) == 100
+    assert len(inserted["summary_type"]) == 32
+    assert len(inserted["section_name"]) == 200
+    assert len(inserted["content_data"]) == 8000

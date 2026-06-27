@@ -45,6 +45,7 @@ export function SearchWorkspace() {
     pageSize,
   } = useUnifiedSearch({
     sortBy: workspace.sortBy,
+    activeSource: workspace.activeSource,
     initialQuery: workspace.queryFromUrl,
     initialPage: workspace.pageFromUrl,
   });
@@ -151,10 +152,10 @@ export function SearchWorkspace() {
       results: results?.external.filter((result) => result.source === 'arxiv').length || 0,
     },
     {
-      id: 's2',
+      id: 'semantic_scholar',
       name: 'Semantic Scholar',
       statusType: 'Connected' as const,
-      results: results?.external.filter((result) => result.source === 's2').length || 0,
+      results: results?.external.filter((result) => result.source === 'semantic_scholar').length || 0,
     },
     {
       id: 'authors',
@@ -221,7 +222,7 @@ export function SearchWorkspace() {
       ? (isZh ? '作者来源' : 'Author source')
       : workspace.activeSource === 'arxiv'
         ? 'arXiv'
-        : workspace.activeSource === 's2'
+        : workspace.activeSource === 'semantic_scholar' || workspace.activeSource === 's2'
           ? 'Semantic Scholar'
           : (isZh ? 'arXiv + Semantic Scholar + 本地库' : 'arXiv + Semantic Scholar + Library');
     if (isInitialLoading) {
@@ -252,7 +253,7 @@ export function SearchWorkspace() {
     return [
       { label: labels.library, count: results.internal.length },
       { label: 'arXiv', count: results.external.filter((result) => result.source === 'arxiv').length },
-      { label: 'Semantic Scholar', count: results.external.filter((result) => result.source === 's2').length },
+      { label: 'Semantic Scholar', count: results.external.filter((result) => result.source === 'semantic_scholar').length },
     ].filter((row) => row.count > 0);
   }, [labels.library, results]);
 

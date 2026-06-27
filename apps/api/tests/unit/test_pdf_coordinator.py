@@ -10,11 +10,14 @@ Tests for the parallel PDF processing pipeline foundation:
 - Parsing stage success/failure scenarios
 """
 
+import os
+
 import pytest
 from unittest.mock import AsyncMock, patch
+from unittest.mock import Mock
 
 from app.workers.pipeline_context import PipelineContext, PipelineStage
-from app.workers.pdf_coordinator import PDFCoordinator, get_pdf_coordinator
+from app.workers.pdf_coordinator import PDFCoordinator, TaskCancelledError, get_pdf_coordinator
 from app.workers.extraction_pipeline import PipelineError
 from app.workers.storage_manager import StorageManager
 
@@ -194,11 +197,13 @@ class TestPDFCoordinator:
         assert hasattr(coordinator, "_db_pool")  # Check internal field
 
     def test_singleton(self):
-        """Test singleton pattern."""
+        """Test factory returns fresh coordinator instances."""
         c1 = get_pdf_coordinator()
         c2 = get_pdf_coordinator()
 
-        assert c1 is c2
+        assert c1 is not c2
+        assert isinstance(c1, PDFCoordinator)
+        assert isinstance(c2, PDFCoordinator)
 
     def test_singleton_returns_pdf_coordinator(self):
         """Test that singleton returns PDFCoordinator instance."""
@@ -493,6 +498,37 @@ class TestPDFCoordinator:
         coordinator._storage_manager.store.assert_called_once_with(ctx)
 
     @pytest.mark.asyncio
+    async def test_ensure_task_active_raises_for_cancelled_task(self):
+        """Cancellation check should stop the pipeline before more writes happen."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="task-cancelled",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key",
+        )
+
+        class _FakeConn:
+            async def fetchval(self, *_args, **_kwargs):
+                return "cancelled"
+
+        class _Acquire:
+            async def __aenter__(self):
+                return _FakeConn()
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        coordinator._db_pool = Mock()
+        coordinator._db_pool.acquire.return_value = _Acquire()
+        coordinator._update_status = AsyncMock()
+
+        with pytest.raises(TaskCancelledError):
+            await coordinator._ensure_task_active(ctx, "storage_vectors")
+
+        coordinator._update_status.assert_awaited_once_with(ctx, "cancelled")
+
+    @pytest.mark.asyncio
     async def test_storage_returns_context(self):
         """Test storage stage returns updated context."""
         coordinator = PDFCoordinator()
@@ -598,3 +634,78 @@ class TestPDFCoordinator:
         assert ctx.metadata is not None
         assert ctx.chunk_results is not None
         assert len(ctx.chunk_results) == 1
+
+    @pytest.mark.asyncio
+    async def test_process_cleans_up_temporary_pdf(self):
+        """Process should remove the temp PDF after the pipeline finishes."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test-task",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key",
+        )
+        written_paths: list[str] = []
+
+        coordinator.init_db = AsyncMock()
+        coordinator._init_context = AsyncMock(return_value=ctx)
+
+        async def _fake_download(_storage_key: str, destination: str) -> None:
+            with open(destination, "wb") as handle:
+                handle.write(b"%PDF-1.4\n")
+            written_paths.append(destination)
+
+        coordinator.storage.download_file = AsyncMock(side_effect=_fake_download)
+        coordinator.parser.parse_pdf = AsyncMock(
+            return_value={"pages": [], "items": [], "markdown": "", "page_count": 0}
+        )
+        coordinator.extraction_pipeline.extract = AsyncMock(return_value=ctx)
+        coordinator._ensure_task_active = AsyncMock()
+        coordinator._storage_manager = Mock(spec=StorageManager)
+        coordinator._storage_manager.store = AsyncMock(return_value=ctx)
+        coordinator._update_status = AsyncMock()
+
+        result = await coordinator.process("test-task")
+
+        assert result is True
+        assert written_paths
+        assert not os.path.exists(written_paths[0])
+
+    @pytest.mark.asyncio
+    async def test_process_returns_without_failed_overwrite_when_cancelled(self):
+        """Coordinator should not convert a cancelled task into failed/completed."""
+        coordinator = PDFCoordinator()
+        ctx = PipelineContext(
+            task_id="test-task",
+            paper_id="p1",
+            user_id="u1",
+            storage_key="key",
+        )
+
+        coordinator.init_db = AsyncMock()
+        coordinator._init_context = AsyncMock(return_value=ctx)
+        coordinator._update_status = AsyncMock()
+        coordinator._ensure_task_active = AsyncMock(
+            side_effect=[
+                None,
+                None,
+                None,
+                TaskCancelledError("cancelled before storage"),
+            ]
+        )
+        coordinator.storage.download_file = AsyncMock()
+        coordinator.parser.parse_pdf = AsyncMock(
+            return_value={"pages": [], "items": [], "markdown": "", "page_count": 0}
+        )
+        coordinator.extraction_pipeline.extract = AsyncMock(return_value=ctx)
+        coordinator._storage_manager = Mock(spec=StorageManager)
+        coordinator._storage_manager.store = AsyncMock(return_value=ctx)
+
+        result = await coordinator.process("test-task")
+
+        assert result is False
+        coordinator._storage_manager.store.assert_not_called()
+        assert not any(
+            call.args[1] in {"failed", "completed"}
+            for call in coordinator._update_status.await_args_list
+        )

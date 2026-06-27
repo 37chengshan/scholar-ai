@@ -1,15 +1,7 @@
-"""Unit tests for ExtractionPipeline.
-
-Tests for the parallel extraction pipeline:
-- Pipeline initialization with ThreadPoolExecutor
-- Singleton pattern
-- Successful parallel extraction
-- Critical failure blocking (IMRaD/Metadata)
-- Auxiliary failure degradation (Images/Tables)
-"""
+"""Unit tests for the current ExtractionPipeline behavior."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.workers.extraction_pipeline import (
     ExtractionPipeline,
@@ -21,6 +13,18 @@ from app.workers.pipeline_context import PipelineContext, PipelineStage
 
 class TestExtractionPipeline:
     """Tests for ExtractionPipeline class."""
+
+    @staticmethod
+    def _build_context():
+        ctx = PipelineContext(
+            task_id="test-task",
+            paper_id="test-paper",
+            user_id="test-user",
+            storage_key="test-key",
+        )
+        ctx.parse_result = {"items": [], "markdown": ""}
+        ctx.local_path = "/tmp/test.pdf"
+        return ctx
 
     def test_pipeline_init(self):
         """Test pipeline initialization."""
@@ -45,7 +49,7 @@ class TestExtractionPipeline:
             task_id="test-task",
             paper_id="test-paper",
             user_id="test-user",
-            storage_key="test-key"
+            storage_key="test-key",
         )
 
         ctx.parse_result = {"items": [], "markdown": ""}
@@ -79,12 +83,13 @@ class TestExtractionPipeline:
     async def test_parallel_extraction_success(self):
         """Test successful parallel extraction."""
         pipeline = ExtractionPipeline()
+        pipeline.qwen3vl = MagicMock()
 
         ctx = PipelineContext(
             task_id="test-task",
             paper_id="test-paper",
             user_id="test-user",
-            storage_key="test-key"
+            storage_key="test-key",
         )
 
         # Mock parse result
@@ -111,42 +116,34 @@ class TestExtractionPipeline:
 
     @pytest.mark.asyncio
     async def test_critical_failure_blocks(self):
-        """Test that IMRaD failure raises PipelineError."""
+        """Test that IMRaD failure raises once fallback also fails."""
         pipeline = ExtractionPipeline()
+        pipeline.qwen3vl = MagicMock()
+        ctx = self._build_context()
 
-        ctx = PipelineContext(
-            task_id="test-task",
-            paper_id="test-paper",
-            user_id="test-user",
-            storage_key="test-key"
-        )
-
-        ctx.parse_result = {"items": [], "markdown": ""}
-        ctx.local_path = "/tmp/test.pdf"
-
-        # Mock IMRaD to fail
-        with patch('app.workers.extraction_pipeline.extract_imrad_enhanced', new_callable=AsyncMock) as mock_imrad:
-            mock_imrad.side_effect = Exception("IMRaD failed")
-
+        with patch(
+            "app.workers.extraction_pipeline.extract_imrad_enhanced",
+            new_callable=AsyncMock,
+            side_effect=Exception("IMRaD failed"),
+        ), patch(
+            "app.workers.extraction_pipeline.extract_imrad_structure",
+            side_effect=Exception("Fallback failed"),
+        ), patch(
+            "app.workers.extraction_pipeline.extract_metadata",
+            return_value={},
+        ):
             with pytest.raises(PipelineError) as exc_info:
                 await pipeline.extract(ctx)
 
-            assert "IMRaD extraction failed" in str(exc_info.value)
+        assert "IMRaD extraction failed" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_metadata_failure_blocks(self):
         """Test that metadata failure raises PipelineError."""
         pipeline = ExtractionPipeline()
+        pipeline.qwen3vl = MagicMock()
 
-        ctx = PipelineContext(
-            task_id="test-task",
-            paper_id="test-paper",
-            user_id="test-user",
-            storage_key="test-key"
-        )
-
-        ctx.parse_result = {"items": [], "markdown": ""}
-        ctx.local_path = "/tmp/test.pdf"
+        ctx = self._build_context()
 
         # Mock IMRaD to succeed, metadata to fail
         # Note: IMRaD extraction calls extract_metadata internally for paper_metadata,
@@ -171,16 +168,8 @@ class TestExtractionPipeline:
     async def test_auxiliary_failure_degrades(self):
         """Test that image/table failures don't block pipeline."""
         pipeline = ExtractionPipeline()
-
-        ctx = PipelineContext(
-            task_id="test-task",
-            paper_id="test-paper",
-            user_id="test-user",
-            storage_key="test-key"
-        )
-
-        ctx.parse_result = {"items": [], "markdown": ""}
-        ctx.local_path = "/tmp/test.pdf"
+        pipeline.qwen3vl = MagicMock()
+        ctx = self._build_context()
 
         # Mock everything to work except images
         with patch.object(pipeline.image_extractor, 'extract_images_from_pdf', side_effect=Exception("Image error")):
@@ -194,22 +183,16 @@ class TestExtractionPipeline:
                         assert result.metadata is not None
                         assert result.image_results == []
                         assert len(result.errors) > 0
-                        assert "Images extraction failed" in result.errors[0]
+                        assert any(
+                            "Images extraction failed" in error for error in result.errors
+                        )
 
     @pytest.mark.asyncio
     async def test_table_failure_degrades(self):
         """Test that table failures don't block pipeline."""
         pipeline = ExtractionPipeline()
-
-        ctx = PipelineContext(
-            task_id="test-task",
-            paper_id="test-paper",
-            user_id="test-user",
-            storage_key="test-key"
-        )
-
-        ctx.parse_result = {"items": [], "markdown": ""}
-        ctx.local_path = "/tmp/test.pdf"
+        pipeline.qwen3vl = MagicMock()
+        ctx = self._build_context()
 
         # Mock everything to work except tables
         with patch.object(pipeline.image_extractor, 'extract_images_from_pdf', return_value=[]):
@@ -223,18 +206,21 @@ class TestExtractionPipeline:
                         assert result.metadata is not None
                         assert result.table_results == []
                         assert len(result.errors) > 0
-                        assert "Tables extraction failed" in result.errors[0]
+                        assert any(
+                            "Tables extraction failed" in error for error in result.errors
+                        )
 
     @pytest.mark.asyncio
     async def test_context_updated_with_results(self):
         """Test that context is properly updated with extraction results."""
         pipeline = ExtractionPipeline()
+        pipeline.qwen3vl = MagicMock()
 
         ctx = PipelineContext(
             task_id="test-task",
             paper_id="test-paper",
             user_id="test-user",
-            storage_key="test-key"
+            storage_key="test-key",
         )
 
         ctx.parse_result = {"items": [], "markdown": ""}

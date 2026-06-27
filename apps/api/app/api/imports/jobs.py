@@ -28,6 +28,7 @@ from app.database import get_db
 from app.deps import CurrentUserId
 from app.models.knowledge_base import KnowledgeBase
 from app.services.import_job_service import ImportJobService
+from app.services.task_service import TaskService
 from app.utils.problem_detail import Errors
 from app.utils.logger import logger
 
@@ -570,6 +571,13 @@ async def cancel_import_job(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=Errors.validation("Cannot cancel completed or already cancelled job"),
             )
+
+        if getattr(job, "processing_task_id", None):
+            try:
+                await TaskService.cancel_task(db, job.processing_task_id, user_id)
+            except RuntimeError as exc:
+                if "Cannot cancel task in status:" not in str(exc):
+                    raise
 
         # Use service method for consistent state update
         await service.set_cancelled(job, db)

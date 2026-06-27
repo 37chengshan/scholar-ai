@@ -9,5 +9,5 @@ def test_citation_source_endpoint() -> None:
 
     assert "@router.get(\"/source/{source_chunk_id}\")" in content
     assert "def get_evidence_source" in content
-    assert "read_url" in content
+    assert "resolve_evidence_source" in content
     assert "source_chunk_id" in content

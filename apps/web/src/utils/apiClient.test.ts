@@ -337,6 +337,41 @@ describe('apiClient', () => {
     }
   });
 
+  it('should preserve top-level meta when unwrapping enveloped objects', async () => {
+    const wrappedResponse = {
+      data: {
+        success: true,
+        data: {
+          items: [{ id: 'draft-1' }],
+        },
+        meta: {
+          total: 1,
+          limit: 20,
+          offset: 0,
+        },
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as InternalAxiosRequestConfig,
+    };
+
+    const interceptor = getFulfilledInterceptor();
+
+    if (interceptor) {
+      const result = await Promise.resolve(interceptor(wrappedResponse));
+
+      expect(result.data).toEqual({
+        items: [{ id: 'draft-1' }],
+        meta: {
+          total: 1,
+          limit: 20,
+          offset: 0,
+        },
+      });
+    }
+  });
+
   it('should use fallback error message when detail not available', async () => {
     const toastErrorSpy = vi.spyOn(toast, 'error');
 

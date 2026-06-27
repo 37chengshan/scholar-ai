@@ -6,7 +6,7 @@ Provides task querying and control for PDF processing and long-running jobs.
 from __future__ import annotations
 
 import inspect
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -227,8 +227,14 @@ async def retry_task(
 ):
     try:
         task = await TaskService.retry_task(db, task_id, current_user.id)
+        if task.task_type != "pdf_processing":
+            raise RuntimeError(f"Unsupported task type for retry: {task.task_type}")
         await db.commit()
         await db.refresh(task)
+
+        from app.tasks.pdf_tasks import process_single_pdf_task
+
+        process_single_pdf_task.delay(task.paper_id, task.id)
     except ValueError as exc:
         await db.rollback()
         message = str(exc)
@@ -237,6 +243,23 @@ async def retry_task(
     except PermissionError as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        task.status = "failed"
+        task.failure_code = "QUEUE_SUBMIT_FAILED"
+        task.failure_message = "Failed to enqueue retry task"
+        task.error_message = "Failed to enqueue retry task"
+        task.updated_at = datetime.now(timezone.utc)
+        if task.paper:
+            task.paper.status = "failed"
+            task.paper.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to enqueue retry task",
+        ) from exc
 
     return APIResponse(
         success=True,

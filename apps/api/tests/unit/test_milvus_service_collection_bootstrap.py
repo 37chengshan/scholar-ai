@@ -4,7 +4,13 @@ from unittest.mock import Mock, patch
 
 from pymilvus.exceptions import MilvusException
 
-from app.core.milvus_service import MilvusService
+import pytest
+
+from app.core.milvus_service import (
+    MilvusCollectionSchemaMismatchError,
+    MilvusInsertContractError,
+    MilvusService,
+)
 from app.config import settings
 
 
@@ -116,8 +122,8 @@ def test_get_collection_retries_when_constructor_reports_missing_collection():
     assert mock_collection.call_count == 2
 
 
-def test_get_collection_recreates_contents_v2_when_embedding_dim_mismatch():
-    """Content v2 collection should self-heal when schema dim drifts from runtime."""
+def test_get_collection_fails_fast_when_embedding_dim_mismatch():
+    """Content v2 collection drift should fail fast instead of auto-dropping data."""
     service = MilvusService()
     service._connected = True
     service.embedding_dim = 1024
@@ -139,14 +145,57 @@ def test_get_collection_recreates_contents_v2_when_embedding_dim_mismatch():
             with patch.object(service, "create_collection_v2") as mock_create:
                 with patch(
                     "app.core.milvus_service.Collection",
-                    side_effect=[mismatched_collection, recreated_collection],
-                ) as mock_collection:
-                    collection = service.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
+                    return_value=mismatched_collection,
+                ):
+                    with pytest.raises(MilvusCollectionSchemaMismatchError):
+                        service.get_collection(settings.MILVUS_COLLECTION_CONTENTS_V2)
 
-    assert collection is recreated_collection
-    mock_drop.assert_called_once_with(settings.MILVUS_COLLECTION_CONTENTS_V2)
-    mock_create.assert_called_once()
-    assert mock_collection.call_count == 2
+    mock_drop.assert_not_called()
+    mock_create.assert_not_called()
+
+
+def test_insert_contents_batched_strict_mode_raises_on_partial_fallback_failure():
+    """Strict insert should fail closed when fallback only inserts part of the batch."""
+    service = MilvusService()
+    service._connected = True
+
+    collection = Mock()
+    collection.schema.fields = []
+    collection.insert.side_effect = [
+        Exception("batch failed"),
+        Mock(primary_keys=[101]),
+        Exception("row failed"),
+    ]
+
+    with patch.object(service, "get_collection", return_value=collection):
+        with pytest.raises(MilvusInsertContractError):
+            service.insert_contents_batched(
+                [
+                    {
+                        "paper_id": "p1",
+                        "user_id": "u1",
+                        "content_type": "text",
+                        "page_num": 1,
+                        "text": "hello world",
+                        "content_data": "hello world",
+                        "embedding": [0.1] * service.embedding_dim,
+                        "raw_data": {},
+                    },
+                    {
+                        "paper_id": "p1",
+                        "user_id": "u1",
+                        "content_type": "text",
+                        "page_num": 2,
+                        "text": "second row",
+                        "content_data": "second row",
+                        "embedding": [0.2] * service.embedding_dim,
+                        "raw_data": {},
+                    },
+                ],
+                batch_size=2,
+                max_retries=1,
+                strict=True,
+            )
 
 
 def test_search_summaries_falls_back_to_query_on_unsupported_field_type():

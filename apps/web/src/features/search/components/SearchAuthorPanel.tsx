@@ -1,4 +1,10 @@
-import { motion } from 'motion/react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/app/components/ui/dialog';
 import { AuthorPaper, AuthorSearchResult } from '@/services/searchApi';
 
 interface SearchAuthorPanelProps {
@@ -17,8 +23,9 @@ interface SearchAuthorPanelProps {
     id: string;
     title: string;
     year?: number;
-    source: 's2';
+    source: 'semantic_scholar';
     externalId: string;
+    s2PaperId: string;
   }) => void;
 }
 
@@ -36,19 +43,17 @@ export function SearchAuthorPanel({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-card border border-border rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden"
-      >
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-serif font-bold text-lg">
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <DialogContent className="w-full max-w-2xl overflow-hidden p-0">
+        <DialogHeader className="border-b border-border px-6 py-4 text-left">
+          <DialogTitle className="font-serif text-lg font-bold">
             {selectedAuthor?.name} ({authorPapers.length})
-          </h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
-        </div>
-        <div className="overflow-y-auto p-6 space-y-3 max-h-[60vh]">
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Browse this author&apos;s papers and import one into your knowledge base.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-y-auto p-6 space-y-3">
           {loadingAuthorPapers ? (
             <div className="flex items-center justify-center py-8">
               <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -68,8 +73,9 @@ export function SearchAuthorPanel({
                     id: paper.paperId,
                     title: paper.title,
                     year: paper.year,
-                    source: 's2',
+                    source: 'semantic_scholar',
                     externalId: paper.paperId,
+                    s2PaperId: paper.paperId,
                   })}
                   className="px-3 py-1 bg-primary text-primary-foreground rounded-sm text-[9px] font-bold uppercase tracking-[0.1em] hover:bg-primary/90 transition-colors"
                 >
@@ -83,7 +89,7 @@ export function SearchAuthorPanel({
             </div>
           )}
         </div>
-      </motion.div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

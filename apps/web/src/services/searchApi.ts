@@ -146,16 +146,18 @@ export async function unified(
   offset: number = 0,
   year_from?: number,
   year_to?: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  source: 'all' | 'internal' | 'arxiv' | 'semantic_scholar' = 'all',
 ): Promise<{
   query: string;
+  source?: 'all' | 'internal' | 'arxiv' | 'semantic_scholar';
   results: Array<{
     id: string;
     title: string;
     authors?: string[];
     abstract?: string;
     year?: number;
-    source: 'internal' | 'arxiv' | 's2' | 'semantic_scholar';
+    source: 'internal' | 'arxiv' | 'semantic_scholar';
     paperId?: string;
     externalId?: string;
     pdfUrl?: string;
@@ -180,6 +182,11 @@ export async function unified(
     year_from: number | null;
     year_to: number | null;
   };
+  meta?: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
 }> {
   const params = new URLSearchParams();
   params.append('query', query);
@@ -187,16 +194,18 @@ export async function unified(
   params.append('offset', offset.toString());
   if (year_from) params.append('year_from', year_from.toString());
   if (year_to) params.append('year_to', year_to.toString());
+  if (source !== 'all') params.append('source', source);
 
   const response = await apiClient.get<{
     query: string;
+    source?: 'all' | 'internal' | 'arxiv' | 'semantic_scholar';
     results: Array<{
       id: string;
       title: string;
       authors?: string[];
       abstract?: string;
       year?: number;
-      source: 'internal' | 'arxiv' | 's2' | 'semantic_scholar';
+      source: 'internal' | 'arxiv' | 'semantic_scholar';
       paperId?: string;
       externalId?: string;
       pdfUrl?: string;
@@ -221,11 +230,23 @@ export async function unified(
       year_from: number | null;
       year_to: number | null;
     };
+    meta?: {
+      total: number;
+      limit: number;
+      offset: number;
+    };
   }>(`/api/v1/search/unified?${params.toString()}`, {
     signal,
   });
 
-  return response.data;
+  return {
+    ...response.data,
+    results: (response.data.results || []).map((result) => ({
+      ...result,
+      source: (result.source as string) === 's2' ? 'semantic_scholar' : result.source,
+    })),
+    meta: response.data.meta,
+  };
 }
 
 export interface LayeredEvidenceSearchResult {

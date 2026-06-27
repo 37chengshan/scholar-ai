@@ -1,9 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ComposerInput } from './ComposerInput';
 
 describe('ComposerInput', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('switches mode and sends message', async () => {
     const user = userEvent.setup();
     const onModeChange = vi.fn();
@@ -43,5 +47,63 @@ describe('ComposerInput', () => {
     expect(sendButton).toHaveLength(1);
     await user.click(sendButton[0]);
     expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders border beam while streaming when motion is allowed', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+
+    render(
+      <ComposerInput
+        scopeType={'full_kb'}
+        isZh={true}
+        mode={'auto'}
+        input={'hello'}
+        disabled={false}
+        streaming
+        placeholder={'输入...'}
+        labels={{ mode: '模式', verify: '请验证输出结果。', sendKeyHint: '↵ 发送' }}
+        onModeChange={vi.fn()}
+        onInputChange={vi.fn()}
+        onKeyDown={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('chat-composer-beam')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-composer')).toBeInTheDocument();
+  });
+
+  it('skips border beam when reduced motion is preferred', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+
+    render(
+      <ComposerInput
+        scopeType={'full_kb'}
+        isZh={true}
+        mode={'auto'}
+        input={'hello'}
+        disabled={false}
+        streaming
+        placeholder={'输入...'}
+        labels={{ mode: '模式', verify: '请验证输出结果。', sendKeyHint: '↵ 发送' }}
+        onModeChange={vi.fn()}
+        onInputChange={vi.fn()}
+        onKeyDown={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId('chat-composer-beam')).not.toBeInTheDocument();
+    expect(screen.getByTestId('chat-composer')).toBeInTheDocument();
   });
 });

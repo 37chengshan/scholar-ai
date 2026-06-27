@@ -25,32 +25,8 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: bash scripts/check-pr-template-body.sh
 
-      - name: Run runtime hygiene check
-        run: bash scripts/check-runtime-hygiene.sh tracked
-
-      - name: Run doc governance check
-        run: bash scripts/check-doc-governance.sh
-
-      - name: Run structure boundary check
-        run: bash scripts/check-structure-boundaries.sh
-
-      - name: Run code boundary check
-        run: bash scripts/check-code-boundaries.sh
-
-      - name: Run phase tracking check
-        run: bash scripts/check-phase-tracking.sh
-
-      - name: Run branch lifecycle check
-        run: bash scripts/check-branch-lifecycle.sh
-
-      - name: Run contract gate check
-        run: bash scripts/check-contract-gate.sh
-
-      - name: Run fallback expiry check
-        run: bash scripts/check-fallback-expiry.sh
-
-      - name: Run E2E gate manifest check
-        run: bash scripts/check-e2e-gate.sh --mode manifest
+      - name: Run governance baseline
+        run: bash scripts/check-governance.sh
 
   web:
     name: Web Typecheck and Tests

@@ -33,7 +33,11 @@ class TestEmbeddingConfiguration:
     def test_reranker_model_configured(self):
         """RERANKER_MODEL should be configured."""
         assert hasattr(settings, "RERANKER_MODEL")
-        assert settings.RERANKER_MODEL in ["bge-reranker", "qwen3-vl-reranker"]
+        assert settings.RERANKER_MODEL in [
+            "bge-reranker",
+            "qwen3-vl-reranker",
+            "qwen_rerank",
+        ]
 
     def test_reranker_quantization_configured(self):
         """RERANKER_QUANTIZATION should be configured."""

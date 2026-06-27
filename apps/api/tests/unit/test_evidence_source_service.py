@@ -43,9 +43,15 @@ async def test_resolve_evidence_source_prefers_sql_chunk_rows() -> None:
 @pytest.mark.asyncio
 async def test_resolve_evidence_source_falls_back_to_artifact_payload() -> None:
     db = AsyncMock()
-    db.execute = AsyncMock(return_value=SimpleNamespace(first=lambda: None))
+    db.execute = AsyncMock(
+        side_effect=[
+            SimpleNamespace(first=lambda: None),
+            SimpleNamespace(scalar_one_or_none=lambda: "paper-123"),
+        ]
+    )
     payload = {
         "source_chunk_id": "artifact-chunk-1",
+        "paper_id": "paper-123",
         "content": "artifact payload",
     }
 
@@ -61,3 +67,31 @@ async def test_resolve_evidence_source_falls_back_to_artifact_payload() -> None:
 
     assert response == payload
     mocked_fallback.assert_called_once_with("artifact-chunk-1")
+
+
+@pytest.mark.asyncio
+async def test_resolve_evidence_source_denies_artifact_payload_for_other_user() -> None:
+    db = AsyncMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            SimpleNamespace(first=lambda: None),
+            SimpleNamespace(scalar_one_or_none=lambda: None),
+        ]
+    )
+    payload = {
+        "source_chunk_id": "artifact-chunk-1",
+        "paper_id": "paper-foreign",
+        "content": "artifact payload",
+    }
+
+    with patch(
+        "app.services.evidence_source_service.get_evidence_source_payload",
+        return_value=payload,
+    ):
+        response = await resolve_evidence_source(
+            db,
+            source_chunk_id="artifact-chunk-1",
+            user_id="user-123",
+        )
+
+    assert response is None
