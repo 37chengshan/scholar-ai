@@ -46,7 +46,7 @@ export function EvidencePanel({ contract, onJumpCitation, onOpenSource, onSaveEv
         ))}
       </div>
 
-      {errorStateLabel ? <div className="mt-1 text-[11px] text-rose-700">{errorStateLabel}</div> : null}
+      {errorStateLabel ? <div className="mt-1 text-[11px] text-destructive">{errorStateLabel}</div> : null}
     </section>
   );
 }

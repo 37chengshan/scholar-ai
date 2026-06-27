@@ -75,7 +75,7 @@ export function CompareSidebar({
               <span className="ml-1 text-xs text-muted-foreground">({selectedPapers.length}/10)</span>
             </h3>
             {selectionNotice ? (
-              <p className="mb-2 rounded-lg border border-amber-300/60 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">
+              <p className="mb-2 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-2 py-1.5 text-[11px] text-foreground">
                 {selectionNotice}
               </p>
             ) : null}

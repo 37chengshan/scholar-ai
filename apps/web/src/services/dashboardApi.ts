@@ -14,12 +14,9 @@ export interface RecentPaperProgress {
 }
 
 export async function getRecentPapers(limit = 5): Promise<RecentPaperProgress[]> {
-  const response = await apiClient.get<{
-    success?: boolean;
-    data?: RecentPaperProgress[];
-  }>('/api/v1/dashboard/recent-papers', {
+  const response = await apiClient.get<RecentPaperProgress[]>('/api/v1/dashboard/recent-papers', {
     params: { limit },
   });
 
-  return response.data?.data || [];
+  return response.data || [];
 }

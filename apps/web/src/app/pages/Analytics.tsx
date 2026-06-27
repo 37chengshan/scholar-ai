@@ -81,15 +81,15 @@ function RunBadge({ mode, isZh }: { mode: 'offline' | 'online'; isZh: boolean })
   return (
     <span className={clsx(
       'inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm',
-      mode === 'offline' ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500',
+      mode === 'offline' ? 'bg-[var(--color-info)]/10 text-[var(--color-info)]' : 'bg-[var(--color-category-nlp)]/10 text-[var(--color-category-nlp)]',
     )}>{isZh ? (mode === 'offline' ? '离线' : '在线') : mode}</span>
   );
 }
 
 function VerdictBadge({ verdict, isZh }: { verdict: EvalRunVerdict; isZh: boolean }) {
-  const cls = verdict === 'PASS' ? 'bg-green-500/10 text-green-600'
-            : verdict === 'FAIL' ? 'bg-red-500/10 text-red-600'
-            : 'bg-yellow-500/10 text-yellow-600';
+  const cls = verdict === 'PASS' ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
+            : verdict === 'FAIL' ? 'bg-destructive/10 text-destructive'
+            : 'bg-[var(--color-warning)]/10 text-[var(--color-warning)]';
   const Icon = verdict === 'PASS' ? CheckCircle2 : verdict === 'FAIL' ? XCircle : AlertTriangle;
   return (
     <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-sm', cls)}>
@@ -99,8 +99,8 @@ function VerdictBadge({ verdict, isZh }: { verdict: EvalRunVerdict; isZh: boolea
 }
 
 function DeltaIcon({ status }: { status: MetricDeltaStatus }) {
-  if (status === 'improved') return <ArrowUpRight className="h-3.5 w-3.5 text-green-500" />;
-  if (status === 'regressed') return <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />;
+  if (status === 'improved') return <ArrowUpRight className="h-3.5 w-3.5 text-[var(--color-success)]" />;
+  if (status === 'regressed') return <ArrowDownRight className="h-3.5 w-3.5 text-destructive" />;
   return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
 }
 
@@ -114,15 +114,15 @@ function FamilyChart({ byFamily, isZh }: { byFamily: BenchmarkRunDetail['by_fami
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
-        <XAxis dataKey="name" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} />
-        <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `${v}%`} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.4} />
+        <XAxis dataKey="name" tick={{ fontSize: 9, fill: 'var(--color-muted-foreground)' }} />
+        <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: 'var(--color-muted-foreground)' }} tickFormatter={(v) => `${v}%`} />
         <Tooltip
-          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 4, fontSize: 11 }}
+          contentStyle={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 4, fontSize: 11 }}
           formatter={(v: number, name: string) => [`${v}%`, name === 'recall5' ? 'Recall@5' : (isZh ? '回答有据率' : 'Ans Supported')]}
         />
-        <Bar dataKey="recall5" fill="hsl(var(--primary))" opacity={0.85} radius={[2, 2, 0, 0]} />
-        <Bar dataKey="supported" fill="oklch(0.625 0.175 145)" opacity={0.85} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="recall5" fill="var(--color-primary)" opacity={0.85} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="supported" fill="var(--color-success)" opacity={0.85} radius={[2, 2, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -229,12 +229,12 @@ export function Analytics() {
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
         {loading && (
-          <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+          <div className="flex items-center justify-center h-48 text-muted-foreground text-sm" role="status" aria-live="polite">
             <Activity className="h-4 w-4 animate-spin mr-2" />{isZh ? '加载中...' : 'Loading...'}
           </div>
         )}
         {!loading && error && (
-          <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-md text-red-600 text-sm">
+          <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm" role="alert">
             <XCircle className="h-4 w-4 flex-shrink-0" />{error}
           </div>
         )}
@@ -281,19 +281,19 @@ export function Analytics() {
                           <div className="p-2 bg-primary/10 rounded-lg"><Icon className="h-4 w-4 text-primary" /></div>
                           <span className="text-xs font-medium text-muted-foreground">{label}</span>
                         </div>
-                        <div className="text-2xl font-black tracking-tight font-mono font-serif">{value}</div>
+                        <div className="text-2xl font-black tracking-tight font-serif tabular-nums">{value}</div>
                         <div className="text-xs text-muted-foreground">{sub}</div>
                       </div>
                     ))}
                   </div>
                   {gate.gate_failures.length > 0 && (
-                    <div className="mt-3 p-3 bg-red-500/5 border border-red-500/20 rounded-md">
+                    <div className="mt-3 p-3 bg-destructive/5 border border-destructive/20 rounded-md">
                       <div className="flex items-center gap-1.5 mb-2">
-                        <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                        <span className="text-xs font-bold text-red-600">{isZh ? '门禁失败项' : 'Gate Failures'}</span>
+                        <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                        <span className="text-xs font-bold text-destructive">{isZh ? '门禁失败项' : 'Gate Failures'}</span>
                       </div>
                       <ul className="space-y-0.5">{gate.gate_failures.map((f, i) => (
-                        <li key={i} className="text-xs text-red-600 font-mono">{f}</li>
+                        <li key={i} className="text-xs text-destructive font-mono">{f}</li>
                       ))}</ul>
                     </div>
                   )}
@@ -400,7 +400,7 @@ export function Analytics() {
                   <FamilyChart byFamily={selected.by_family} isZh={isZh} />
                   <div className="flex gap-4 mt-2 justify-center text-[10px] text-muted-foreground">
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-primary opacity-80 inline-block" />Recall@5</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-green-500 opacity-80 inline-block" />{isZh ? '回答有据率' : 'Answer Supported'}</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--color-success)] opacity-80 inline-block" />{isZh ? '回答有据率' : 'Answer Supported'}</span>
                   </div>
                 </div>
               </section>
@@ -412,8 +412,8 @@ export function Analytics() {
                   {isZh ? '对比报告' : 'Diff Report'} · <span>{summarizeRunLabel(diff.base_run_id, isZh)}</span>{' \u2192 '}<span>{summarizeRunLabel(diff.candidate_run_id, isZh)}</span>
                 </h2>
                 <div className="flex items-center gap-4 mb-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1 text-green-600 font-medium"><TrendingUp className="h-3.5 w-3.5" />{diff.summary.improved} {isZh ? '改进' : 'improved'}</span>
-                  <span className="flex items-center gap-1 text-red-600 font-medium"><TrendingDown className="h-3.5 w-3.5" />{diff.summary.regressed} {isZh ? '退化' : 'regressed'}</span>
+                  <span className="flex items-center gap-1 text-[var(--color-success)] font-medium"><TrendingUp className="h-3.5 w-3.5" />{diff.summary.improved} {isZh ? '改进' : 'improved'}</span>
+                  <span className="flex items-center gap-1 text-destructive font-medium"><TrendingDown className="h-3.5 w-3.5" />{diff.summary.regressed} {isZh ? '退化' : 'regressed'}</span>
                   <span className="flex items-center gap-1"><Minus className="h-3.5 w-3.5" />{diff.summary.unchanged} {isZh ? '未变' : 'unchanged'}</span>
                 </div>
                 <div className="border border-border/60 rounded-md overflow-hidden">
@@ -438,7 +438,7 @@ export function Analytics() {
                             <td className="py-2 px-3">
                               <div className="flex items-center justify-end gap-1">
                                 <DeltaIcon status={d.status} />
-                                <span className={clsx('text-xs font-mono', d.status === 'improved' ? 'text-green-500' : d.status === 'regressed' ? 'text-red-500' : 'text-muted-foreground')}>
+                                <span className={clsx('text-xs font-mono', d.status === 'improved' ? 'text-[var(--color-success)]' : d.status === 'regressed' ? 'text-destructive' : 'text-muted-foreground')}>
                                   {d.delta >= 0 ? '+' : ''}{cfg.fmt(Math.abs(d.delta))}
                                 </span>
                               </div>
@@ -457,7 +457,7 @@ export function Analytics() {
                 <Zap className="h-3.5 w-3.5 flex-shrink-0" />
                 <span>
                   {isZh ? '重排器' : 'Reranker'}: <strong>{selected.meta.reranker === 'on' ? 'ON' : 'OFF'}</strong>
-                  {selected.metrics.rerank_gain > 0 && <> {' \xb7 '}{isZh ? '增益' : 'Gain'}: <strong className="text-green-600">{pct(selected.metrics.rerank_gain)}</strong></>}
+                  {selected.metrics.rerank_gain > 0 && <> {' \xb7 '}{isZh ? '增益' : 'Gain'}: <strong className="text-[var(--color-success)]">{pct(selected.metrics.rerank_gain)}</strong></>}
                   {' \xb7 '}{isZh ? '拒答准确率' : 'Abstain precision'}: <strong>{pct(selected.metrics.abstain_precision)}</strong>
                   {' \xb7 '}{isZh ? '引文跳转有效率' : 'Citation jump valid'}: <strong>{pct(selected.metrics.citation_jump_valid_rate)}</strong>
                   {' \xb7 '}{isZh ? '单次回答成本' : 'Cost/answer'}: <strong>{usd(selected.metrics.cost_per_answer)}</strong>

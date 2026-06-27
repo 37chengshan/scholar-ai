@@ -36,7 +36,7 @@ const navCards: NavCard[] = [
     labelEn: 'Search',
     descZh: '发现论文、导入知识库、继续研究链',
     descEn: 'Discover papers and move them into the research loop',
-    accent: 'from-amber-500/10 to-amber-500/5',
+    accent: 'from-[var(--color-warning)]/10 to-[var(--color-warning)]/5',
   },
   {
     to: '/knowledge-bases',
@@ -45,7 +45,7 @@ const navCards: NavCard[] = [
     labelEn: 'Knowledge Base',
     descZh: '查看导入状态、索引状态和就绪情况',
     descEn: 'Track imports, indexing, and readiness',
-    accent: 'from-teal-600/10 to-teal-600/5',
+    accent: 'from-[var(--color-info)]/10 to-[var(--color-info)]/5',
   },
   {
     to: '/chat',
@@ -63,7 +63,7 @@ const navCards: NavCard[] = [
     labelEn: 'Notes',
     descZh: '沉淀证据、观点与后续行动',
     descEn: 'Capture evidence, conclusions, and next steps',
-    accent: 'from-violet-500/10 to-violet-500/5',
+    accent: 'from-[var(--color-category-nlp)]/10 to-[var(--color-category-nlp)]/5',
   },
 ];
 
@@ -84,25 +84,25 @@ const categoryMeta: Record<
   },
   kb: {
     icon: LibraryBig,
-    accent: 'from-teal-600/12 to-teal-600/5',
+    accent: 'from-[var(--color-info)]/12 to-[var(--color-info)]/5',
     labelZh: '进行中的知识库工作',
     labelEn: 'Knowledge Base',
   },
   read: {
     icon: BookOpen,
-    accent: 'from-amber-500/12 to-amber-500/5',
+    accent: 'from-[var(--color-warning)]/12 to-[var(--color-warning)]/5',
     labelZh: '最近可继续阅读',
     labelEn: 'Resume Reading',
   },
   review: {
     icon: Compass,
-    accent: 'from-rose-500/12 to-rose-500/5',
+    accent: 'from-destructive/12 to-destructive/5',
     labelZh: '综述 / 比较',
     labelEn: 'Review / Compare',
   },
   compare: {
     icon: Compass,
-    accent: 'from-rose-500/12 to-rose-500/5',
+    accent: 'from-destructive/12 to-destructive/5',
     labelZh: '综述 / 比较',
     labelEn: 'Review / Compare',
   },
@@ -125,10 +125,10 @@ function CommandCard({ item, isZh }: { item: ResearchCommandItem; isZh: boolean 
         <span
           className={clsx(
             'rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]',
-            item.priority === 'blocked' && 'border-rose-500/30 bg-rose-500/10 text-rose-700',
-            item.priority === 'active' && 'border-blue-500/30 bg-blue-500/10 text-blue-700',
-            item.priority === 'ready' && 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700',
-            item.priority === 'recent' && 'border-amber-500/30 bg-amber-500/10 text-amber-700',
+            item.priority === 'blocked' && 'border-destructive/30 bg-destructive/10 text-destructive',
+            item.priority === 'active' && 'border-[var(--color-info)]/30 bg-[var(--color-info)]/10 text-[var(--color-info)]',
+            item.priority === 'ready' && 'border-[var(--color-success)]/30 bg-[var(--color-success)]/10 text-[var(--color-success)]',
+            item.priority === 'recent' && 'border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 text-[var(--color-warning)]',
           )}
         >
           {item.statusLabel}

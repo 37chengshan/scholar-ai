@@ -3,11 +3,11 @@ import { useWorkflowCurrentRun } from '@/features/workflow/state/workflowSelecto
 import { useLanguage } from '@/app/contexts/LanguageContext';
 
 const badgeClassByTone = {
-  default: 'bg-sky-100 text-sky-700 border-sky-200',
-  success: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  warning: 'bg-amber-100 text-amber-700 border-amber-200',
-  danger: 'bg-rose-100 text-rose-700 border-rose-200',
-  muted: 'bg-stone-100 text-stone-600 border-stone-200',
+  default: 'bg-[var(--color-info)]/10 text-[var(--color-info)] border-[var(--color-info)]/30',
+  success: 'bg-[var(--color-success)]/10 text-[var(--color-success)] border-[var(--color-success)]/30',
+  warning: 'bg-[var(--color-warning)]/10 text-[var(--color-warning)] border-[var(--color-warning)]/30',
+  danger: 'bg-destructive/10 text-destructive border-destructive/30',
+  muted: 'bg-muted text-muted-foreground border-border/70',
 } as const;
 
 export function CurrentRunBar() {
@@ -35,7 +35,7 @@ export function CurrentRunBar() {
         <span className="text-xs text-muted-foreground">{run.stage.split('_').join(' ')}</span>
       </div>
       {run.nextAction ? <div className="mt-2 text-xs text-muted-foreground">{isZh ? `下一步：${run.nextAction}` : `Next: ${run.nextAction}`}</div> : null}
-      {run.error ? <div className="mt-2 text-xs text-rose-600">{isZh ? `错误：${run.error}` : `Error: ${run.error}`}</div> : null}
+      {run.error ? <div className="mt-2 text-xs text-destructive">{isZh ? `错误：${run.error}` : `Error: ${run.error}`}</div> : null}
     </div>
   );
 }

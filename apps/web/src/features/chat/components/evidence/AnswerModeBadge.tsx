@@ -5,9 +5,9 @@ interface AnswerModeBadgeProps {
 }
 
 const modeStyles: Record<AnswerModeBadgeProps['mode'], string> = {
-  full: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/40',
-  partial: 'bg-amber-500/15 text-amber-700 border-amber-500/40',
-  abstain: 'bg-rose-500/15 text-rose-700 border-rose-500/40',
+  full: 'bg-[var(--color-success)]/15 text-[var(--color-success)] border-[var(--color-success)]/40',
+  partial: 'bg-[var(--color-warning)]/15 text-[var(--color-warning)] border-[var(--color-warning)]/40',
+  abstain: 'bg-destructive/15 text-destructive border-destructive/40',
 };
 
 export function AnswerModeBadge({ mode }: AnswerModeBadgeProps) {

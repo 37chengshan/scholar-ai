@@ -24,12 +24,15 @@ import { useUploadWorkspaceStore } from '@/features/uploads/state/uploadWorkspac
 import { useBatchUpload } from '@/features/uploads/hooks/useBatchUpload';
 import { importApi } from '@/services/importApi';
 import { toast } from 'sonner';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const BATCH_THRESHOLD = 3;
 
 function PipelineProgressSection() {
   const items = useUploadWorkspaceStore((state) => state.items);
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
 
   const pipelineItems = useMemo(
     () =>
@@ -50,7 +53,7 @@ function PipelineProgressSection() {
   const handleCancel = async (importJobId: string) => {
     try {
       await importApi.cancel(importJobId);
-      toast.success('已取消处理');
+      toast.success(isZh ? '已取消处理' : 'Processing cancelled');
     } catch {
       // Error handled by apiClient interceptor
     }
@@ -58,7 +61,7 @@ function PipelineProgressSection() {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-medium text-foreground">处理进度</h3>
+      <h3 className="text-sm font-medium text-foreground">{isZh ? '处理进度' : 'Processing Progress'}</h3>
       <div className="space-y-3">
         {pipelineItems.map((item) => (
           <PipelineProgressCard
@@ -94,6 +97,8 @@ function BatchUploadSection({ kbId }: { kbId: string }) {
   const { isBatchUploading, startBatch } = useBatchUpload();
   const items = useUploadWorkspaceStore((state) => state.items);
   const pendingCount = items.filter((i) => i.status === 'pending').length;
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
 
   const handleStartBatch = useCallback(() => {
     void startBatch(kbId);
@@ -136,15 +141,15 @@ function BatchUploadSection({ kbId }: { kbId: string }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">批量上传模式</span>
-          <span className="text-xs text-muted-foreground">({pendingCount} 个文件)</span>
+          <span className="text-sm font-medium">{isZh ? '批量上传模式' : 'Batch Upload Mode'}</span>
+          <span className="text-xs text-muted-foreground">({pendingCount} {isZh ? '个文件' : (pendingCount === 1 ? 'file' : 'files')})</span>
         </div>
         <Button
           onClick={handleStartBatch}
           disabled={isBatchUploading || pendingCount === 0}
           size="sm"
         >
-          {isBatchUploading ? '上传中...' : `批量上传 (${pendingCount})`}
+          {isBatchUploading ? (isZh ? '上传中...' : 'Uploading...') : `${isZh ? '批量上传' : 'Batch Upload'} (${pendingCount})`}
         </Button>
       </div>
 
@@ -157,14 +162,17 @@ function BatchUploadSection({ kbId }: { kbId: string }) {
 }
 
 function EmptyState() {
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
+
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <UploadIcon className="h-12 w-12 text-muted-foreground/40 mb-4" />
       <p className="text-sm text-muted-foreground">
-        拖拽 PDF 文件到上方区域或点击选择文件开始上传
+        {isZh ? '拖拽 PDF 文件到上方区域或点击选择文件开始上传' : 'Drag PDF files to the area above or click to select files to upload'}
       </p>
       <p className="text-xs text-muted-foreground mt-2">
-        支持同时选择多个文件，3 个及以上自动启用批量模式
+        {isZh ? '支持同时选择多个文件，3 个及以上自动启用批量模式' : 'Multiple files supported — 3 or more files automatically enable batch mode'}
       </p>
     </div>
   );
@@ -175,11 +183,13 @@ export function Upload() {
   const items = useUploadWorkspaceStore((state) => state.items);
   const hasItems = items.length > 0;
   const showBatchMode = items.filter((i) => i.status === 'pending').length >= BATCH_THRESHOLD;
+  const { language } = useLanguage();
+  const isZh = language === 'zh';
 
   if (!kbId) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">缺少知识库 ID</p>
+        <p className="text-muted-foreground">{isZh ? '缺少知识库 ID' : 'Missing Knowledge Base ID'}</p>
       </div>
     );
   }
@@ -195,7 +205,7 @@ export function Upload() {
         </Link>
         <div className="flex items-center gap-2">
           <UploadIcon className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold font-serif">上传论文</h1>
+          <h1 className="text-lg font-semibold font-serif">{isZh ? '上传论文' : 'Upload Papers'}</h1>
         </div>
       </div>
 

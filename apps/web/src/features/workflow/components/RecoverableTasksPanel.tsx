@@ -17,9 +17,9 @@ export function RecoverableTasksPanel() {
           <p className="text-xs text-muted-foreground">{isZh ? '当前没有可恢复任务。' : 'No recoverable tasks.'}</p>
         ) : (
           tasks.map((task) => (
-            <div key={task.id} className="rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2.5">
-              <div className="text-xs font-semibold text-rose-700">{task.label}</div>
-              <div className="mt-1 text-xs text-rose-600">{task.description}</div>
+            <div key={task.id} className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+              <div className="text-xs font-semibold text-destructive">{task.label}</div>
+              <div className="mt-1 text-xs text-destructive/85">{task.description}</div>
             </div>
           ))
         )}

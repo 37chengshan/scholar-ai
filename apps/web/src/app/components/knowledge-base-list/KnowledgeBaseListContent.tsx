@@ -80,7 +80,7 @@ export function KnowledgeBaseListContent({
 
   if (loading) {
     return (
-      <div className="py-12 text-center">
+      <div className="py-12 text-center" role="status" aria-live="polite">
         <div className="flex items-center justify-center gap-3">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
           <span className="font-medium text-muted-foreground">加载中...</span>
@@ -91,7 +91,7 @@ export function KnowledgeBaseListContent({
 
   if (error) {
     return (
-      <div className="py-12 text-center">
+      <div className="py-12 text-center" role="alert">
         <div className="mb-4 font-medium text-destructive">{error}</div>
         <Button variant="outline" onClick={onRetry}>
           重试

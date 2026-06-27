@@ -27,10 +27,10 @@ export function ClaimSupportList({ claims, answerMode }: ClaimSupportListProps) 
             <span
               className={
                 claim.support_status === 'supported'
-                  ? 'rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-700'
+                  ? 'rounded-full border border-[var(--color-success)]/40 bg-[var(--color-success)]/10 px-2 py-0.5 text-[var(--color-success)]'
                   : claim.support_status === 'weakly_supported' || claim.support_status === 'partially_supported'
-                    ? 'rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-700'
-                    : 'rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-rose-700'
+                    ? 'rounded-full border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-2 py-0.5 text-[var(--color-warning)]'
+                    : 'rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-destructive'
               }
             >
               {claim.support_status === 'supported'

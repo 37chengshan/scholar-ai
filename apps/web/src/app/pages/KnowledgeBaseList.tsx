@@ -245,7 +245,7 @@ function KnowledgeBaseListPageContent() {
               />
             ) : null}
 
-            <div className="mx-auto mt-16 max-w-7xl border-t-2 border-border bg-muted/30/40 px-6 py-16">
+            <div className="mx-auto mt-16 max-w-7xl border-t-2 border-border bg-muted/30 px-6 py-16">
               <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
                 <div className="space-y-4">
                   <div className="inline-block rounded-sm bg-primary/10 px-3 py-1 text-xs font-semibold tracking-wide text-primary">

@@ -5,6 +5,8 @@ import pytest
 
 from app.rag_v3.retrieval.dense_evidence_retriever import DenseEvidenceRetriever
 from app.rag_v3.retrieval.hybrid_retriever import HybridRetriever
+from app.rag_v3.retrieval.caption_retriever import CaptionRetriever
+from app.rag_v3.retrieval.numeric_retriever import NumericRetriever
 from app.rag_v3.retrieval.sparse_evidence_retriever import SparseEvidenceRetriever
 from app.rag_v3.schemas import (
     EvidenceCandidate,
@@ -91,7 +93,7 @@ class TestHybridRetriever:
         per_paper_budget: int = 4,
     ) -> HybridRetriever:
         dense = _StubDense(per_paper)
-        sparse = SparseEvidenceRetriever()  # stub, returns generic lexical results
+        sparse = SparseEvidenceRetriever()
         return HybridRetriever(
             dense_retriever=dense,
             sparse_retriever=sparse,
@@ -108,7 +110,31 @@ class TestHybridRetriever:
         pack = retriever.retrieve(query="test", paper_ids=["p-001", "p-002"])
 
         assert pack.diagnostics["dense_candidates_total"] > 0
-        assert pack.diagnostics["sparse_candidates_total"] >= 0
+        assert pack.diagnostics["sparse_candidates_total"] == 0
+        assert pack.diagnostics["sparse_channel_available"] == 0
+
+    def test_default_optional_retrievers_never_fabricate_evidence(self):
+        """Optional retrieval channels must safely degrade instead of emitting fake paper IDs."""
+        retrievers = [
+            SparseEvidenceRetriever(),
+            NumericRetriever(),
+            CaptionRetriever(),
+        ]
+
+        for retriever in retrievers:
+            candidates = retriever.retrieve("test", top_k=5)
+            assert candidates == []
+
+    def test_default_sparse_channel_does_not_inject_unrequested_papers(self):
+        """HybridRetriever defaults must not add lexical-* / p-00x placeholder evidence."""
+        dense = _StubDense({"real-paper": [_make_candidate("real-chunk", "real-paper")]})
+        retriever = HybridRetriever(dense_retriever=dense, rerank_top_k=10)
+
+        pack = retriever.retrieve(query="test", paper_ids=["real-paper"])
+
+        assert {cand.paper_id for cand in pack.candidates} <= {"real-paper"}
+        assert all(not cand.source_chunk_id.startswith("lexical-") for cand in pack.candidates)
+        assert pack.diagnostics["sparse_candidates_total"] == 0
 
     def test_per_paper_budget_enforced(self):
         """No single paper should supply more than per_paper_budget candidates."""

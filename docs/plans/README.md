@@ -6,14 +6,14 @@
 
 ## Current Mainline
 
-当前讨论中的新主线草案是 `v4.0`，统一从以下文件进入：
+当前执行主线是 `v6.0`，统一从以下文件进入：
 
-1. `docs/plans/v4_0/active/overview/18_v4_0_overview_plan.md`
-2. `docs/plans/PLAN_STATUS.md`
-3. `docs/plans/v4_0/active/phase_0/19_v4_0_phase_0_execution_plan.md`
-4. `docs/plans/v4_0/search/2026-05-02_v4_0_research_decision_note.md`
+1. `docs/plans/v6_0/README.md`
+2. `docs/plans/v6_0/reports/2026-06-20_v6_0_multidimensional_audit.md`
+3. `docs/plans/PLAN_STATUS.md`
+4. `docs/specs/design/frontend/DESIGN_SYSTEM.md`
 
-如果旧计划仍标记为 `in-progress`，但内容与 `v4.0` 草案冲突，先进入人工讨论，不直接按草案覆盖。v3.0 strict close-out 中未验证项先作为 Phase 4.0-0 候选输入，不直接丢弃。
+v5.0/v5.1 材料作为 v6.0 的输入证据保留;若旧计划状态与真实代码冲突,以当前代码、验证命令和 v6.0 audit report 为准。
 
 ## Directory Rules
 
@@ -21,8 +21,10 @@
   - `docs/plans/` 下计划状态唯一真源
 - `v1_0/` `v2_0/` `v3_0/`
   - 历史或维护态版本化计划主目录
-- `v4_0/`
-  - 当前讨论中的版本化草案目录，待用户确认后再升级为正式主线
+- `v4_0/` `v5_0/` `v5_1/`
+  - 历史或输入研究态版本化计划目录
+- `v6_0/`
+  - 当前执行中的版本化计划目录
 - `phase-text/`
   - 跨版本事实型功能盘点、功能真相报告、测试真相文档与查漏材料
   - 同时承载 `phase-text` 自身的整体规划与维护契约

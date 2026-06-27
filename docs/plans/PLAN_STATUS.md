@@ -1,6 +1,6 @@
 # 计划状态总览
 
-最后更新：2026-05-31
+最后更新：2026-06-20
 
 ## 使用规则
 
@@ -72,6 +72,12 @@
 | 7 | ai-runtime | closeout-complete / all-tasks-done | 2026-05-31 | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_backend_pipeline_closeout.md | 后端 Pipeline 稳定性 + Runtime Contract：P0 os import crash 修复、upload fail-closed 强化、trace_id 统一、ownership 隔离测试、observability SLO 基线；63 新测试全部通过 |
 | 8 | ai-runtime | closeout-complete / all-tasks-done | 2026-05-31 | docs/plans/v5_0/reports/2026-05-31_v5_0_phase_rag_sota_closeout.md | RAG SOTA: RAPTOR-lite + Graph + Verifier; Wave 0 refactoring + Wave 1 RAPTOR-lite/NLI/Community + Wave 2 integration + Wave 3 tests/security; 17 new files, 12 modified; backend tests have known import error blocking full suite |
 | 9 | product-engineering | closeout-complete / release-gate-executed | 2026-06-02 | docs/plans/v5_0/reports/2026-06-02_v5_0_phase_9_release_gate_closeout.md | Release Gate: 7 E2E journey specs (J1-J5 pass-ready, J6/J7 skipped due to missing Chat-Notes bridge), walkthrough generator, Lighthouse collector, audit report (p1=0), gate runner v5.0-9; verdict=blocked (face_b: no benchmark artifacts, face_e: no Lighthouse data) |
+
+## v6.0 方向面板
+
+| phase | owner | closeout_status | last_verified_at | truth_doc | notes |
+|---|---|---|---|---|---|
+| 0 | product-engineering | closeout-complete / score-92-pass | 2026-06-20 | docs/plans/v6_0/reports/2026-06-20_v6_0_multidimensional_audit.md | v6.0 frontend polish + backend chain hardening: high-exposure token drift closed, skip-nav/a11y state semantics added, Dashboard recent papers unwrap contract fixed, fabricated optional retrieval evidence removed, focused frontend/backend tests + build/typecheck/governance passed. Residual risks: full i18n extraction, legacy duplicate cleanup, Lighthouse/axe artifacts, large chunk splitting. |
 
 ## 活跃计划面板
 

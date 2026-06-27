@@ -9,10 +9,10 @@ const feedbackVariants = cva(
   {
     variants: {
       status: {
-        empty: "text-stone-500 bg-stone-50/50 rounded-xl border border-dashed border-stone-200",
-        error: "text-red-700 bg-red-50/50 rounded-xl border border-red-100",
+        empty: "text-muted-foreground bg-muted/30 rounded-xl border border-dashed border-border/70",
+        error: "text-destructive bg-destructive/5 rounded-xl border border-destructive/20",
         loading: "text-[var(--accent-600)]",
-        partial: "text-amber-700 bg-amber-50 rounded-xl border border-amber-200",
+        partial: "text-[var(--color-warning)] bg-[var(--color-warning)]/10 rounded-xl border border-[var(--color-warning)]/30",
       },
       size: { sm: "min-h-[120px] text-sm py-4", md: "min-h-[240px] text-base" }
     },
@@ -43,7 +43,7 @@ export function UnifiedFeedbackState({ status, size, title, message, action, cla
   return (
     <div className={cn(feedbackVariants({ status, size }), className)}>
       <Icon className={cn("mb-3 w-8 h-8", status === 'loading' && "animate-spin opacity-80")} />
-      {title && <h3 className="font-semibold text-stone-800 mb-1">{title}</h3>}
+      {title && <h3 className="font-semibold text-foreground mb-1">{title}</h3>}
       {message && <p className="max-w-sm text-inherit opacity-80 leading-relaxed">{message}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
