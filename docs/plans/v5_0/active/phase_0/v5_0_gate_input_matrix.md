@@ -283,6 +283,7 @@ BLOCK ⟺  任意一项不满足
 a11y 分数读取自同一份 Lighthouse JSON 的 `categories.accessibility.score`
 字段，与 performance 分数同源。
 
+
 `cwv_fcp_ms` 与 `cwv_tbt_ms` 写入报告，不参与 PASS/BLOCK 判定，仅作为回归
 预警信号（超过 1500ms / 200ms 时在报告中标 ⚠️）。
 

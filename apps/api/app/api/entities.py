@@ -8,13 +8,14 @@ Provides:
 
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.core.entity_extractor import EntityExtractor
 from app.core.neo4j_service import Neo4jService
 from app.utils.logger import logger
 from app.workers.entity_worker import process_entity_extraction
+from app.middleware.auth import get_current_user
 from app.utils.problem_detail import Errors
 
 router = APIRouter()
@@ -62,7 +63,7 @@ class EntityStatusResponse(BaseModel):
 
 
 @router.post("/extract", response_model=EntityExtractionResponse)
-async def extract_entities(request: EntityExtractionRequest):
+async def extract_entities(request: EntityExtractionRequest, current_user: dict = Depends(get_current_user)):
     """Extract academic entities from text using LLM.
 
     Extracts methods, datasets, evaluation metrics, and venue mentions.
@@ -99,7 +100,8 @@ async def extract_entities(request: EntityExtractionRequest):
 @router.post("/{paper_id}/build", response_model=BuildGraphResponse)
 async def build_paper_graph(
         paper_id: str,
-        request: BuildGraphRequest
+        request: BuildGraphRequest,
+        current_user: dict = Depends(get_current_user),
     ):
     """Build knowledge graph for a paper from extracted entities.
 
@@ -142,7 +144,7 @@ async def build_paper_graph(
 
 
 @router.get("/{paper_id}/status", response_model=EntityStatusResponse)
-async def get_entity_status(paper_id: str):
+async def get_entity_status(paper_id: str, current_user: dict = Depends(get_current_user)):
     """Get entity extraction status for a paper.
 
     Returns counts of extracted entities stored in Neo4j.

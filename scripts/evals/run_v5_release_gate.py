@@ -73,6 +73,7 @@ def _safe_path(p: Path) -> Path:
     return resolved
 
 
+
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -164,6 +165,7 @@ def _latest_benchmark_date(files: list[Path]) -> str | None:
         if latest is None or dt_val > latest:
             latest = dt_val
     return latest.strftime("%Y-%m-%d") if latest else None
+
 
 
 def _evaluate_face_b(bench_dir: str | None = None) -> tuple[bool, dict]:
@@ -479,7 +481,6 @@ def main() -> int:
 
     jp.parent.mkdir(parents=True, exist_ok=True)
     jp.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-
     mp.parent.mkdir(parents=True, exist_ok=True)
     mp.write_text(_report_md(verdict, faces, blocks, downgrades), encoding="utf-8")
 

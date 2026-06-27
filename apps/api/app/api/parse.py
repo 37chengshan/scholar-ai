@@ -16,12 +16,13 @@ import io
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.core.docling_service import DoclingParser, FileTooLargeError, ParseTimeoutError
 from app.core.imrad_extractor import extract_imrad_structure, extract_metadata
+from app.middleware.auth import get_current_user
 from app.middleware.file_validation import validate_pdf_upload
 from app.utils.logger import logger
 from app.utils.problem_detail import Errors
@@ -34,6 +35,7 @@ async def parse_pdf(
     file: UploadFile = File(...),
     arxiv_id: Optional[str] = Form(None),
     force_ocr: bool = Form(False),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     解析PDF文件

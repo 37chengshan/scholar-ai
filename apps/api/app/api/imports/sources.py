@@ -12,9 +12,10 @@ These endpoints allow frontend to preview paper info before creating ImportJob.
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel, Field
 
+from app.middleware.auth import get_current_user
 from app.services.source_resolver_service import (
     get_source_resolver_service,
     ResolveResult,
@@ -68,7 +69,7 @@ class ResolveBatchResponse(BaseModel):
 
 
 @router.post("/resolve", response_model=ResolveResponse)
-async def resolve_source(request: ResolveRequest) -> Dict[str, Any]:
+async def resolve_source(request: ResolveRequest, current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     """Resolve source and return preview.
 
     Per gpt意见.md Section 2.2.1:
@@ -166,6 +167,7 @@ async def resolve_source(request: ResolveRequest) -> Dict[str, Any]:
 @router.post("/resolve-batch", response_model=ResolveBatchResponse)
 async def resolve_batch_sources(
     request: ResolveBatchRequest,
+    current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Resolve multiple sources in batch.
 

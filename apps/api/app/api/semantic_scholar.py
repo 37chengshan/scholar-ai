@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any
 
 from app.core.semantic_scholar_service import get_semantic_scholar_service
 from app.core.redis_client import get_redis_client
+from app.middleware.auth import get_current_user
 from app.utils.problem_detail import Errors
 
 router = APIRouter()
@@ -16,7 +17,8 @@ router = APIRouter()
 @router.post("/batch")
 async def batch_get_papers(
     ids: List[str] = Body(..., embed=True),
-    fields: Optional[str] = Query(None)
+    fields: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     """Batch get papers by IDs.
 
@@ -31,7 +33,8 @@ async def batch_get_papers(
 @router.get("/paper/{paper_id}")
 async def get_paper_details(
     paper_id: str,
-    fields: Optional[str] = Query(None)
+    fields: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Get single paper details."""
     service = get_semantic_scholar_service()
@@ -44,7 +47,8 @@ async def get_paper_details(
 async def get_citations(
     paper_id: str,
     fields: Optional[str] = Query(None),
-    limit: int = Query(1000)
+    limit: int = Query(1000),
+    current_user: dict = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     """Get citations for a paper (who cited this paper).
 
@@ -60,7 +64,8 @@ async def get_citations(
 async def get_references(
     paper_id: str,
     fields: Optional[str] = Query(None),
-    limit: int = Query(1000)
+    limit: int = Query(1000),
+    current_user: dict = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     """Get references for a paper (what this paper cited).
 
@@ -75,7 +80,8 @@ async def get_references(
 @router.get("/autocomplete")
 async def autocomplete_papers(
     query: str = Query(..., min_length=1),
-    limit: int = Query(5, ge=1, le=20)
+    limit: int = Query(5, ge=1, le=20),
+    current_user: dict = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     """Paper autocomplete for search box.
 
@@ -92,7 +98,8 @@ async def autocomplete_papers(
 async def search_authors(
     query: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=100),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Search authors by name.
 
@@ -109,7 +116,8 @@ async def search_authors(
 async def get_author_papers(
     author_id: str,
     limit: int = Query(10, ge=1, le=100),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Get papers by author ID.
 

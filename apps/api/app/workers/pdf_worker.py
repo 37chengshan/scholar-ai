@@ -201,10 +201,12 @@ class PDFProcessor:
     async def init_db(self):
         """Initialize database connection pool."""
         if not self.db_pool:
-            db_url = os.getenv(
-                "DATABASE_URL",
-                "postgresql://scholarai:scholarai123@localhost:5432/scholarai",
-            )
+            db_url = settings.DATABASE_URL
+            if not db_url:
+                raise RuntimeError(
+                    "DATABASE_URL is not configured. "
+                    "Set the DATABASE_URL environment variable before starting the service."
+                )
             self.db_pool = await asyncpg.create_pool(
                 db_url,
                 min_size=1,
